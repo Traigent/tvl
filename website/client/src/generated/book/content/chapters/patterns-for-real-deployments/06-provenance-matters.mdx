@@ -1,0 +1,16 @@
+Every promotion should commit:
+
+- `spec.tvl.yml` — the composed, valid TVL module.
+- `spec.overlay.yml` — the overlay that produced it (if any).
+- `provenance.json` — metadata: base SHA, overlay SHA, compose timestamp.
+
+```json
+{
+  "base": "base.tvl.yml@abc123",
+  "overlay": "staging.overlay.yml@def456",
+  "composed_at": "2025-01-15T10:30:00Z",
+  "composed_by": "ci-bot"
+}
+```
+
+This audit trail enables deterministic recreation of exact configurations from version control history.

@@ -1,0 +1,69 @@
+---
+id: chapter-06-from-runtime-patterns-to-training-surfaces
+slug: from-runtime-patterns-to-training-surfaces
+title: From Runtime Patterns to Training Surfaces
+summary: Pattern names are the beginning of the design discussion; the real engineering work starts when those patterns are translated into an explicit, governable control surface.
+chapter: training-agents-with-tuned-variables
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- tvars
+- running-example
+- pattern-control-surface
+example_refs:
+- /examples/tool-use.tvl.yml
+opal_bridge: false
+---
+
+A pattern such as [Contextual Batching](/book/patterns/contextual-batching) or
+[Routed Expertise / MoE + Judge](/book/patterns/routed-expertise-moe-judge) is not a deployable
+decision by itself. It only tells you the scaffold family. The deployable decision is the concrete
+surface underneath the scaffold:
+
+- how many experts run
+- how many items are packed together
+- how many reflection rounds are allowed
+- how a reducer or judge turns several candidates into one answer
+
+That is the move from runtime pattern language to training surface design.
+
+<ConceptCallout title="Plain-English Translation" tone="info">
+
+A <Term id="pattern-control-surface">pattern control surface</Term> is the set of variables that
+actually change system behavior. If those variables are invisible, the agent may still work, but it
+is hard to reason about, evaluate, or govern.
+
+</ConceptCallout>
+
+```yaml
+tvars:
+  - name: experts_to_run
+    type: int
+    domain:
+      set: [1, 2, 3]
+  - name: judge_policy
+    type: enum[str]
+    domain: ["best_score", "pairwise_compare"]
+  - name: reflection_rounds
+    type: int
+    domain:
+      set: [0, 1, 2]
+```
+
+The important shift is conceptual. Instead of saying "this agent uses routing and reflection," you
+say "this agent exposes exactly these variables, under exactly these budgets, with exactly these
+evaluation and promotion rules."
+
+<PredictionPrompt prompt="A teammate says, 'we already chose the pattern, so we are done with design.' What is missing from that statement?">
+
+The missing piece is the governed control surface. The pattern name does not tell you which variables
+can change, how they will be evaluated, or when the resulting workflow is promotable.
+
+</PredictionPrompt>
+
+<KnowledgeCheck prompt="What separates a pattern label from a training surface?">
+
+The pattern label names the scaffold. The training surface makes the scaffold operational by exposing
+the actual variables, budgets, and evaluation hooks that can be tuned and governed.
+
+</KnowledgeCheck>

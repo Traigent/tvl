@@ -1,0 +1,676 @@
+{
+  "why-tvl-exists-design-goals-at-a-glance": {
+    "title": "Design Goals at a Glance",
+    "description": "TVL keeps optimization governable by making tunable knobs, constraints, and promotion evidence explicit in one contract.",
+    "content": [
+      "- Type-safe tuning variables separate categorical choice from continuous ranges. - Deterministic exports make generated files (such as params.yaml) reproducible in CI. - Declarative constraints (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers. - Governed promotion requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out.",
+      "The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and rerun TVO . The optimizer explores safely and promotes only when constraints hold—no frantic code edits."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "rag-support-bot.tvl.yml",
+        "code": "# Example: RAG Support Bot Baseline\n# Demonstrates multi-objective NSGA-II configuration with structural and derived latency constraints.\ntvl:\n  module: corp.support.rag_bot\n\nenvironment:\n  snapshot_id: \"2024-02-15T00:00:00Z\"\n  bindings:\n    retriever: bm25-v3\n    llm_gateway: us-east-1\n  context:\n    gateway_baseline_latency_ms: 180\n    provider_input_price_usd_per_1k_tokens: 0.03\n\nevaluation_set:\n  dataset: s3://datasets/support-tickets/dev.jsonl\n  seed: 2024\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4o\", \"llama3.1\"]\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 1.0]\n      resolution: 0.05\n  - name: retriever.k\n    type: int\n    domain:\n      range: [0, 20]\n  - name: zero_shot\n    type: bool\n    domain: [true, false]\n\nconstraints:\n  structural:\n    - when: zero_shot = true\n      then: retriever.k = 0\n  # Operational preconditions are over numeric environment context (not TVARs or measured outcomes)\n  derived:\n    - require: env.context.gateway_baseline_latency_ms <= 250\n    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  min_effect:\n    quality: 0.01\n    latency_p95_ms: 50\n  chance_constraints:\n    # Chance constraints are violation-rate SLO checks (0 <= threshold <= 1).\n    # Here: allow at most 5% SLO violations with 95% confidence.\n    - name: latency_slo\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: nsga2\n  convergence:\n    metric: hypervolume_improvement\n    window: 5\n    threshold: 0.01\n  budgets:\n    max_trials: 48\n",
+        "downloadPath": "/examples/rag-support-bot.tvl.yml"
+      }
+    ]
+  },
+  "why-tvl-exists-running-example-campus-orientation-rag": {
+    "title": "Running Example · Campus Orientation RAG",
+    "description": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+    "content": [
+      "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+      "```yaml Campus Orientation RAG - TVL Specification tvl: module: campus.orientation.rag",
+      "Environment snapshot anchors the spec to a point in time environment: snapshot id: \"2025-01-15T00:00:00Z\" bindings: retriever index: campus-faq-v1 llm gateway: us-east-1 context: gateway baseline latency ms: 180 provider input price usd per 1k tokens: 0.03",
+      "Evaluation dataset for optimization trials evaluation set: dataset: s3://datasets/faq/onboarding-v2.jsonl seed: 2025",
+      "Tuned Variables (TVARs) - the parameters we optimize tvars: - name: model type: enum[str] domain: [\"gpt-4o-mini\", \"gpt-4o\", \"claude-3-haiku\"]",
+      "- name: temperature type: float domain: range: [0.1, 0.8] resolution: 0.05",
+      "- name: max tokens type: int domain: set: [256, 512, 768]",
+      "- name: retrieval depth type: int domain: range: [2, 6]",
+      "Constraints: structural (checked before trials) and operational preconditions constraints: structural: Premium models need lower temperature for consistency - when: model = \"gpt-4o\" then: temperature = 5 then: max tokens = 512 derived: Operational preconditions on the declared environment context - require: env.context.gateway baseline latency ms <= 250 - require: env.context.provider input price usd per 1k tokens <= 0.05",
+      "Multi-objective optimization targets objectives: - name: answer quality metric ref: metrics.answer quality.v1 direction: maximize - name: response latency p95 ms metric ref: metrics.response latency p95 ms.v1 direction: minimize - name: token cost usd metric ref: metrics.token cost usd.v1 direction: minimize",
+      "Promotion policy with statistical guarantees promotion policy: dominance: epsilon pareto alpha: 0.05 adjust: holm min effect: answer quality: 0.02 response latency p95 ms: 50 token cost usd: 0.005 chance constraints: - name: latency slo violation rate threshold: 0.05 confidence: 0.95 - name: toxicity violation rate threshold: 0.01 confidence: 0.95 - name: pii violation rate threshold: 0.001 confidence: 0.95",
+      "Exploration configuration exploration: strategy: type: nsga2 budgets: max trials: 60 max wallclock s: 2400 ```",
+      "Download /examples/rag-support-bot.tvl.yml and run tvl-validate rag-support-bot.tvl.yml to check the spec against the TVL schema. The validator catches type mismatches, domain violations, and unsatisfiable constraints."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "rag-support-bot.tvl.yml",
+        "code": "# Example: RAG Support Bot Baseline\n# Demonstrates multi-objective NSGA-II configuration with structural and derived latency constraints.\ntvl:\n  module: corp.support.rag_bot\n\nenvironment:\n  snapshot_id: \"2024-02-15T00:00:00Z\"\n  bindings:\n    retriever: bm25-v3\n    llm_gateway: us-east-1\n  context:\n    gateway_baseline_latency_ms: 180\n    provider_input_price_usd_per_1k_tokens: 0.03\n\nevaluation_set:\n  dataset: s3://datasets/support-tickets/dev.jsonl\n  seed: 2024\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4o\", \"llama3.1\"]\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 1.0]\n      resolution: 0.05\n  - name: retriever.k\n    type: int\n    domain:\n      range: [0, 20]\n  - name: zero_shot\n    type: bool\n    domain: [true, false]\n\nconstraints:\n  structural:\n    - when: zero_shot = true\n      then: retriever.k = 0\n  # Operational preconditions are over numeric environment context (not TVARs or measured outcomes)\n  derived:\n    - require: env.context.gateway_baseline_latency_ms <= 250\n    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  min_effect:\n    quality: 0.01\n    latency_p95_ms: 50\n  chance_constraints:\n    # Chance constraints are violation-rate SLO checks (0 <= threshold <= 1).\n    # Here: allow at most 5% SLO violations with 95% confidence.\n    - name: latency_slo\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: nsga2\n  convergence:\n    metric: hypervolume_improvement\n    window: 5\n    threshold: 0.01\n  budgets:\n    max_trials: 48\n",
+        "downloadPath": "/examples/rag-support-bot.tvl.yml"
+      }
+    ]
+  },
+  "why-tvl-exists-field-notes-legend": {
+    "title": "Field Notes Legend",
+    "description": "The book uses recurring callouts to separate fast tips, reliability gotchas, and integration guidance.",
+    "content": [
+      "Throughout the interactive book you will see three callouts:",
+      "- Hackathon Moves — quick tips for rapid experimentation. - Reliability Pitfalls — gotchas that often surface in incident reviews. - Integration Hints — pointers linking a concept to Triagent/TVO or DVL workflows."
+    ],
+    "examples": []
+  },
+  "getting-fluent-in-tvl-minimal-working-spec": {
+    "title": "Minimal Working Spec",
+    "description": "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer.",
+    "content": [
+      "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer.",
+      "- TVARs are the knobs the optimizer is allowed to turn. - The evaluation set is the shared test workload used to compare candidates fairly. - The promotion policy is the shipping rulebook: it says what counts as a real win.",
+      "It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only about what can change; it is also about what evidence is required before a change is allowed to ship.",
+      "```yaml Minimal TVL Spec - Chapter 2 tvl: module: book.quickstart.simple rag qa",
+      "environment: snapshot id: \"2025-01-20T00:00:00Z\" bindings: retriever index: campus-faq-v1 llm gateway: us-east-1",
+      "evaluation set: dataset: s3://datasets/campus-rag/dev.jsonl seed: 2025",
+      "tvars: - name: model type: enum[str] domain: [\"gpt-4o-mini\", \"claude-3-haiku\"]",
+      "- name: retriever.k type: int domain: set: [3, 5, 8]",
+      "- name: temperature type: float domain: range: [0.0, 0.6] resolution: 0.1",
+      "constraints: structural: - when: \"retriever.k = 8\" then: \"temperature <= 0.3\"",
+      "objectives: - name: answer accuracy metric ref: metrics.answer accuracy.v1 direction: maximize - name: latency p95 ms metric ref: metrics.latency p95 ms.v1 direction: minimize",
+      "promotion policy: dominance: epsilon pareto alpha: 0.05 adjust: holm min effect: answer accuracy: 0.01 latency p95 ms: 50",
+      "exploration: strategy: type: grid budgets: max trials: 24 max wallclock s: 900 ```",
+      "If you are coming from standard software configuration, the easiest way to read this file is:",
+      "1. environment tells you which deployed index and gateway this spec was evaluated against. 2. tvars tells you what can change. 3. objectives tells you what “better” means. 4. promotion policy tells you when “better” is strong enough to ship.",
+      "- Every TVAR has an explicit type and domain? - environment.bindings names the concrete system pieces the study used? - Objectives declared with direction: maximize or minimize? - promotion policy includes min effect for each objective? - environment.snapshot id is an RFC3339 timestamp?",
+      "tvars says what may change. objectives say what better means. promotion policy says when “better” is credible and large enough to justify rollout."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "ch2_hello_tvl.tvl.yml",
+        "code": "tvl:\n  module: book.quickstart.simple_rag_qa\n\nenvironment:\n  snapshot_id: \"2025-01-20T00:00:00Z\"\n  bindings:\n    retriever_index: campus-faq-v1\n    llm_gateway: us-east-1\n\nevaluation_set:\n  dataset: s3://datasets/campus-rag/dev.jsonl\n  seed: 2025\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"claude-3-haiku\"]\n\n  - name: retriever.k\n    type: int\n    domain:\n      set: [3, 5, 8]\n\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 0.6]\n      resolution: 0.1\n\nconstraints:\n  structural:\n    - when: \"retriever.k = 8\"\n      then: \"temperature <= 0.3\"\n\nobjectives:\n  - name: answer_accuracy\n    metric_ref: metrics.answer_accuracy.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    answer_accuracy: 0.01\n    latency_p95_ms: 50\n\nexploration:\n  strategy:\n    type: grid\n  budgets:\n    max_trials: 24\n    max_wallclock_s: 900\n",
+        "downloadPath": "/examples/book/ch2_hello_tvl.tvl.yml"
+      }
+    ]
+  },
+  "getting-fluent-in-tvl-validation-warm-up": {
+    "title": "Validation Warm-Up",
+    "description": "Use tvl-validate to catch missing sections, schema mismatches, and other cheap mistakes before you optimize.",
+    "content": [
+      "Use tvl-validate to check your spec against the TVL schema:",
+      "The fast win is structure. tvl-validate catches missing sections, bad shapes, and schema mismatches. It does not tell you whether the candidate is good, safe, or operationally feasible in production.",
+      "tvl-validate is the fast sanity check. In simple terms, it answers:",
+      "- “Did I include the required sections?” - “Did I spell the structure correctly?” - “Are the values shaped the way TVL expects?”",
+      "It does not prove that your search space is useful or safe by itself. That is where the broader validation workflow comes in.",
+      "For deeper inspection, use this helper script to print the TVARs and their domains:",
+      "```python \"\"\"Quick helper for Chapter 2 to inspect a TVL spec and print the knobs.\"\"\" from pathlib import Path import textwrap",
+      "import yaml",
+      "def load spec(path: Path) - dict: with path.open(\"r\", encoding=\"utf-8\") as handle: return yaml.safe load(handle)",
+      "def ensure sections(spec: dict, required: list[str]) - list[str]: missing = [section for section in required if section not in spec] return missing",
+      "def format domain(domain: object) - str: if isinstance(domain, list): return f\"choices={domain}\" if isinstance(domain, dict): if \"range\" in domain: resolution = domain.get(\"resolution\") if resolution is not None: return f\"range={domain['range']}, resolution={resolution}\" return f\"range={domain['range']}\" if \"set\" in domain: return f\"set={domain['set']}\" return \"domain= \" return \"domain= \"",
+      "def print tvars(tvars: list[dict]) - None: print(\"Tuned Variables (tvars)\") print(\"----------------------\") for entry in tvars: name = entry.get(\"name\", \" \") type = entry.get(\"type\", \" \") domain = format domain(entry.get(\"domain\")) print(f\"- {name} [{type }]: {domain}\")",
+      "def main() - None: spec path = Path( file ).with name(\"ch2 hello tvl.tvl.yml\") spec = load spec(spec path)",
+      "required sections = [\"tvl\", \"environment\", \"evaluation set\", \"tvars\", \"objectives\", \"promotion policy\"] missing = ensure sections(spec, required sections) if missing: print(\"Missing sections:\", \", \".join(missing)) return",
+      "print(textwrap.dedent( \"\"\"\\ Spec loaded successfully. module : {module} snapshot : {snapshot} dataset : {dataset} \"\"\" ).format( module=(spec.get(\"tvl\") or {}).get(\"module\", \" \"), snapshot=(spec.get(\"environment\") or {}).get(\"snapshot id\", \" \"), dataset=(spec.get(\"evaluation set\") or {}).get(\"dataset\", \" \"), ))",
+      "print tvars(spec[\"tvars\"])",
+      "if name == \" main \": main() ```",
+      "If you are new to the toolchain, think of this sequence as the software-engineering version of “compile before you optimize.” The goal is to catch cheap mistakes while they are still cheap.",
+      "Passing schema validation is only the first gate. You still need parsing, linting, structural feasibility checks, and operational checks to know whether the search space is usable and whether rollout evidence will stand up in review."
+    ],
+    "examples": [
+      {
+        "language": "python",
+        "filename": "ch2_validate_spec.py",
+        "code": "\"\"\"Quick helper for Chapter 2 to inspect a TVL spec and print the knobs.\"\"\"\nfrom pathlib import Path\nimport textwrap\n\nimport yaml\n\n\ndef load_spec(path: Path) -> dict:\n    with path.open(\"r\", encoding=\"utf-8\") as handle:\n        return yaml.safe_load(handle)\n\n\ndef ensure_sections(spec: dict, required: list[str]) -> list[str]:\n    missing = [section for section in required if section not in spec]\n    return missing\n\n\ndef _format_domain(domain: object) -> str:\n    if isinstance(domain, list):\n        return f\"choices={domain}\"\n    if isinstance(domain, dict):\n        if \"range\" in domain:\n            resolution = domain.get(\"resolution\")\n            if resolution is not None:\n                return f\"range={domain['range']}, resolution={resolution}\"\n            return f\"range={domain['range']}\"\n        if \"set\" in domain:\n            return f\"set={domain['set']}\"\n        if \"registry\" in domain:\n            return f\"registry={domain.get('registry')}\"\n        if \"components\" in domain:\n            return \"tuple[components]\"\n        return \"domain=<object>\"\n    return \"domain=<unknown>\"\n\n\ndef print_tvars(tvars: list[dict]) -> None:\n    print(\"Tuned Variables (tvars)\")\n    print(\"----------------------\")\n    for entry in tvars:\n        name = entry.get(\"name\", \"<unnamed>\")\n        type_ = entry.get(\"type\", \"<untyped>\")\n        domain = _format_domain(entry.get(\"domain\"))\n        print(f\"- {name} [{type_}]: {domain}\")\n\n\ndef main() -> None:\n    spec_path = Path(__file__).with_name(\"ch2_hello_tvl.tvl.yml\")\n    spec = load_spec(spec_path)\n\n    required_sections = [\"tvl\", \"environment\", \"evaluation_set\", \"tvars\", \"objectives\", \"promotion_policy\"]\n    missing = ensure_sections(spec, required_sections)\n    if missing:\n        print(\"Missing sections:\", \", \".join(missing))\n        return\n\n    module_id = (spec.get(\"tvl\") or {}).get(\"module\", \"<unknown>\")\n    print(textwrap.dedent(\n        \"\"\"\\\n        Spec loaded successfully.\n        module    : {module}\n        snapshot  : {snapshot}\n        dataset   : {dataset}\n        \"\"\"\n    ).format(\n        module=module_id,\n        snapshot=(spec.get(\"environment\") or {}).get(\"snapshot_id\", \"<unknown>\"),\n        dataset=(spec.get(\"evaluation_set\") or {}).get(\"dataset\", \"<unknown>\"),\n    ))\n\n    print_tvars(spec[\"tvars\"])\n\n\nif __name__ == \"__main__\":\n    main()\n",
+        "downloadPath": "/examples/book/ch2_validate_spec.py"
+      }
+    ]
+  },
+  "getting-fluent-in-tvl-tvl-0-9-type-system": {
+    "title": "TVL Type System",
+    "description": "TVL enforces explicit typing on every tuned variable so search spaces stay interpretable and safe.",
+    "content": [
+      "TVL enforces explicit typing on all tuned variables:",
+      "For an application engineer, the type system is what keeps tuning from turning into guesswork. It makes the optimizer’s choices explicit: a boolean switch is different from an integer budget, which is different from a short approved list of model names.",
+      "| Type | Description | Domain Examples | |------|-------------|-----------------| | bool | Boolean flag | [true, false] | | int | Integer value | range: [1, 10] or set: [1, 2, 4, 8] | | float | Floating-point | range: [0.0, 1.0] with optional resolution | | enum[str] | Finite set of strings | [\"gpt-4o\", \"claude-3\"] | | enum[int] | Finite set of integers | [100, 500, 1000] | | tuple[...] | Product type | Cartesian product of component domains | | callable[Proto] | Protocol reference | Registry-backed function lookup |"
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "tool-use.tvl.yml",
+        "code": "# Example: Tool-Use Agent\n# Demonstrates: banded objective with TOST, promotion policy epsilons, and\n# structural implication encoded with the typed DNF surface syntax.\ntvl:\n  module: corp.tooling.tool_use\n\nenvironment:\n  snapshot_id: \"2024-03-01T00:00:00Z\"\n  bindings:\n    orchestrator: release-2024-02\n  context:\n    max_cost_usd: 1.50\n\nevaluation_set:\n  dataset: s3://datasets/tool-use-evals/latest.parquet\n  seed: 1337\n\ntvars:\n  - name: agent\n    type: enum[str]\n    domain: [\"tools-mini\", \"tools-pro\"]\n  - name: max_calls\n    type: int\n    domain:\n      set: [0, 1, 2, 3, 4, 5]\n  - name: planner.temperature\n    type: float\n    domain:\n      set: [0.0, 0.25, 0.5, 0.75, 1.0]\n\nconstraints:\n  structural:\n    - when: agent = 'tools-mini'\n      then: max_calls <= 4\n  derived:\n    - require: env.context.max_cost_usd <= 1.50\n\nobjectives:\n  - name: success_rate\n    metric_ref: metrics.success_rate.v1\n    direction: maximize\n  - name: fairness_eo_gap\n    metric_ref: metrics.fairness_eo_gap.v1\n    band:\n      target:\n        center: 0.0\n        tol: 0.05\n      test: TOST\n      alpha: 0.05\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    success_rate: 0.01\n    # Note: fairness_eo_gap is banded (TOST) — no min_effect entry needed\n  chance_constraints:\n    # Fairness SLO: at most 5% of predictions may violate the EO gap target\n    - name: fairness_slo_violations\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: grid\n  budgets:\n    max_trials: 32\n",
+        "downloadPath": "/examples/tool-use.tvl.yml"
+      }
+    ]
+  },
+  "getting-fluent-in-tvl-common-pitfalls": {
+    "title": "Common Pitfalls",
+    "description": "The most common early mistakes are wrong type names, missing promotion policy, and constraint syntax borrowed from other languages.",
+    "content": [
+      "1. Using wrong type names — it's enum[str] not categorical, float not continuous. 2. Mixing deployment bindings with numeric operating assumptions instead of separating bindings and context. 3. Missing promotion policy — this is required in TVL (no implicit defaults). 4. Constraint syntax errors — use = for equality (not ==), and/or (not &&/||)."
+    ],
+    "examples": []
+  },
+  "getting-fluent-in-tvl-analog-circuit-lab-explore-the-knobs": {
+    "title": "Analog Circuit Lab · Explore the Knobs",
+    "description": "Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above; latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.",
+    "content": [
+      "Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above; latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.",
+      "In this lab, broader retrieval and longer responses tend to move latency first because they widen the amount of work per request. Reranking matters too, but it is easier to understand once you see the latency and quality gauges move together.",
+      "Open the lab in a new tab",
+      "Suggested Prompts",
+      "- Start from the Baseline preset, bump retriever top k to 56, and observe the latency gauge. When does the red guardrail trigger? - Move the rerank weight slider below 0.3 while retriever top k ≥ 40. What warning do you see? Why does the constraint exist? - Hold retriever top k steady and stretch response tokens. What trade-off emerges between cost and quality?",
+      "It should make one idea concrete: TVARs are not abstract config fields. Each knob changes cost, latency, and quality, and some combinations should be ruled out before the optimizer wastes trials on them."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "ch2_hello_tvl.tvl.yml",
+        "code": "tvl:\n  module: book.quickstart.simple_rag_qa\n\nenvironment:\n  snapshot_id: \"2025-01-20T00:00:00Z\"\n  bindings:\n    retriever_index: campus-faq-v1\n    llm_gateway: us-east-1\n\nevaluation_set:\n  dataset: s3://datasets/campus-rag/dev.jsonl\n  seed: 2025\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"claude-3-haiku\"]\n\n  - name: retriever.k\n    type: int\n    domain:\n      set: [3, 5, 8]\n\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 0.6]\n      resolution: 0.1\n\nconstraints:\n  structural:\n    - when: \"retriever.k = 8\"\n      then: \"temperature <= 0.3\"\n\nobjectives:\n  - name: answer_accuracy\n    metric_ref: metrics.answer_accuracy.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    answer_accuracy: 0.01\n    latency_p95_ms: 50\n\nexploration:\n  strategy:\n    type: grid\n  budgets:\n    max_trials: 24\n    max_wallclock_s: 900\n",
+        "downloadPath": "/examples/book/ch2_hello_tvl.tvl.yml"
+      }
+    ]
+  },
+  "constraints-units-safety-nets-two-kinds-of-constraints": {
+    "title": "Two Kinds of Constraints",
+    "description": "TVL separates static structural rules from environment-scoped operational preconditions so authors know what is validated when.",
+    "content": [
+      "TVL separates constraints into two categories:",
+      "The env.context. rule belongs in constraints.derived because it depends on the execution environment. temperature <= 0.8 is a structural rule because it is a formula over TVARs and can be checked before any trials run.",
+      "| Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural | Before trials run (static) | Rules over TVARs that define valid configuration space | | Operational Preconditions | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom |",
+      "```yaml Fragment: constraints section only (embed in full TVL module) constraints: structural: Checked statically - compiles to SAT/SMT - expr: \"temperature = 1000",
+      "derived: Checked at runtime against environment symbols - require: env.context.gateway baseline latency ms = 50 ```",
+      "Operational metrics such as measured latency or token cost belong in measurements, manifests, and runtime gates. TVL keeps constraints.derived scoped to env.context. feasibility checks.",
+      "Because TVL uses constraints.derived for feasibility checks over the environment, not for observed experiment results. Measured latency belongs in objectives, manifests, and rollout evidence so reviewers can distinguish promises from outcomes."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "text-to-sql.tvl.yml",
+        "code": "# Example: Text-to-SQL\n# Mirrors the running example in Section 3, Listing 1 of the ASE 2026 TVL paper.\ntvl:\n  module: corp.automation.text_to_sql\n\nenvironment:\n  snapshot_id: \"2024-01-20T00:00:00Z\"\n  context:\n    query_budget_usd: 0.01\n\nevaluation_set:\n  dataset: s3://datasets/text-to-sql/dev.parquet\n  seed: 99\n\ntvars:\n  - name: planner\n    type: enum[str]\n    domain: [\"naive\", \"cot\", \"least_to_most\"]\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4.1\", \"gemini-2.5-flash\"]\n  - name: max_steps\n    type: int\n    domain: [4, 8]\n  - name: schema_context_mode\n    type: enum[str]\n    domain: [\"minimal\", \"balanced\", \"rich\"]\n\nconstraints:\n  structural:\n    - when: planner = \"naive\"\n      then: schema_context_mode = \"minimal\"\n  derived:\n    - require: env.context.query_budget_usd >= 0.008\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: cost_usd_per_task\n    metric_ref: metrics.cost_usd_per_task.v1\n    direction: minimize\n  - name: latency_s\n    metric_ref: metrics.latency_s.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    quality: 0.01\n    cost_usd_per_task: 0.0001\n    latency_s: 0.20\n  chance_constraints:\n    - name: timeout_rate\n      threshold: 0.05\n      confidence: 0.95\n",
+        "downloadPath": "/examples/text-to-sql.tvl.yml"
+      }
+    ]
+  },
+  "constraints-units-safety-nets-structural-constraint-syntax": {
+    "title": "Structural Constraint Syntax",
+    "description": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:.",
+    "content": [
+      "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:",
+      "| TVL Syntax | Meaning | NOT This | |----------------|---------|----------| | model = \"gpt-4o\" | Equality | model == \"gpt-4o\" | | temperature <= 0.5 | Comparison | params.temperature <= 0.5 | | A and B | Conjunction | A && B | | A or B | Disjunction | A \\|\\| B | | not A | Negation | !A | | x in {\"a\", \"b\"} | Set membership | x in [\"a\", \"b\"] |",
+      "Expression Form vs Implication Form",
+      "```yaml Fragment: structural constraints only constraints: structural: Expression form - always enforced - expr: \"temperature <= 1.0\"",
+      "Implication form - when/then (sugar for: not(when) or then) - when: model = \"gpt-4o\" then: temperature <= 0.5 ```",
+      "Complete Example",
+      "```yaml Fragment: structural constraints showcasing all syntax forms constraints: structural: Safety bound on temperature - expr: \"0.0 <= temperature <= 1.0\"",
+      "Premium models need lower temperature for consistency - when: model = \"gpt-4o\" then: temperature <= 0.5",
+      "Deep retrieval requires more tokens - when: retrieval depth = 5 then: max tokens = 512",
+      "Forbidden combination (use negation) - expr: \"not (temperature 0.9 and max tokens < 256)\"",
+      "Set membership - when: use caching = true then: model in {\"gpt-4o-mini\", \"claude-3-haiku\"} ```",
+      "Run tvl-check-structural spec.yml to see which constraints are unsatisfiable. The tool reports an UNSAT core when available, showing the minimal conflicting subset. Use --json for machine-readable output."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "structural-sat.tvl.yml",
+        "code": "# Example: Structural Constraints (SAT)\n# Demonstrates a satisfiable set of structural inequalities with a witness assignment.\ntvl:\n  module: corp.validation.structural_sat\n\nenvironment:\n  snapshot_id: \"2025-01-01T00:00:00Z\"\n\nevaluation_set:\n  dataset: s3://datasets/validation/dev.parquet\n\ntvars:\n  - name: max_calls\n    type: int\n    domain:\n      range: [0, 5]\n\nconstraints:\n  structural:\n    - expr: max_calls >= 2\n    - expr: max_calls <= 4\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  min_effect:\n    quality: 0.0\n\nexploration:\n  strategy:\n    type: grid\n",
+        "downloadPath": "/examples/validation-phase2/structural-sat.tvl.yml"
+      }
+    ]
+  },
+  "constraints-units-safety-nets-derived-constraints": {
+    "title": "Operational Preconditions",
+    "description": "Operational preconditions in TVL are written under `constraints.derived` and checked against the current environment snapshot.",
+    "content": [
+      "TVL writes operational preconditions under constraints.derived. These are linear inequalities over environment symbols (not TVARs), and they are evaluated at runtime against the current environment snapshot.",
+      "```yaml Fragment: operational preconditions over environment symbols constraints: derived: Provider price guard - require: env.context.provider input price usd per 1k tokens <= 0.05",
+      "Baseline gateway latency guard - require: env.context.gateway baseline latency ms <= 250",
+      "Request headroom guard - require: env.context.rpm limit - env.context.rpm current load = 50 ```",
+      "Supported operations: +, -, scalar multiplication, and comparisons ( =, =, ).",
+      "Not supported: Multiplication between symbols (a b), division, exponentiation.",
+      "If you need to gate on measured runtime metrics such as observed latency p95 ms, carry those checks in operational tooling or promotion manifests instead of encoding them as TVL operational preconditions."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "budget-invalid.tvl.yml",
+        "code": "# Example: Operational Budgets (Invalid)\n# Demonstrates failing validation when budgets contain non-positive values.\ntvl:\n  module: corp.validation.operational_budget_invalid\n\nenvironment:\n  snapshot_id: \"2025-01-01T00:00:00Z\"\n\nevaluation_set:\n  dataset: s3://datasets/validation/dev.parquet\n\ntvars:\n  - name: strategy\n    type: enum[str]\n    domain: [\"grid\", \"random\"]\n\nconstraints:\n  structural: []\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  min_effect:\n    quality: 0.0\n\nexploration:\n  strategy:\n    type: random\n  budgets:\n    max_trials: 0  # Invalid: must be positive\n",
+        "downloadPath": "/examples/validation-phase3/budget-invalid.tvl.yml"
+      }
+    ]
+  },
+  "constraints-units-safety-nets-analog-circuit-drill-watch-constraints-react": {
+    "title": "Analog Circuit Drill · Watch Constraints React",
+    "description": "Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.",
+    "content": [
+      "Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.",
+      "Each warning mirrors a structural constraint:",
+      "- Latency under 800 ms — raises amber/red when the simulated configuration breaches the ceiling. - Cost under $0.12 — highlights the response-token capacitor if the API budget slips. - Rerank weight ≥ 0.3 — conditional guard for retriever top k = 40 to prevent noisy answers.",
+      "Challenge yourself to bring all three back to green without dropping quality below 75."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "structural-sat.tvl.yml",
+        "code": "# Example: Structural Constraints (SAT)\n# Demonstrates a satisfiable set of structural inequalities with a witness assignment.\ntvl:\n  module: corp.validation.structural_sat\n\nenvironment:\n  snapshot_id: \"2025-01-01T00:00:00Z\"\n\nevaluation_set:\n  dataset: s3://datasets/validation/dev.parquet\n\ntvars:\n  - name: max_calls\n    type: int\n    domain:\n      range: [0, 5]\n\nconstraints:\n  structural:\n    - expr: max_calls >= 2\n    - expr: max_calls <= 4\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  min_effect:\n    quality: 0.0\n\nexploration:\n  strategy:\n    type: grid\n",
+        "downloadPath": "/examples/validation-phase2/structural-sat.tvl.yml"
+      }
+    ]
+  },
+  "constraints-units-safety-nets-testing-constraints": {
+    "title": "Testing Constraints",
+    "description": "Use tvl-check-structural and unit tests to prove the search space still contains valid configurations.",
+    "content": [
+      "Use tvl-check-structural to verify your constraints are satisfiable:",
+      "```bash Check if constraints have at least one valid solution tvl-check-structural my-spec.tvl.yml",
+      "JSON output for CI pipelines tvl-check-structural my-spec.tvl.yml --json ```",
+      "For unit testing in Python, use the TVL SDK:",
+      "```python from tvl import loader, structural sat",
+      "def test constraints satisfiable(): \"\"\"Verify the spec has at least one valid configuration.\"\"\" module = loader.load(\"my-spec.tvl.yml\") result = structural sat.check(module) assert result.satisfiable, f\"UNSAT: {result.unsat core}\"",
+      "def test specific config valid(): \"\"\"Verify a specific configuration passes constraints.\"\"\" module = loader.load(\"my-spec.tvl.yml\") config = {\"model\": \"gpt-4o-mini\", \"temperature\": 0.3, \"max tokens\": 512} errors = structural sat.validate config(module, config) assert not errors, f\"Constraint violations: {errors}\" ```",
+      "Run the tests:"
+    ],
+    "examples": [
+      {
+        "language": "bash",
+        "filename": "ci_pipeline.sh",
+        "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\nTVL_ROOT=\"$(cd \"${ROOT_DIR}/../..\" && pwd)\"\nPYTHONPATH_VALUE=\"${TVL_ROOT}/python:${TVL_ROOT}\"\nSPEC=\"${ROOT_DIR}/ch1_motivation_experiment.tvl.yml\"\nMANIFEST=\"${ROOT_DIR}/ch5_integration_manifest.yaml\"\nDVL_SUITE=\"${ROOT_DIR}/ch5_dvl_suite.json\"\n\nrun_tvl_tool() {\n  local module_path=\"$1\"\n  shift\n  PYTHONPATH=\"${PYTHONPATH_VALUE}\" python3 -m \"${module_path}\" \"$@\"\n}\n\necho \"[validate] Checking spec...\"\nrun_tvl_tool tvl_tools.tvl_validate.cli \"${SPEC}\"\n\necho \"[structural] Checking structural satisfiability...\"\nrun_tvl_tool tvl_tools.tvl_check_structural.cli \"${SPEC}\"\n\necho \"[operational] Checking budgets and derived constraints...\"\nrun_tvl_tool tvl_tools.tvl_check_operational.cli \"${SPEC}\"\n\necho \"[triagent] Dry-running pipeline...\"\nif command -v triagent >/dev/null 2>&1; then\n  triagent deploy --dry-run campus-orientation-rag\nelse\n  echo \"  skipped: triagent CLI not installed in this repo environment\"\n  echo \"  example command: triagent deploy --dry-run campus-orientation-rag\"\nfi\n\necho \"[dvl] Running validation suites...\"\nif command -v dvl >/dev/null 2>&1; then\n  dvl validate \"${DVL_SUITE}\"\nelse\n  echo \"  skipped: dvl CLI not installed in this repo environment\"\n  echo \"  example command: dvl validate ${DVL_SUITE}\"\nfi\n\necho \"[manifest] Capturing manifest...\"\ncat \"${MANIFEST}\"\n",
+        "downloadPath": "/examples/ci_pipeline.sh"
+      }
+    ]
+  },
+  "constraints-units-safety-nets-checklist-before-promotion": {
+    "title": "Checklist Before Promotion",
+    "description": "Before promotion, confirm the search space is satisfiable, the formulas use TVL syntax, and operational preconditions only reference environment symbols.",
+    "content": [
+      "1. All structural constraints pass tvl-check-structural (satisfiable). 2. Constraint formulas use TVL syntax (=, and, or, not), not other languages. 3. Operational preconditions (constraints.derived) only reference environment symbols, not TVARs. 4. Unit tests cover both valid and invalid configurations."
+    ],
+    "examples": []
+  },
+  "patterns-for-real-deployments-module-composition-with-tvl-compose": {
+    "title": "Module Composition with tvl-compose",
+    "description": "The TVL core schema stays standalone and self-contained, so overlays are handled through preprocessing rather than inheritance in the schema itself.",
+    "content": [
+      "The TVL core schema defines standalone, self-contained modules. To support inheritance and overlays, we use preprocessing rather than extending the core schema:",
+      "This keeps the core spec simple while enabling powerful composition patterns."
+    ],
+    "examples": []
+  },
+  "patterns-for-real-deployments-layered-specifications": {
+    "title": "Layered Specifications",
+    "description": "Base modules stay fully valid, while overlays capture environment-specific narrowing before composition.",
+    "content": [
+      "Base module (valid TVL):",
+      "```yaml base.tvl.yml - full TVL module tvl: module: corp.support.rag bot",
+      "environment: snapshot id: \"2025-01-20T00:00:00Z\" bindings: llm gateway: us-east-1",
+      "evaluation set: dataset: s3://datasets/book/overlays/base.jsonl seed: 2025",
+      "tvars: - name: model type: enum[str] domain: [\"gpt-4o-mini\", \"gpt-4o\", \"claude-3-haiku\"] - name: temperature type: float domain: range: [0.0, 1.0] resolution: 0.05 - name: retriever.k type: int domain: range: [0, 20]",
+      "constraints: structural: - when: \"retriever.k = 12\" then: \"temperature <= 0.4\" derived: []",
+      "objectives: - name: quality metric ref: metrics.quality.v1 direction: maximize - name: latency p95 ms metric ref: metrics.latency p95 ms.v1 direction: minimize - name: cost usd metric ref: metrics.cost usd.v1 direction: minimize",
+      "promotion policy: dominance: epsilon pareto alpha: 0.05 adjust: holm min effect: quality: 0.01 latency p95 ms: 50 cost usd: 0.001",
+      "exploration: strategy: type: nsga2 budgets: max trials: 200 max wallclock s: 7200 ```",
+      "Staging overlay (NOT a standalone TVL module):",
+      "```yaml ch4 staging.overlay.yml - requires preprocessing tvl overlay: extends: ch4 base module.tvl.yml",
+      "overrides: evaluation set: dataset: s3://datasets/book/overlays/staging.jsonl tvars: - name: temperature domain: range: [0.0, 0.6] resolution: 0.05 exploration: budgets: max trials: 100 max wallclock s: 3600 ```",
+      "Compose to valid TVL:"
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "ch4_base_module.tvl.yml",
+        "code": "# Chapter 4 example: Base TVL module for overlays.\n\ntvl:\n  module: book.overlays.base\n\nenvironment:\n  snapshot_id: \"2025-01-20T00:00:00Z\"\n  bindings:\n    llm_gateway: us-east-1\n\nevaluation_set:\n  dataset: s3://datasets/book/overlays/base.jsonl\n  seed: 2025\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4o\", \"claude-3-haiku\"]\n\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 1.0]\n      resolution: 0.05\n\n  - name: retriever.k\n    type: int\n    domain:\n      range: [0, 20]\n\nconstraints:\n  structural:\n    - when: \"retriever.k >= 12\"\n      then: \"temperature <= 0.4\"\n  derived: []\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n  - name: cost_usd\n    metric_ref: metrics.cost_usd.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    quality: 0.01\n    latency_p95_ms: 50\n    cost_usd: 0.001\n\nexploration:\n  strategy:\n    type: nsga2\n  budgets:\n    max_trials: 200\n    max_wallclock_s: 7200\n",
+        "downloadPath": "/examples/book/ch4_base_module.tvl.yml"
+      },
+      {
+        "language": "yaml",
+        "filename": "ch4_staging.overlay.yml",
+        "code": "# Chapter 4 example: Staging overlay for the base TVL module.\n# This file is composed into a valid TVL module via `tvl-compose`.\n\n_tvl_overlay:\n  extends: ch4_base_module.tvl.yml\n\noverrides:\n  evaluation_set:\n    dataset: s3://datasets/book/overlays/staging.jsonl\n  tvars:\n    - name: temperature\n      domain:\n        range: [0.0, 0.6]\n        resolution: 0.05\n  exploration:\n    budgets:\n      max_trials: 100\n      max_wallclock_s: 3600\n",
+        "downloadPath": "/examples/book/ch4_staging.overlay.yml"
+      }
+    ]
+  },
+  "patterns-for-real-deployments-visualizing-overlays": {
+    "title": "Visualizing Overlays",
+    "description": "Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process, not runtime artifacts.",
+    "content": [
+      "(TVL)\\\"] -- |tvl-compose| Staging[\\\"staging.tvl.yml (TVL)\\\"]\\n Base -- |tvl-compose| Production[\\\"production.tvl.yml (TVL)\\\"]\\n Production -- |tvl-compose| Hotfix[\\\"hotfix.tvl.yml (TVL)\\\"]\"} /",
+      "Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process, not runtime artifacts."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "ch4_base_module.tvl.yml",
+        "code": "# Chapter 4 example: Base TVL module for overlays.\n\ntvl:\n  module: book.overlays.base\n\nenvironment:\n  snapshot_id: \"2025-01-20T00:00:00Z\"\n  bindings:\n    llm_gateway: us-east-1\n\nevaluation_set:\n  dataset: s3://datasets/book/overlays/base.jsonl\n  seed: 2025\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4o\", \"claude-3-haiku\"]\n\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 1.0]\n      resolution: 0.05\n\n  - name: retriever.k\n    type: int\n    domain:\n      range: [0, 20]\n\nconstraints:\n  structural:\n    - when: \"retriever.k >= 12\"\n      then: \"temperature <= 0.4\"\n  derived: []\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n  - name: cost_usd\n    metric_ref: metrics.cost_usd.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    quality: 0.01\n    latency_p95_ms: 50\n    cost_usd: 0.001\n\nexploration:\n  strategy:\n    type: nsga2\n  budgets:\n    max_trials: 200\n    max_wallclock_s: 7200\n",
+        "downloadPath": "/examples/book/ch4_base_module.tvl.yml"
+      }
+    ]
+  },
+  "patterns-for-real-deployments-override-rules": {
+    "title": "Override Rules",
+    "description": "tvl-compose enforces safe narrowing so overlays can tighten risk without silently widening the contract.",
+    "content": [
+      "tvl-compose validates safe narrowing for the following:",
+      "| Override Type | Allowed | Not Allowed | |--------------|---------|-------------| | Enum domain | Remove values | Add new values | | Numeric range | Narrow bounds | Widen bounds | | Budget | Decrease | Increase beyond base |",
+      "The current implementation validates enum narrowing, range narrowing, and budget decreases. Resolution changes and constraint modifications are merged without validation—ensure your overlays follow safe narrowing practices for these fields."
+    ],
+    "examples": []
+  },
+  "patterns-for-real-deployments-hotfix-playbook": {
+    "title": "Hotfix Playbook",
+    "description": "When an incident hits, create a short-lived overlay instead of mutating the base module in place.",
+    "content": [
+      "Need to react quickly to a vendor outage? Create a short-lived overlay:",
+      "```yaml hotfix-vendor-outage.overlay.yml tvl overlay: extends: production.tvl.yml description: \"Temporary cap during vendor outage\" expires after: \"2025-01-20\" Reminder to remove",
+      "overrides: tvars: - name: model domain: [\"gpt-4o-mini\", \"claude-3-haiku\"] Exclude affected model ```",
+      "Compose and deploy:",
+      "Never edit the base file for a temporary fix—create an overlay. This keeps history clean and makes it obvious which changes were incident driven versus long-term strategy."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "ch4_hotfix.overlay.yml",
+        "code": "# Chapter 4 example: Temporary production hotfix overlay.\n# This file is composed into a valid TVL module via `tvl-compose`.\n\n_tvl_overlay:\n  extends: ch4_production.overlay.yml\n\noverrides:\n  tvars:\n    - name: model\n      domain: [\"gpt-4o-mini\"]\n  exploration:\n    budgets:\n      max_trials: 12\n      max_wallclock_s: 600\n",
+        "downloadPath": "/examples/book/ch4_hotfix.overlay.yml"
+      }
+    ]
+  },
+  "patterns-for-real-deployments-provenance-matters": {
+    "title": "Provenance Matters",
+    "description": "Every promotion should capture the exact composed spec, overlay inputs, and replay metadata needed for audits.",
+    "content": [
+      "Every promotion should commit:",
+      "- spec.tvl.yml — the composed, valid TVL module. - spec.overlay.yml — the overlay that produced it (if any). - provenance.json — metadata: base SHA, overlay SHA, compose timestamp.",
+      "This audit trail enables deterministic recreation of exact configurations from version control history."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "ch5_integration_manifest.yaml",
+        "code": "# Generated deployment manifest linking TVL, Triagent (TVO), and DVL.\nmanifest:\n  spec_path: tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  spec_sha: 7c2f31be\n  tvl_lock: tvl_book/examples/ch5_tvl.lock\n  provenance: tvl_book/examples/ch5_provenance.json\ntriagent:\n  pipeline: campus-orientation-rag\n  optimizer: TVO\n  deployment_target: production\n  evaluation_job: triagent optimize --spec tvl_book/examples/ch1_motivation_experiment.tvl.yml --output results/\n  promotion_gate: epsilon_pareto\n  rollback_on:\n    - latency_regression\n    - constraint_violation\ndvl:\n  dataset_version: faq/v2024.10\n  drift_tests:\n    - faq-topic-shift\n    - forbidden-pii\n  validation_suite: tvl_book/examples/ch5_dvl_suite.json\nintegration_checks:\n  - tvl-validate tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-structural tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-operational tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - dvl validate tvl_book/examples/ch5_dvl_suite.json\n  - triagent deploy --dry-run campus-orientation-rag\n",
+        "downloadPath": "/examples/book/ch5_integration_manifest.yaml"
+      }
+    ]
+  },
+  "integration-patterns-tvl-cli-tools": {
+    "title": "TVL CLI Tools",
+    "description": "The TVL toolchain provides focused commands for local validation, CI gates, and operational checks.",
+    "content": [
+      "The TVL toolchain provides focused CLI tools for validation and CI integration:",
+      "| Tool | Purpose | |------|---------| | tvl-parse | Parse YAML to JSON AST, basic syntax checking | | tvl-lint | Normative lints: missing min effect, duplicate TVARs, etc. | | tvl-validate | JSON Schema + lint validation (combines parse + lint) | | tvl-check-structural | SAT/SMT satisfiability of structural constraints | | tvl-check-operational | Runtime validation of operational preconditions (constraints.derived) and budgets | | tvl-config-validate | Check a configuration assignment against spec domains | | tvl-measure-validate | Validate measurements against spec + promotion policy | | tvl-ci-gate | Dry-run promotion gate (stub for CI pipelines) | | tvl-compose | Flatten overlay files into valid TVL modules |",
+      "Clone the repository, then install the TVL package in editable mode from the repo root:",
+      "That exposes tvl-validate, tvl-lint, tvl-check-structural, and the rest of the CLI on your shell path.",
+      "Quick Validation",
+      "```bash Validate schema and run lints tvl-validate my-spec.tvl.yml",
+      "Check structural constraints are satisfiable tvl-check-structural my-spec.tvl.yml",
+      "Full CI pipeline (validation only) tvl-validate my-spec.tvl.yml && \\ tvl-check-structural my-spec.tvl.yml ```",
+      "Configuration and Measurement Validation",
+      "```bash Validate a specific configuration against the spec tvl-config-validate my-spec.tvl.yml config.yml",
+      "Validate configuration + measurements for promotion gate tvl-measure-validate my-spec.tvl.yml config.yml measurements.yml ```"
+    ],
+    "examples": [
+      {
+        "language": "bash",
+        "filename": "ci_pipeline.sh",
+        "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\nTVL_ROOT=\"$(cd \"${ROOT_DIR}/../..\" && pwd)\"\nPYTHONPATH_VALUE=\"${TVL_ROOT}/python:${TVL_ROOT}\"\nSPEC=\"${ROOT_DIR}/ch1_motivation_experiment.tvl.yml\"\nMANIFEST=\"${ROOT_DIR}/ch5_integration_manifest.yaml\"\nDVL_SUITE=\"${ROOT_DIR}/ch5_dvl_suite.json\"\n\nrun_tvl_tool() {\n  local module_path=\"$1\"\n  shift\n  PYTHONPATH=\"${PYTHONPATH_VALUE}\" python3 -m \"${module_path}\" \"$@\"\n}\n\necho \"[validate] Checking spec...\"\nrun_tvl_tool tvl_tools.tvl_validate.cli \"${SPEC}\"\n\necho \"[structural] Checking structural satisfiability...\"\nrun_tvl_tool tvl_tools.tvl_check_structural.cli \"${SPEC}\"\n\necho \"[operational] Checking budgets and derived constraints...\"\nrun_tvl_tool tvl_tools.tvl_check_operational.cli \"${SPEC}\"\n\necho \"[triagent] Dry-running pipeline...\"\nif command -v triagent >/dev/null 2>&1; then\n  triagent deploy --dry-run campus-orientation-rag\nelse\n  echo \"  skipped: triagent CLI not installed in this repo environment\"\n  echo \"  example command: triagent deploy --dry-run campus-orientation-rag\"\nfi\n\necho \"[dvl] Running validation suites...\"\nif command -v dvl >/dev/null 2>&1; then\n  dvl validate \"${DVL_SUITE}\"\nelse\n  echo \"  skipped: dvl CLI not installed in this repo environment\"\n  echo \"  example command: dvl validate ${DVL_SUITE}\"\nfi\n\necho \"[manifest] Capturing manifest...\"\ncat \"${MANIFEST}\"\n",
+        "downloadPath": "/examples/ci_pipeline.sh"
+      }
+    ]
+  },
+  "integration-patterns-deterministic-artifacts": {
+    "title": "Deterministic Artifacts",
+    "description": "Every TVL workflow should leave behind deterministic artifacts so decisions stay reproducible and reviewable.",
+    "content": [
+      "Every TVL workflow produces deterministic artifacts for auditability:",
+      "- spec.tvl.yml — the validated TVL module - config.yml — the promoted configuration assignment - measurements.yml — evaluation results (metrics, sample sizes) - provenance.json — metadata (timestamps, runners, environment snapshot)"
+    ],
+    "examples": []
+  },
+  "integration-patterns-field-notes-replay-the-optimization-story": {
+    "title": "Field Notes · Replay the Optimization Story",
+    "description": "The Orientation RAG lab includes the same presets we evaluate in CI. Jump between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives while DVL enforces guardrails.",
+    "content": [
+      "The Orientation RAG lab includes the same presets we evaluate in CI. Jump between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives while DVL enforces guardrails.",
+      "- Compare the latency and cost read-outs before and after each preset. - Click Copy YAML to capture the snapshot TVO would export. - Note how the constraint badges align with promotion gates—green across the board before approving production.",
+      "```bash 1. Validate the spec tvl-validate path/to/spec.tvl.yml",
+      "2. Check constraints are satisfiable tvl-check-structural path/to/spec.tvl.yml",
+      "3. Run optimization (Triagent) triagent optimize --spec path/to/spec.tvl.yml --output results/",
+      "4. Validate promotion candidate tvl-measure-validate path/to/spec.tvl.yml results/config.yml results/measurements.yml",
+      "5. Run promotion gate (compare incumbent vs candidate) tvl-ci-gate path/to/spec.tvl.yml results/incumbent.yml results/candidate.yml --json",
+      "6. Data quality check (DVL) dvl validate suites/faq-orientation.json ```"
+    ],
+    "examples": [
+      {
+        "language": "bash",
+        "filename": "ci_pipeline.sh",
+        "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\nTVL_ROOT=\"$(cd \"${ROOT_DIR}/../..\" && pwd)\"\nPYTHONPATH_VALUE=\"${TVL_ROOT}/python:${TVL_ROOT}\"\nSPEC=\"${ROOT_DIR}/ch1_motivation_experiment.tvl.yml\"\nMANIFEST=\"${ROOT_DIR}/ch5_integration_manifest.yaml\"\nDVL_SUITE=\"${ROOT_DIR}/ch5_dvl_suite.json\"\n\nrun_tvl_tool() {\n  local module_path=\"$1\"\n  shift\n  PYTHONPATH=\"${PYTHONPATH_VALUE}\" python3 -m \"${module_path}\" \"$@\"\n}\n\necho \"[validate] Checking spec...\"\nrun_tvl_tool tvl_tools.tvl_validate.cli \"${SPEC}\"\n\necho \"[structural] Checking structural satisfiability...\"\nrun_tvl_tool tvl_tools.tvl_check_structural.cli \"${SPEC}\"\n\necho \"[operational] Checking budgets and derived constraints...\"\nrun_tvl_tool tvl_tools.tvl_check_operational.cli \"${SPEC}\"\n\necho \"[triagent] Dry-running pipeline...\"\nif command -v triagent >/dev/null 2>&1; then\n  triagent deploy --dry-run campus-orientation-rag\nelse\n  echo \"  skipped: triagent CLI not installed in this repo environment\"\n  echo \"  example command: triagent deploy --dry-run campus-orientation-rag\"\nfi\n\necho \"[dvl] Running validation suites...\"\nif command -v dvl >/dev/null 2>&1; then\n  dvl validate \"${DVL_SUITE}\"\nelse\n  echo \"  skipped: dvl CLI not installed in this repo environment\"\n  echo \"  example command: dvl validate ${DVL_SUITE}\"\nfi\n\necho \"[manifest] Capturing manifest...\"\ncat \"${MANIFEST}\"\n",
+        "downloadPath": "/examples/ci_pipeline.sh"
+      }
+    ]
+  },
+  "integration-patterns-manifests-and-promotion": {
+    "title": "Manifests and Promotion",
+    "description": "After a successful optimization run, the manifest becomes the audit record for what changed, why it won, and whether rollout is safe.",
+    "content": [
+      "After a successful TVO run, Triagent emits a manifest bundling:",
+      "- Resolved spec SHA and artifact locations - Validation logs from the CLI tools - Promotion gate decision (pass/fail/defer) - DVL drift checks (pass/fail with links) - Rollback instructions if thresholds regress",
+      "Treat the manifest as a living audit trail. Every deployment should point to it.",
+      "A promotion manifest is the receipt for a rollout decision. It answers:",
+      "- Which exact TVL spec did we run? - Which candidate won, and by what evidence? - Did data-quality checks pass? - How do we reproduce or roll back the decision later?",
+      "If OPAL is used upstream, it helps authors describe intent in a higher-level form. That intent is then lowered into TVL plus runtime-side metadata. The deployment contract still points back to TVL and the manifest, because those are the artifacts that reviewers and automation can validate consistently.",
+      "Start with the manifest. It is the quickest route to the resolved spec, the winning candidate, the validation trail, the data checks, and the rollback instructions that explain why the system was promoted in the first place.",
+      "The promotion manifest should answer first. It is the audit receipt that ties the resolved TVL contract, supporting evidence, and operational decision into one reproducible record."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "ch5_integration_manifest.yaml",
+        "code": "# Generated deployment manifest linking TVL, Triagent (TVO), and DVL.\nmanifest:\n  spec_path: tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  spec_sha: 7c2f31be\n  tvl_lock: tvl_book/examples/ch5_tvl.lock\n  provenance: tvl_book/examples/ch5_provenance.json\ntriagent:\n  pipeline: campus-orientation-rag\n  optimizer: TVO\n  deployment_target: production\n  evaluation_job: triagent optimize --spec tvl_book/examples/ch1_motivation_experiment.tvl.yml --output results/\n  promotion_gate: epsilon_pareto\n  rollback_on:\n    - latency_regression\n    - constraint_violation\ndvl:\n  dataset_version: faq/v2024.10\n  drift_tests:\n    - faq-topic-shift\n    - forbidden-pii\n  validation_suite: tvl_book/examples/ch5_dvl_suite.json\nintegration_checks:\n  - tvl-validate tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-structural tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-operational tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - dvl validate tvl_book/examples/ch5_dvl_suite.json\n  - triagent deploy --dry-run campus-orientation-rag\n",
+        "downloadPath": "/examples/book/ch5_integration_manifest.yaml"
+      }
+    ]
+  },
+  "training-agents-with-tuned-variables-from-runtime-patterns-to-training-surfaces": {
+    "title": "From Runtime Patterns to Training Surfaces",
+    "description": "Pattern names are the beginning of the design discussion; the real engineering work starts when those patterns are translated into an explicit, governable control surface.",
+    "content": [
+      "A pattern such as Contextual Batching or Routed Expertise / MoE + Judge is not a deployable decision by itself. It only tells you the scaffold family. The deployable decision is the concrete surface underneath the scaffold:",
+      "- how many experts run - how many items are packed together - how many reflection rounds are allowed - how a reducer or judge turns several candidates into one answer",
+      "That is the move from runtime pattern language to training surface design.",
+      "A pattern control surface is the set of variables that actually change system behavior. If those variables are invisible, the agent may still work, but it is hard to reason about, evaluate, or govern.",
+      "The important shift is conceptual. Instead of saying \"this agent uses routing and reflection,\" you say \"this agent exposes exactly these variables, under exactly these budgets, with exactly these evaluation and promotion rules.\"",
+      "The missing piece is the governed control surface. The pattern name does not tell you which variables can change, how they will be evaluated, or when the resulting workflow is promotable.",
+      "The pattern label names the scaffold. The training surface makes the scaffold operational by exposing the actual variables, budgets, and evaluation hooks that can be tuned and governed."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "tool-use.tvl.yml",
+        "code": "# Example: Tool-Use Agent\n# Demonstrates: banded objective with TOST, promotion policy epsilons, and\n# structural implication encoded with the typed DNF surface syntax.\ntvl:\n  module: corp.tooling.tool_use\n\nenvironment:\n  snapshot_id: \"2024-03-01T00:00:00Z\"\n  bindings:\n    orchestrator: release-2024-02\n  context:\n    max_cost_usd: 1.50\n\nevaluation_set:\n  dataset: s3://datasets/tool-use-evals/latest.parquet\n  seed: 1337\n\ntvars:\n  - name: agent\n    type: enum[str]\n    domain: [\"tools-mini\", \"tools-pro\"]\n  - name: max_calls\n    type: int\n    domain:\n      set: [0, 1, 2, 3, 4, 5]\n  - name: planner.temperature\n    type: float\n    domain:\n      set: [0.0, 0.25, 0.5, 0.75, 1.0]\n\nconstraints:\n  structural:\n    - when: agent = 'tools-mini'\n      then: max_calls <= 4\n  derived:\n    - require: env.context.max_cost_usd <= 1.50\n\nobjectives:\n  - name: success_rate\n    metric_ref: metrics.success_rate.v1\n    direction: maximize\n  - name: fairness_eo_gap\n    metric_ref: metrics.fairness_eo_gap.v1\n    band:\n      target:\n        center: 0.0\n        tol: 0.05\n      test: TOST\n      alpha: 0.05\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    success_rate: 0.01\n    # Note: fairness_eo_gap is banded (TOST) — no min_effect entry needed\n  chance_constraints:\n    # Fairness SLO: at most 5% of predictions may violate the EO gap target\n    - name: fairness_slo_violations\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: grid\n  budgets:\n    max_trials: 32\n",
+        "downloadPath": "/examples/tool-use.tvl.yml"
+      }
+    ]
+  },
+  "training-agents-with-tuned-variables-choosing-tuned-variables-for-agent-systems": {
+    "title": "Choosing Tuned Variables for Agent Systems",
+    "description": "Good TVARs correspond to real architectural choices, observable trade-offs, and repeatable evaluation slices rather than to every prompt token a team could edit.",
+    "content": [
+      "Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three tests:",
+      "1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable workload slice.",
+      "This is why \"rewrite the prompt until it feels better\" is a weak engineering process. It changes too many things at once and rarely leaves behind a clean study plane.",
+      "Promote a setting into the governed surface when reviewers would reasonably argue about its value. Leave it out when it is only cosmetic, one-off, or impossible to evaluate consistently.",
+      "For agent systems, strong candidate TVARs usually come from one of four places:",
+      "- coordination: counts, rounds, routing rules, and reducer policies - budgets: token caps, branch factors, retry limits, and validation quotas - evidence: judge policy, rubric choice, or conflict threshold - environment coupling: retrieval depth, tool inventory, or approved model set",
+      "Weak candidate TVARs are typically too local or too brittle. If a variable only matters for one temporary prompt revision and cannot survive review, it usually does not belong in the contract.",
+      "An oversized control surface makes optimization noisy and governance weak. If every prompt phrasing becomes a TVAR, reviewers lose sight of which decisions are architecturally meaningful.",
+      "It should map to a real system decision, create a measurable trade-off, and be testable on a stable evaluation slice. If it fails those tests, it is usually too weak or too noisy to govern well."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "text-to-sql.yml",
+        "code": "# Example: Text-to-SQL\n# Mirrors the running example in Section 3, Listing 1 of the ASE 2026 TVL paper.\ntvl:\n  module: corp.automation.text_to_sql\n\nenvironment:\n  snapshot_id: \"2024-01-20T00:00:00Z\"\n  context:\n    query_budget_usd: 0.01\n\nevaluation_set:\n  dataset: s3://datasets/text-to-sql/dev.parquet\n  seed: 99\n\ntvars:\n  - name: planner\n    type: enum[str]\n    domain: [\"naive\", \"cot\", \"least_to_most\"]\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4.1\", \"gemini-2.5-flash\"]\n  - name: max_steps\n    type: int\n    domain: [4, 8]\n  - name: schema_context_mode\n    type: enum[str]\n    domain: [\"minimal\", \"balanced\", \"rich\"]\n\nconstraints:\n  structural:\n    - when: planner = \"naive\"\n      then: schema_context_mode = \"minimal\"\n  derived:\n    - require: env.context.query_budget_usd >= 0.008\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: cost_usd_per_task\n    metric_ref: metrics.cost_usd_per_task.v1\n    direction: minimize\n  - name: latency_s\n    metric_ref: metrics.latency_s.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    quality: 0.01\n    cost_usd_per_task: 0.0001\n    latency_s: 0.20\n  chance_constraints:\n    - name: timeout_rate\n      threshold: 0.05\n      confidence: 0.95\n",
+        "downloadPath": "/examples/text-to-sql.yml"
+      },
+      {
+        "language": "tvl",
+        "filename": "tool-use.tvl.yml",
+        "code": "# Example: Tool-Use Agent\n# Demonstrates: banded objective with TOST, promotion policy epsilons, and\n# structural implication encoded with the typed DNF surface syntax.\ntvl:\n  module: corp.tooling.tool_use\n\nenvironment:\n  snapshot_id: \"2024-03-01T00:00:00Z\"\n  bindings:\n    orchestrator: release-2024-02\n  context:\n    max_cost_usd: 1.50\n\nevaluation_set:\n  dataset: s3://datasets/tool-use-evals/latest.parquet\n  seed: 1337\n\ntvars:\n  - name: agent\n    type: enum[str]\n    domain: [\"tools-mini\", \"tools-pro\"]\n  - name: max_calls\n    type: int\n    domain:\n      set: [0, 1, 2, 3, 4, 5]\n  - name: planner.temperature\n    type: float\n    domain:\n      set: [0.0, 0.25, 0.5, 0.75, 1.0]\n\nconstraints:\n  structural:\n    - when: agent = 'tools-mini'\n      then: max_calls <= 4\n  derived:\n    - require: env.context.max_cost_usd <= 1.50\n\nobjectives:\n  - name: success_rate\n    metric_ref: metrics.success_rate.v1\n    direction: maximize\n  - name: fairness_eo_gap\n    metric_ref: metrics.fairness_eo_gap.v1\n    band:\n      target:\n        center: 0.0\n        tol: 0.05\n      test: TOST\n      alpha: 0.05\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    success_rate: 0.01\n    # Note: fairness_eo_gap is banded (TOST) — no min_effect entry needed\n  chance_constraints:\n    # Fairness SLO: at most 5% of predictions may violate the EO gap target\n    - name: fairness_slo_violations\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: grid\n  budgets:\n    max_trials: 32\n",
+        "downloadPath": "/examples/tool-use.tvl.yml"
+      }
+    ]
+  },
+  "training-agents-with-tuned-variables-budgets-feedback-and-promotion-loops": {
+    "title": "Budgets, Feedback, and Promotion Loops",
+    "description": "Agent tuning becomes maintainable only when the exploration budget, evaluation feedback, and promotion rule are designed together instead of as separate afterthoughts.",
+    "content": [
+      "An agent workflow should not only expose tuned variables. It should also expose the loop that turns a candidate setting into a release decision:",
+      "- how much budget is available for exploration - which feedback signal is trusted - which evidence threshold permits promotion",
+      "Those three pieces belong together. A wide search surface with no trustworthy evaluation loop is just expensive guesswork. A strict promotion rule with no exploration budget prevents improvement.",
+      "Treat the exploration budget, validation workflow, and promotion policy as one system boundary. If one of them is underspecified, the others become hard to interpret.",
+      "For agent systems this usually means answering:",
+      "- what is the allowed optimization budget per release cycle? - what metric or rubric can reject a superficially impressive but risky pattern? - what artifact will explain later why a specific workflow was promoted?",
+      "The final answer is usually a manifest-backed promotion loop, not just a better prompt.",
+      "No. A governed win must survive replay, validation, and review. Without that evidence trail, the change is interesting but not ready for rollout.",
+      "Because they define one release loop. The budget controls how much exploration is allowed, the feedback determines what counts as improvement, and the promotion rule determines whether the result is safe enough to ship."
+    ],
+    "examples": [
+      {
+        "language": "bash",
+        "filename": "ci_pipeline.sh",
+        "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\nTVL_ROOT=\"$(cd \"${ROOT_DIR}/../..\" && pwd)\"\nPYTHONPATH_VALUE=\"${TVL_ROOT}/python:${TVL_ROOT}\"\nSPEC=\"${ROOT_DIR}/ch1_motivation_experiment.tvl.yml\"\nMANIFEST=\"${ROOT_DIR}/ch5_integration_manifest.yaml\"\nDVL_SUITE=\"${ROOT_DIR}/ch5_dvl_suite.json\"\n\nrun_tvl_tool() {\n  local module_path=\"$1\"\n  shift\n  PYTHONPATH=\"${PYTHONPATH_VALUE}\" python3 -m \"${module_path}\" \"$@\"\n}\n\necho \"[validate] Checking spec...\"\nrun_tvl_tool tvl_tools.tvl_validate.cli \"${SPEC}\"\n\necho \"[structural] Checking structural satisfiability...\"\nrun_tvl_tool tvl_tools.tvl_check_structural.cli \"${SPEC}\"\n\necho \"[operational] Checking budgets and derived constraints...\"\nrun_tvl_tool tvl_tools.tvl_check_operational.cli \"${SPEC}\"\n\necho \"[triagent] Dry-running pipeline...\"\nif command -v triagent >/dev/null 2>&1; then\n  triagent deploy --dry-run campus-orientation-rag\nelse\n  echo \"  skipped: triagent CLI not installed in this repo environment\"\n  echo \"  example command: triagent deploy --dry-run campus-orientation-rag\"\nfi\n\necho \"[dvl] Running validation suites...\"\nif command -v dvl >/dev/null 2>&1; then\n  dvl validate \"${DVL_SUITE}\"\nelse\n  echo \"  skipped: dvl CLI not installed in this repo environment\"\n  echo \"  example command: dvl validate ${DVL_SUITE}\"\nfi\n\necho \"[manifest] Capturing manifest...\"\ncat \"${MANIFEST}\"\n",
+        "downloadPath": "/examples/ci_pipeline.sh"
+      },
+      {
+        "language": "yaml",
+        "filename": "ch5_integration_manifest.yaml",
+        "code": "# Generated deployment manifest linking TVL, Triagent (TVO), and DVL.\nmanifest:\n  spec_path: tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  spec_sha: 7c2f31be\n  tvl_lock: tvl_book/examples/ch5_tvl.lock\n  provenance: tvl_book/examples/ch5_provenance.json\ntriagent:\n  pipeline: campus-orientation-rag\n  optimizer: TVO\n  deployment_target: production\n  evaluation_job: triagent optimize --spec tvl_book/examples/ch1_motivation_experiment.tvl.yml --output results/\n  promotion_gate: epsilon_pareto\n  rollback_on:\n    - latency_regression\n    - constraint_violation\ndvl:\n  dataset_version: faq/v2024.10\n  drift_tests:\n    - faq-topic-shift\n    - forbidden-pii\n  validation_suite: tvl_book/examples/ch5_dvl_suite.json\nintegration_checks:\n  - tvl-validate tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-structural tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-operational tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - dvl validate tvl_book/examples/ch5_dvl_suite.json\n  - triagent deploy --dry-run campus-orientation-rag\n",
+        "downloadPath": "/examples/book/ch5_integration_manifest.yaml"
+      }
+    ]
+  },
+  "pattern-anatomy-and-evaluation-how-to-read-a-pattern-control-surface": {
+    "title": "How to Read a Pattern Control Surface",
+    "description": "The fastest way to compare patterns is to read each one as a control surface: tuned variables, decision axes, failure modes, and the evidence needed for promotion.",
+    "content": [
+      "Every pattern page in the atlas answers the same operational questions:",
+      "- What scaffold is being introduced? - Which variables control it? - Which trade-off does it change? - Which failure mode appears first?",
+      "That common shape is intentional. If patterns are described with incompatible vocabularies, teams end up comparing narratives instead of comparing governed options.",
+      "Read the failure modes before you fall in love with the pattern. They usually reveal whether the pattern is correcting the right problem or simply adding more activity to the system.",
+      "The atlas groups patterns loosely into:",
+      "- breadth scaling : more views, experts, or shards - depth scaling : more rounds, critique, or revision",
+      "That distinction is not academic. It tells you whether the main budget pressure comes from parallel coverage or sequential reconsideration.",
+      "It makes patterns comparable. Teams can line up variables, trade-offs, and failure modes directly instead of relying on vague claims that one scaffold is \"more advanced\" than another."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "tool-use.tvl.yml",
+        "code": "# Example: Tool-Use Agent\n# Demonstrates: banded objective with TOST, promotion policy epsilons, and\n# structural implication encoded with the typed DNF surface syntax.\ntvl:\n  module: corp.tooling.tool_use\n\nenvironment:\n  snapshot_id: \"2024-03-01T00:00:00Z\"\n  bindings:\n    orchestrator: release-2024-02\n  context:\n    max_cost_usd: 1.50\n\nevaluation_set:\n  dataset: s3://datasets/tool-use-evals/latest.parquet\n  seed: 1337\n\ntvars:\n  - name: agent\n    type: enum[str]\n    domain: [\"tools-mini\", \"tools-pro\"]\n  - name: max_calls\n    type: int\n    domain:\n      set: [0, 1, 2, 3, 4, 5]\n  - name: planner.temperature\n    type: float\n    domain:\n      set: [0.0, 0.25, 0.5, 0.75, 1.0]\n\nconstraints:\n  structural:\n    - when: agent = 'tools-mini'\n      then: max_calls <= 4\n  derived:\n    - require: env.context.max_cost_usd <= 1.50\n\nobjectives:\n  - name: success_rate\n    metric_ref: metrics.success_rate.v1\n    direction: maximize\n  - name: fairness_eo_gap\n    metric_ref: metrics.fairness_eo_gap.v1\n    band:\n      target:\n        center: 0.0\n        tol: 0.05\n      test: TOST\n      alpha: 0.05\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    success_rate: 0.01\n    # Note: fairness_eo_gap is banded (TOST) — no min_effect entry needed\n  chance_constraints:\n    # Fairness SLO: at most 5% of predictions may violate the EO gap target\n    - name: fairness_slo_violations\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: grid\n  budgets:\n    max_trials: 32\n",
+        "downloadPath": "/examples/tool-use.tvl.yml"
+      }
+    ]
+  },
+  "pattern-anatomy-and-evaluation-batching-map-reduce-and-routed-expertise": {
+    "title": "Batching, Map-Reduce, and Routed Expertise",
+    "description": "These breadth-oriented patterns all spend more budget on coverage, but they do it through very different control surfaces and failure modes.",
+    "content": [
+      "Contextual Batching, Map-Reduce with LLMs, and Routed Expertise / MoE + Judge all scale breadth, but they solve different problems:",
+      "- batching reuses shared context - map-reduce decomposes a broad task into bounded shards - routed expertise creates several specialist views and compares them",
+      "Because they all spend budget on coverage, teams sometimes substitute them for one another too quickly. That is usually a mistake.",
+      "- Use batching when shared context is the asset. - Use map-reduce when decomposition is the asset. - Use routed expertise when specialization and selection are the asset.",
+      "The failure modes are equally different:",
+      "- batching dilutes attention - map-reduce can lose cross-shard coherence - routed expertise can fake diversity or over-trust a weak judge",
+      "That is why these patterns should be compared on the same evaluation plane but not collapsed into one \"more agents equals better\" story.",
+      "Start with contextual batching. It preserves one shared context while still letting you measure how per-item quality changes as packing density grows. Map-reduce and routed expertise solve different problems first.",
+      "They spend budget on different assets: shared context, decomposition, and specialization. Their control surfaces and failure modes differ enough that they must be compared explicitly rather than treated as one generic scaling move."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "text-to-sql.yml",
+        "code": "# Example: Text-to-SQL\n# Mirrors the running example in Section 3, Listing 1 of the ASE 2026 TVL paper.\ntvl:\n  module: corp.automation.text_to_sql\n\nenvironment:\n  snapshot_id: \"2024-01-20T00:00:00Z\"\n  context:\n    query_budget_usd: 0.01\n\nevaluation_set:\n  dataset: s3://datasets/text-to-sql/dev.parquet\n  seed: 99\n\ntvars:\n  - name: planner\n    type: enum[str]\n    domain: [\"naive\", \"cot\", \"least_to_most\"]\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4.1\", \"gemini-2.5-flash\"]\n  - name: max_steps\n    type: int\n    domain: [4, 8]\n  - name: schema_context_mode\n    type: enum[str]\n    domain: [\"minimal\", \"balanced\", \"rich\"]\n\nconstraints:\n  structural:\n    - when: planner = \"naive\"\n      then: schema_context_mode = \"minimal\"\n  derived:\n    - require: env.context.query_budget_usd >= 0.008\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: cost_usd_per_task\n    metric_ref: metrics.cost_usd_per_task.v1\n    direction: minimize\n  - name: latency_s\n    metric_ref: metrics.latency_s.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  adjust: holm\n  min_effect:\n    quality: 0.01\n    cost_usd_per_task: 0.0001\n    latency_s: 0.20\n  chance_constraints:\n    - name: timeout_rate\n      threshold: 0.05\n      confidence: 0.95\n",
+        "downloadPath": "/examples/text-to-sql.yml"
+      }
+    ]
+  },
+  "pattern-anatomy-and-evaluation-reflection-judges-and-committee-decisions": {
+    "title": "Reflection, Judges, and Committee Decisions",
+    "description": "Depth-oriented refinement and committee-style decision patterns both add reasoning cost, but they do it for different purposes and must be evaluated with different evidence.",
+    "content": [
+      "Reflective Refinement and Judge Committees / Debate are often grouped together because both add more reasoning work after a first pass. But their jobs are different.",
+      "- reflection asks: can one draft improve through bounded self-critique? - committee or debate asks: should several views argue or vote before a decision is accepted?",
+      "Reflection is primarily a revision controller. Committee patterns are primarily uncertainty-management and arbitration mechanisms.",
+      "If the main risk is a weak first draft, evaluate reflection first. If the main risk is ambiguous or disputed correctness, committees and judges deserve earlier budget.",
+      "Their evidence expectations differ too:",
+      "- reflection should show marginal lift per added round - committees should show better calibration, not just more activity",
+      "Without that distinction, teams can spend several extra calls and still learn very little about why a workflow improved.",
+      "If a reflection loop keeps preserving the assumptions of the first draft, more rounds only increase latency. Likewise, a committee of highly correlated judges can create the appearance of rigor without adding real calibration.",
+      "Reflection is a bounded revise loop over one evolving answer. Committee and debate patterns use controlled disagreement across several views or judges before accepting a decision."
+    ],
+    "examples": [
+      {
+        "language": "tvl",
+        "filename": "rag-support-bot.tvl.yml",
+        "code": "# Example: RAG Support Bot Baseline\n# Demonstrates multi-objective NSGA-II configuration with structural and derived latency constraints.\ntvl:\n  module: corp.support.rag_bot\n\nenvironment:\n  snapshot_id: \"2024-02-15T00:00:00Z\"\n  bindings:\n    retriever: bm25-v3\n    llm_gateway: us-east-1\n  context:\n    gateway_baseline_latency_ms: 180\n    provider_input_price_usd_per_1k_tokens: 0.03\n\nevaluation_set:\n  dataset: s3://datasets/support-tickets/dev.jsonl\n  seed: 2024\n\ntvars:\n  - name: model\n    type: enum[str]\n    domain: [\"gpt-4o-mini\", \"gpt-4o\", \"llama3.1\"]\n  - name: temperature\n    type: float\n    domain:\n      range: [0.0, 1.0]\n      resolution: 0.05\n  - name: retriever.k\n    type: int\n    domain:\n      range: [0, 20]\n  - name: zero_shot\n    type: bool\n    domain: [true, false]\n\nconstraints:\n  structural:\n    - when: zero_shot = true\n      then: retriever.k = 0\n  # Operational preconditions are over numeric environment context (not TVARs or measured outcomes)\n  derived:\n    - require: env.context.gateway_baseline_latency_ms <= 250\n    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05\n\nobjectives:\n  - name: quality\n    metric_ref: metrics.quality.v1\n    direction: maximize\n  - name: latency_p95_ms\n    metric_ref: metrics.latency_p95_ms.v1\n    direction: minimize\n\npromotion_policy:\n  dominance: epsilon_pareto\n  alpha: 0.05\n  min_effect:\n    quality: 0.01\n    latency_p95_ms: 50\n  chance_constraints:\n    # Chance constraints are violation-rate SLO checks (0 <= threshold <= 1).\n    # Here: allow at most 5% SLO violations with 95% confidence.\n    - name: latency_slo\n      threshold: 0.05\n      confidence: 0.95\n\nexploration:\n  strategy:\n    type: nsga2\n  convergence:\n    metric: hypervolume_improvement\n    window: 5\n    threshold: 0.01\n  budgets:\n    max_trials: 48\n",
+        "downloadPath": "/examples/rag-support-bot.tvl.yml"
+      }
+    ]
+  },
+  "composing-patterns-for-production-scaffold-controller-and-bundle-logic": {
+    "title": "Scaffold, Controller, and Bundle Logic",
+    "description": "The cleanest multi-pattern systems separate the stable scaffold from the controller that adds extra search, reflection, or judging behavior.",
+    "content": [
+      "The simplest way to reason about a pattern bundle is to split it into two layers:",
+      "- scaffold: the stable workflow structure that already works on its own - controller: the extra mechanism that adds search, reflection, judging, or another adaptive policy",
+      "This matches the way many effective systems are built. A narrow-waist base does the core work, and one bounded controller is allowed to change the operating point.",
+      "Prefer one clear scaffold plus one clear controller before trying several interacting controllers at once.",
+      "This is also how you keep the study plane interpretable. If the scaffold and controller are both changing at the same time, it becomes harder to explain where the gains came from or why the bundle failed.",
+      "It keeps the bundle interpretable. Reviewers can ask whether the stable workflow is strong on its own and whether the controller adds enough lift to justify its extra cost and complexity."
+    ],
+    "examples": [
+      {
+        "language": "bash",
+        "filename": "ch5_integration_pipeline.sh",
+        "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\nTVL_ROOT=\"$(cd \"${ROOT_DIR}/../..\" && pwd)\"\nPYTHONPATH_VALUE=\"${TVL_ROOT}/python:${TVL_ROOT}\"\nSPEC=\"${ROOT_DIR}/ch1_motivation_experiment.tvl.yml\"\nMANIFEST=\"${ROOT_DIR}/ch5_integration_manifest.yaml\"\nDVL_SUITE=\"${ROOT_DIR}/ch5_dvl_suite.json\"\n\nrun_tvl_tool() {\n  local module_path=\"$1\"\n  shift\n  PYTHONPATH=\"${PYTHONPATH_VALUE}\" python3 -m \"${module_path}\" \"$@\"\n}\n\necho \"[validate] Checking spec...\"\nrun_tvl_tool tvl_tools.tvl_validate.cli \"${SPEC}\"\n\necho \"[structural] Checking structural satisfiability...\"\nrun_tvl_tool tvl_tools.tvl_check_structural.cli \"${SPEC}\"\n\necho \"[operational] Checking budgets and derived constraints...\"\nrun_tvl_tool tvl_tools.tvl_check_operational.cli \"${SPEC}\"\n\necho \"[triagent] Dry-running pipeline...\"\nif command -v triagent >/dev/null 2>&1; then\n  triagent deploy --dry-run campus-orientation-rag\nelse\n  echo \"  skipped: triagent CLI not installed in this repo environment\"\n  echo \"  example command: triagent deploy --dry-run campus-orientation-rag\"\nfi\n\necho \"[dvl] Running validation suites...\"\nif command -v dvl >/dev/null 2>&1; then\n  dvl validate \"${DVL_SUITE}\"\nelse\n  echo \"  skipped: dvl CLI not installed in this repo environment\"\n  echo \"  example command: dvl validate ${DVL_SUITE}\"\nfi\n\necho \"[manifest] Capturing manifest...\"\ncat \"${MANIFEST}\"\n",
+        "downloadPath": "/examples/book/ch5_integration_pipeline.sh"
+      }
+    ]
+  },
+  "composing-patterns-for-production-safe-composition-rules": {
+    "title": "Safe Composition Rules",
+    "description": "Pattern bundles should narrow or discipline the operational surface unless there is strong evidence that a broader bundle is still governable.",
+    "content": [
+      "Composition rules deserve the same skepticism as overlays. A new bundle should not silently widen risk just because it combines individually attractive components.",
+      "In practice, safe composition often means:",
+      "- fewer active controllers in production than in experimentation - tighter retry or branch budgets in staging and rollout - manifest evidence that records exactly which bundle shape was promoted",
+      "Use the same instinct as safe narrowing : when in doubt, make the production composition more constrained and easier to audit than the exploratory version.",
+      "The right default is conservative. If a bundle increases uncertainty about who made the decision, what evidence was used, or how to roll back, it is probably not ready for the production plane.",
+      "The most dangerous multi-pattern systems are not always the most complex. They are the ones that cannot explain, after the fact, which controller fired, which judge won, or which shard output actually drove the release decision.",
+      "It means production bundles should generally be more constrained, more replayable, and easier to audit than exploratory bundles unless there is strong evidence that a broader composition is still safe and governable."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "ch4_staging.overlay.yml",
+        "code": "# Chapter 4 example: Staging overlay for the base TVL module.\n# This file is composed into a valid TVL module via `tvl-compose`.\n\n_tvl_overlay:\n  extends: ch4_base_module.tvl.yml\n\noverrides:\n  evaluation_set:\n    dataset: s3://datasets/book/overlays/staging.jsonl\n  tvars:\n    - name: temperature\n      domain:\n        range: [0.0, 0.6]\n        resolution: 0.05\n  exploration:\n    budgets:\n      max_trials: 100\n      max_wallclock_s: 3600\n",
+        "downloadPath": "/examples/book/ch4_staging.overlay.yml"
+      },
+      {
+        "language": "yaml",
+        "filename": "ch4_hotfix.overlay.yml",
+        "code": "# Chapter 4 example: Temporary production hotfix overlay.\n# This file is composed into a valid TVL module via `tvl-compose`.\n\n_tvl_overlay:\n  extends: ch4_production.overlay.yml\n\noverrides:\n  tvars:\n    - name: model\n      domain: [\"gpt-4o-mini\"]\n  exploration:\n    budgets:\n      max_trials: 12\n      max_wallclock_s: 600\n",
+        "downloadPath": "/examples/book/ch4_hotfix.overlay.yml"
+      }
+    ]
+  },
+  "composing-patterns-for-production-when-to-stop-adding-patterns": {
+    "title": "When to Stop Adding Patterns",
+    "description": "A pattern stack should stop growing when the next controller increases complexity faster than it improves the governed operating point.",
+    "content": [
+      "There is a recurring failure mode in agent engineering: once one pattern helps, every new problem looks like an invitation to add another controller. The result is a workflow that appears advanced but becomes difficult to benchmark, explain, and operate.",
+      "The stopping rule should be explicit:",
+      "- does the added pattern improve the governed operating point? - is the gain large enough to justify the additional cost and latency? - can reviewers still explain the release decision with one manifest and one evaluation story?",
+      "If the answer turns fuzzy, that is often the point to stop.",
+      "Usually no. If the gain cannot be explained and replayed clearly enough for review, the bundle is not yet a strong governed candidate even if one benchmark number improved.",
+      "Prefer the simplest pattern stack that reaches the target operating point. Extra structure should be earned with clear marginal lift and a stable validation story.",
+      "Stop when the next pattern increases complexity faster than it improves the governed operating point, or when the resulting evidence and rollback story become harder to explain than the gain is worth."
+    ],
+    "examples": [
+      {
+        "language": "yaml",
+        "filename": "ch5_integration_manifest.yaml",
+        "code": "# Generated deployment manifest linking TVL, Triagent (TVO), and DVL.\nmanifest:\n  spec_path: tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  spec_sha: 7c2f31be\n  tvl_lock: tvl_book/examples/ch5_tvl.lock\n  provenance: tvl_book/examples/ch5_provenance.json\ntriagent:\n  pipeline: campus-orientation-rag\n  optimizer: TVO\n  deployment_target: production\n  evaluation_job: triagent optimize --spec tvl_book/examples/ch1_motivation_experiment.tvl.yml --output results/\n  promotion_gate: epsilon_pareto\n  rollback_on:\n    - latency_regression\n    - constraint_violation\ndvl:\n  dataset_version: faq/v2024.10\n  drift_tests:\n    - faq-topic-shift\n    - forbidden-pii\n  validation_suite: tvl_book/examples/ch5_dvl_suite.json\nintegration_checks:\n  - tvl-validate tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-structural tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - tvl-check-operational tvl_book/examples/ch1_motivation_experiment.tvl.yml\n  - dvl validate tvl_book/examples/ch5_dvl_suite.json\n  - triagent deploy --dry-run campus-orientation-rag\n",
+        "downloadPath": "/examples/book/ch5_integration_manifest.yaml"
+      }
+    ]
+  }
+}

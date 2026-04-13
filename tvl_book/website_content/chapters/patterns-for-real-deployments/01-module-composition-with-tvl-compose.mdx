@@ -1,0 +1,22 @@
+---
+id: chapter-04-module-composition-with-tvl-compose
+slug: module-composition-with-tvl-compose
+title: Module Composition with tvl-compose
+summary: The TVL core schema stays standalone and self-contained, so overlays
+  are handled through preprocessing rather than inheritance in the schema itself.
+chapter: patterns-for-real-deployments
+estimated_minutes: 5
+interactive: false
+concept_refs: []
+example_refs: []
+opal_bridge: false
+---
+
+The TVL core schema defines standalone, self-contained modules. To support inheritance and overlays,
+we use **preprocessing** rather than extending the core schema:
+
+```text
+base.tvl.yml + staging.overlay.yml  →  tvl-compose  →  staging.tvl.yml (valid TVL)
+```
+
+This keeps the core spec simple while enabling powerful composition patterns.

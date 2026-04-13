@@ -1,0 +1,52 @@
+# Example: Multi-Objective with Per-Objective Epsilon (min_effect)
+# Per spec: promotion_policy.min_effect provides per-objective ε tolerances
+# for ε-Pareto dominance comparisons.
+
+tvl:
+  module: corp.validation.multi_objective_epsilon
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+  seed: 7
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o", "gpt-4o-mini", "llama-3-70b"]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+
+constraints:
+  structural: []
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+  - name: cost_usd
+    metric_ref: metrics.cost_usd.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01
+    latency_p95_ms: 50
+    cost_usd: 0.001
+
+exploration:
+  strategy:
+    type: nsga2
+  budgets:
+    max_trials: 48
+

@@ -1,0 +1,34 @@
+# Example: Derived Constraint Violations
+tvl:
+  module: corp.validation.derived_violations
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+  context:
+    budget_usd: 1000
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: max_calls
+    type: int
+    domain:
+      set: [1, 2, 3]
+
+constraints:
+  structural: []
+  derived:
+    - require: max_calls <= 2                 # references a TVAR (invalid)
+    - require: max_calls * 2 <= 6             # non-linear term (invalid)
+
+objectives:
+  - name: throughput
+    metric_ref: metrics.throughput.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    throughput: 1.0

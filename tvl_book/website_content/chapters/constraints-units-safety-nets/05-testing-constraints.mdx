@@ -1,0 +1,52 @@
+---
+id: chapter-03-testing-constraints
+slug: testing-constraints
+title: Testing Constraints
+summary: Use tvl-check-structural and unit tests to prove the search space still
+  contains valid configurations.
+chapter: constraints-units-safety-nets
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- satisfiability
+- validation-workflow
+- structural-constraints
+example_refs:
+- /examples/ci_pipeline.sh
+opal_bridge: false
+---
+
+Use `tvl-check-structural` to verify your constraints are satisfiable:
+
+```bash
+# Check if constraints have at least one valid solution
+tvl-check-structural my-spec.tvl.yml
+
+# JSON output for CI pipelines
+tvl-check-structural my-spec.tvl.yml --json
+```
+
+For unit testing in Python, use the TVL SDK:
+
+```python
+from tvl import loader, structural_sat
+
+def test_constraints_satisfiable():
+    """Verify the spec has at least one valid configuration."""
+    module = loader.load("my-spec.tvl.yml")
+    result = structural_sat.check(module)
+    assert result.satisfiable, f"UNSAT: {result.unsat_core}"
+
+def test_specific_config_valid():
+    """Verify a specific configuration passes constraints."""
+    module = loader.load("my-spec.tvl.yml")
+    config = {"model": "gpt-4o-mini", "temperature": 0.3, "max_tokens": 512}
+    errors = structural_sat.validate_config(module, config)
+    assert not errors, f"Constraint violations: {errors}"
+```
+
+Run the tests:
+
+```bash
+pytest test_constraints.py -v
+```

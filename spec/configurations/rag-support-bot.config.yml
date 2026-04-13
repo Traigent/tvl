@@ -1,0 +1,12 @@
+config_id: rag-support-bot.default
+module_id: corp.support.rag_bot
+module_version: "1.0"
+assignments:
+  model: gpt-4o
+  temperature: 0.2
+  retriever:
+    k: 6
+  zero_shot: false
+metadata:
+  trials: 200
+  seed: 42

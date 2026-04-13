@@ -1,0 +1,37 @@
+# Example: Structural Type Errors
+tvl:
+  module: corp.validation.structural_type_errors
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+  bindings:
+    evaluator: v1
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: agent
+    type: enum[str]
+    domain: ["mini", "pro"]
+  - name: use_examples
+    type: bool
+    domain: [true, false]
+
+constraints:
+  structural:
+    - expr: agent = "enterprise"        # value outside enum domain
+    - expr: use_examples = 42           # boolean compared to int
+    - expr: temperature = 0.5           # undeclared TVAR reference
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01

@@ -1,0 +1,20 @@
+bundle_id: agent-router.candidate-2024-10-10
+config_id: agent-router.default
+module_id: examples.agent_router
+objective_values:
+  task_completion_rate:
+    mean: 0.94
+    std: 0.02
+    n: 120
+  avg_hops:
+    mean: 1.7
+    std: 0.30
+    n: 120
+  routing_latency_ms:
+    mean: 780
+    std: 55
+    n: 30
+chance_outcomes:
+  timeout_slo:
+    violations: 0
+    trials: 120

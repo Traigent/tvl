@@ -1,0 +1,54 @@
+# Example: Tuple Type with Product Semantics
+# Per spec: tuple types have product semantics (A × B), not tagged union.
+# Configuration space grows as Cartesian product of component domains.
+
+tvl:
+  module: corp.validation.tuple_product_semantics
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  # Tuple of (model, temperature): product semantics
+  # Domain size = |{gpt-4, claude-3}| × |{0.0, 0.5, 1.0}| = 2 × 3 = 6
+  - name: model_config
+    type: tuple[enum[str], float]
+    domain:
+      components:
+        - ["gpt-4", "claude-3"]
+        - { range: [0.0, 1.0], resolution: 0.5 }
+
+  # Nested tuple: retrieval configuration
+  # Domain size = |{1,2,3}| × |{100,200}| = 3 × 2 = 6
+  - name: retrieval_config
+    type: tuple[int, int]
+    domain:
+      components:
+        - { range: [1, 3] }      # top_k: 1, 2, or 3
+        - { set: [100, 200] }   # chunk_size: 100 or 200
+
+constraints:
+  structural: []
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01
+    latency_p95_ms: 50
+
+exploration:
+  strategy:
+    type: grid

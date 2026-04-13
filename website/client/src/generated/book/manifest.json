@@ -1,0 +1,2579 @@
+{
+  "chapters": [
+    {
+      "id": 1,
+      "slug": "why-tvl-exists",
+      "title": "Why TVL Exists",
+      "summary": "Why tuned variables and governed optimization are required for modern AI systems under drift.",
+      "estimatedMinutes": 18,
+      "learningObjectives": [
+        "Recognize why static configuration breaks under model, latency, and budget drift.",
+        "Understand the core TVL loop: declare, validate, explore, and promote with evidence.",
+        "Anchor the rest of the book on the Campus Orientation RAG running example."
+      ],
+      "prerequisites": [],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "primaryExample": "/examples/rag-support-bot.tvl.yml",
+      "introModulePath": "/src/generated/book/content/chapters/why-tvl-exists/chapter.mdx",
+      "introExcerpt": [
+        "TVL grew out of a simple observation: LLM applications never sit still . Model catalogs evolve, latency budgets oscillate with traffic spikes, and cost ceilings reset when finance reviews the bill. Hard-coded configuration forces engineers to either over-provision permanently or ship blind during drift events. TVL reframes configuration as a tuned, governed artifact that evolves alongside the environment.",
+        "TVL is a machine-readable contract for “what can change, what must stay safe, and what evidence is required before a better configuration ships.”"
+      ],
+      "sections": [
+        {
+          "id": "chapter-01-design-goals-at-a-glance",
+          "slug": "design-goals-at-a-glance",
+          "title": "Design Goals at a Glance",
+          "summary": "TVL keeps optimization governable by making tunable knobs, constraints, and promotion evidence explicit in one contract.",
+          "chapter": "why-tvl-exists",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "drift-governance",
+            "tvars",
+            "promotion-policy"
+          ],
+          "exampleRefs": [
+            "/examples/rag-support-bot.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/why-tvl-exists/section/design-goals-at-a-glance",
+          "modulePath": "/src/generated/book/content/chapters/why-tvl-exists/01-design-goals-at-a-glance.mdx",
+          "excerpt": [
+            "- Type-safe tuning variables separate categorical choice from continuous ranges. - Deterministic exports make generated files (such as params.yaml) reproducible in CI. - Declarative constraints (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers. - Governed promotion requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out.",
+            "The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and rerun TVO . The optimizer explores safely and promotes only when constraints hold—no frantic code edits."
+          ]
+        },
+        {
+          "id": "chapter-01-running-example-campus-orientation-rag",
+          "slug": "running-example-campus-orientation-rag",
+          "title": "Running Example · Campus Orientation RAG",
+          "summary": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+          "chapter": "why-tvl-exists",
+          "estimatedMinutes": 8,
+          "interactive": false,
+          "conceptRefs": [
+            "running-example",
+            "environment-snapshot",
+            "evaluation-set"
+          ],
+          "exampleRefs": [
+            "/examples/rag-support-bot.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/why-tvl-exists/section/running-example-campus-orientation-rag",
+          "modulePath": "/src/generated/book/content/chapters/why-tvl-exists/02-running-example-campus-orientation-rag.mdx",
+          "excerpt": [
+            "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+            "```yaml Campus Orientation RAG - TVL Specification tvl: module: campus.orientation.rag",
+            "Environment snapshot anchors the spec to a point in time environment: snapshot id: \"2025-01-15T00:00:00Z\" bindings: retriever index: campus-faq-v1 llm gateway: us-east-1 context: gateway baseline latency ms: 180 provider input price usd per 1k tokens: 0.03"
+          ]
+        },
+        {
+          "id": "chapter-01-field-notes-legend",
+          "slug": "field-notes-legend",
+          "title": "Field Notes Legend",
+          "summary": "The book uses recurring callouts to separate fast tips, reliability gotchas, and integration guidance.",
+          "chapter": "why-tvl-exists",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [],
+          "exampleRefs": [],
+          "opalBridge": false,
+          "route": "/book/chapter/why-tvl-exists/section/field-notes-legend",
+          "modulePath": "/src/generated/book/content/chapters/why-tvl-exists/03-field-notes-legend.mdx",
+          "excerpt": [
+            "Throughout the interactive book you will see three callouts:",
+            "- Hackathon Moves — quick tips for rapid experimentation. - Reliability Pitfalls — gotchas that often surface in incident reviews. - Integration Hints — pointers linking a concept to Triagent/TVO or DVL workflows."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "slug": "getting-fluent-in-tvl",
+      "title": "Getting Fluent in TVL",
+      "summary": "A practical TVL walkthrough from first module to repeatable validation and hands-on intuition.",
+      "estimatedMinutes": 26,
+      "learningObjectives": [
+        "Author a valid TVL module with typed TVARs, objectives, and promotion policy.",
+        "Run the core validation commands and understand what they catch.",
+        "Build intuition for tuning variables through a live microsim."
+      ],
+      "prerequisites": [
+        "why-tvl-exists"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect"
+      ],
+      "primaryExample": "/examples/book/ch2_hello_tvl.tvl.yml",
+      "introModulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/chapter.mdx",
+      "introExcerpt": [
+        "TVL encodes the answers to three questions:",
+        "1. What are we tuning? (tvars — tuned variables with typed domains) 2. How do we measure success? (objectives and evaluation set) 3. What rules govern promotion? (constraints, promotion policy)"
+      ],
+      "sections": [
+        {
+          "id": "chapter-02-minimal-working-spec",
+          "slug": "minimal-working-spec",
+          "title": "Minimal Working Spec",
+          "summary": "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer.",
+          "chapter": "getting-fluent-in-tvl",
+          "estimatedMinutes": 7,
+          "interactive": false,
+          "conceptRefs": [
+            "tvars",
+            "evaluation-set",
+            "promotion-policy"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch2_hello_tvl.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/getting-fluent-in-tvl/section/minimal-working-spec",
+          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/01-minimal-working-spec.mdx",
+          "excerpt": [
+            "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer.",
+            "- TVARs are the knobs the optimizer is allowed to turn. - The evaluation set is the shared test workload used to compare candidates fairly. - The promotion policy is the shipping rulebook: it says what counts as a real win.",
+            "It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only about what can change; it is also about what evidence is required before a change is allowed to ship."
+          ]
+        },
+        {
+          "id": "chapter-02-validation-warm-up",
+          "slug": "validation-warm-up",
+          "title": "Validation Warm-Up",
+          "summary": "Use tvl-validate to catch missing sections, schema mismatches, and other cheap mistakes before you optimize.",
+          "chapter": "getting-fluent-in-tvl",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "validation-workflow",
+            "cli-toolchain"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch2_validate_spec.py"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/getting-fluent-in-tvl/section/validation-warm-up",
+          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/02-validation-warm-up.mdx",
+          "excerpt": [
+            "Use tvl-validate to check your spec against the TVL schema:",
+            "The fast win is structure. tvl-validate catches missing sections, bad shapes, and schema mismatches. It does not tell you whether the candidate is good, safe, or operationally feasible in production.",
+            "tvl-validate is the fast sanity check. In simple terms, it answers:"
+          ]
+        },
+        {
+          "id": "chapter-02-tvl-0-9-type-system",
+          "slug": "tvl-0-9-type-system",
+          "title": "TVL Type System",
+          "summary": "TVL enforces explicit typing on every tuned variable so search spaces stay interpretable and safe.",
+          "chapter": "getting-fluent-in-tvl",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [
+            "tvars",
+            "type-system"
+          ],
+          "exampleRefs": [
+            "/examples/tool-use.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/getting-fluent-in-tvl/section/tvl-0-9-type-system",
+          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/03-tvl-0-9-type-system.mdx",
+          "excerpt": [
+            "TVL enforces explicit typing on all tuned variables:",
+            "For an application engineer, the type system is what keeps tuning from turning into guesswork. It makes the optimizer’s choices explicit: a boolean switch is different from an integer budget, which is different from a short approved list of model names.",
+            "| Type | Description | Domain Examples | |------|-------------|-----------------| | bool | Boolean flag | [true, false] | | int | Integer value | range: [1, 10] or set: [1, 2, 4, 8] | | float | Floating-point | range: [0.0, 1.0] with optional resolution | | enum[str] | Finite set of strings | [\"gpt-4o\", \"claude-3\"] | | enum[int] | Finite set of integers | [100, 500, 1000] | | tuple[...] | Product type | Cartesian product of component domains | | callable[Proto] | Protocol reference | Registry-backed function lookup |"
+          ]
+        },
+        {
+          "id": "chapter-02-common-pitfalls",
+          "slug": "common-pitfalls",
+          "title": "Common Pitfalls",
+          "summary": "The most common early mistakes are wrong type names, missing promotion policy, and constraint syntax borrowed from other languages.",
+          "chapter": "getting-fluent-in-tvl",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [],
+          "exampleRefs": [],
+          "opalBridge": false,
+          "route": "/book/chapter/getting-fluent-in-tvl/section/common-pitfalls",
+          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/04-common-pitfalls.mdx",
+          "excerpt": [
+            "1. Using wrong type names — it's enum[str] not categorical, float not continuous. 2. Mixing deployment bindings with numeric operating assumptions instead of separating bindings and context. 3. Missing promotion policy — this is required in TVL (no implicit defaults). 4. Constraint syntax errors — use = for equality (not ==), and/or (not &&/||)."
+          ]
+        },
+        {
+          "id": "chapter-02-analog-circuit-lab-explore-the-knobs",
+          "slug": "analog-circuit-lab-explore-the-knobs",
+          "title": "Analog Circuit Lab · Explore the Knobs",
+          "summary": "Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above; latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.",
+          "chapter": "getting-fluent-in-tvl",
+          "estimatedMinutes": 8,
+          "interactive": true,
+          "conceptRefs": [
+            "running-example",
+            "microsim-lab",
+            "structural-constraints"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch2_hello_tvl.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/getting-fluent-in-tvl/section/analog-circuit-lab-explore-the-knobs",
+          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/05-analog-circuit-lab-explore-the-knobs.mdx",
+          "excerpt": [
+            "Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above; latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.",
+            "In this lab, broader retrieval and longer responses tend to move latency first because they widen the amount of work per request. Reranking matters too, but it is easier to understand once you see the latency and quality gauges move together.",
+            "Open the lab in a new tab"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "slug": "constraints-units-safety-nets",
+      "title": "Constraints, Units, and Safety Nets",
+      "summary": "Typed structural rules, operational preconditions, and satisfiability preflights for safe exploration.",
+      "estimatedMinutes": 28,
+      "learningObjectives": [
+        "Differentiate structural rules from operational preconditions.",
+        "Write TVL-native formulas that compile into deterministic feasibility checks.",
+        "Use SAT tooling and tests to catch invalid search spaces early."
+      ],
+      "prerequisites": [
+        "why-tvl-exists",
+        "getting-fluent-in-tvl"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "primaryExample": "/examples/validation-phase2/structural-sat.tvl.yml",
+      "introModulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/chapter.mdx",
+      "introExcerpt": [
+        "TVL uses a typed Disjunctive Normal Form (DNF) constraint language that compiles to SAT/SMT solvers for formal verification. This chapter shows how to write structural rules and operational preconditions, and test them before TVO wastes a single trial."
+      ],
+      "sections": [
+        {
+          "id": "chapter-03-two-kinds-of-constraints",
+          "slug": "two-kinds-of-constraints",
+          "title": "Two Kinds of Constraints",
+          "summary": "TVL separates static structural rules from environment-scoped operational preconditions so authors know what is validated when.",
+          "chapter": "constraints-units-safety-nets",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "structural-constraints",
+            "derived-constraints",
+            "operational-checks"
+          ],
+          "exampleRefs": [
+            "/examples/text-to-sql.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/constraints-units-safety-nets/section/two-kinds-of-constraints",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/01-two-kinds-of-constraints.mdx",
+          "excerpt": [
+            "TVL separates constraints into two categories:",
+            "The env.context. rule belongs in constraints.derived because it depends on the execution environment. temperature <= 0.8 is a structural rule because it is a formula over TVARs and can be checked before any trials run.",
+            "| Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural | Before trials run (static) | Rules over TVARs that define valid configuration space | | Operational Preconditions | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom |"
+          ]
+        },
+        {
+          "id": "chapter-03-structural-constraint-syntax",
+          "slug": "structural-constraint-syntax",
+          "title": "Structural Constraint Syntax",
+          "summary": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:.",
+          "chapter": "constraints-units-safety-nets",
+          "estimatedMinutes": 7,
+          "interactive": false,
+          "conceptRefs": [
+            "structural-constraints",
+            "satisfiability"
+          ],
+          "exampleRefs": [
+            "/examples/validation-phase2/structural-sat.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/constraints-units-safety-nets/section/structural-constraint-syntax",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/02-structural-constraint-syntax.mdx",
+          "excerpt": [
+            "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:",
+            "| TVL Syntax | Meaning | NOT This | |----------------|---------|----------| | model = \"gpt-4o\" | Equality | model == \"gpt-4o\" | | temperature <= 0.5 | Comparison | params.temperature <= 0.5 | | A and B | Conjunction | A && B | | A or B | Disjunction | A \\|\\| B | | not A | Negation | !A | | x in {\"a\", \"b\"} | Set membership | x in [\"a\", \"b\"] |",
+            "Expression Form vs Implication Form"
+          ]
+        },
+        {
+          "id": "chapter-03-derived-constraints",
+          "slug": "derived-constraints",
+          "title": "Operational Preconditions",
+          "summary": "Operational preconditions in TVL are written under `constraints.derived` and checked against the current environment snapshot.",
+          "chapter": "constraints-units-safety-nets",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [
+            "derived-constraints",
+            "operational-checks",
+            "environment-snapshot"
+          ],
+          "exampleRefs": [
+            "/examples/validation-phase3/budget-invalid.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/constraints-units-safety-nets/section/derived-constraints",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/03-derived-constraints.mdx",
+          "excerpt": [
+            "TVL writes operational preconditions under constraints.derived. These are linear inequalities over environment symbols (not TVARs), and they are evaluated at runtime against the current environment snapshot.",
+            "```yaml Fragment: operational preconditions over environment symbols constraints: derived: Provider price guard - require: env.context.provider input price usd per 1k tokens <= 0.05",
+            "Baseline gateway latency guard - require: env.context.gateway baseline latency ms <= 250"
+          ]
+        },
+        {
+          "id": "chapter-03-analog-circuit-drill-watch-constraints-react",
+          "slug": "analog-circuit-drill-watch-constraints-react",
+          "title": "Analog Circuit Drill · Watch Constraints React",
+          "summary": "Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.",
+          "chapter": "constraints-units-safety-nets",
+          "estimatedMinutes": 7,
+          "interactive": true,
+          "conceptRefs": [
+            "microsim-lab",
+            "structural-constraints",
+            "derived-constraints"
+          ],
+          "exampleRefs": [
+            "/examples/validation-phase2/structural-sat.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/constraints-units-safety-nets/section/analog-circuit-drill-watch-constraints-react",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/04-analog-circuit-drill-watch-constraints-react.mdx",
+          "excerpt": [
+            "Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.",
+            "Each warning mirrors a structural constraint:",
+            "- Latency under 800 ms — raises amber/red when the simulated configuration breaches the ceiling. - Cost under $0.12 — highlights the response-token capacitor if the API budget slips. - Rerank weight ≥ 0.3 — conditional guard for retriever top k = 40 to prevent noisy answers."
+          ]
+        },
+        {
+          "id": "chapter-03-testing-constraints",
+          "slug": "testing-constraints",
+          "title": "Testing Constraints",
+          "summary": "Use tvl-check-structural and unit tests to prove the search space still contains valid configurations.",
+          "chapter": "constraints-units-safety-nets",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "satisfiability",
+            "validation-workflow",
+            "structural-constraints"
+          ],
+          "exampleRefs": [
+            "/examples/ci_pipeline.sh"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/constraints-units-safety-nets/section/testing-constraints",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/05-testing-constraints.mdx",
+          "excerpt": [
+            "Use tvl-check-structural to verify your constraints are satisfiable:",
+            "```bash Check if constraints have at least one valid solution tvl-check-structural my-spec.tvl.yml",
+            "JSON output for CI pipelines tvl-check-structural my-spec.tvl.yml --json ```"
+          ]
+        },
+        {
+          "id": "chapter-03-checklist-before-promotion",
+          "slug": "checklist-before-promotion",
+          "title": "Checklist Before Promotion",
+          "summary": "Before promotion, confirm the search space is satisfiable, the formulas use TVL syntax, and operational preconditions only reference environment symbols.",
+          "chapter": "constraints-units-safety-nets",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [],
+          "exampleRefs": [],
+          "opalBridge": false,
+          "route": "/book/chapter/constraints-units-safety-nets/section/checklist-before-promotion",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/06-checklist-before-promotion.mdx",
+          "excerpt": [
+            "1. All structural constraints pass tvl-check-structural (satisfiable). 2. Constraint formulas use TVL syntax (=, and, or, not), not other languages. 3. Operational preconditions (constraints.derived) only reference environment symbols, not TVARs. 4. Unit tests cover both valid and invalid configurations."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "slug": "patterns-for-real-deployments",
+      "title": "Patterns for Real Deployments",
+      "summary": "Composition, overlays, safe narrowing, and provenance patterns for production operations.",
+      "estimatedMinutes": 24,
+      "learningObjectives": [
+        "Apply environment-aware overlays without polluting the core TVL schema.",
+        "Use safe narrowing patterns to move from base modules to staging, production, and hotfixes.",
+        "Capture provenance so promotions remain replayable and reviewable."
+      ],
+      "prerequisites": [
+        "getting-fluent-in-tvl",
+        "constraints-units-safety-nets"
+      ],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "primaryExample": "/examples/book/ch4_base_module.tvl.yml",
+      "introModulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/chapter.mdx",
+      "introExcerpt": [
+        "Managing multiple environments (dev, staging, production) often requires slight variations of the same TVL spec. This chapter covers module composition patterns using tvl-compose, a preprocessing tool that flattens overlay files into valid TVL modules."
+      ],
+      "sections": [
+        {
+          "id": "chapter-04-module-composition-with-tvl-compose",
+          "slug": "module-composition-with-tvl-compose",
+          "title": "Module Composition with tvl-compose",
+          "summary": "The TVL core schema stays standalone and self-contained, so overlays are handled through preprocessing rather than inheritance in the schema itself.",
+          "chapter": "patterns-for-real-deployments",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [],
+          "exampleRefs": [],
+          "opalBridge": false,
+          "route": "/book/chapter/patterns-for-real-deployments/section/module-composition-with-tvl-compose",
+          "modulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/01-module-composition-with-tvl-compose.mdx",
+          "excerpt": [
+            "The TVL core schema defines standalone, self-contained modules. To support inheritance and overlays, we use preprocessing rather than extending the core schema:",
+            "This keeps the core spec simple while enabling powerful composition patterns."
+          ]
+        },
+        {
+          "id": "chapter-04-layered-specifications",
+          "slug": "layered-specifications",
+          "title": "Layered Specifications",
+          "summary": "Base modules stay fully valid, while overlays capture environment-specific narrowing before composition.",
+          "chapter": "patterns-for-real-deployments",
+          "estimatedMinutes": 7,
+          "interactive": false,
+          "conceptRefs": [
+            "overlays",
+            "safe-narrowing",
+            "environment-snapshot"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch4_base_module.tvl.yml",
+            "/examples/book/ch4_staging.overlay.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/patterns-for-real-deployments/section/layered-specifications",
+          "modulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/02-layered-specifications.mdx",
+          "excerpt": [
+            "Base module (valid TVL):",
+            "```yaml base.tvl.yml - full TVL module tvl: module: corp.support.rag bot",
+            "environment: snapshot id: \"2025-01-20T00:00:00Z\" bindings: llm gateway: us-east-1"
+          ]
+        },
+        {
+          "id": "chapter-04-visualizing-overlays",
+          "slug": "visualizing-overlays",
+          "title": "Visualizing Overlays",
+          "summary": "Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process, not runtime artifacts.",
+          "chapter": "patterns-for-real-deployments",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [
+            "overlays",
+            "safe-narrowing"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch4_base_module.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/patterns-for-real-deployments/section/visualizing-overlays",
+          "modulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/03-visualizing-overlays.mdx",
+          "excerpt": [
+            "(TVL)\\\"] -- |tvl-compose| Staging[\\\"staging.tvl.yml (TVL)\\\"]\\n Base -- |tvl-compose| Production[\\\"production.tvl.yml (TVL)\\\"]\\n Production -- |tvl-compose| Hotfix[\\\"hotfix.tvl.yml (TVL)\\\"]\"} /",
+            "Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process, not runtime artifacts."
+          ]
+        },
+        {
+          "id": "chapter-04-override-rules",
+          "slug": "override-rules",
+          "title": "Override Rules",
+          "summary": "tvl-compose enforces safe narrowing so overlays can tighten risk without silently widening the contract.",
+          "chapter": "patterns-for-real-deployments",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [],
+          "exampleRefs": [],
+          "opalBridge": false,
+          "route": "/book/chapter/patterns-for-real-deployments/section/override-rules",
+          "modulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/04-override-rules.mdx",
+          "excerpt": [
+            "tvl-compose validates safe narrowing for the following:",
+            "| Override Type | Allowed | Not Allowed | |--------------|---------|-------------| | Enum domain | Remove values | Add new values | | Numeric range | Narrow bounds | Widen bounds | | Budget | Decrease | Increase beyond base |",
+            "The current implementation validates enum narrowing, range narrowing, and budget decreases. Resolution changes and constraint modifications are merged without validation—ensure your overlays follow safe narrowing practices for these fields."
+          ]
+        },
+        {
+          "id": "chapter-04-hotfix-playbook",
+          "slug": "hotfix-playbook",
+          "title": "Hotfix Playbook",
+          "summary": "When an incident hits, create a short-lived overlay instead of mutating the base module in place.",
+          "chapter": "patterns-for-real-deployments",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "overlays",
+            "safe-narrowing",
+            "provenance"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch4_hotfix.overlay.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/patterns-for-real-deployments/section/hotfix-playbook",
+          "modulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/05-hotfix-playbook.mdx",
+          "excerpt": [
+            "Need to react quickly to a vendor outage? Create a short-lived overlay:",
+            "```yaml hotfix-vendor-outage.overlay.yml tvl overlay: extends: production.tvl.yml description: \"Temporary cap during vendor outage\" expires after: \"2025-01-20\" Reminder to remove",
+            "overrides: tvars: - name: model domain: [\"gpt-4o-mini\", \"claude-3-haiku\"] Exclude affected model ```"
+          ]
+        },
+        {
+          "id": "chapter-04-provenance-matters",
+          "slug": "provenance-matters",
+          "title": "Provenance Matters",
+          "summary": "Every promotion should capture the exact composed spec, overlay inputs, and replay metadata needed for audits.",
+          "chapter": "patterns-for-real-deployments",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [
+            "provenance",
+            "promotion-manifest"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch5_integration_manifest.yaml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/patterns-for-real-deployments/section/provenance-matters",
+          "modulePath": "/src/generated/book/content/chapters/patterns-for-real-deployments/06-provenance-matters.mdx",
+          "excerpt": [
+            "Every promotion should commit:",
+            "- spec.tvl.yml — the composed, valid TVL module. - spec.overlay.yml — the overlay that produced it (if any). - provenance.json — metadata: base SHA, overlay SHA, compose timestamp.",
+            "This audit trail enables deterministic recreation of exact configurations from version control history."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "slug": "integration-patterns",
+      "title": "Integration Patterns",
+      "summary": "How TVL plugs into CI, optimizer runtime, data validation, and auditable promotion flows.",
+      "estimatedMinutes": 22,
+      "learningObjectives": [
+        "Wire the TVL CLI into a deterministic CI pipeline.",
+        "Understand how Triagent/TVO and DVL consume TVL outputs.",
+        "Treat manifests as the operational record for promotion decisions."
+      ],
+      "prerequisites": [
+        "getting-fluent-in-tvl",
+        "constraints-units-safety-nets",
+        "patterns-for-real-deployments"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "primaryExample": "/examples/ci_pipeline.sh",
+      "introModulePath": "/src/generated/book/content/chapters/integration-patterns/chapter.mdx",
+      "introExcerpt": [
+        "TVL earns its keep when paired with Triagent (TVO) and DVL. Triagent is the optimization platform, TVO is the optimizer inside it, and DVL is the data-validation layer. TVO reads TVL specs, explores the configuration space, and produces promotion proofs. DVL validates the datasets that power those experiments so you never ship a great configuration with stale data.",
+        "- First, learn the static toolchain and CI gates. - Then connect TVL to runtime systems like TVO and DVL. - Finally, treat manifests as the operational record that makes audits, rollback, and reproducibility possible."
+      ],
+      "sections": [
+        {
+          "id": "chapter-05-tvl-cli-tools",
+          "slug": "tvl-cli-tools",
+          "title": "TVL CLI Tools",
+          "summary": "The TVL toolchain provides focused commands for local validation, CI gates, and operational checks.",
+          "chapter": "integration-patterns",
+          "estimatedMinutes": 7,
+          "interactive": false,
+          "conceptRefs": [
+            "cli-toolchain",
+            "validation-workflow"
+          ],
+          "exampleRefs": [
+            "/examples/ci_pipeline.sh"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/integration-patterns/section/tvl-cli-tools",
+          "modulePath": "/src/generated/book/content/chapters/integration-patterns/01-tvl-cli-tools.mdx",
+          "excerpt": [
+            "The TVL toolchain provides focused CLI tools for validation and CI integration:",
+            "| Tool | Purpose | |------|---------| | tvl-parse | Parse YAML to JSON AST, basic syntax checking | | tvl-lint | Normative lints: missing min effect, duplicate TVARs, etc. | | tvl-validate | JSON Schema + lint validation (combines parse + lint) | | tvl-check-structural | SAT/SMT satisfiability of structural constraints | | tvl-check-operational | Runtime validation of operational preconditions (constraints.derived) and budgets | | tvl-config-validate | Check a configuration assignment against spec domains | | tvl-measure-validate | Validate measurements against spec + promotion policy | | tvl-ci-gate | Dry-run promotion gate (stub for CI pipelines) | | tvl-compose | Flatten overlay files into valid TVL modules |",
+            "Clone the repository, then install the TVL package in editable mode from the repo root:"
+          ]
+        },
+        {
+          "id": "chapter-05-deterministic-artifacts",
+          "slug": "deterministic-artifacts",
+          "title": "Deterministic Artifacts",
+          "summary": "Every TVL workflow should leave behind deterministic artifacts so decisions stay reproducible and reviewable.",
+          "chapter": "integration-patterns",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [],
+          "exampleRefs": [],
+          "opalBridge": false,
+          "route": "/book/chapter/integration-patterns/section/deterministic-artifacts",
+          "modulePath": "/src/generated/book/content/chapters/integration-patterns/02-deterministic-artifacts.mdx",
+          "excerpt": [
+            "Every TVL workflow produces deterministic artifacts for auditability:",
+            "- spec.tvl.yml — the validated TVL module - config.yml — the promoted configuration assignment - measurements.yml — evaluation results (metrics, sample sizes) - provenance.json — metadata (timestamps, runners, environment snapshot)"
+          ]
+        },
+        {
+          "id": "chapter-05-field-notes-replay-the-optimization-story",
+          "slug": "field-notes-replay-the-optimization-story",
+          "title": "Field Notes · Replay the Optimization Story",
+          "summary": "The Orientation RAG lab includes the same presets we evaluate in CI. Jump between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives while DVL enforces guardrails.",
+          "chapter": "integration-patterns",
+          "estimatedMinutes": 6,
+          "interactive": true,
+          "conceptRefs": [
+            "microsim-lab",
+            "triagent-integration",
+            "promotion-manifest"
+          ],
+          "exampleRefs": [
+            "/examples/ci_pipeline.sh"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/integration-patterns/section/field-notes-replay-the-optimization-story",
+          "modulePath": "/src/generated/book/content/chapters/integration-patterns/03-field-notes-replay-the-optimization-story.mdx",
+          "excerpt": [
+            "The Orientation RAG lab includes the same presets we evaluate in CI. Jump between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives while DVL enforces guardrails.",
+            "- Compare the latency and cost read-outs before and after each preset. - Click Copy YAML to capture the snapshot TVO would export. - Note how the constraint badges align with promotion gates—green across the board before approving production.",
+            "```bash 1. Validate the spec tvl-validate path/to/spec.tvl.yml"
+          ]
+        },
+        {
+          "id": "chapter-05-manifests-and-promotion",
+          "slug": "manifests-and-promotion",
+          "title": "Manifests and Promotion",
+          "summary": "After a successful optimization run, the manifest becomes the audit record for what changed, why it won, and whether rollout is safe.",
+          "chapter": "integration-patterns",
+          "estimatedMinutes": 5,
+          "interactive": false,
+          "conceptRefs": [
+            "promotion-manifest",
+            "triagent-integration",
+            "opal-bridge",
+            "dvl-integration"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch5_integration_manifest.yaml"
+          ],
+          "opalBridge": true,
+          "route": "/book/chapter/integration-patterns/section/manifests-and-promotion",
+          "modulePath": "/src/generated/book/content/chapters/integration-patterns/04-manifests-and-promotion.mdx",
+          "excerpt": [
+            "After a successful TVO run, Triagent emits a manifest bundling:",
+            "- Resolved spec SHA and artifact locations - Validation logs from the CLI tools - Promotion gate decision (pass/fail/defer) - DVL drift checks (pass/fail with links) - Rollback instructions if thresholds regress",
+            "Treat the manifest as a living audit trail. Every deployment should point to it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "slug": "training-agents-with-tuned-variables",
+      "title": "Training Agents with Tuned Variables",
+      "summary": "Turn agent design choices into explicit TVARs, evaluation budgets, and promotion rules instead of leaving them buried in prompts and orchestration code.",
+      "estimatedMinutes": 20,
+      "learningObjectives": [
+        "Identify which parts of an agent workflow should become governed tuned variables.",
+        "Separate static pattern names from the actual control surface that must be evaluated.",
+        "Design feedback and promotion loops for agent changes before shipping them into production."
+      ],
+      "prerequisites": [
+        "getting-fluent-in-tvl",
+        "constraints-units-safety-nets"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "quickstart",
+        "architect"
+      ],
+      "primaryExample": "/examples/tool-use.tvl.yml",
+      "introModulePath": "/src/generated/book/content/chapters/training-agents-with-tuned-variables/chapter.mdx",
+      "introExcerpt": [
+        "Agent systems are often described with pattern names such as routing, debate, reflection, or map-reduce. Those names are useful, but they are not the operational contract. What matters in practice is the control surface underneath them: budgets, counts, ordering, judges, reducers, stop rules, and evidence thresholds.",
+        "This chapter translates that idea into a TVL-oriented workflow. Instead of treating an agent as a frozen prompt stack, treat it as a governed system with explicit tuned variables and measured release criteria."
+      ],
+      "sections": [
+        {
+          "id": "chapter-06-from-runtime-patterns-to-training-surfaces",
+          "slug": "from-runtime-patterns-to-training-surfaces",
+          "title": "From Runtime Patterns to Training Surfaces",
+          "summary": "Pattern names are the beginning of the design discussion; the real engineering work starts when those patterns are translated into an explicit, governable control surface.",
+          "chapter": "training-agents-with-tuned-variables",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "tvars",
+            "running-example",
+            "pattern-control-surface"
+          ],
+          "exampleRefs": [
+            "/examples/tool-use.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/training-agents-with-tuned-variables/section/from-runtime-patterns-to-training-surfaces",
+          "modulePath": "/src/generated/book/content/chapters/training-agents-with-tuned-variables/01-from-runtime-patterns-to-training-surfaces.mdx",
+          "excerpt": [
+            "A pattern such as Contextual Batching or Routed Expertise / MoE + Judge is not a deployable decision by itself. It only tells you the scaffold family. The deployable decision is the concrete surface underneath the scaffold:",
+            "- how many experts run - how many items are packed together - how many reflection rounds are allowed - how a reducer or judge turns several candidates into one answer",
+            "That is the move from runtime pattern language to training surface design."
+          ]
+        },
+        {
+          "id": "chapter-06-choosing-tuned-variables-for-agent-systems",
+          "slug": "choosing-tuned-variables-for-agent-systems",
+          "title": "Choosing Tuned Variables for Agent Systems",
+          "summary": "Good TVARs correspond to real architectural choices, observable trade-offs, and repeatable evaluation slices rather than to every prompt token a team could edit.",
+          "chapter": "training-agents-with-tuned-variables",
+          "estimatedMinutes": 7,
+          "interactive": false,
+          "conceptRefs": [
+            "tvars",
+            "evaluation-set",
+            "pattern-control-surface"
+          ],
+          "exampleRefs": [
+            "/examples/text-to-sql.yml",
+            "/examples/tool-use.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/training-agents-with-tuned-variables/section/choosing-tuned-variables-for-agent-systems",
+          "modulePath": "/src/generated/book/content/chapters/training-agents-with-tuned-variables/02-choosing-tuned-variables-for-agent-systems.mdx",
+          "excerpt": [
+            "Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three tests:",
+            "1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable workload slice.",
+            "This is why \"rewrite the prompt until it feels better\" is a weak engineering process. It changes too many things at once and rarely leaves behind a clean study plane."
+          ]
+        },
+        {
+          "id": "chapter-06-budgets-feedback-and-promotion-loops",
+          "slug": "budgets-feedback-and-promotion-loops",
+          "title": "Budgets, Feedback, and Promotion Loops",
+          "summary": "Agent tuning becomes maintainable only when the exploration budget, evaluation feedback, and promotion rule are designed together instead of as separate afterthoughts.",
+          "chapter": "training-agents-with-tuned-variables",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "promotion-policy",
+            "validation-workflow",
+            "pattern-control-surface"
+          ],
+          "exampleRefs": [
+            "/examples/ci_pipeline.sh",
+            "/examples/book/ch5_integration_manifest.yaml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/training-agents-with-tuned-variables/section/budgets-feedback-and-promotion-loops",
+          "modulePath": "/src/generated/book/content/chapters/training-agents-with-tuned-variables/03-budgets-feedback-and-promotion-loops.mdx",
+          "excerpt": [
+            "An agent workflow should not only expose tuned variables. It should also expose the loop that turns a candidate setting into a release decision:",
+            "- how much budget is available for exploration - which feedback signal is trusted - which evidence threshold permits promotion",
+            "Those three pieces belong together. A wide search surface with no trustworthy evaluation loop is just expensive guesswork. A strict promotion rule with no exploration budget prevents improvement."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "slug": "pattern-anatomy-and-evaluation",
+      "title": "Pattern Anatomy and Evaluation",
+      "summary": "Learn to compare agent patterns as governed control surfaces rather than as isolated prompt recipes or one-off demos.",
+      "estimatedMinutes": 21,
+      "learningObjectives": [
+        "Read a pattern page as an operational control surface with tuned variables and failure modes.",
+        "Compare breadth and depth scaling patterns using the same evidence lens.",
+        "Decide when committees, judges, and critique loops justify their cost."
+      ],
+      "prerequisites": [
+        "training-agents-with-tuned-variables",
+        "constraints-units-safety-nets"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect"
+      ],
+      "primaryExample": "/examples/text-to-sql.yml",
+      "introModulePath": "/src/generated/book/content/chapters/pattern-anatomy-and-evaluation/chapter.mdx",
+      "introExcerpt": [
+        "Once teams can expose agent variables explicitly, the next question is comparative: which pattern is the right one to use under the current workload, budget, and failure mode? This chapter gives a compact way to read pattern pages and compare them as disciplined engineering options.",
+        "- Start with the scaffold family. - Then read the tuned variables and decision axes. - Only then decide whether the pattern deserves budget on your study plane."
+      ],
+      "sections": [
+        {
+          "id": "chapter-07-how-to-read-a-pattern-control-surface",
+          "slug": "how-to-read-a-pattern-control-surface",
+          "title": "How to Read a Pattern Control Surface",
+          "summary": "The fastest way to compare patterns is to read each one as a control surface: tuned variables, decision axes, failure modes, and the evidence needed for promotion.",
+          "chapter": "pattern-anatomy-and-evaluation",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "pattern-control-surface",
+            "breadth-scaling-patterns",
+            "depth-scaling-patterns"
+          ],
+          "exampleRefs": [
+            "/examples/tool-use.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/pattern-anatomy-and-evaluation/section/how-to-read-a-pattern-control-surface",
+          "modulePath": "/src/generated/book/content/chapters/pattern-anatomy-and-evaluation/01-how-to-read-a-pattern-control-surface.mdx",
+          "excerpt": [
+            "Every pattern page in the atlas answers the same operational questions:",
+            "- What scaffold is being introduced? - Which variables control it? - Which trade-off does it change? - Which failure mode appears first?",
+            "That common shape is intentional. If patterns are described with incompatible vocabularies, teams end up comparing narratives instead of comparing governed options."
+          ]
+        },
+        {
+          "id": "chapter-07-batching-map-reduce-and-routed-expertise",
+          "slug": "batching-map-reduce-and-routed-expertise",
+          "title": "Batching, Map-Reduce, and Routed Expertise",
+          "summary": "These breadth-oriented patterns all spend more budget on coverage, but they do it through very different control surfaces and failure modes.",
+          "chapter": "pattern-anatomy-and-evaluation",
+          "estimatedMinutes": 7,
+          "interactive": false,
+          "conceptRefs": [
+            "breadth-scaling-patterns",
+            "pattern-control-surface",
+            "tvars"
+          ],
+          "exampleRefs": [
+            "/examples/text-to-sql.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/pattern-anatomy-and-evaluation/section/batching-map-reduce-and-routed-expertise",
+          "modulePath": "/src/generated/book/content/chapters/pattern-anatomy-and-evaluation/02-batching-map-reduce-and-routed-expertise.mdx",
+          "excerpt": [
+            "Contextual Batching, Map-Reduce with LLMs, and Routed Expertise / MoE + Judge all scale breadth, but they solve different problems:",
+            "- batching reuses shared context - map-reduce decomposes a broad task into bounded shards - routed expertise creates several specialist views and compares them",
+            "Because they all spend budget on coverage, teams sometimes substitute them for one another too quickly. That is usually a mistake."
+          ]
+        },
+        {
+          "id": "chapter-07-reflection-judges-and-committee-decisions",
+          "slug": "reflection-judges-and-committee-decisions",
+          "title": "Reflection, Judges, and Committee Decisions",
+          "summary": "Depth-oriented refinement and committee-style decision patterns both add reasoning cost, but they do it for different purposes and must be evaluated with different evidence.",
+          "chapter": "pattern-anatomy-and-evaluation",
+          "estimatedMinutes": 8,
+          "interactive": false,
+          "conceptRefs": [
+            "depth-scaling-patterns",
+            "committee-judging",
+            "promotion-policy"
+          ],
+          "exampleRefs": [
+            "/examples/rag-support-bot.tvl.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/pattern-anatomy-and-evaluation/section/reflection-judges-and-committee-decisions",
+          "modulePath": "/src/generated/book/content/chapters/pattern-anatomy-and-evaluation/03-reflection-judges-and-committee-decisions.mdx",
+          "excerpt": [
+            "Reflective Refinement and Judge Committees / Debate are often grouped together because both add more reasoning work after a first pass. But their jobs are different.",
+            "- reflection asks: can one draft improve through bounded self-critique? - committee or debate asks: should several views argue or vote before a decision is accepted?",
+            "Reflection is primarily a revision controller. Committee patterns are primarily uncertainty-management and arbitration mechanisms."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "slug": "composing-patterns-for-production",
+      "title": "Composing Patterns for Production",
+      "summary": "Combine agent patterns only when they improve the study plane, not just because each scaffold looked attractive in isolation.",
+      "estimatedMinutes": 19,
+      "learningObjectives": [
+        "Compose several patterns with a clear scaffold-versus-controller split.",
+        "Apply safe narrowing ideas to multi-pattern workflows before rollout.",
+        "Decide when additional pattern complexity stops paying for itself."
+      ],
+      "prerequisites": [
+        "training-agents-with-tuned-variables",
+        "pattern-anatomy-and-evaluation",
+        "patterns-for-real-deployments",
+        "integration-patterns"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect",
+        "operator"
+      ],
+      "primaryExample": "/examples/book/ch5_integration_pipeline.sh",
+      "introModulePath": "/src/generated/book/content/chapters/composing-patterns-for-production/chapter.mdx",
+      "introExcerpt": [
+        "Production systems rarely stop at one pattern. The real challenge is composition: which scaffold is the base, which controller sits on top, and what evidence says the bundle is better than the simpler alternative?",
+        "This chapter keeps composition conservative. The goal is not to create the most sophisticated agent. The goal is to combine patterns only when the resulting control surface is still understandable, measurable, and governable."
+      ],
+      "sections": [
+        {
+          "id": "chapter-08-scaffold-controller-and-bundle-logic",
+          "slug": "scaffold-controller-and-bundle-logic",
+          "title": "Scaffold, Controller, and Bundle Logic",
+          "summary": "The cleanest multi-pattern systems separate the stable scaffold from the controller that adds extra search, reflection, or judging behavior.",
+          "chapter": "composing-patterns-for-production",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "pattern-composition",
+            "triagent-integration",
+            "pattern-control-surface"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch5_integration_pipeline.sh"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/composing-patterns-for-production/section/scaffold-controller-and-bundle-logic",
+          "modulePath": "/src/generated/book/content/chapters/composing-patterns-for-production/01-scaffold-controller-and-bundle-logic.mdx",
+          "excerpt": [
+            "The simplest way to reason about a pattern bundle is to split it into two layers:",
+            "- scaffold: the stable workflow structure that already works on its own - controller: the extra mechanism that adds search, reflection, judging, or another adaptive policy",
+            "This matches the way many effective systems are built. A narrow-waist base does the core work, and one bounded controller is allowed to change the operating point."
+          ]
+        },
+        {
+          "id": "chapter-08-safe-composition-rules",
+          "slug": "safe-composition-rules",
+          "title": "Safe Composition Rules",
+          "summary": "Pattern bundles should narrow or discipline the operational surface unless there is strong evidence that a broader bundle is still governable.",
+          "chapter": "composing-patterns-for-production",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "pattern-composition",
+            "safe-narrowing",
+            "promotion-manifest"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch4_staging.overlay.yml",
+            "/examples/book/ch4_hotfix.overlay.yml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/composing-patterns-for-production/section/safe-composition-rules",
+          "modulePath": "/src/generated/book/content/chapters/composing-patterns-for-production/02-safe-composition-rules.mdx",
+          "excerpt": [
+            "Composition rules deserve the same skepticism as overlays. A new bundle should not silently widen risk just because it combines individually attractive components.",
+            "In practice, safe composition often means:",
+            "- fewer active controllers in production than in experimentation - tighter retry or branch budgets in staging and rollout - manifest evidence that records exactly which bundle shape was promoted"
+          ]
+        },
+        {
+          "id": "chapter-08-when-to-stop-adding-patterns",
+          "slug": "when-to-stop-adding-patterns",
+          "title": "When to Stop Adding Patterns",
+          "summary": "A pattern stack should stop growing when the next controller increases complexity faster than it improves the governed operating point.",
+          "chapter": "composing-patterns-for-production",
+          "estimatedMinutes": 6,
+          "interactive": false,
+          "conceptRefs": [
+            "pattern-composition",
+            "promotion-policy",
+            "validation-workflow"
+          ],
+          "exampleRefs": [
+            "/examples/book/ch5_integration_manifest.yaml"
+          ],
+          "opalBridge": false,
+          "route": "/book/chapter/composing-patterns-for-production/section/when-to-stop-adding-patterns",
+          "modulePath": "/src/generated/book/content/chapters/composing-patterns-for-production/03-when-to-stop-adding-patterns.mdx",
+          "excerpt": [
+            "There is a recurring failure mode in agent engineering: once one pattern helps, every new problem looks like an invitation to add another controller. The result is a workflow that appears advanced but becomes difficult to benchmark, explain, and operate.",
+            "The stopping rule should be explicit:",
+            "- does the added pattern improve the governed operating point? - is the gain large enough to justify the additional cost and latency? - can reviewers still explain the release decision with one manifest and one evaluation story?"
+          ]
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "id": "material-quickstart-lab-pack",
+      "slug": "quickstart-lab-pack",
+      "title": "Quickstart Lab Pack",
+      "summary": "A guided 45-minute lab that takes a new engineer from zero to a validated TVL module with one microsim-backed explanation.",
+      "audience": "New AI and software engineers onboarding to TVL.",
+      "materialType": "Lab Pack",
+      "estimatedMinutes": 45,
+      "objectives": [
+        "Author a minimal TVL module and explain each required block in plain language.",
+        "Run the core validation commands without guesswork.",
+        "Use the microsim to justify one structural constraint before Chapter 3 formalizes it."
+      ],
+      "relatedSections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "getting-fluent-in-tvl/validation-warm-up",
+        "getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs"
+      ],
+      "route": "/book/materials/quickstart-lab-pack",
+      "modulePath": "/src/generated/book/content/materials/quickstart-lab-pack.mdx",
+      "downloadPath": "/book-assets/materials/quickstart-lab-pack.md"
+    },
+    {
+      "id": "material-architecture-review-workshop",
+      "slug": "architecture-review-workshop",
+      "title": "Architecture Review Workshop",
+      "summary": "A structured worksheet for technical leads who need to review whether a proposed TVL contract is complete, governable, and integration-ready.",
+      "audience": "Architects and technical leads designing governed optimization systems.",
+      "materialType": "Workshop",
+      "estimatedMinutes": 60,
+      "objectives": [
+        "Review a TVL module as a system contract rather than only a config file.",
+        "Pressure-test the chosen TVARs, constraints, and overlays against deployment reality.",
+        "Record integration decisions for Triagent/TVO, DVL, and audit artifacts."
+      ],
+      "relatedSections": [
+        "why-tvl-exists/running-example-campus-orientation-rag",
+        "getting-fluent-in-tvl/tvl-0-9-type-system",
+        "patterns-for-real-deployments/layered-specifications",
+        "patterns-for-real-deployments/visualizing-overlays",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "route": "/book/materials/architecture-review-workshop",
+      "modulePath": "/src/generated/book/content/materials/architecture-review-workshop.mdx",
+      "downloadPath": "/book-assets/materials/architecture-review-workshop.md"
+    },
+    {
+      "id": "material-operator-rollout-drill",
+      "slug": "operator-rollout-drill",
+      "title": "Operator Rollout Drill",
+      "summary": "A reliability-focused exercise that trains operators to inspect constraints, overlays, and manifests under rollout pressure.",
+      "audience": "Platform, reliability, and release engineers responsible for safe deployment.",
+      "materialType": "Drill",
+      "estimatedMinutes": 50,
+      "objectives": [
+        "Distinguish structural failures from operational feasibility failures under time pressure.",
+        "Use overlays and provenance artifacts to recover safely during an incident.",
+        "Explain what evidence must exist before a rollback or hotfix is approved."
+      ],
+      "relatedSections": [
+        "constraints-units-safety-nets/two-kinds-of-constraints",
+        "constraints-units-safety-nets/testing-constraints",
+        "patterns-for-real-deployments/hotfix-playbook",
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "route": "/book/materials/operator-rollout-drill",
+      "modulePath": "/src/generated/book/content/materials/operator-rollout-drill.mdx",
+      "downloadPath": "/book-assets/materials/operator-rollout-drill.md"
+    },
+    {
+      "id": "material-team-facilitator-guide",
+      "slug": "team-facilitator-guide",
+      "title": "Team Facilitator Guide",
+      "summary": "A team-ready facilitation plan for turning the TVL book into a workshop series with prep, prompts, and debrief checkpoints.",
+      "audience": "Engineering managers, enablement leads, and staff engineers running TVL onboarding sessions.",
+      "materialType": "Facilitator Guide",
+      "estimatedMinutes": 75,
+      "objectives": [
+        "Help learners identify at least one under-governed decision in their own system.",
+        "Help learners distinguish TVL contract work from overlays, rollout evidence, and runtime-side checks.",
+        "Leave the session with one concrete next material matched to each learner role."
+      ],
+      "relatedSections": [
+        "why-tvl-exists/design-goals-at-a-glance",
+        "getting-fluent-in-tvl/validation-warm-up",
+        "constraints-units-safety-nets/two-kinds-of-constraints",
+        "patterns-for-real-deployments/hotfix-playbook",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "route": "/book/materials/team-facilitator-guide",
+      "modulePath": "/src/generated/book/content/materials/team-facilitator-guide.mdx",
+      "downloadPath": "/book-assets/materials/team-facilitator-guide.md"
+    },
+    {
+      "id": "material-capstone-governed-adaptation-challenge",
+      "slug": "capstone-governed-adaptation-challenge",
+      "title": "Capstone Governed Adaptation Challenge",
+      "summary": "A capstone project that asks the learner to write a TVL contract, justify its constraints, design overlays, and define the promotion evidence bundle.",
+      "audience": "Learners who have finished the core TVL book and want a portfolio-style challenge.",
+      "materialType": "Capstone",
+      "estimatedMinutes": 90,
+      "objectives": [
+        "Author a credible TVL module for a non-trivial AI system.",
+        "Explain the boundary between structural rules, `env.context.*` feasibility checks, and runtime evidence.",
+        "Design a rollout package with overlays, provenance, and promotion artifacts."
+      ],
+      "relatedSections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "constraints-units-safety-nets/derived-constraints",
+        "patterns-for-real-deployments/module-composition-with-tvl-compose",
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "route": "/book/materials/capstone-governed-adaptation-challenge",
+      "modulePath": "/src/generated/book/content/materials/capstone-governed-adaptation-challenge.mdx",
+      "downloadPath": "/book-assets/materials/capstone-governed-adaptation-challenge.md"
+    },
+    {
+      "id": "material-agent-engineer-onboarding-lab",
+      "slug": "agent-engineer-onboarding-lab",
+      "title": "Agent Engineer Onboarding Lab",
+      "summary": "A guided lab for engineers who need to move from basic TVL fluency into agent-specific tuned variables, budgets, and validation loops.",
+      "audience": "AI and software engineers onboarding to the academy track.",
+      "materialType": "Lab Pack",
+      "estimatedMinutes": 75,
+      "objectives": [
+        "Translate one named agent pattern into an explicit governed control surface.",
+        "Choose a small set of meaningful TVARs for an agent workflow without overfitting the surface.",
+        "Sketch the evaluation and promotion loop that would justify shipping a changed workflow."
+      ],
+      "relatedSections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "getting-fluent-in-tvl/validation-warm-up",
+        "training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces",
+        "training-agents-with-tuned-variables/choosing-tuned-variables-for-agent-systems",
+        "training-agents-with-tuned-variables/budgets-feedback-and-promotion-loops"
+      ],
+      "route": "/book/materials/agent-engineer-onboarding-lab",
+      "modulePath": "/src/generated/book/content/materials/agent-engineer-onboarding-lab.mdx",
+      "downloadPath": "/book-assets/materials/agent-engineer-onboarding-lab.md"
+    },
+    {
+      "id": "material-pattern-comparison-workshop",
+      "slug": "pattern-comparison-workshop",
+      "title": "Pattern Comparison Workshop",
+      "summary": "A facilitated exercise for comparing breadth, depth, and committee-style patterns on one shared evaluation plane.",
+      "audience": "Engineering teams deciding which agent scaffold deserves experimentation budget next.",
+      "materialType": "Workshop",
+      "estimatedMinutes": 60,
+      "objectives": [
+        "Compare several patterns using tuned variables, decision axes, and failure modes instead of hype.",
+        "Distinguish breadth-scaling from depth-scaling controllers.",
+        "Record a defendable shortlist of patterns to test first."
+      ],
+      "relatedSections": [
+        "pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface",
+        "pattern-anatomy-and-evaluation/batching-map-reduce-and-routed-expertise",
+        "pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions"
+      ],
+      "route": "/book/materials/pattern-comparison-workshop",
+      "modulePath": "/src/generated/book/content/materials/pattern-comparison-workshop.mdx",
+      "downloadPath": "/book-assets/materials/pattern-comparison-workshop.md"
+    },
+    {
+      "id": "material-pattern-composition-capstone",
+      "slug": "pattern-composition-capstone",
+      "title": "Pattern Composition Capstone",
+      "summary": "A capstone exercise that asks learners to justify one production-ready pattern bundle with a clear scaffold, controller, and promotion story.",
+      "audience": "Learners who finished the academy track and need to show they can design a governed multi-pattern workflow.",
+      "materialType": "Capstone",
+      "estimatedMinutes": 90,
+      "objectives": [
+        "Design one pattern bundle with a clear scaffold-versus-controller split.",
+        "Apply safe narrowing ideas to the production version of that bundle.",
+        "Produce a manifest-oriented release story that a reviewer could audit."
+      ],
+      "relatedSections": [
+        "composing-patterns-for-production/scaffold-controller-and-bundle-logic",
+        "composing-patterns-for-production/safe-composition-rules",
+        "composing-patterns-for-production/when-to-stop-adding-patterns",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "route": "/book/materials/pattern-composition-capstone",
+      "modulePath": "/src/generated/book/content/materials/pattern-composition-capstone.mdx",
+      "downloadPath": "/book-assets/materials/pattern-composition-capstone.md"
+    }
+  ],
+  "patterns": [
+    {
+      "id": "pattern-contextual-batching",
+      "slug": "contextual-batching",
+      "title": "Contextual Batching",
+      "summary": "Pack multiple work items or review lenses into one prompt context, then tune the packing policy instead of treating batching as a fixed prompt trick.",
+      "family": "Breadth Scaling",
+      "sortOrder": 1,
+      "estimatedMinutes": 16,
+      "tunedVariables": [
+        "items per batch",
+        "tasks per item",
+        "ordering",
+        "overlap",
+        "carry-over summary"
+      ],
+      "decisionAxes": [
+        "Throughput vs recall",
+        "Token efficiency vs attention dilution",
+        "Shared context reuse vs position sensitivity"
+      ],
+      "failureModes": [
+        "Recall drops when too many items compete for attention.",
+        "Later items inherit weaker coverage when ordering is unstable.",
+        "Mixed task lenses blur the output format and make validation harder."
+      ],
+      "relatedSections": [
+        "getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs",
+        "constraints-units-safety-nets/testing-constraints",
+        "patterns-for-real-deployments/provenance-matters"
+      ],
+      "conceptRefs": [
+        "tvars",
+        "promotion-policy",
+        "validation-workflow"
+      ],
+      "primaryExample": "/examples/book/ch2_hello_tvl.tvl.yml",
+      "route": "/book/patterns/contextual-batching",
+      "modulePath": "/src/generated/book/content/patterns/contextual-batching.mdx"
+    },
+    {
+      "id": "pattern-map-reduce-with-llms",
+      "slug": "map-reduce-with-llms",
+      "title": "Map-Reduce with LLMs",
+      "summary": "Split a task into smaller bounded subproblems, run parallel or repeated map passes, then tune the reducer that merges them into one governed answer.",
+      "family": "Decomposition",
+      "sortOrder": 2,
+      "estimatedMinutes": 18,
+      "tunedVariables": [
+        "mapper granularity",
+        "items per map shard",
+        "reducer prompt",
+        "merge policy",
+        "conflict resolution threshold"
+      ],
+      "decisionAxes": [
+        "Parallel coverage vs reducer complexity",
+        "Local answer quality vs global coherence",
+        "Shard independence vs expensive recombination"
+      ],
+      "failureModes": [
+        "Mappers omit context needed for a good global answer.",
+        "Reducers flatten disagreements instead of resolving them.",
+        "Shard boundaries drift, creating duplicate or contradictory evidence."
+      ],
+      "relatedSections": [
+        "getting-fluent-in-tvl/validation-warm-up",
+        "constraints-units-safety-nets/testing-constraints",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "conceptRefs": [
+        "tvars",
+        "validation-workflow",
+        "promotion-policy"
+      ],
+      "primaryExample": "/examples/text-to-sql.tvl.yml",
+      "route": "/book/patterns/map-reduce-with-llms",
+      "modulePath": "/src/generated/book/content/patterns/map-reduce-with-llms.mdx"
+    },
+    {
+      "id": "pattern-routed-expertise-moe-judge",
+      "slug": "routed-expertise-moe-judge",
+      "title": "Routed Expertise / MoE + Judge",
+      "summary": "Run multiple specialized experts over the same task, then tune the judging or aggregation rule that decides which expert output wins or how they combine.",
+      "family": "Breadth Scaling",
+      "sortOrder": 3,
+      "estimatedMinutes": 18,
+      "tunedVariables": [
+        "experts to run",
+        "routing policy",
+        "expert diversity source",
+        "judge policy",
+        "aggregation rule"
+      ],
+      "decisionAxes": [
+        "Specialist lift vs cumulative cost",
+        "Diversity vs duplicated effort",
+        "Judge quality vs additional latency"
+      ],
+      "failureModes": [
+        "Experts converge on the same blind spot because diversity is cosmetic.",
+        "The judge prefers style over correctness or evidence.",
+        "Routing overhead exceeds the benefit of specialization."
+      ],
+      "relatedSections": [
+        "why-tvl-exists/design-goals-at-a-glance",
+        "integration-patterns/field-notes-replay-the-optimization-story",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "conceptRefs": [
+        "tvars",
+        "triagent-integration",
+        "promotion-policy"
+      ],
+      "primaryExample": "/examples/tool-use.tvl.yml",
+      "route": "/book/patterns/routed-expertise-moe-judge",
+      "modulePath": "/src/generated/book/content/patterns/routed-expertise-moe-judge.mdx"
+    },
+    {
+      "id": "pattern-reflective-refinement",
+      "slug": "reflective-refinement",
+      "title": "Reflective Refinement",
+      "summary": "Start with one bounded draft, then tune the number and style of critique-and-revise loops instead of treating reflection as an unbounded “try again” instruction.",
+      "family": "Depth Scaling",
+      "sortOrder": 4,
+      "estimatedMinutes": 17,
+      "tunedVariables": [
+        "revision rounds",
+        "critique mode",
+        "state carry-over",
+        "stop rule",
+        "revision rubric"
+      ],
+      "decisionAxes": [
+        "Quality lift vs extra latency",
+        "Deeper correction vs repetitive self-confirmation",
+        "Strong memory carry-over vs contamination from bad drafts"
+      ],
+      "failureModes": [
+        "Later rounds paraphrase the first answer instead of correcting it.",
+        "Critique mode is too vague to surface actionable problems.",
+        "The loop keeps running after measurable gains have flattened."
+      ],
+      "relatedSections": [
+        "getting-fluent-in-tvl/validation-warm-up",
+        "constraints-units-safety-nets/testing-constraints",
+        "integration-patterns/field-notes-replay-the-optimization-story"
+      ],
+      "conceptRefs": [
+        "tvars",
+        "validation-workflow",
+        "promotion-policy"
+      ],
+      "primaryExample": "/examples/rag-support-bot.tvl.yml",
+      "route": "/book/patterns/reflective-refinement",
+      "modulePath": "/src/generated/book/content/patterns/reflective-refinement.mdx"
+    },
+    {
+      "id": "pattern-judge-committees-debate",
+      "slug": "judge-committees-debate",
+      "title": "Judge Committees / Debate",
+      "summary": "Introduce controlled disagreement among solvers or judges, then tune the committee size, rounds, and aggregation rule that convert disagreement into a release decision.",
+      "family": "Consensus",
+      "sortOrder": 5,
+      "estimatedMinutes": 18,
+      "tunedVariables": [
+        "committee size",
+        "debate rounds",
+        "communication topology",
+        "rubric",
+        "aggregation policy"
+      ],
+      "decisionAxes": [
+        "Better calibration vs more latency and token cost",
+        "Richer disagreement vs coordination overhead",
+        "Dynamic judge selection vs reproducibility"
+      ],
+      "failureModes": [
+        "Debate amplifies confident but wrong arguments.",
+        "Judges correlate too strongly, so the committee is only cosmetic.",
+        "Aggregation rules hide split decisions that should block rollout."
+      ],
+      "relatedSections": [
+        "why-tvl-exists/design-goals-at-a-glance",
+        "constraints-units-safety-nets/testing-constraints",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "conceptRefs": [
+        "promotion-policy",
+        "triagent-integration",
+        "validation-workflow"
+      ],
+      "primaryExample": "/examples/rag-support-bot.tvl.yml",
+      "route": "/book/patterns/judge-committees-debate",
+      "modulePath": "/src/generated/book/content/patterns/judge-committees-debate.mdx"
+    }
+  ],
+  "paths": [
+    {
+      "id": "agent-engineer",
+      "title": "Agent Engineer",
+      "audience": "AI and software engineers learning how to shape, evaluate, and govern agent workflows.",
+      "goal": "Move from basic TVL fluency to pattern comparison and safe multi-pattern composition for production.",
+      "sections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "getting-fluent-in-tvl/validation-warm-up",
+        "training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces",
+        "training-agents-with-tuned-variables/choosing-tuned-variables-for-agent-systems",
+        "training-agents-with-tuned-variables/budgets-feedback-and-promotion-loops",
+        "pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface",
+        "pattern-anatomy-and-evaluation/batching-map-reduce-and-routed-expertise",
+        "pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions",
+        "composing-patterns-for-production/scaffold-controller-and-bundle-logic",
+        "composing-patterns-for-production/safe-composition-rules",
+        "composing-patterns-for-production/when-to-stop-adding-patterns",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "entrySections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces"
+      ],
+      "completionSections": [
+        "composing-patterns-for-production/when-to-stop-adding-patterns",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "estimatedMinutes": 114
+    },
+    {
+      "id": "architect",
+      "title": "Architect",
+      "audience": "Technical leads designing governed optimization systems.",
+      "goal": "Understand the language model, constraints, overlays, and integration contracts end to end.",
+      "sections": [
+        "why-tvl-exists/running-example-campus-orientation-rag",
+        "getting-fluent-in-tvl/tvl-0-9-type-system",
+        "constraints-units-safety-nets/structural-constraint-syntax",
+        "patterns-for-real-deployments/layered-specifications",
+        "patterns-for-real-deployments/visualizing-overlays",
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "entrySections": [
+        "why-tvl-exists/running-example-campus-orientation-rag",
+        "getting-fluent-in-tvl/tvl-0-9-type-system"
+      ],
+      "completionSections": [
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "estimatedMinutes": 90
+    },
+    {
+      "id": "operator",
+      "title": "Operator",
+      "audience": "Platform and reliability engineers owning rollout safety.",
+      "goal": "Operate constraints, overlays, provenance, and promotion evidence confidently during change and incident response.",
+      "sections": [
+        "constraints-units-safety-nets/two-kinds-of-constraints",
+        "constraints-units-safety-nets/derived-constraints",
+        "constraints-units-safety-nets/testing-constraints",
+        "patterns-for-real-deployments/layered-specifications",
+        "patterns-for-real-deployments/hotfix-playbook",
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/tvl-cli-tools",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "entrySections": [
+        "constraints-units-safety-nets/two-kinds-of-constraints",
+        "patterns-for-real-deployments/hotfix-playbook"
+      ],
+      "completionSections": [
+        "integration-patterns/tvl-cli-tools",
+        "integration-patterns/manifests-and-promotion"
+      ],
+      "estimatedMinutes": 72
+    },
+    {
+      "id": "quickstart",
+      "title": "Quickstart",
+      "audience": "Engineers who need a valid TVL module fast.",
+      "goal": "Author, validate, and reason about one real TVL module with at least one interactive checkpoint.",
+      "sections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "getting-fluent-in-tvl/validation-warm-up",
+        "getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs",
+        "constraints-units-safety-nets/two-kinds-of-constraints",
+        "constraints-units-safety-nets/testing-constraints",
+        "integration-patterns/tvl-cli-tools"
+      ],
+      "entrySections": [
+        "getting-fluent-in-tvl/minimal-working-spec"
+      ],
+      "completionSections": [
+        "constraints-units-safety-nets/testing-constraints",
+        "integration-patterns/tvl-cli-tools"
+      ],
+      "estimatedMinutes": 42
+    }
+  ],
+  "concepts": [
+    {
+      "id": "drift-governance",
+      "term": "Drift and Governance",
+      "definition": "The operational reality that model catalogs, prices, latency envelopes, and business rules change faster than application releases.",
+      "prerequisites": [],
+      "sections": [
+        "why-tvl-exists/design-goals-at-a-glance",
+        "why-tvl-exists/running-example-campus-orientation-rag"
+      ]
+    },
+    {
+      "id": "tvars",
+      "term": "Tuned Variables (TVARs)",
+      "definition": "Typed parameters that define the search space for governed optimization.",
+      "prerequisites": [
+        "drift-governance"
+      ],
+      "sections": [
+        "getting-fluent-in-tvl/minimal-working-spec",
+        "getting-fluent-in-tvl/tvl-0-9-type-system"
+      ]
+    },
+    {
+      "id": "environment-snapshot",
+      "term": "Environment Snapshot",
+      "definition": "A concrete identifier and component set that anchors a TVL module to the environment used during evaluation.",
+      "prerequisites": [
+        "drift-governance"
+      ],
+      "sections": [
+        "why-tvl-exists/running-example-campus-orientation-rag",
+        "patterns-for-real-deployments/layered-specifications"
+      ]
+    },
+    {
+      "id": "evaluation-set",
+      "term": "Evaluation Set",
+      "definition": "The workload and optional seed used to compare configurations consistently.",
+      "prerequisites": [
+        "drift-governance"
+      ],
+      "sections": [
+        "why-tvl-exists/running-example-campus-orientation-rag",
+        "getting-fluent-in-tvl/minimal-working-spec"
+      ]
+    },
+    {
+      "id": "type-system",
+      "term": "TVL Type System",
+      "definition": "Explicit domain shapes for TVARs such as bool, int, float, enum, tuple, and callable references.",
+      "prerequisites": [
+        "tvars"
+      ],
+      "sections": [
+        "getting-fluent-in-tvl/tvl-0-9-type-system"
+      ]
+    },
+    {
+      "id": "structural-constraints",
+      "term": "Structural Rules",
+      "definition": "Typed formulas over TVARs that prune invalid assignments before trials run.",
+      "prerequisites": [
+        "tvars",
+        "type-system"
+      ],
+      "sections": [
+        "constraints-units-safety-nets/two-kinds-of-constraints",
+        "constraints-units-safety-nets/structural-constraint-syntax"
+      ]
+    },
+    {
+      "id": "derived-constraints",
+      "term": "Operational Preconditions",
+      "definition": "In TVL syntax, these are feasibility checks under `constraints.derived` over environment symbols such as budgets, quotas, and approved external limits.",
+      "prerequisites": [
+        "structural-constraints"
+      ],
+      "sections": [
+        "constraints-units-safety-nets/derived-constraints",
+        "constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react"
+      ]
+    },
+    {
+      "id": "operational-checks",
+      "term": "Operational Checks",
+      "definition": "Runtime validation steps that gate feasibility budgets, environment constraints, and deployment readiness.",
+      "prerequisites": [
+        "derived-constraints"
+      ],
+      "sections": [
+        "constraints-units-safety-nets/derived-constraints",
+        "integration-patterns/tvl-cli-tools"
+      ]
+    },
+    {
+      "id": "satisfiability",
+      "term": "Satisfiability Preflight",
+      "definition": "The structural check that ensures at least one valid assignment exists before exploration.",
+      "prerequisites": [
+        "structural-constraints"
+      ],
+      "sections": [
+        "constraints-units-safety-nets/testing-constraints",
+        "constraints-units-safety-nets/checklist-before-promotion"
+      ]
+    },
+    {
+      "id": "promotion-policy",
+      "term": "Promotion Policy",
+      "definition": "The governance contract that records practical-effect and statistical requirements for rollout decisions.",
+      "prerequisites": [
+        "drift-governance"
+      ],
+      "sections": [
+        "why-tvl-exists/design-goals-at-a-glance",
+        "getting-fluent-in-tvl/minimal-working-spec"
+      ]
+    },
+    {
+      "id": "overlays",
+      "term": "Overlays and Composition",
+      "definition": "Preprocessing inputs that safely narrow or adapt a base TVL module into environment-specific variants.",
+      "prerequisites": [
+        "environment-snapshot",
+        "structural-constraints"
+      ],
+      "sections": [
+        "patterns-for-real-deployments/module-composition-with-tvl-compose",
+        "patterns-for-real-deployments/hotfix-playbook"
+      ]
+    },
+    {
+      "id": "safe-narrowing",
+      "term": "Safe Narrowing",
+      "definition": "The rule that overlays should remove options or tighten bounds rather than silently widen risk.",
+      "prerequisites": [
+        "overlays"
+      ],
+      "sections": [
+        "patterns-for-real-deployments/override-rules",
+        "patterns-for-real-deployments/hotfix-playbook"
+      ]
+    },
+    {
+      "id": "provenance",
+      "term": "Provenance",
+      "definition": "The artifact trail that links composed specs, overlays, timestamps, and build identities for auditability.",
+      "prerequisites": [
+        "overlays"
+      ],
+      "sections": [
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/manifests-and-promotion"
+      ]
+    },
+    {
+      "id": "cli-toolchain",
+      "term": "CLI Toolchain",
+      "definition": "The deterministic sequence of parse, lint, validate, structural, and operational checks used locally and in CI.",
+      "prerequisites": [
+        "promotion-policy",
+        "structural-constraints"
+      ],
+      "sections": [
+        "getting-fluent-in-tvl/validation-warm-up",
+        "integration-patterns/tvl-cli-tools"
+      ]
+    },
+    {
+      "id": "validation-workflow",
+      "term": "Validation Workflow",
+      "definition": "The practical local-to-CI sequence for parsing, linting, schema validation, and feasibility checks.",
+      "prerequisites": [
+        "cli-toolchain"
+      ],
+      "sections": [
+        "getting-fluent-in-tvl/validation-warm-up",
+        "constraints-units-safety-nets/testing-constraints"
+      ]
+    },
+    {
+      "id": "triagent-integration",
+      "term": "Triagent/TVO Integration",
+      "definition": "Triagent is the optimization platform, and TVO is the optimizer inside it that reads TVL, explores candidates, and produces promotion evidence.",
+      "prerequisites": [
+        "cli-toolchain",
+        "promotion-policy"
+      ],
+      "sections": [
+        "integration-patterns/field-notes-replay-the-optimization-story",
+        "integration-patterns/manifests-and-promotion"
+      ]
+    },
+    {
+      "id": "opal-bridge",
+      "term": "OPAL Bridge",
+      "definition": "OPAL is the higher-level authoring layer that lowers into TVL plus runtime-side metadata for execution systems.",
+      "prerequisites": [
+        "triagent-integration"
+      ],
+      "sections": [
+        "integration-patterns/manifests-and-promotion"
+      ]
+    },
+    {
+      "id": "dvl-integration",
+      "term": "DVL Integration",
+      "definition": "DVL is the data-validation layer that checks whether evaluation datasets are still trustworthy before rollout decisions are accepted.",
+      "prerequisites": [
+        "triagent-integration"
+      ],
+      "sections": [
+        "integration-patterns/manifests-and-promotion"
+      ]
+    },
+    {
+      "id": "promotion-manifest",
+      "term": "Promotion Manifest",
+      "definition": "The audit bundle that captures specs, validations, measurements, and rollout decisions.",
+      "prerequisites": [
+        "provenance",
+        "triagent-integration"
+      ],
+      "sections": [
+        "patterns-for-real-deployments/provenance-matters",
+        "integration-patterns/manifests-and-promotion"
+      ]
+    },
+    {
+      "id": "microsim-lab",
+      "term": "Microsim Lab",
+      "definition": "A focused interactive model that builds intuition for TVL trade-offs and constraint feedback.",
+      "prerequisites": [
+        "tvars",
+        "structural-constraints"
+      ],
+      "sections": [
+        "getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs",
+        "constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react",
+        "integration-patterns/field-notes-replay-the-optimization-story"
+      ]
+    },
+    {
+      "id": "running-example",
+      "term": "Running Example",
+      "definition": "The Campus Orientation RAG system that ties the concepts, examples, and labs together across the book.",
+      "prerequisites": [
+        "drift-governance"
+      ],
+      "sections": [
+        "why-tvl-exists/running-example-campus-orientation-rag",
+        "getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs"
+      ]
+    },
+    {
+      "id": "pattern-control-surface",
+      "term": "Pattern Control Surface",
+      "definition": "The explicit set of tuned variables, budgets, and decision hooks that make an agent pattern measurable and governable.",
+      "prerequisites": [
+        "tvars"
+      ],
+      "sections": [
+        "training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces",
+        "pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface"
+      ]
+    },
+    {
+      "id": "breadth-scaling-patterns",
+      "term": "Breadth-Scaling Patterns",
+      "definition": "Agent patterns that spend budget on more parallel views, shards, or specialists rather than on sequential reconsideration.",
+      "prerequisites": [
+        "pattern-control-surface"
+      ],
+      "sections": [
+        "pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface",
+        "pattern-anatomy-and-evaluation/batching-map-reduce-and-routed-expertise"
+      ]
+    },
+    {
+      "id": "depth-scaling-patterns",
+      "term": "Depth-Scaling Patterns",
+      "definition": "Agent patterns that spend budget on additional critique, revision, or sequential reasoning rounds.",
+      "prerequisites": [
+        "pattern-control-surface"
+      ],
+      "sections": [
+        "pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface",
+        "pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions"
+      ]
+    },
+    {
+      "id": "committee-judging",
+      "term": "Committee Judging",
+      "definition": "Controlled disagreement among judges or solvers that is resolved through an explicit debate or aggregation policy.",
+      "prerequisites": [
+        "depth-scaling-patterns",
+        "promotion-policy"
+      ],
+      "sections": [
+        "pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions"
+      ]
+    },
+    {
+      "id": "pattern-composition",
+      "term": "Pattern Composition",
+      "definition": "The disciplined bundling of several agent patterns into one workflow with a clear scaffold, controller, and rollback story.",
+      "prerequisites": [
+        "pattern-control-surface",
+        "triagent-integration"
+      ],
+      "sections": [
+        "composing-patterns-for-production/scaffold-controller-and-bundle-logic",
+        "composing-patterns-for-production/when-to-stop-adding-patterns"
+      ]
+    }
+  ],
+  "search": [
+    {
+      "id": "chapter-01-design-goals-at-a-glance",
+      "kind": "section",
+      "title": "Design Goals at a Glance",
+      "chapterSlug": "why-tvl-exists",
+      "chapterTitle": "Why TVL Exists",
+      "sectionSlug": "design-goals-at-a-glance",
+      "summary": "TVL keeps optimization governable by making tunable knobs, constraints, and promotion evidence explicit in one contract.",
+      "route": "/book/chapter/why-tvl-exists/section/design-goals-at-a-glance",
+      "conceptRefs": [
+        "drift-governance",
+        "tvars",
+        "promotion-policy"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "- Type-safe tuning variables separate categorical choice from continuous ranges. - Deterministic exports make generated files (such as params.yaml) reproducible in CI. - Declarative constraints (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers. - Governed promotion requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out. The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and rerun TVO . The optimizer explores safely and promotes only when constraints hold—no frantic code edits.",
+      "sectionKey": "why-tvl-exists/design-goals-at-a-glance"
+    },
+    {
+      "id": "chapter-01-running-example-campus-orientation-rag",
+      "kind": "section",
+      "title": "Running Example · Campus Orientation RAG",
+      "chapterSlug": "why-tvl-exists",
+      "chapterTitle": "Why TVL Exists",
+      "sectionSlug": "running-example-campus-orientation-rag",
+      "summary": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+      "route": "/book/chapter/why-tvl-exists/section/running-example-campus-orientation-rag",
+      "conceptRefs": [
+        "running-example",
+        "environment-snapshot",
+        "evaluation-set"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend. Download /examples/rag-support-bot.tvl.yml and run tvl-validate rag-support-bot.tvl.yml to check the spec against the TVL schema. The validator catches type mismatches, domain violations, and unsatisfiable constraints.",
+      "sectionKey": "why-tvl-exists/running-example-campus-orientation-rag"
+    },
+    {
+      "id": "chapter-01-field-notes-legend",
+      "kind": "section",
+      "title": "Field Notes Legend",
+      "chapterSlug": "why-tvl-exists",
+      "chapterTitle": "Why TVL Exists",
+      "sectionSlug": "field-notes-legend",
+      "summary": "The book uses recurring callouts to separate fast tips, reliability gotchas, and integration guidance.",
+      "route": "/book/chapter/why-tvl-exists/section/field-notes-legend",
+      "conceptRefs": [],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "Throughout the interactive book you will see three callouts: - Hackathon Moves — quick tips for rapid experimentation. - Reliability Pitfalls — gotchas that often surface in incident reviews. - Integration Hints — pointers linking a concept to Triagent/TVO or DVL workflows.",
+      "sectionKey": "why-tvl-exists/field-notes-legend"
+    },
+    {
+      "id": "chapter-02-minimal-working-spec",
+      "kind": "section",
+      "title": "Minimal Working Spec",
+      "chapterSlug": "getting-fluent-in-tvl",
+      "chapterTitle": "Getting Fluent in TVL",
+      "sectionSlug": "minimal-working-spec",
+      "summary": "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer.",
+      "route": "/book/chapter/getting-fluent-in-tvl/section/minimal-working-spec",
+      "conceptRefs": [
+        "tvars",
+        "evaluation-set",
+        "promotion-policy"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect"
+      ],
+      "text": "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer. - TVARs are the knobs the optimizer is allowed to turn. - The evaluation set is the shared test workload used to compare candidates fairly. - The promotion policy is the shipping rulebook: it says what counts as a real win. It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only about what can change; it is also about what evidence is required before a change is allowed to ship. If you are coming from standard software configuration, the easiest way to read this file is: 1. environment tells you which deployed index and gateway this spec was evaluated against. 2. tvars tells you what can change. 3. objectives tells you what “better” means. 4. promotion policy tells you when “better” is strong enough to ship. - Every TVAR has an explicit type and domain? - environment.bindings names the concrete system pieces the study used? - Objectives declared with direction: maximize or minimize? - promotion policy includes min effect for each objective? - environment.snapshot id is an RFC3339 timestamp? tvars says what may change. objectives say what better means. promotion policy says when “better” is credible and large enough to justify rollout.",
+      "sectionKey": "getting-fluent-in-tvl/minimal-working-spec"
+    },
+    {
+      "id": "chapter-02-validation-warm-up",
+      "kind": "section",
+      "title": "Validation Warm-Up",
+      "chapterSlug": "getting-fluent-in-tvl",
+      "chapterTitle": "Getting Fluent in TVL",
+      "sectionSlug": "validation-warm-up",
+      "summary": "Use tvl-validate to catch missing sections, schema mismatches, and other cheap mistakes before you optimize.",
+      "route": "/book/chapter/getting-fluent-in-tvl/section/validation-warm-up",
+      "conceptRefs": [
+        "validation-workflow",
+        "cli-toolchain"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect"
+      ],
+      "text": "Use tvl-validate to check your spec against the TVL schema: The fast win is structure. tvl-validate catches missing sections, bad shapes, and schema mismatches. It does not tell you whether the candidate is good, safe, or operationally feasible in production. tvl-validate is the fast sanity check. In simple terms, it answers: - “Did I include the required sections?” - “Did I spell the structure correctly?” - “Are the values shaped the way TVL expects?” It does not prove that your search space is useful or safe by itself. That is where the broader validation workflow comes in. For deeper inspection, use this helper script to print the TVARs and their domains: If you are new to the toolchain, think of this sequence as the software-engineering version of “compile before you optimize.” The goal is to catch cheap mistakes while they are still cheap. Passing schema validation is only the first gate. You still need parsing, linting, structural feasibility checks, and operational checks to know whether the search space is usable and whether rollout evidence will stand up in review.",
+      "sectionKey": "getting-fluent-in-tvl/validation-warm-up"
+    },
+    {
+      "id": "chapter-02-tvl-0-9-type-system",
+      "kind": "section",
+      "title": "TVL Type System",
+      "chapterSlug": "getting-fluent-in-tvl",
+      "chapterTitle": "Getting Fluent in TVL",
+      "sectionSlug": "tvl-0-9-type-system",
+      "summary": "TVL enforces explicit typing on every tuned variable so search spaces stay interpretable and safe.",
+      "route": "/book/chapter/getting-fluent-in-tvl/section/tvl-0-9-type-system",
+      "conceptRefs": [
+        "tvars",
+        "type-system"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect"
+      ],
+      "text": "TVL enforces explicit typing on all tuned variables: For an application engineer, the type system is what keeps tuning from turning into guesswork. It makes the optimizer’s choices explicit: a boolean switch is different from an integer budget, which is different from a short approved list of model names. | Type | Description | Domain Examples | |------|-------------|-----------------| | bool | Boolean flag | [true, false] | | int | Integer value | range: [1, 10] or set: [1, 2, 4, 8] | | float | Floating-point | range: [0.0, 1.0] with optional resolution | | enum[str] | Finite set of strings | [\"gpt-4o\", \"claude-3\"] | | enum[int] | Finite set of integers | [100, 500, 1000] | | tuple[...] | Product type | Cartesian product of component domains | | callable[Proto] | Protocol reference | Registry-backed function lookup |",
+      "sectionKey": "getting-fluent-in-tvl/tvl-0-9-type-system"
+    },
+    {
+      "id": "chapter-02-common-pitfalls",
+      "kind": "section",
+      "title": "Common Pitfalls",
+      "chapterSlug": "getting-fluent-in-tvl",
+      "chapterTitle": "Getting Fluent in TVL",
+      "sectionSlug": "common-pitfalls",
+      "summary": "The most common early mistakes are wrong type names, missing promotion policy, and constraint syntax borrowed from other languages.",
+      "route": "/book/chapter/getting-fluent-in-tvl/section/common-pitfalls",
+      "conceptRefs": [],
+      "pathTags": [
+        "quickstart",
+        "architect"
+      ],
+      "text": "1. Using wrong type names — it's enum[str] not categorical, float not continuous. 2. Mixing deployment bindings with numeric operating assumptions instead of separating bindings and context. 3. Missing promotion policy — this is required in TVL (no implicit defaults). 4. Constraint syntax errors — use = for equality (not ==), and/or (not &&/||).",
+      "sectionKey": "getting-fluent-in-tvl/common-pitfalls"
+    },
+    {
+      "id": "chapter-02-analog-circuit-lab-explore-the-knobs",
+      "kind": "section",
+      "title": "Analog Circuit Lab · Explore the Knobs",
+      "chapterSlug": "getting-fluent-in-tvl",
+      "chapterTitle": "Getting Fluent in TVL",
+      "sectionSlug": "analog-circuit-lab-explore-the-knobs",
+      "summary": "Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above; latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.",
+      "route": "/book/chapter/getting-fluent-in-tvl/section/analog-circuit-lab-explore-the-knobs",
+      "conceptRefs": [
+        "running-example",
+        "microsim-lab",
+        "structural-constraints"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect"
+      ],
+      "text": "Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above; latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3. In this lab, broader retrieval and longer responses tend to move latency first because they widen the amount of work per request. Reranking matters too, but it is easier to understand once you see the latency and quality gauges move together. Open the lab in a new tab Suggested Prompts - Start from the Baseline preset, bump retriever top k to 56, and observe the latency gauge. When does the red guardrail trigger? - Move the rerank weight slider below 0.3 while retriever top k ≥ 40. What warning do you see? Why does the constraint exist? - Hold retriever top k steady and stretch response tokens. What trade-off emerges between cost and quality? It should make one idea concrete: TVARs are not abstract config fields. Each knob changes cost, latency, and quality, and some combinations should be ruled out before the optimizer wastes trials on them.",
+      "sectionKey": "getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs"
+    },
+    {
+      "id": "chapter-03-two-kinds-of-constraints",
+      "kind": "section",
+      "title": "Two Kinds of Constraints",
+      "chapterSlug": "constraints-units-safety-nets",
+      "chapterTitle": "Constraints, Units, and Safety Nets",
+      "sectionSlug": "two-kinds-of-constraints",
+      "summary": "TVL separates static structural rules from environment-scoped operational preconditions so authors know what is validated when.",
+      "route": "/book/chapter/constraints-units-safety-nets/section/two-kinds-of-constraints",
+      "conceptRefs": [
+        "structural-constraints",
+        "derived-constraints",
+        "operational-checks"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "TVL separates constraints into two categories: The env.context. rule belongs in constraints.derived because it depends on the execution environment. temperature | Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural | Before trials run (static) | Rules over TVARs that define valid configuration space | | Operational Preconditions | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom | Operational metrics such as measured latency or token cost belong in measurements, manifests, and runtime gates. TVL keeps constraints.derived scoped to env.context. feasibility checks. Because TVL uses constraints.derived` for feasibility checks over the environment, not for observed experiment results. Measured latency belongs in objectives, manifests, and rollout evidence so reviewers can distinguish promises from outcomes.",
+      "sectionKey": "constraints-units-safety-nets/two-kinds-of-constraints"
+    },
+    {
+      "id": "chapter-03-structural-constraint-syntax",
+      "kind": "section",
+      "title": "Structural Constraint Syntax",
+      "chapterSlug": "constraints-units-safety-nets",
+      "chapterTitle": "Constraints, Units, and Safety Nets",
+      "sectionSlug": "structural-constraint-syntax",
+      "summary": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:.",
+      "route": "/book/chapter/constraints-units-safety-nets/section/structural-constraint-syntax",
+      "conceptRefs": [
+        "structural-constraints",
+        "satisfiability"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages: | TVL Syntax | Meaning | NOT This | |----------------|---------|----------| | model = \"gpt-4o\" | Equality | model == \"gpt-4o\" | | temperature Run tvl-check-structural spec.yml to see which constraints are unsatisfiable. The tool reports an UNSAT core when available, showing the minimal conflicting subset. Use --json` for machine-readable output.",
+      "sectionKey": "constraints-units-safety-nets/structural-constraint-syntax"
+    },
+    {
+      "id": "chapter-03-derived-constraints",
+      "kind": "section",
+      "title": "Operational Preconditions",
+      "chapterSlug": "constraints-units-safety-nets",
+      "chapterTitle": "Constraints, Units, and Safety Nets",
+      "sectionSlug": "derived-constraints",
+      "summary": "Operational preconditions in TVL are written under `constraints.derived` and checked against the current environment snapshot.",
+      "route": "/book/chapter/constraints-units-safety-nets/section/derived-constraints",
+      "conceptRefs": [
+        "derived-constraints",
+        "operational-checks",
+        "environment-snapshot"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "TVL writes operational preconditions under constraints.derived. These are linear inequalities over environment symbols (not TVARs), and they are evaluated at runtime against the current environment snapshot. Supported operations: +, -, scalar multiplication, and comparisons ( =, =, ). Not supported: Multiplication between symbols (a b), division, exponentiation. If you need to gate on measured runtime metrics such as observed latency p95 ms, carry those checks in operational tooling or promotion manifests instead of encoding them as TVL operational preconditions.",
+      "sectionKey": "constraints-units-safety-nets/derived-constraints"
+    },
+    {
+      "id": "chapter-03-analog-circuit-drill-watch-constraints-react",
+      "kind": "section",
+      "title": "Analog Circuit Drill · Watch Constraints React",
+      "chapterSlug": "constraints-units-safety-nets",
+      "chapterTitle": "Constraints, Units, and Safety Nets",
+      "sectionSlug": "analog-circuit-drill-watch-constraints-react",
+      "summary": "Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.",
+      "route": "/book/chapter/constraints-units-safety-nets/section/analog-circuit-drill-watch-constraints-react",
+      "conceptRefs": [
+        "microsim-lab",
+        "structural-constraints",
+        "derived-constraints"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves. Each warning mirrors a structural constraint: - Latency under 800 ms — raises amber/red when the simulated configuration breaches the ceiling. - Cost under $0.12 — highlights the response-token capacitor if the API budget slips. - Rerank weight ≥ 0.3 — conditional guard for retriever top k = 40 to prevent noisy answers. Challenge yourself to bring all three back to green without dropping quality below 75.",
+      "sectionKey": "constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react"
+    },
+    {
+      "id": "chapter-03-testing-constraints",
+      "kind": "section",
+      "title": "Testing Constraints",
+      "chapterSlug": "constraints-units-safety-nets",
+      "chapterTitle": "Constraints, Units, and Safety Nets",
+      "sectionSlug": "testing-constraints",
+      "summary": "Use tvl-check-structural and unit tests to prove the search space still contains valid configurations.",
+      "route": "/book/chapter/constraints-units-safety-nets/section/testing-constraints",
+      "conceptRefs": [
+        "satisfiability",
+        "validation-workflow",
+        "structural-constraints"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "Use tvl-check-structural to verify your constraints are satisfiable: For unit testing in Python, use the TVL SDK: Run the tests:",
+      "sectionKey": "constraints-units-safety-nets/testing-constraints"
+    },
+    {
+      "id": "chapter-03-checklist-before-promotion",
+      "kind": "section",
+      "title": "Checklist Before Promotion",
+      "chapterSlug": "constraints-units-safety-nets",
+      "chapterTitle": "Constraints, Units, and Safety Nets",
+      "sectionSlug": "checklist-before-promotion",
+      "summary": "Before promotion, confirm the search space is satisfiable, the formulas use TVL syntax, and operational preconditions only reference environment symbols.",
+      "route": "/book/chapter/constraints-units-safety-nets/section/checklist-before-promotion",
+      "conceptRefs": [],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "1. All structural constraints pass tvl-check-structural (satisfiable). 2. Constraint formulas use TVL syntax (=, and, or, not), not other languages. 3. Operational preconditions (constraints.derived) only reference environment symbols, not TVARs. 4. Unit tests cover both valid and invalid configurations.",
+      "sectionKey": "constraints-units-safety-nets/checklist-before-promotion"
+    },
+    {
+      "id": "chapter-04-module-composition-with-tvl-compose",
+      "kind": "section",
+      "title": "Module Composition with tvl-compose",
+      "chapterSlug": "patterns-for-real-deployments",
+      "chapterTitle": "Patterns for Real Deployments",
+      "sectionSlug": "module-composition-with-tvl-compose",
+      "summary": "The TVL core schema stays standalone and self-contained, so overlays are handled through preprocessing rather than inheritance in the schema itself.",
+      "route": "/book/chapter/patterns-for-real-deployments/section/module-composition-with-tvl-compose",
+      "conceptRefs": [],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "text": "The TVL core schema defines standalone, self-contained modules. To support inheritance and overlays, we use preprocessing rather than extending the core schema: This keeps the core spec simple while enabling powerful composition patterns.",
+      "sectionKey": "patterns-for-real-deployments/module-composition-with-tvl-compose"
+    },
+    {
+      "id": "chapter-04-layered-specifications",
+      "kind": "section",
+      "title": "Layered Specifications",
+      "chapterSlug": "patterns-for-real-deployments",
+      "chapterTitle": "Patterns for Real Deployments",
+      "sectionSlug": "layered-specifications",
+      "summary": "Base modules stay fully valid, while overlays capture environment-specific narrowing before composition.",
+      "route": "/book/chapter/patterns-for-real-deployments/section/layered-specifications",
+      "conceptRefs": [
+        "overlays",
+        "safe-narrowing",
+        "environment-snapshot"
+      ],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "text": "Base module (valid TVL): Staging overlay (NOT a standalone TVL module): Compose to valid TVL:",
+      "sectionKey": "patterns-for-real-deployments/layered-specifications"
+    },
+    {
+      "id": "chapter-04-visualizing-overlays",
+      "kind": "section",
+      "title": "Visualizing Overlays",
+      "chapterSlug": "patterns-for-real-deployments",
+      "chapterTitle": "Patterns for Real Deployments",
+      "sectionSlug": "visualizing-overlays",
+      "summary": "Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process, not runtime artifacts.",
+      "route": "/book/chapter/patterns-for-real-deployments/section/visualizing-overlays",
+      "conceptRefs": [
+        "overlays",
+        "safe-narrowing"
+      ],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "text": "(TVL)\\\"] -- |tvl-compose| Staging[\\\"staging.tvl.yml (TVL)\\\"]\\n Base -- |tvl-compose| Production[\\\"production.tvl.yml (TVL)\\\"]\\n Production -- |tvl-compose| Hotfix[\\\"hotfix.tvl.yml (TVL)\\\"]\"} / Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process, not runtime artifacts.",
+      "sectionKey": "patterns-for-real-deployments/visualizing-overlays"
+    },
+    {
+      "id": "chapter-04-override-rules",
+      "kind": "section",
+      "title": "Override Rules",
+      "chapterSlug": "patterns-for-real-deployments",
+      "chapterTitle": "Patterns for Real Deployments",
+      "sectionSlug": "override-rules",
+      "summary": "tvl-compose enforces safe narrowing so overlays can tighten risk without silently widening the contract.",
+      "route": "/book/chapter/patterns-for-real-deployments/section/override-rules",
+      "conceptRefs": [],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "text": "tvl-compose validates safe narrowing for the following: | Override Type | Allowed | Not Allowed | |--------------|---------|-------------| | Enum domain | Remove values | Add new values | | Numeric range | Narrow bounds | Widen bounds | | Budget | Decrease | Increase beyond base | The current implementation validates enum narrowing, range narrowing, and budget decreases. Resolution changes and constraint modifications are merged without validation—ensure your overlays follow safe narrowing practices for these fields.",
+      "sectionKey": "patterns-for-real-deployments/override-rules"
+    },
+    {
+      "id": "chapter-04-hotfix-playbook",
+      "kind": "section",
+      "title": "Hotfix Playbook",
+      "chapterSlug": "patterns-for-real-deployments",
+      "chapterTitle": "Patterns for Real Deployments",
+      "sectionSlug": "hotfix-playbook",
+      "summary": "When an incident hits, create a short-lived overlay instead of mutating the base module in place.",
+      "route": "/book/chapter/patterns-for-real-deployments/section/hotfix-playbook",
+      "conceptRefs": [
+        "overlays",
+        "safe-narrowing",
+        "provenance"
+      ],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "text": "Need to react quickly to a vendor outage? Create a short-lived overlay: Compose and deploy: Never edit the base file for a temporary fix—create an overlay. This keeps history clean and makes it obvious which changes were incident driven versus long-term strategy.",
+      "sectionKey": "patterns-for-real-deployments/hotfix-playbook"
+    },
+    {
+      "id": "chapter-04-provenance-matters",
+      "kind": "section",
+      "title": "Provenance Matters",
+      "chapterSlug": "patterns-for-real-deployments",
+      "chapterTitle": "Patterns for Real Deployments",
+      "sectionSlug": "provenance-matters",
+      "summary": "Every promotion should capture the exact composed spec, overlay inputs, and replay metadata needed for audits.",
+      "route": "/book/chapter/patterns-for-real-deployments/section/provenance-matters",
+      "conceptRefs": [
+        "provenance",
+        "promotion-manifest"
+      ],
+      "pathTags": [
+        "architect",
+        "operator"
+      ],
+      "text": "Every promotion should commit: - spec.tvl.yml — the composed, valid TVL module. - spec.overlay.yml — the overlay that produced it (if any). - provenance.json — metadata: base SHA, overlay SHA, compose timestamp. This audit trail enables deterministic recreation of exact configurations from version control history.",
+      "sectionKey": "patterns-for-real-deployments/provenance-matters"
+    },
+    {
+      "id": "chapter-05-tvl-cli-tools",
+      "kind": "section",
+      "title": "TVL CLI Tools",
+      "chapterSlug": "integration-patterns",
+      "chapterTitle": "Integration Patterns",
+      "sectionSlug": "tvl-cli-tools",
+      "summary": "The TVL toolchain provides focused commands for local validation, CI gates, and operational checks.",
+      "route": "/book/chapter/integration-patterns/section/tvl-cli-tools",
+      "conceptRefs": [
+        "cli-toolchain",
+        "validation-workflow"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "The TVL toolchain provides focused CLI tools for validation and CI integration: | Tool | Purpose | |------|---------| | tvl-parse | Parse YAML to JSON AST, basic syntax checking | | tvl-lint | Normative lints: missing min effect, duplicate TVARs, etc. | | tvl-validate | JSON Schema + lint validation (combines parse + lint) | | tvl-check-structural | SAT/SMT satisfiability of structural constraints | | tvl-check-operational | Runtime validation of operational preconditions (constraints.derived) and budgets | | tvl-config-validate | Check a configuration assignment against spec domains | | tvl-measure-validate | Validate measurements against spec + promotion policy | | tvl-ci-gate | Dry-run promotion gate (stub for CI pipelines) | | tvl-compose | Flatten overlay files into valid TVL modules | Clone the repository, then install the TVL package in editable mode from the repo root: That exposes tvl-validate, tvl-lint, tvl-check-structural, and the rest of the CLI on your shell path. Quick Validation Configuration and Measurement Validation",
+      "sectionKey": "integration-patterns/tvl-cli-tools"
+    },
+    {
+      "id": "chapter-05-deterministic-artifacts",
+      "kind": "section",
+      "title": "Deterministic Artifacts",
+      "chapterSlug": "integration-patterns",
+      "chapterTitle": "Integration Patterns",
+      "sectionSlug": "deterministic-artifacts",
+      "summary": "Every TVL workflow should leave behind deterministic artifacts so decisions stay reproducible and reviewable.",
+      "route": "/book/chapter/integration-patterns/section/deterministic-artifacts",
+      "conceptRefs": [],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "Every TVL workflow produces deterministic artifacts for auditability: - spec.tvl.yml — the validated TVL module - config.yml — the promoted configuration assignment - measurements.yml — evaluation results (metrics, sample sizes) - provenance.json — metadata (timestamps, runners, environment snapshot)",
+      "sectionKey": "integration-patterns/deterministic-artifacts"
+    },
+    {
+      "id": "chapter-05-field-notes-replay-the-optimization-story",
+      "kind": "section",
+      "title": "Field Notes · Replay the Optimization Story",
+      "chapterSlug": "integration-patterns",
+      "chapterTitle": "Integration Patterns",
+      "sectionSlug": "field-notes-replay-the-optimization-story",
+      "summary": "The Orientation RAG lab includes the same presets we evaluate in CI. Jump between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives while DVL enforces guardrails.",
+      "route": "/book/chapter/integration-patterns/section/field-notes-replay-the-optimization-story",
+      "conceptRefs": [
+        "microsim-lab",
+        "triagent-integration",
+        "promotion-manifest"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "The Orientation RAG lab includes the same presets we evaluate in CI. Jump between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives while DVL enforces guardrails. - Compare the latency and cost read-outs before and after each preset. - Click Copy YAML to capture the snapshot TVO would export. - Note how the constraint badges align with promotion gates—green across the board before approving production.",
+      "sectionKey": "integration-patterns/field-notes-replay-the-optimization-story"
+    },
+    {
+      "id": "chapter-05-manifests-and-promotion",
+      "kind": "section",
+      "title": "Manifests and Promotion",
+      "chapterSlug": "integration-patterns",
+      "chapterTitle": "Integration Patterns",
+      "sectionSlug": "manifests-and-promotion",
+      "summary": "After a successful optimization run, the manifest becomes the audit record for what changed, why it won, and whether rollout is safe.",
+      "route": "/book/chapter/integration-patterns/section/manifests-and-promotion",
+      "conceptRefs": [
+        "promotion-manifest",
+        "triagent-integration",
+        "opal-bridge",
+        "dvl-integration"
+      ],
+      "pathTags": [
+        "quickstart",
+        "architect",
+        "operator"
+      ],
+      "text": "After a successful TVO run, Triagent emits a manifest bundling: - Resolved spec SHA and artifact locations - Validation logs from the CLI tools - Promotion gate decision (pass/fail/defer) - DVL drift checks (pass/fail with links) - Rollback instructions if thresholds regress Treat the manifest as a living audit trail. Every deployment should point to it. A promotion manifest is the receipt for a rollout decision. It answers: - Which exact TVL spec did we run? - Which candidate won, and by what evidence? - Did data-quality checks pass? - How do we reproduce or roll back the decision later? If OPAL is used upstream, it helps authors describe intent in a higher-level form. That intent is then lowered into TVL plus runtime-side metadata. The deployment contract still points back to TVL and the manifest, because those are the artifacts that reviewers and automation can validate consistently. Start with the manifest. It is the quickest route to the resolved spec, the winning candidate, the validation trail, the data checks, and the rollback instructions that explain why the system was promoted in the first place. The promotion manifest should answer first. It is the audit receipt that ties the resolved TVL contract, supporting evidence, and operational decision into one reproducible record.",
+      "sectionKey": "integration-patterns/manifests-and-promotion"
+    },
+    {
+      "id": "chapter-06-from-runtime-patterns-to-training-surfaces",
+      "kind": "section",
+      "title": "From Runtime Patterns to Training Surfaces",
+      "chapterSlug": "training-agents-with-tuned-variables",
+      "chapterTitle": "Training Agents with Tuned Variables",
+      "sectionSlug": "from-runtime-patterns-to-training-surfaces",
+      "summary": "Pattern names are the beginning of the design discussion; the real engineering work starts when those patterns are translated into an explicit, governable control surface.",
+      "route": "/book/chapter/training-agents-with-tuned-variables/section/from-runtime-patterns-to-training-surfaces",
+      "conceptRefs": [
+        "tvars",
+        "running-example",
+        "pattern-control-surface"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "quickstart",
+        "architect"
+      ],
+      "text": "A pattern such as Contextual Batching or Routed Expertise / MoE + Judge is not a deployable decision by itself. It only tells you the scaffold family. The deployable decision is the concrete surface underneath the scaffold: - how many experts run - how many items are packed together - how many reflection rounds are allowed - how a reducer or judge turns several candidates into one answer That is the move from runtime pattern language to training surface design. A pattern control surface is the set of variables that actually change system behavior. If those variables are invisible, the agent may still work, but it is hard to reason about, evaluate, or govern. The important shift is conceptual. Instead of saying \"this agent uses routing and reflection,\" you say \"this agent exposes exactly these variables, under exactly these budgets, with exactly these evaluation and promotion rules.\" The missing piece is the governed control surface. The pattern name does not tell you which variables can change, how they will be evaluated, or when the resulting workflow is promotable. The pattern label names the scaffold. The training surface makes the scaffold operational by exposing the actual variables, budgets, and evaluation hooks that can be tuned and governed.",
+      "sectionKey": "training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces"
+    },
+    {
+      "id": "chapter-06-choosing-tuned-variables-for-agent-systems",
+      "kind": "section",
+      "title": "Choosing Tuned Variables for Agent Systems",
+      "chapterSlug": "training-agents-with-tuned-variables",
+      "chapterTitle": "Training Agents with Tuned Variables",
+      "sectionSlug": "choosing-tuned-variables-for-agent-systems",
+      "summary": "Good TVARs correspond to real architectural choices, observable trade-offs, and repeatable evaluation slices rather than to every prompt token a team could edit.",
+      "route": "/book/chapter/training-agents-with-tuned-variables/section/choosing-tuned-variables-for-agent-systems",
+      "conceptRefs": [
+        "tvars",
+        "evaluation-set",
+        "pattern-control-surface"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "quickstart",
+        "architect"
+      ],
+      "text": "Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three tests: 1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable workload slice. This is why \"rewrite the prompt until it feels better\" is a weak engineering process. It changes too many things at once and rarely leaves behind a clean study plane. Promote a setting into the governed surface when reviewers would reasonably argue about its value. Leave it out when it is only cosmetic, one-off, or impossible to evaluate consistently. For agent systems, strong candidate TVARs usually come from one of four places: - coordination: counts, rounds, routing rules, and reducer policies - budgets: token caps, branch factors, retry limits, and validation quotas - evidence: judge policy, rubric choice, or conflict threshold - environment coupling: retrieval depth, tool inventory, or approved model set Weak candidate TVARs are typically too local or too brittle. If a variable only matters for one temporary prompt revision and cannot survive review, it usually does not belong in the contract. An oversized control surface makes optimization noisy and governance weak. If every prompt phrasing becomes a TVAR, reviewers lose sight of which decisions are architecturally meaningful. It should map to a real system decision, create a measurable trade-off, and be testable on a stable evaluation slice. If it fails those tests, it is usually too weak or too noisy to govern well.",
+      "sectionKey": "training-agents-with-tuned-variables/choosing-tuned-variables-for-agent-systems"
+    },
+    {
+      "id": "chapter-06-budgets-feedback-and-promotion-loops",
+      "kind": "section",
+      "title": "Budgets, Feedback, and Promotion Loops",
+      "chapterSlug": "training-agents-with-tuned-variables",
+      "chapterTitle": "Training Agents with Tuned Variables",
+      "sectionSlug": "budgets-feedback-and-promotion-loops",
+      "summary": "Agent tuning becomes maintainable only when the exploration budget, evaluation feedback, and promotion rule are designed together instead of as separate afterthoughts.",
+      "route": "/book/chapter/training-agents-with-tuned-variables/section/budgets-feedback-and-promotion-loops",
+      "conceptRefs": [
+        "promotion-policy",
+        "validation-workflow",
+        "pattern-control-surface"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "quickstart",
+        "architect"
+      ],
+      "text": "An agent workflow should not only expose tuned variables. It should also expose the loop that turns a candidate setting into a release decision: - how much budget is available for exploration - which feedback signal is trusted - which evidence threshold permits promotion Those three pieces belong together. A wide search surface with no trustworthy evaluation loop is just expensive guesswork. A strict promotion rule with no exploration budget prevents improvement. Treat the exploration budget, validation workflow, and promotion policy as one system boundary. If one of them is underspecified, the others become hard to interpret. For agent systems this usually means answering: - what is the allowed optimization budget per release cycle? - what metric or rubric can reject a superficially impressive but risky pattern? - what artifact will explain later why a specific workflow was promoted? The final answer is usually a manifest-backed promotion loop, not just a better prompt. No. A governed win must survive replay, validation, and review. Without that evidence trail, the change is interesting but not ready for rollout. Because they define one release loop. The budget controls how much exploration is allowed, the feedback determines what counts as improvement, and the promotion rule determines whether the result is safe enough to ship.",
+      "sectionKey": "training-agents-with-tuned-variables/budgets-feedback-and-promotion-loops"
+    },
+    {
+      "id": "chapter-07-how-to-read-a-pattern-control-surface",
+      "kind": "section",
+      "title": "How to Read a Pattern Control Surface",
+      "chapterSlug": "pattern-anatomy-and-evaluation",
+      "chapterTitle": "Pattern Anatomy and Evaluation",
+      "sectionSlug": "how-to-read-a-pattern-control-surface",
+      "summary": "The fastest way to compare patterns is to read each one as a control surface: tuned variables, decision axes, failure modes, and the evidence needed for promotion.",
+      "route": "/book/chapter/pattern-anatomy-and-evaluation/section/how-to-read-a-pattern-control-surface",
+      "conceptRefs": [
+        "pattern-control-surface",
+        "breadth-scaling-patterns",
+        "depth-scaling-patterns"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect"
+      ],
+      "text": "Every pattern page in the atlas answers the same operational questions: - What scaffold is being introduced? - Which variables control it? - Which trade-off does it change? - Which failure mode appears first? That common shape is intentional. If patterns are described with incompatible vocabularies, teams end up comparing narratives instead of comparing governed options. Read the failure modes before you fall in love with the pattern. They usually reveal whether the pattern is correcting the right problem or simply adding more activity to the system. The atlas groups patterns loosely into: - breadth scaling : more views, experts, or shards - depth scaling : more rounds, critique, or revision That distinction is not academic. It tells you whether the main budget pressure comes from parallel coverage or sequential reconsideration. It makes patterns comparable. Teams can line up variables, trade-offs, and failure modes directly instead of relying on vague claims that one scaffold is \"more advanced\" than another.",
+      "sectionKey": "pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface"
+    },
+    {
+      "id": "chapter-07-batching-map-reduce-and-routed-expertise",
+      "kind": "section",
+      "title": "Batching, Map-Reduce, and Routed Expertise",
+      "chapterSlug": "pattern-anatomy-and-evaluation",
+      "chapterTitle": "Pattern Anatomy and Evaluation",
+      "sectionSlug": "batching-map-reduce-and-routed-expertise",
+      "summary": "These breadth-oriented patterns all spend more budget on coverage, but they do it through very different control surfaces and failure modes.",
+      "route": "/book/chapter/pattern-anatomy-and-evaluation/section/batching-map-reduce-and-routed-expertise",
+      "conceptRefs": [
+        "breadth-scaling-patterns",
+        "pattern-control-surface",
+        "tvars"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect"
+      ],
+      "text": "Contextual Batching, Map-Reduce with LLMs, and Routed Expertise / MoE + Judge all scale breadth, but they solve different problems: - batching reuses shared context - map-reduce decomposes a broad task into bounded shards - routed expertise creates several specialist views and compares them Because they all spend budget on coverage, teams sometimes substitute them for one another too quickly. That is usually a mistake. - Use batching when shared context is the asset. - Use map-reduce when decomposition is the asset. - Use routed expertise when specialization and selection are the asset. The failure modes are equally different: - batching dilutes attention - map-reduce can lose cross-shard coherence - routed expertise can fake diversity or over-trust a weak judge That is why these patterns should be compared on the same evaluation plane but not collapsed into one \"more agents equals better\" story. Start with contextual batching. It preserves one shared context while still letting you measure how per-item quality changes as packing density grows. Map-reduce and routed expertise solve different problems first. They spend budget on different assets: shared context, decomposition, and specialization. Their control surfaces and failure modes differ enough that they must be compared explicitly rather than treated as one generic scaling move.",
+      "sectionKey": "pattern-anatomy-and-evaluation/batching-map-reduce-and-routed-expertise"
+    },
+    {
+      "id": "chapter-07-reflection-judges-and-committee-decisions",
+      "kind": "section",
+      "title": "Reflection, Judges, and Committee Decisions",
+      "chapterSlug": "pattern-anatomy-and-evaluation",
+      "chapterTitle": "Pattern Anatomy and Evaluation",
+      "sectionSlug": "reflection-judges-and-committee-decisions",
+      "summary": "Depth-oriented refinement and committee-style decision patterns both add reasoning cost, but they do it for different purposes and must be evaluated with different evidence.",
+      "route": "/book/chapter/pattern-anatomy-and-evaluation/section/reflection-judges-and-committee-decisions",
+      "conceptRefs": [
+        "depth-scaling-patterns",
+        "committee-judging",
+        "promotion-policy"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect"
+      ],
+      "text": "Reflective Refinement and Judge Committees / Debate are often grouped together because both add more reasoning work after a first pass. But their jobs are different. - reflection asks: can one draft improve through bounded self-critique? - committee or debate asks: should several views argue or vote before a decision is accepted? Reflection is primarily a revision controller. Committee patterns are primarily uncertainty-management and arbitration mechanisms. If the main risk is a weak first draft, evaluate reflection first. If the main risk is ambiguous or disputed correctness, committees and judges deserve earlier budget. Their evidence expectations differ too: - reflection should show marginal lift per added round - committees should show better calibration, not just more activity Without that distinction, teams can spend several extra calls and still learn very little about why a workflow improved. If a reflection loop keeps preserving the assumptions of the first draft, more rounds only increase latency. Likewise, a committee of highly correlated judges can create the appearance of rigor without adding real calibration. Reflection is a bounded revise loop over one evolving answer. Committee and debate patterns use controlled disagreement across several views or judges before accepting a decision.",
+      "sectionKey": "pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions"
+    },
+    {
+      "id": "chapter-08-scaffold-controller-and-bundle-logic",
+      "kind": "section",
+      "title": "Scaffold, Controller, and Bundle Logic",
+      "chapterSlug": "composing-patterns-for-production",
+      "chapterTitle": "Composing Patterns for Production",
+      "sectionSlug": "scaffold-controller-and-bundle-logic",
+      "summary": "The cleanest multi-pattern systems separate the stable scaffold from the controller that adds extra search, reflection, or judging behavior.",
+      "route": "/book/chapter/composing-patterns-for-production/section/scaffold-controller-and-bundle-logic",
+      "conceptRefs": [
+        "pattern-composition",
+        "triagent-integration",
+        "pattern-control-surface"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect",
+        "operator"
+      ],
+      "text": "The simplest way to reason about a pattern bundle is to split it into two layers: - scaffold: the stable workflow structure that already works on its own - controller: the extra mechanism that adds search, reflection, judging, or another adaptive policy This matches the way many effective systems are built. A narrow-waist base does the core work, and one bounded controller is allowed to change the operating point. Prefer one clear scaffold plus one clear controller before trying several interacting controllers at once. This is also how you keep the study plane interpretable. If the scaffold and controller are both changing at the same time, it becomes harder to explain where the gains came from or why the bundle failed. It keeps the bundle interpretable. Reviewers can ask whether the stable workflow is strong on its own and whether the controller adds enough lift to justify its extra cost and complexity.",
+      "sectionKey": "composing-patterns-for-production/scaffold-controller-and-bundle-logic"
+    },
+    {
+      "id": "chapter-08-safe-composition-rules",
+      "kind": "section",
+      "title": "Safe Composition Rules",
+      "chapterSlug": "composing-patterns-for-production",
+      "chapterTitle": "Composing Patterns for Production",
+      "sectionSlug": "safe-composition-rules",
+      "summary": "Pattern bundles should narrow or discipline the operational surface unless there is strong evidence that a broader bundle is still governable.",
+      "route": "/book/chapter/composing-patterns-for-production/section/safe-composition-rules",
+      "conceptRefs": [
+        "pattern-composition",
+        "safe-narrowing",
+        "promotion-manifest"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect",
+        "operator"
+      ],
+      "text": "Composition rules deserve the same skepticism as overlays. A new bundle should not silently widen risk just because it combines individually attractive components. In practice, safe composition often means: - fewer active controllers in production than in experimentation - tighter retry or branch budgets in staging and rollout - manifest evidence that records exactly which bundle shape was promoted Use the same instinct as safe narrowing : when in doubt, make the production composition more constrained and easier to audit than the exploratory version. The right default is conservative. If a bundle increases uncertainty about who made the decision, what evidence was used, or how to roll back, it is probably not ready for the production plane. The most dangerous multi-pattern systems are not always the most complex. They are the ones that cannot explain, after the fact, which controller fired, which judge won, or which shard output actually drove the release decision. It means production bundles should generally be more constrained, more replayable, and easier to audit than exploratory bundles unless there is strong evidence that a broader composition is still safe and governable.",
+      "sectionKey": "composing-patterns-for-production/safe-composition-rules"
+    },
+    {
+      "id": "chapter-08-when-to-stop-adding-patterns",
+      "kind": "section",
+      "title": "When to Stop Adding Patterns",
+      "chapterSlug": "composing-patterns-for-production",
+      "chapterTitle": "Composing Patterns for Production",
+      "sectionSlug": "when-to-stop-adding-patterns",
+      "summary": "A pattern stack should stop growing when the next controller increases complexity faster than it improves the governed operating point.",
+      "route": "/book/chapter/composing-patterns-for-production/section/when-to-stop-adding-patterns",
+      "conceptRefs": [
+        "pattern-composition",
+        "promotion-policy",
+        "validation-workflow"
+      ],
+      "pathTags": [
+        "agent-engineer",
+        "architect",
+        "operator"
+      ],
+      "text": "There is a recurring failure mode in agent engineering: once one pattern helps, every new problem looks like an invitation to add another controller. The result is a workflow that appears advanced but becomes difficult to benchmark, explain, and operate. The stopping rule should be explicit: - does the added pattern improve the governed operating point? - is the gain large enough to justify the additional cost and latency? - can reviewers still explain the release decision with one manifest and one evaluation story? If the answer turns fuzzy, that is often the point to stop. Usually no. If the gain cannot be explained and replayed clearly enough for review, the bundle is not yet a strong governed candidate even if one benchmark number improved. Prefer the simplest pattern stack that reaches the target operating point. Extra structure should be earned with clear marginal lift and a stable validation story. Stop when the next pattern increases complexity faster than it improves the governed operating point, or when the resulting evidence and rollback story become harder to explain than the gain is worth.",
+      "sectionKey": "composing-patterns-for-production/when-to-stop-adding-patterns"
+    },
+    {
+      "id": "pattern-contextual-batching",
+      "kind": "pattern",
+      "title": "Contextual Batching",
+      "summary": "Pack multiple work items or review lenses into one prompt context, then tune the packing policy instead of treating batching as a fixed prompt trick.",
+      "route": "/book/patterns/contextual-batching",
+      "conceptRefs": [
+        "tvars",
+        "promotion-policy",
+        "validation-workflow"
+      ],
+      "pathTags": [],
+      "text": "Contextual batching is the simplest agent pattern to underestimate. Teams often start with it as a cost reduction trick: put more than one item into the same model call and hope throughput goes up. The more useful framing is different. Contextual batching is a design pattern with its own tuned variables, measurable trade-offs, and failure modes. What Changes When You Treat It as a Pattern Instead of asking whether batching is “on” or “off,” you tune the actual control surface: - how many items enter the same prompt - how many tasks or review lenses are applied to each item - how those items are ordered - whether summaries from one batch are allowed to influence the next This is the same engineering move TVL makes elsewhere. Turn a vague workflow choice into explicit knobs, then evaluate those knobs against quality, cost, and latency. Batching is attractive precisely because it looks cheap. The danger is that attention dilution and position sensitivity stay hidden until quality has already slipped. Tuned Variables Worth Sweeping | Variable | What it controls | Typical tension | | --- | --- | --- | | items per batch | How many items share one invocation | Fewer calls vs lower recall | | tasks per item | How many lenses or subtasks each item gets | Richer output vs format drift | | ordering | Which items appear earlier in the prompt | Stable priority vs fairness | | overlap | Whether items appear in multiple batches | Better coverage vs more tokens | | carry-over summary | Whether prior-batch state is inherited | Context reuse vs contamination | The point is not that every system needs all five. The point is that once these are explicit, they can be governed like any other tuned variables. When It Fits Contextual batching is strongest when the items share enough background that repeated context is wasteful. Examples include: - code review tasks over the same file - multiple retrieval checks over the same document slice - repeated validation questions about one artifact bundle It is weaker when every item demands distinct context, or when the output requires precise per-item traceability that a shared prompt makes harder to audit. Teams sometimes conclude that batching failed because the model was weak. In practice the problem is often ungoverned packing: too many items, unstable ordering, or no evaluation split that can tell whether quality fell on early or late items. How TVL Thinking Helps Once batching becomes a governed pattern, the promotion question becomes concrete: 1. Which batching policy is feasible under current latency and budget constraints? 2. Which policy preserves enough recall or task success to be deployable? 3. Which evidence bundle is required before moving to a denser packing policy? That is a better operational question than “should we batch?” The example is intentionally small. In practice you would add the objective surface and promotion policy that let you compare denser batching against the incumbent setting. Operational Checklist - Keep one unbatched baseline in the study so the trade-off is visible. - Record ordering policy explicitly; otherwise results are hard to reproduce. - Separate token savings from wall-clock savings when substeps are serialized. - Inspect per-item failure, not just aggregate batch-level pass rate. It has a repeatable control surface with explicit tuned variables, measurable quality-cost trade-offs, and recurring failure modes that can be evaluated and governed.",
+      "patternSlug": "contextual-batching",
+      "family": "Breadth Scaling"
+    },
+    {
+      "id": "pattern-map-reduce-with-llms",
+      "kind": "pattern",
+      "title": "Map-Reduce with LLMs",
+      "summary": "Split a task into smaller bounded subproblems, run parallel or repeated map passes, then tune the reducer that merges them into one governed answer.",
+      "route": "/book/patterns/map-reduce-with-llms",
+      "conceptRefs": [
+        "tvars",
+        "validation-workflow",
+        "promotion-policy"
+      ],
+      "pathTags": [],
+      "text": "Map-reduce with LLMs takes a task that is too broad or too noisy for a single pass and turns it into two governable stages: bounded map work and bounded reduction. The pattern is close to batching, but the intent is different. Batching keeps multiple items in one prompt. Map-reduce intentionally splits the work first, then asks a reducer to reconcile the partial outputs. Where It Helps This pattern is useful when: - the full input is too large or too heterogeneous for one clean answer - the task naturally decomposes into subquestions, files, documents, or claims - you need evidence from several local passes before choosing a final result The reducer becomes the decisive control point. A weak reducer throws away the benefit of the map phase, while an overpowered reducer can become just another monolithic pass that hides where the information came from. If the map stage is doing independent bounded work and a later stage is synthesizing or arbitrating those outputs, you are in map-reduce territory rather than plain batching. Tuned Variables That Matter | Variable | Role | Typical question | | --- | --- | --- | | mapper granularity | Size of each subproblem | How small can each shard be before context is lost? | | items per map shard | Local packing density | When is shard overhead too high? | | reducer prompt | Merge instructions | Does the reducer summarize, rank, or arbitrate? | | merge policy | Combination rule | Union, weighted merge, best-evidence pick, or another policy | | conflict threshold | Escalation trigger | When should inconsistent shard outputs block promotion? | Why It Needs Governance Map-reduce often looks safer than it is because every local pass is small. The operational risk moves to recombination: - did the sharding hide cross-shard dependencies? - did the reducer over-trust one mapper? - can the final answer still be traced back to local evidence? That is why the reducer policy belongs in the tuned-variable surface and why the promotion evidence should record both shard-level behavior and final merged outcome. The point is not that these exact variables are universal. The point is that decomposition itself should be tunable, not hard-coded. Teams sometimes instrument the map phase carefully and treat the reducer as a simple prompt tail. That usually fails. The reducer is where evidence can be over-compressed, contradictions can be erased, and traceability can disappear. Operational Checklist - Keep shard creation deterministic enough to replay. - Measure reducer-only cost and latency separately from mapper cost. - Track disagreement rate across shards, not just final pass rate. - Preserve enough shard provenance that failed outputs can be audited. The defining move is staged decomposition plus governed recombination. The system is not merely using less context; it is creating intermediate answers whose merge policy must be tuned and evaluated.",
+      "patternSlug": "map-reduce-with-llms",
+      "family": "Decomposition"
+    },
+    {
+      "id": "pattern-routed-expertise-moe-judge",
+      "kind": "pattern",
+      "title": "Routed Expertise / MoE + Judge",
+      "summary": "Run multiple specialized experts over the same task, then tune the judging or aggregation rule that decides which expert output wins or how they combine.",
+      "route": "/book/patterns/routed-expertise-moe-judge",
+      "conceptRefs": [
+        "tvars",
+        "triagent-integration",
+        "promotion-policy"
+      ],
+      "pathTags": [],
+      "text": "Routed expertise treats specialization as an inference-time design choice. Instead of betting on one general pass, the system runs several experts or roles, then hands control to a judge or aggregation policy. This is mixture-of-experts thinking applied to workflow design rather than only model architecture. What Gets Tuned The usual beginner mistake is to ask only whether to add experts. The more useful question is which control surface is actually being changed: - how many experts are active - what makes them meaningfully different - whether routing happens before execution or only at selection time - whether the system chooses one winner or merges several outputs That turns routed expertise into a governed pattern rather than a hand-built committee. Specialization can often be introduced as a workflow variable long before a team invests in new model training or more complex serving infrastructure. Judging Is Part of the Pattern The judge is not an afterthought. Once several experts run, the real system behavior depends on: - what evidence the judge sees - whether the judge scores, ranks, or selects - how ties and close calls are handled In other words, the judge becomes another tuned component on the same evaluation plane. Failure Modes to Watch Specialist systems can fail in subtle ways: - all experts are different in wording but not in information - the judge learns a superficial preference and amplifies it - one expensive expert dominates latency without lifting success rate That is why routed expertise needs the same evidence discipline as any other tunable pattern. Three experts with the same context, the same prompt frame, and the same evaluation lens are rarely meaningfully diverse. They are usually just a more expensive single-system sample. Operational Checklist - Log which experts ran and why they were selected. - Measure marginal gain per added expert, not just final best-of-N accuracy. - Treat judge prompts and rubrics as governed variables too. - Record whether the winning expert varies across workload slices. Because once multiple experts exist, the system outcome depends on how they are compared or merged. A weak judge can erase the value of specialization, while a strong judge can make a small expert set worthwhile.",
+      "patternSlug": "routed-expertise-moe-judge",
+      "family": "Breadth Scaling"
+    },
+    {
+      "id": "pattern-reflective-refinement",
+      "kind": "pattern",
+      "title": "Reflective Refinement",
+      "summary": "Start with one bounded draft, then tune the number and style of critique-and-revise loops instead of treating reflection as an unbounded “try again” instruction.",
+      "route": "/book/patterns/reflective-refinement",
+      "conceptRefs": [
+        "tvars",
+        "validation-workflow",
+        "promotion-policy"
+      ],
+      "pathTags": [],
+      "text": "Reflective refinement is the depth-scaling pattern most teams reach for early. The tempting version is informal: ask the model to think again. The operational version is stricter. Reflection is a budgeted loop with explicit tuned variables governing how critique happens, what is remembered, and when the loop stops. The Practical Question The real question is not whether reflection sounds smart. It is whether one or two additional passes produce enough measurable lift to justify the extra cost and latency. That means tuning: - how many revision rounds are allowed - whether critiques come from a rubric, failure trace, or alternate perspective - which state is forwarded into the next round - which condition terminates the loop Reflection is not a personality trait of the agent. It is a governed controller with a finite budget and an explicit stop rule. Why It Works First-pass drafts often fail for systematic reasons: - they overlook a constraint - they optimize the wrong subgoal - they overfit to one interpretation of the prompt Reflection can help because it creates a structured chance to surface those mistakes before the system commits to output. Where Teams Go Wrong Reflection becomes wasteful when it is under-specified. Without a clear critique mode and stop criterion, the system often turns one useful pass into several near-duplicate passes. If the critique cannot point to a concrete defect or measurable rubric miss, extra rounds usually add style variation rather than substantive correction. Operational Checklist - Compare zero-round, one-round, and two-round settings explicitly. - Measure marginal lift per round rather than only best observed performance. - Keep critique prompts inspectable so failures can be diagnosed. - Treat “no further gain” as a valid stopping outcome, not as a failure to reflect. It has an explicit loop budget, a defined critique mechanism, and a stop rule that can be tested against cost, latency, and quality outcomes.",
+      "patternSlug": "reflective-refinement",
+      "family": "Depth Scaling"
+    },
+    {
+      "id": "pattern-judge-committees-debate",
+      "kind": "pattern",
+      "title": "Judge Committees / Debate",
+      "summary": "Introduce controlled disagreement among solvers or judges, then tune the committee size, rounds, and aggregation rule that convert disagreement into a release decision.",
+      "route": "/book/patterns/judge-committees-debate",
+      "conceptRefs": [
+        "promotion-policy",
+        "triagent-integration",
+        "validation-workflow"
+      ],
+      "pathTags": [],
+      "text": "Judge committees and debate patterns introduce disagreement on purpose. Instead of trusting a single answer or a single evaluation pass, the system creates multiple views, then tunes how those views are compared, argued over, and collapsed into a decision. Two Common Variants 1. Solver-side debate: several solvers produce or defend answers over one or more rounds. 2. Judge-side committees: several evaluators score or rank candidate outputs, sometimes with dynamic team selection. The shared engineering idea is controlled disagreement plus governed aggregation. When correctness is hard to define procedurally, committees become a practical alternative to both single-sample outputs and constant human review. What Needs Tuning The pattern becomes expensive quickly, so its control surface matters: - how many agents or judges participate - how many rounds are allowed - whether agents see each other’s arguments directly - which rubric governs scoring - how ties, splits, or abstentions are handled What Makes It Operationally Tricky Disagreement is only useful if the system can tell whether it reflects: - real uncertainty about the task - genuine perspective diversity - or just noisy restatements of the same mistake That is why committee composition and aggregation rules should be visible in the evidence bundle, not buried in prompt text. A committee of nearly identical judges can create the appearance of rigor without improving calibration. Diversity source and aggregation policy matter at least as much as committee size. Operational Checklist - Measure agreement rate and disagreement resolution rate, not just final vote. - Log minority positions when promotion decisions are close. - Compare static committees with dynamic judge selection explicitly. - Decide ahead of time whether split decisions should promote, retry, or escalate. Because disagreement alone does not improve a system. The operational value comes from how that disagreement is interpreted, scored, and turned into a governed release or answer decision.",
+      "patternSlug": "judge-committees-debate",
+      "family": "Consensus"
+    }
+  ]
+}

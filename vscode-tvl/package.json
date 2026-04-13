@@ -1,0 +1,109 @@
+{
+  "name": "tvl",
+  "displayName": "TVL - Tuned Variables Language",
+  "description": "Syntax highlighting and validation for TVL (Tuned Variables Language) configuration files",
+  "version": "0.1.0",
+  "publisher": "traigent",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tvl-lang/vscode-tvl"
+  },
+  "bugs": {
+    "url": "https://github.com/tvl-lang/vscode-tvl/issues"
+  },
+  "homepage": "https://tvl-lang.org",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "tvl",
+    "tuned variables",
+    "llm",
+    "ai",
+    "configuration",
+    "optimization",
+    "traigent"
+  ],
+  "galleryBanner": {
+    "color": "#4F46E5",
+    "theme": "dark"
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "tvl",
+        "aliases": [
+          "TVL",
+          "Tuned Variables Language"
+        ],
+        "extensions": [
+          ".tvl.yml",
+          ".tvl.yaml"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tvl",
+        "scopeName": "source.tvl",
+        "path": "./syntaxes/tvl.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "TVL",
+      "properties": {
+        "tvl.validation.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable TVL validation"
+        },
+        "tvl.validation.onSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate TVL files on save"
+        },
+        "tvl.cli.path": {
+          "type": "string",
+          "default": "tvl-validate",
+          "description": "Path to tvl-validate CLI tool"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "tvl.validate",
+        "title": "TVL: Validate Current File"
+      },
+      {
+        "command": "tvl.lint",
+        "title": "TVL: Lint Current File"
+      }
+    ]
+  },
+  "scripts": {
+    "sync:shared": "python3 ../../scripts/sync_vscode_tvl_assets.py",
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gradient background -->
+  <defs>
+    <radialGradient id="spark-bg" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#FFF3D6"/>
+      <stop offset="60%" stop-color="#FED7AA"/>
+      <stop offset="100%" stop-color="#F97316"/>
+    </radialGradient>
+    <linearGradient id="spark-body" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="spark-accent" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="400" height="400" fill="url(#spark-bg)"/>
+
+  <!-- Ground shadow -->
+  <ellipse cx="200" cy="330" rx="120" ry="30" fill="#000" opacity="0.1"/>
+
+  <!-- Robot body -->
+  <rect x="120" y="140" width="160" height="180" rx="26" fill="url(#spark-body)" stroke="#EA580C" stroke-width="4"/>
+  <rect x="140" y="100" width="120" height="110" rx="20" fill="url(#spark-body)" stroke="#EA580C" stroke-width="4"/>
+  <circle cx="140" cy="200" r="16" fill="url(#spark-accent)"/>
+  <circle cx="260" cy="200" r="16" fill="url(#spark-accent)"/>
+
+  <!-- Head screen -->
+  <rect x="155" y="120" width="90" height="60" rx="12" fill="#0F172A"/>
+  <circle cx="177" cy="150" r="8" fill="#38BDF8"/>
+  <circle cx="223" cy="150" r="8" fill="#38BDF8"/>
+  <path d="M175 168 Q200 182 225 168" stroke="#22D3EE" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+  <!-- Antenna -->
+  <rect x="192" y="80" width="16" height="25" fill="url(#spark-accent)"/>
+  <circle cx="200" cy="70" r="12" fill="#22D3EE"/>
+
+  <!-- Arms -->
+  <rect x="78" y="170" width="42" height="120" rx="20" fill="url(#spark-body)" stroke="#EA580C" stroke-width="3"/>
+  <rect x="280" y="170" width="42" height="120" rx="20" fill="url(#spark-body)" stroke="#EA580C" stroke-width="3"/>
+
+  <!-- Spark elements -->
+  <g fill="#22D3EE" opacity="0.7">
+    <circle cx="95" cy="150" r="8"/>
+    <circle cx="305" cy="150" r="10"/>
+    <circle cx="200" cy="260" r="9"/>
+    <polygon points="200,210 208,230 190,230"/>
+  </g>
+
+  <!-- Floating code cards -->
+  <g font-family="monospace" font-size="12" fill="#1E3A8A" opacity="0.7">
+    <rect x="60" y="70" width="90" height="40" rx="8" fill="#EFF6FF" opacity="0.85"/>
+    <text x="72" y="94">model: gpt-4o</text>
+    <rect x="250" y="300" width="90" height="40" rx="8" fill="#EFF6FF" opacity="0.85"/>
+    <text x="262" y="324">latency &lt; 1.2s</text>
+  </g>
+</svg>

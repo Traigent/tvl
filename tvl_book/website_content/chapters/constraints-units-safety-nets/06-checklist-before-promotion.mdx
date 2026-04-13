@@ -1,0 +1,18 @@
+---
+id: chapter-03-checklist-before-promotion
+slug: checklist-before-promotion
+title: Checklist Before Promotion
+summary: Before promotion, confirm the search space is satisfiable, the formulas use
+  TVL syntax, and operational preconditions only reference environment symbols.
+chapter: constraints-units-safety-nets
+estimated_minutes: 5
+interactive: false
+concept_refs: []
+example_refs: []
+opal_bridge: false
+---
+
+1. All structural constraints pass `tvl-check-structural` (satisfiable).
+2. Constraint formulas use TVL syntax (`=`, `and`, `or`, `not`), not other languages.
+3. Operational preconditions (`constraints.derived`) only reference environment symbols, not TVARs.
+4. Unit tests cover both valid and invalid configurations.

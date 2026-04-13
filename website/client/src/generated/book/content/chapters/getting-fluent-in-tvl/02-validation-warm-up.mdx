@@ -1,0 +1,115 @@
+Use `tvl-validate` to check your spec against the TVL schema:
+
+<PredictionPrompt prompt="Before you run it, predict what `tvl-validate` can catch immediately: a misspelled section name, a bad rollout decision, or a slow candidate.">
+
+The fast win is structure. `tvl-validate` catches missing sections, bad shapes, and schema mismatches. It does not
+tell you whether the candidate is good, safe, or operationally feasible in production.
+
+</PredictionPrompt>
+
+```bash
+cd tvl_book/examples
+tvl-validate ch2_hello_tvl.tvl.yml
+```
+
+<ConceptCallout title="What Validation Means" tone="info">
+
+`tvl-validate` is the fast sanity check. In simple terms, it answers:
+
+- “Did I include the required sections?”
+- “Did I spell the structure correctly?”
+- “Are the values shaped the way TVL expects?”
+
+It does **not** prove that your search space is useful or safe by itself. That is where the broader
+<Term id="validation-workflow">validation workflow</Term> comes in.
+
+</ConceptCallout>
+
+For deeper inspection, use this helper script to print the TVARs and their domains:
+
+```python
+"""Quick helper for Chapter 2 to inspect a TVL spec and print the knobs."""
+from pathlib import Path
+import textwrap
+
+import yaml
+
+def load_spec(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+def ensure_sections(spec: dict, required: list[str]) -> list[str]:
+    missing = [section for section in required if section not in spec]
+    return missing
+
+def _format_domain(domain: object) -> str:
+    if isinstance(domain, list):
+        return f"choices={domain}"
+    if isinstance(domain, dict):
+        if "range" in domain:
+            resolution = domain.get("resolution")
+            if resolution is not None:
+                return f"range={domain['range']}, resolution={resolution}"
+            return f"range={domain['range']}"
+        if "set" in domain:
+            return f"set={domain['set']}"
+        return "domain=<object>"
+    return "domain=<unknown>"
+
+def print_tvars(tvars: list[dict]) -> None:
+    print("Tuned Variables (tvars)")
+    print("----------------------")
+    for entry in tvars:
+        name = entry.get("name", "<unnamed>")
+        type_ = entry.get("type", "<untyped>")
+        domain = _format_domain(entry.get("domain"))
+        print(f"- {name} [{type_}]: {domain}")
+
+def main() -> None:
+    spec_path = Path(__file__).with_name("ch2_hello_tvl.tvl.yml")
+    spec = load_spec(spec_path)
+
+    required_sections = ["tvl", "environment", "evaluation_set", "tvars", "objectives", "promotion_policy"]
+    missing = ensure_sections(spec, required_sections)
+    if missing:
+        print("Missing sections:", ", ".join(missing))
+        return
+
+    print(textwrap.dedent(
+        """\
+        Spec loaded successfully.
+        module    : {module}
+        snapshot  : {snapshot}
+        dataset   : {dataset}
+        """
+    ).format(
+        module=(spec.get("tvl") or {}).get("module", "<unknown>"),
+        snapshot=(spec.get("environment") or {}).get("snapshot_id", "<unknown>"),
+        dataset=(spec.get("evaluation_set") or {}).get("dataset", "<unknown>"),
+    ))
+
+    print_tvars(spec["tvars"])
+
+if __name__ == "__main__":
+    main()
+```
+
+<ConceptCallout title="Run It Yourself" tone="info">
+
+```bash
+cd tvl_book/examples
+tvl-validate ch2_hello_tvl.tvl.yml
+python ch2_validate_spec.py
+```
+
+</ConceptCallout>
+
+If you are new to the toolchain, think of this sequence as the software-engineering version of
+“compile before you optimize.” The goal is to catch cheap mistakes while they are still cheap.
+
+<KnowledgeCheck prompt="If schema validation passes, what still remains before you trust the spec operationally?">
+
+Passing schema validation is only the first gate. You still need parsing, linting, structural feasibility checks, and
+operational checks to know whether the search space is usable and whether rollout evidence will stand up in review.
+
+</KnowledgeCheck>

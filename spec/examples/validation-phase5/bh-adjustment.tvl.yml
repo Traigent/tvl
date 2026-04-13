@@ -1,0 +1,85 @@
+# Example: Benjamini-Hochberg Multiple Testing Correction
+# Per spec: BH controls FDR at level alpha for superiority claims across m objectives.
+# Non-inferiority remains unadjusted (IUT); BH is applied to superiority p-values.
+
+tvl:
+  module: corp.validation.bh_adjustment
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+  seed: 42
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4-turbo", "claude-3-opus", "gemini-1.5-pro"]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+  - name: max_tokens
+    type: int
+    domain:
+      range: [100, 4000]
+
+constraints:
+  structural: []
+  derived: []
+
+objectives:
+  # Multiple objectives requiring BH correction
+  # Family of m=5 superiority hypotheses
+  - name: quality_score
+    metric_ref: metrics.quality_score.v1
+    direction: maximize
+  - name: factual_accuracy
+    metric_ref: metrics.factual_accuracy.v1
+    direction: maximize
+  - name: response_coherence
+    metric_ref: metrics.response_coherence.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+  - name: cost_per_query
+    metric_ref: metrics.cost_per_query.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05           # Target FDR level
+
+  # BH adjustment for multiple testing
+  # Per Algorithm 1 in Appendix: Statistical Procedures
+  adjust: BH            # Benjamini-Hochberg procedure
+
+  # Per-objective minimum effect sizes (epsilon_j)
+  min_effect:
+    quality_score: 0.01        # 1% improvement required
+    factual_accuracy: 0.005    # 0.5% improvement required
+    response_coherence: 0.01   # 1% improvement required
+    latency_p95_ms: 50         # 50ms improvement required
+    cost_per_query: 0.001      # $0.001 improvement required
+
+  # Tie-breakers when multiple candidates are equivalent
+  tie_breakers:
+    quality_score: max         # Prefer higher quality
+    cost_per_query: min        # Then prefer lower cost
+
+exploration:
+  strategy:
+    type: nsga2              # Multi-objective optimizer
+  initial_sampling: sobol    # Quasi-random initial samples
+  parallelism:
+    max_parallel_trials: 4
+  convergence:
+    metric: hypervolume_improvement
+    window: 30
+    threshold: 0.0001
+  budgets:
+    max_trials: 1000
+    max_spend_usd: 500.0
+    max_wallclock_s: 86400   # 24 hours

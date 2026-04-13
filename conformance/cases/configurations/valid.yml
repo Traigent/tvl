@@ -1,0 +1,2 @@
+module: ../../spec/examples/rag-support-bot.yml
+config: ../../spec/configurations/rag-support-bot.config.yml

@@ -1,0 +1,48 @@
+# Example: Banded Objective with Invalid Bounds (E4003)
+# Per spec: Band target interval must have L < U.
+# This spec should FAIL validation with error code E4003.
+
+tvl:
+  module: corp.validation.banded_invalid_bounds
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4", "claude-3"]
+
+constraints:
+  structural: []
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+  # ERROR: Invalid band bounds (L >= U)
+  - name: response_length
+    metric_ref: metrics.response_length.v1
+    band:
+      target: [200, 100]    # E4003: L=200 >= U=100
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01
+
+exploration:
+  strategy:
+    type: grid
+
+# Expected validation result:
+# - Error: E4003 invalid_band_bounds at objectives[1].band.target
+# - Message: "Band lower bound (200) must be less than upper bound (100)"

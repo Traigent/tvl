@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tvl-lang.org/schemas/tvl.schema.json",
+  "title": "TVL Module",
+  "description": "Schema for Tuned Variables Language (TVL) modules. Captures the normative surface syntax for validation tooling.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tvl",
+    "environment",
+    "evaluation_set",
+    "tvars",
+    "objectives",
+    "promotion_policy"
+  ],
+  "properties": {
+    "tvl": {
+      "type": "object",
+      "description": "Module metadata block (`tvl.module`) identifying the namespace of the specification; see Listing 9.",
+      "additionalProperties": false,
+      "required": ["module"],
+      "properties": {
+        "module": {
+          "type": "string",
+          "description": "Fully-qualified module identifier (e.g., `corp.product.spec`), matching the paper's namespace convention."
+        },
+        "validation": {
+          "type": "object",
+          "description": "Optional validation configuration for tooling (e.g., skip certain checks during development).",
+          "additionalProperties": false,
+          "properties": {
+            "skip_budget_checks": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, skip validation of exploration budget constraints."
+            },
+            "skip_cost_estimation": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, skip cost estimation checks for derived constraints."
+            }
+          }
+        }
+      }
+    },
+    "tvl_version": {
+      "type": ["string", "number"],
+      "description": "Optional declared language version."
+    },
+    "environment": {
+      "type": "object",
+      "description": "Environment snapshot supplying deployment bindings and numeric context used to specialise domains and operational preconditions.",
+      "additionalProperties": false,
+      "required": ["snapshot_id"],
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC3339 timestamp that labels the environment snapshot (`E_τ` in §III)."
+        },
+        "bindings": {
+          "type": "object",
+          "description": "Opaque deployment references pinned for reproducibility and auditability (for example retriever index IDs, gateway regions, or catalog versions). Bindings are not numeric operational-precondition symbols."
+        },
+        "context": {
+          "type": "object",
+          "description": "Optional numeric environment context used by operational preconditions under `constraints.derived`. Operational arithmetic must reference `env.context.*`."
+        }
+      }
+    },
+    "evaluation_set": {
+      "type": "object",
+      "description": "Evaluation set definition that anchors the dataset and optional randomness seed used in validation runs (§III.B).",
+      "additionalProperties": false,
+      "required": ["dataset"],
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "description": "Canonical identifier or URI for the evaluation dataset (Listing 9 `evaluation_set.dataset`)."
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Optional deterministic seed for stochastic evaluation sets."
+        }
+      }
+    },
+    "tvars": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of TVAR declarations (Γ) including `name`, `type`, and `domain` entries.",
+      "items": { "$ref": "#/$defs/TVarDecl" }
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Constraint sets split between structural (TVAR formulas) and derived (linear constraints over numeric `env.context.*` symbols) clauses.",
+      "additionalProperties": false,
+      "properties": {
+        "structural": {
+          "type": "array",
+          "description": "Typed DNF clauses over TVARs that must hold for structural feasibility.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "when": {
+                "type": "string",
+                "description": "Antecedent formula (optional) specifying the guard for an implication."
+              },
+              "then": {
+                "type": "string",
+                "description": "Consequent formula enforced when the `when` guard is satisfied."
+              },
+              "expr": {
+                "type": "string",
+                "description": "Standalone structural formula without implication sugar."
+              }
+            },
+            "oneOf": [
+              { "required": ["when", "then"] },
+              { "required": ["expr"] }
+            ]
+          }
+        },
+        "derived": {
+          "type": "array",
+          "description": "Linear real-valued predicates over numeric `env.context.*` symbols used for operational validation.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["require"],
+            "properties": {
+              "require": {
+                "type": "string",
+                "description": "Linear inequality or equality (affine form) that must hold under the environment snapshot. Operational preconditions may reference only numeric `env.context.*` symbols."
+              }
+            }
+          }
+        }
+      }
+    },
+    "objectives": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Primary and banded objectives evaluated by the promotion gate (maximize/minimize or TOST band).",
+      "items": { "$ref": "#/$defs/Objective" }
+    },
+    "promotion_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dominance"],
+      "description": "Promotion gate configuration controlling ε-Pareto dominance, error tolerances, and optional chance constraints (§III.G).",
+      "properties": {
+        "dominance": {
+          "enum": ["epsilon_pareto"],
+          "description": "Dominance relation applied to objective vectors; TVL 1.0 mandates ε-Pareto."
+        },
+        "alpha": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0.05,
+          "description": "Family-wise error rate budget (0 < α < 1); defaults to 0.05 when omitted (Listing 10)."
+        },
+        "min_effect": {
+          "type": "object",
+          "description": "Per-objective ε tolerances that define acceptable deltas for dominance comparisons.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Non-negative ε applied to the named objective."
+          }
+        },
+        "adjust": {
+          "enum": ["none", "bonferroni", "holm", "BH"],
+          "description": "Multiple-testing adjustment strategy applied before promotion. Options: none (no adjustment), bonferroni (FWER control), holm (FWER control, more powerful), BH (Benjamini–Hochberg FDR control)."
+        },
+        "chance_constraints": {
+          "type": "array",
+          "description": "Optional hard constraints expressed as minimum confidence thresholds on metrics.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "threshold", "confidence"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Metric identifier constrained at promotion time."
+              },
+              "threshold": {
+                "type": "number",
+                "description": "Target value the metric must satisfy."
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence level for the chance constraint evaluation."
+              }
+            }
+          }
+        },
+        "tie_breakers": {
+          "type": "object",
+          "description": "Secondary ordering rules for resolving ties after ε-Pareto comparison.",
+          "additionalProperties": {
+            "enum": ["min", "max", "min_abs_deviation", "custom"],
+            "description": "Tie-breaking strategy for the corresponding objective."
+          }
+        }
+      }
+    },
+    "exploration": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "Exploration plan describing how the tuner explores the search space (strategy, sampling, budgets) as in Listing 5.",
+      "properties": {
+        "strategy": {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": true,
+          "description": "Primary search strategy configuration (grid, TPE, CMA-ES, NSGA-II, etc.).",
+          "properties": {
+            "type": {
+              "enum": ["random", "grid", "tpe", "cmaes", "nsga2", "custom"],
+              "description": "Name of the exploration algorithm to run."
+            }
+          }
+        },
+        "initial_sampling": {
+          "type": ["string", "object"],
+          "description": "Optional design for seeding the search (e.g., `latin_hypercube`)."
+        },
+        "parallelism": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Settings related to concurrent trial execution.",
+          "properties": {
+            "max_parallel_trials": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Upper bound on concurrently scheduled trials."
+            }
+          }
+        },
+        "convergence": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional stopping rule based on convergence metrics (e.g., hypervolume improvement).",
+          "properties": {
+            "metric": {
+              "enum": ["hypervolume_improvement", "none"],
+              "description": "Convergence signal monitored during exploration."
+            },
+            "window": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Sliding window size for convergence metric aggregation."
+            },
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Minimum improvement required to continue exploration."
+            }
+          }
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Hard limits on trials, cost, or wall-clock runtime used during exploration (§III.H).",
+          "properties": {
+            "max_trials": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of trials permitted."
+            },
+            "max_spend_usd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Budget cap on spend in USD; optional when cost estimation is available."
+            },
+            "max_wallclock_s": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum wall-clock duration in seconds allowed for the exploration run."
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "TVarDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "domain"],
+      "description": "Single tuned-variable declaration (`(name, type, domain)` in Listing 8).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique TVAR identifier; dotted names allowed for nested structures (§III.A)."
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(bool|int|float|enum\\[(str|int|float)\\]|tuple\\[.+\\]|callable\\[[A-Za-z0-9_.-]+\\])$",
+          "description": "Declared TVAR type. TVL 1.0 supports primitive, enum, tuple, and `callable[ProtoId]` forms."
+        },
+        "domain": {
+          "$ref": "#/$defs/DomainSpec",
+          "description": "Domain specification applicable to the declared type; specialised via the environment (§III.A, Appendix X)."
+        }
+      }
+    },
+    "DomainSpec": {
+      "oneOf": [
+        { "$ref": "#/$defs/EnumVals" },
+        { "$ref": "#/$defs/Range" },
+        { "$ref": "#/$defs/SetVals" },
+        { "$ref": "#/$defs/RegistryRef" },
+        { "$ref": "#/$defs/TupleComponents" }
+      ],
+      "description": "Union type covering the admissible domain encodings described in Listing 9."
+    },
+    "EnumVals": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": ["string", "number", "boolean"] },
+      "description": "Finite set of literal values (used for enums or small discrete spaces)."
+    },
+    "Range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["range"],
+      "properties": {
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number" },
+            { "type": "number" }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Closed numeric interval `[min, max]` (inclusive bounds) from Appendix X."
+        },
+        "resolution": {
+          "type": ["number", "integer"],
+          "minimum": 0,
+          "description": "Optional discretisation step for continuous ranges."
+        }
+      }
+    },
+    "SetVals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["set"],
+      "properties": {
+        "set": {
+          "type": "array",
+          "items": { "type": ["string", "number", "boolean"] },
+          "description": "Explicit enumerated set encoded as an object wrapper (handy for richer metadata)."
+        }
+      },
+      "description": "Wrapper form for explicit discrete sets when additional annotations are needed."
+    },
+    "RegistryRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry"],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Lookup token for registry-backed domains (e.g., callable protocol IDs). Resolved lazily at specialization time."
+        },
+        "filter": {
+          "type": "string",
+          "description": "Optional implementation-defined predicate for filtering registry entries (e.g., 'version >= 2.0')."
+        },
+        "version": {
+          "type": "string",
+          "description": "Optional version constraint for the registry lookup (e.g., '>=1.0.0', '~2.3')."
+        }
+      },
+      "description": "Domain referencing an external registry of admissible values. Resolution: registry_ref → resolve(E_τ, R) → set[values]"
+    },
+    "TupleComponents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["components"],
+      "properties": {
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Tuple domain as a list of component domains. Semantics: Cartesian product of components.",
+          "items": { "$ref": "#/$defs/TupleComponentDomainSpec" }
+        }
+      },
+      "description": "Tuple domain specification encoded as component domains (product semantics)."
+    },
+    "TupleComponentDomainSpec": {
+      "oneOf": [
+        { "$ref": "#/$defs/EnumVals" },
+        { "$ref": "#/$defs/SetVals" },
+        { "$ref": "#/$defs/RegistryRef" },
+        { "$ref": "#/$defs/TupleRange" },
+        { "$ref": "#/$defs/TupleComponents" }
+      ],
+      "description": "Domain forms allowed inside tuple components. Float ranges in tuple components require an explicit resolution."
+    },
+    "TupleRange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["range"],
+          "properties": {
+            "range": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "integer" },
+                { "type": "integer" }
+              ],
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Closed integer interval `[min, max]` (inclusive)."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["range", "resolution"],
+          "properties": {
+            "range": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "number" },
+                { "type": "number" }
+              ],
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Closed numeric interval `[min, max]` (inclusive)."
+            },
+            "resolution": {
+              "type": ["number", "integer"],
+              "exclusiveMinimum": 0,
+              "description": "Grid step used to enumerate tuple-component float ranges."
+            }
+          }
+        }
+      ],
+      "description": "Range domain for tuple components: integer ranges can omit resolution; non-integer ranges require it."
+    },
+    "Objective": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["name", "direction"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Objective identifier (e.g., `quality`, `latency`)."
+            },
+            "metric_ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional stable metric identifier resolved by the evaluation harness (for example `metrics.latency_p95_ms.v1`)."
+            },
+            "direction": {
+              "enum": ["maximize", "minimize"],
+              "description": "Dominance direction for the objective."
+            }
+          }
+        },
+        {
+          "required": ["name", "band"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Objective identifier for banded targets."
+            },
+            "metric_ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional stable metric identifier resolved by the evaluation harness for the banded objective."
+            },
+            "band": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "test", "alpha"],
+              "properties": {
+                "target": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                        { "type": "number" },
+                        { "type": "number" }
+                      ],
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "description": "Closed interval [L, U] representing acceptable band bounds."
+                    },
+                    {
+                      "type": "object",
+                      "required": ["center", "tol"],
+                      "properties": {
+                        "center": {
+                          "type": "number",
+                          "description": "Mean value around which the tolerance band is enforced."
+                        },
+                        "tol": {
+                          "type": "number",
+                          "minimum": 0,
+                          "description": "Non-negative tolerance radius."
+                        }
+                      }
+                    }
+                  ],
+                  "description": "Target region for the banded objective (interval form or center/tolerance)."
+                },
+                "test": {
+                  "enum": ["TOST"],
+                  "description": "Statistical test used for band validation; TVL 1.0 mandates TOST."
+                },
+                "alpha": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Significance level for the band test."
+                }
+              },
+              "description": "Banded objective parameters mirroring Listing 10."
+            }
+          }
+        }
+      ],
+      "description": "Objective definition supporting both scalar dominance and banded (TOST) objectives, with an optional declarative metric reference."
+    }
+  }
+}

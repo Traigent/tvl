@@ -1,0 +1,107 @@
+#!/bin/bash
+# Mock TVO (TVL Optimizer) CLI for demo recordings
+
+set -e
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+case "$1" in
+    run)
+        file="${2:-spec.tvl.yml}"
+        shift 2 2>/dev/null || true
+
+        echo -e "${CYAN}tvo${NC} ${BOLD}run${NC} $file $@"
+        echo ""
+
+        if [[ "$*" == *"--dry-run"* ]]; then
+            echo -e "${YELLOW}[dry-run]${NC} Would execute optimization:"
+            echo ""
+            echo "  Strategy:    TPE (Tree-structured Parzen Estimator)"
+            echo "  Max trials:  50"
+            echo "  Objectives:  quality ↑, cost_usd ↓"
+            echo "  TVARs:       3 (model, temperature, max_tokens)"
+            echo ""
+            echo -e "${GREEN}✓${NC} Dry run complete. Run without --dry-run to start."
+        else
+            echo -e "${BOLD}Optimizing...${NC} strategy=TPE, max_trials=50"
+            echo ""
+
+            # Show progressive improvement with clear visual feedback
+            declare -a accuracies=(0.72 0.78 0.81 0.84 0.87)
+            declare -a latencies=(312 245 198 187 165)
+            declare -a costs=(0.018 0.014 0.011 0.009 0.008)
+            declare -a statuses=("" "" "${GREEN}✓${NC}" "${GREEN}✓${NC}" "${GREEN}✓✓✓${NC}")
+
+            for i in {0..4}; do
+                trial=$((i + 1))
+                acc=${accuracies[$i]}
+                lat=${latencies[$i]}
+                cost=${costs[$i]}
+                status=${statuses[$i]}
+
+                # Color code based on meeting targets
+                if (( $(echo "$acc >= 0.85" | bc -l) )); then
+                    acc_color="${GREEN}"
+                else
+                    acc_color="${YELLOW}"
+                fi
+
+                if (( lat <= 200 )); then
+                    lat_color="${GREEN}"
+                else
+                    lat_color="${YELLOW}"
+                fi
+
+                if (( $(echo "$cost <= 0.01" | bc -l) )); then
+                    cost_color="${GREEN}"
+                else
+                    cost_color="${YELLOW}"
+                fi
+
+                sleep 0.6
+                printf "Trial %2d │ accuracy=${acc_color}%.2f${NC}  latency=${lat_color}%3dms${NC}  cost=${cost_color}\$%.3f${NC}  %b\n" \
+                    $((trial * 10)) "$acc" "$lat" "$cost" "$status"
+            done
+
+            echo "         │ ..."
+            sleep 0.4
+            echo ""
+            echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${GREEN}✓${NC} ${BOLD}All targets met!${NC}"
+            echo ""
+            echo -e "${BOLD}Best configuration found:${NC}"
+            echo "  model:       claude-3-haiku"
+            echo "  temperature: 0.2"
+            echo "  max_tokens:  800"
+            echo "  rag_k:       5"
+            echo ""
+            echo -e "  ${BOLD}Results:${NC}"
+            echo -e "    accuracy:      ${GREEN}0.87${NC}  ${GREEN}✓${NC} target >= 0.85"
+            echo -e "    latency:       ${GREEN}165ms${NC}  ${GREEN}✓${NC} target <= 200ms"
+            echo -e "    cost_per_query: ${GREEN}\$0.008${NC}  ${GREEN}✓${NC} target <= \$0.01"
+        fi
+        ;;
+
+    --help|-h)
+        echo -e "${CYAN}tvo${NC} - TVL Optimizer"
+        echo ""
+        echo -e "${BOLD}USAGE:${NC}"
+        echo "    tvo <COMMAND> [OPTIONS]"
+        echo ""
+        echo -e "${BOLD}COMMANDS:${NC}"
+        echo "    run         Run optimization"
+        echo "    status      Check optimization status"
+        echo "    results     View optimization results"
+        echo ""
+        ;;
+
+    *)
+        echo "Unknown command: $1"
+        exit 1
+        ;;
+esac

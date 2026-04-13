@@ -1,0 +1,20 @@
+id: architect
+title: Architect
+audience: Technical leads designing governed optimization systems.
+goal: Understand the language model, constraints, overlays, and integration contracts
+  end to end.
+sections:
+- why-tvl-exists/running-example-campus-orientation-rag
+- getting-fluent-in-tvl/tvl-0-9-type-system
+- constraints-units-safety-nets/structural-constraint-syntax
+- patterns-for-real-deployments/layered-specifications
+- patterns-for-real-deployments/visualizing-overlays
+- patterns-for-real-deployments/provenance-matters
+- integration-patterns/manifests-and-promotion
+entry_sections:
+- why-tvl-exists/running-example-campus-orientation-rag
+- getting-fluent-in-tvl/tvl-0-9-type-system
+completion_sections:
+- patterns-for-real-deployments/provenance-matters
+- integration-patterns/manifests-and-promotion
+estimated_minutes: 90

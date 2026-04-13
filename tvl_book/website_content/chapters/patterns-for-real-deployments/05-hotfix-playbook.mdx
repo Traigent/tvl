@@ -1,0 +1,47 @@
+---
+id: chapter-04-hotfix-playbook
+slug: hotfix-playbook
+title: Hotfix Playbook
+summary: When an incident hits, create a short-lived overlay instead of mutating
+  the base module in place.
+chapter: patterns-for-real-deployments
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- overlays
+- safe-narrowing
+- provenance
+example_refs:
+- /examples/book/ch4_hotfix.overlay.yml
+opal_bridge: false
+---
+
+Need to react quickly to a vendor outage? Create a short-lived overlay:
+
+```yaml
+# hotfix-vendor-outage.overlay.yml
+_tvl_overlay:
+  extends: production.tvl.yml
+  description: "Temporary cap during vendor outage"
+  expires_after: "2025-01-20"  # Reminder to remove
+
+overrides:
+  tvars:
+    - name: model
+      domain: ["gpt-4o-mini", "claude-3-haiku"]  # Exclude affected model
+```
+
+Compose and deploy:
+
+```bash
+tvl-compose hotfix-vendor-outage.overlay.yml -o hotfix.tvl.yml
+tvl-validate hotfix.tvl.yml
+# Deploy hotfix.tvl.yml
+```
+
+<PitfallCard title="Avoid Configuration Drift" tone="pitfall">
+
+Never edit the base file for a temporary fix—create an overlay. This keeps history clean and makes it
+obvious which changes were incident driven versus long-term strategy.
+
+</PitfallCard>

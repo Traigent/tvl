@@ -1,0 +1,8 @@
+{
+  "notes": "Placeholders until SMT and statistical tests are implemented",
+  "satisfiable/minimal.yml": { "schema_ok": true },
+  "satisfiable/banded-target.yml": { "schema_ok": true },
+  "unsatisfiable/conflicting-implications.yml": { "schema_ok": true, "unsat_expected": true },
+  "configurations/valid.yml": { "config_ok": true },
+  "measurements/valid.yml": { "measurement_ok": true }
+}

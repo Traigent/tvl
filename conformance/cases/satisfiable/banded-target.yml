@@ -1,0 +1,29 @@
+# Banded target objective for conformance testing
+tvl:
+  module: conformance.satisfiable.banded_target
+tvl_version: "1.0"
+
+environment:
+  snapshot_id: "2024-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: "test://banded"
+
+tvars:
+  - name: x
+    type: float
+    domain:
+      range: [0.0, 1.0]
+
+objectives:
+  - name: response_tokens
+    metric_ref: metrics.response_tokens.v1
+    band:
+      target: [50, 200]
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect: {}

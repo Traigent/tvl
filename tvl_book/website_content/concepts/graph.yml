@@ -1,0 +1,237 @@
+concepts:
+- id: drift-governance
+  term: Drift and Governance
+  definition: The operational reality that model catalogs, prices, latency envelopes,
+    and business rules change faster than application releases.
+  prerequisites: []
+  sections:
+  - why-tvl-exists/design-goals-at-a-glance
+  - why-tvl-exists/running-example-campus-orientation-rag
+- id: tvars
+  term: Tuned Variables (TVARs)
+  definition: Typed parameters that define the search space for governed optimization.
+  prerequisites:
+  - drift-governance
+  sections:
+  - getting-fluent-in-tvl/minimal-working-spec
+  - getting-fluent-in-tvl/tvl-0-9-type-system
+- id: environment-snapshot
+  term: Environment Snapshot
+  definition: A concrete identifier and component set that anchors a TVL module to
+    the environment used during evaluation.
+  prerequisites:
+  - drift-governance
+  sections:
+  - why-tvl-exists/running-example-campus-orientation-rag
+  - patterns-for-real-deployments/layered-specifications
+- id: evaluation-set
+  term: Evaluation Set
+  definition: The workload and optional seed used to compare configurations consistently.
+  prerequisites:
+  - drift-governance
+  sections:
+  - why-tvl-exists/running-example-campus-orientation-rag
+  - getting-fluent-in-tvl/minimal-working-spec
+- id: type-system
+  term: TVL Type System
+  definition: Explicit domain shapes for TVARs such as bool, int, float, enum, tuple,
+    and callable references.
+  prerequisites:
+  - tvars
+  sections:
+  - getting-fluent-in-tvl/tvl-0-9-type-system
+- id: structural-constraints
+  term: Structural Rules
+  definition: Typed formulas over TVARs that prune invalid assignments before trials
+    run.
+  prerequisites:
+  - tvars
+  - type-system
+  sections:
+  - constraints-units-safety-nets/two-kinds-of-constraints
+  - constraints-units-safety-nets/structural-constraint-syntax
+- id: derived-constraints
+  term: Operational Preconditions
+  definition: In TVL syntax, these are feasibility checks under `constraints.derived`
+    over environment symbols such as budgets, quotas, and approved external limits.
+  prerequisites:
+  - structural-constraints
+  sections:
+  - constraints-units-safety-nets/derived-constraints
+  - constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react
+- id: operational-checks
+  term: Operational Checks
+  definition: Runtime validation steps that gate feasibility budgets, environment
+    constraints, and deployment readiness.
+  prerequisites:
+  - derived-constraints
+  sections:
+  - constraints-units-safety-nets/derived-constraints
+  - integration-patterns/tvl-cli-tools
+- id: satisfiability
+  term: Satisfiability Preflight
+  definition: The structural check that ensures at least one valid assignment exists
+    before exploration.
+  prerequisites:
+  - structural-constraints
+  sections:
+  - constraints-units-safety-nets/testing-constraints
+  - constraints-units-safety-nets/checklist-before-promotion
+- id: promotion-policy
+  term: Promotion Policy
+  definition: The governance contract that records practical-effect and statistical
+    requirements for rollout decisions.
+  prerequisites:
+  - drift-governance
+  sections:
+  - why-tvl-exists/design-goals-at-a-glance
+  - getting-fluent-in-tvl/minimal-working-spec
+- id: overlays
+  term: Overlays and Composition
+  definition: Preprocessing inputs that safely narrow or adapt a base TVL module into
+    environment-specific variants.
+  prerequisites:
+  - environment-snapshot
+  - structural-constraints
+  sections:
+  - patterns-for-real-deployments/module-composition-with-tvl-compose
+  - patterns-for-real-deployments/hotfix-playbook
+- id: safe-narrowing
+  term: Safe Narrowing
+  definition: The rule that overlays should remove options or tighten bounds rather
+    than silently widen risk.
+  prerequisites:
+  - overlays
+  sections:
+  - patterns-for-real-deployments/override-rules
+  - patterns-for-real-deployments/hotfix-playbook
+- id: provenance
+  term: Provenance
+  definition: The artifact trail that links composed specs, overlays, timestamps,
+    and build identities for auditability.
+  prerequisites:
+  - overlays
+  sections:
+  - patterns-for-real-deployments/provenance-matters
+  - integration-patterns/manifests-and-promotion
+- id: cli-toolchain
+  term: CLI Toolchain
+  definition: The deterministic sequence of parse, lint, validate, structural, and
+    operational checks used locally and in CI.
+  prerequisites:
+  - promotion-policy
+  - structural-constraints
+  sections:
+  - getting-fluent-in-tvl/validation-warm-up
+  - integration-patterns/tvl-cli-tools
+- id: validation-workflow
+  term: Validation Workflow
+  definition: The practical local-to-CI sequence for parsing, linting, schema validation,
+    and feasibility checks.
+  prerequisites:
+  - cli-toolchain
+  sections:
+  - getting-fluent-in-tvl/validation-warm-up
+  - constraints-units-safety-nets/testing-constraints
+- id: triagent-integration
+  term: Triagent/TVO Integration
+  definition: Triagent is the optimization platform, and TVO is the optimizer inside
+    it that reads TVL, explores candidates, and produces promotion evidence.
+  prerequisites:
+  - cli-toolchain
+  - promotion-policy
+  sections:
+  - integration-patterns/field-notes-replay-the-optimization-story
+  - integration-patterns/manifests-and-promotion
+- id: opal-bridge
+  term: OPAL Bridge
+  definition: OPAL is the higher-level authoring layer that lowers into TVL plus
+    runtime-side metadata for execution systems.
+  prerequisites:
+  - triagent-integration
+  sections:
+  - integration-patterns/manifests-and-promotion
+- id: dvl-integration
+  term: DVL Integration
+  definition: DVL is the data-validation layer that checks whether evaluation datasets
+    are still trustworthy before rollout decisions are accepted.
+  prerequisites:
+  - triagent-integration
+  sections:
+  - integration-patterns/manifests-and-promotion
+- id: promotion-manifest
+  term: Promotion Manifest
+  definition: The audit bundle that captures specs, validations, measurements, and
+    rollout decisions.
+  prerequisites:
+  - provenance
+  - triagent-integration
+  sections:
+  - patterns-for-real-deployments/provenance-matters
+  - integration-patterns/manifests-and-promotion
+- id: microsim-lab
+  term: Microsim Lab
+  definition: A focused interactive model that builds intuition for TVL trade-offs
+    and constraint feedback.
+  prerequisites:
+  - tvars
+  - structural-constraints
+  sections:
+  - getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs
+  - constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react
+  - integration-patterns/field-notes-replay-the-optimization-story
+- id: running-example
+  term: Running Example
+  definition: The Campus Orientation RAG system that ties the concepts, examples,
+    and labs together across the book.
+  prerequisites:
+  - drift-governance
+  sections:
+  - why-tvl-exists/running-example-campus-orientation-rag
+  - getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs
+- id: pattern-control-surface
+  term: Pattern Control Surface
+  definition: The explicit set of tuned variables, budgets, and decision hooks that
+    make an agent pattern measurable and governable.
+  prerequisites:
+  - tvars
+  sections:
+  - training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces
+  - pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface
+- id: breadth-scaling-patterns
+  term: Breadth-Scaling Patterns
+  definition: Agent patterns that spend budget on more parallel views, shards, or
+    specialists rather than on sequential reconsideration.
+  prerequisites:
+  - pattern-control-surface
+  sections:
+  - pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface
+  - pattern-anatomy-and-evaluation/batching-map-reduce-and-routed-expertise
+- id: depth-scaling-patterns
+  term: Depth-Scaling Patterns
+  definition: Agent patterns that spend budget on additional critique, revision,
+    or sequential reasoning rounds.
+  prerequisites:
+  - pattern-control-surface
+  sections:
+  - pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface
+  - pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions
+- id: committee-judging
+  term: Committee Judging
+  definition: Controlled disagreement among judges or solvers that is resolved through
+    an explicit debate or aggregation policy.
+  prerequisites:
+  - depth-scaling-patterns
+  - promotion-policy
+  sections:
+  - pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions
+- id: pattern-composition
+  term: Pattern Composition
+  definition: The disciplined bundling of several agent patterns into one workflow
+    with a clear scaffold, controller, and rollback story.
+  prerequisites:
+  - pattern-control-surface
+  - triagent-integration
+  sections:
+  - composing-patterns-for-production/scaffold-controller-and-bundle-logic
+  - composing-patterns-for-production/when-to-stop-adding-patterns

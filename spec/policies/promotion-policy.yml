@@ -1,0 +1,8 @@
+# Example promotion policy (standalone, referenced via --policy in CI gate)
+# Keys match the TVL grammar's promotion_policy block.
+dominance: epsilon_pareto
+alpha: 0.05
+adjust: holm                  # "none" | "bonferroni" | "holm" | "BH"
+min_effect:
+  quality: 0.02
+  latency_p95_ms: 50

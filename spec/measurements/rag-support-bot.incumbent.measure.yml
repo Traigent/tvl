@@ -1,0 +1,16 @@
+bundle_id: rag-support-bot.incumbent-2024-10-10
+config_id: rag-support-bot.default
+module_id: corp.support.rag_bot
+objective_values:
+  quality:
+    mean: 0.80
+    std: 0.05
+    n: 200
+  latency_p95_ms:
+    mean: 1400
+    std: 110
+    n: 40
+chance_outcomes:
+  latency_slo:
+    violations: 4
+    trials: 200

@@ -1,0 +1,16 @@
+{
+  "suite_id": "faq-orientation",
+  "dataset": "s3://datasets/faq/onboarding-v2.jsonl",
+  "checks": [
+    {
+      "name": "faq-topic-shift",
+      "kind": "distribution_drift",
+      "threshold": 0.15
+    },
+    {
+      "name": "forbidden-pii",
+      "kind": "policy_violation_rate",
+      "threshold": 0.001
+    }
+  ]
+}

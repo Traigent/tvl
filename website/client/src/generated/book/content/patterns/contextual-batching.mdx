@@ -1,0 +1,92 @@
+Contextual batching is the simplest agent pattern to underestimate. Teams often start with it as a
+cost reduction trick: put more than one item into the same model call and hope throughput goes up.
+The more useful framing is different. Contextual batching is a design pattern with its own tuned
+variables, measurable trade-offs, and failure modes.
+
+## What Changes When You Treat It as a Pattern
+
+Instead of asking whether batching is “on” or “off,” you tune the actual control surface:
+
+- how many items enter the same prompt
+- how many tasks or review lenses are applied to each item
+- how those items are ordered
+- whether summaries from one batch are allowed to influence the next
+
+This is the same engineering move TVL makes elsewhere. Turn a vague workflow choice into explicit
+knobs, then evaluate those knobs against quality, cost, and latency.
+
+<ConceptCallout title="Why This Matters" tone="info">
+  Batching is attractive precisely because it looks cheap. The danger is that attention dilution and
+  position sensitivity stay hidden until quality has already slipped.
+</ConceptCallout>
+
+## Tuned Variables Worth Sweeping
+
+| Variable | What it controls | Typical tension |
+| --- | --- | --- |
+| `items per batch` | How many items share one invocation | Fewer calls vs lower recall |
+| `tasks per item` | How many lenses or subtasks each item gets | Richer output vs format drift |
+| `ordering` | Which items appear earlier in the prompt | Stable priority vs fairness |
+| `overlap` | Whether items appear in multiple batches | Better coverage vs more tokens |
+| `carry-over summary` | Whether prior-batch state is inherited | Context reuse vs contamination |
+
+The point is not that every system needs all five. The point is that once these are explicit, they
+can be governed like any other tuned variables.
+
+## When It Fits
+
+Contextual batching is strongest when the items share enough background that repeated context is
+wasteful. Examples include:
+
+- code review tasks over the same file
+- multiple retrieval checks over the same document slice
+- repeated validation questions about one artifact bundle
+
+It is weaker when every item demands distinct context, or when the output requires precise per-item
+traceability that a shared prompt makes harder to audit.
+
+<PitfallCard title="Common Misread">
+  Teams sometimes conclude that batching failed because the model was weak. In practice the problem
+  is often ungoverned packing: too many items, unstable ordering, or no evaluation split that can
+  tell whether quality fell on early or late items.
+</PitfallCard>
+
+## How TVL Thinking Helps
+
+Once batching becomes a governed pattern, the promotion question becomes concrete:
+
+1. Which batching policy is feasible under current latency and budget constraints?
+2. Which policy preserves enough recall or task success to be deployable?
+3. Which evidence bundle is required before moving to a denser packing policy?
+
+That is a better operational question than “should we batch?”
+
+```yaml
+tvars:
+  - name: items_per_batch
+    type: int
+    domain:
+      set: [1, 2, 4]
+  - name: task_lenses
+    type: int
+    domain:
+      set: [1, 2]
+  - name: batch_order
+    type: enum[str]
+    domain: ["priority_first", "stable_input_order"]
+```
+
+The example is intentionally small. In practice you would add the objective surface and promotion
+policy that let you compare denser batching against the incumbent setting.
+
+## Operational Checklist
+
+- Keep one unbatched baseline in the study so the trade-off is visible.
+- Record ordering policy explicitly; otherwise results are hard to reproduce.
+- Separate token savings from wall-clock savings when substeps are serialized.
+- Inspect per-item failure, not just aggregate batch-level pass rate.
+
+<KnowledgeCheck prompt="What makes contextual batching a pattern rather than just a prompt convenience?">
+  It has a repeatable control surface with explicit tuned variables, measurable quality-cost
+  trade-offs, and recurring failure modes that can be evaluated and governed.
+</KnowledgeCheck>

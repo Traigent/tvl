@@ -1,0 +1,101 @@
+Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the
+optimizer.
+
+<ConceptCallout title="Plain-English Translation" tone="info">
+
+- <Term id="tvars">TVARs</Term> are the knobs the optimizer is allowed to turn.
+- The <Term id="evaluation-set">evaluation set</Term> is the shared test workload used to compare candidates fairly.
+- The <Term id="promotion-policy">promotion policy</Term> is the shipping rulebook: it says what counts as a real win.
+
+</ConceptCallout>
+
+<PredictionPrompt prompt="If you removed `promotion_policy`, would this still be a governed optimization contract or just a tunable config file?">
+
+It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only
+about what can change; it is also about what evidence is required before a change is allowed to ship.
+
+</PredictionPrompt>
+
+```yaml
+# Minimal TVL Spec - Chapter 2
+tvl:
+  module: book.quickstart.simple_rag_qa
+
+environment:
+  snapshot_id: "2025-01-20T00:00:00Z"
+  bindings:
+    retriever_index: campus-faq-v1
+    llm_gateway: us-east-1
+
+evaluation_set:
+  dataset: s3://datasets/campus-rag/dev.jsonl
+  seed: 2025
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "claude-3-haiku"]
+
+  - name: retriever.k
+    type: int
+    domain:
+      set: [3, 5, 8]
+
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 0.6]
+      resolution: 0.1
+
+constraints:
+  structural:
+    - when: "retriever.k = 8"
+      then: "temperature <= 0.3"
+
+objectives:
+  - name: answer_accuracy
+    metric_ref: metrics.answer_accuracy.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    answer_accuracy: 0.01
+    latency_p95_ms: 50
+
+exploration:
+  strategy:
+    type: grid
+  budgets:
+    max_trials: 24
+    max_wallclock_s: 900
+```
+
+If you are coming from standard software configuration, the easiest way to read this file is:
+
+1. `environment` tells you which deployed index and gateway this spec was evaluated against.
+2. `tvars` tells you what can change.
+3. `objectives` tells you what “better” means.
+4. `promotion_policy` tells you when “better” is strong enough to ship.
+
+<ConceptCallout title="Checklist Before You Commit" tone="tip">
+
+- Every TVAR has an explicit `type` and `domain`?
+- `environment.bindings` names the concrete system pieces the study used?
+- Objectives declared with `direction: maximize` or `minimize`?
+- `promotion_policy` includes `min_effect` for each objective?
+- `environment.snapshot_id` is an RFC3339 timestamp?
+
+</ConceptCallout>
+
+<KnowledgeCheck prompt="Which block says what the optimizer may change, and which block says when a winning result is strong enough to ship?">
+
+`tvars` says what may change. `objectives` say what better means. `promotion_policy` says when “better” is credible
+and large enough to justify rollout.
+
+</KnowledgeCheck>

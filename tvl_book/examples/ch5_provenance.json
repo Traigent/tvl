@@ -1,0 +1,6 @@
+{
+  "base_spec": "tvl_book/examples/ch1_motivation_experiment.tvl.yml",
+  "manifest": "tvl_book/examples/ch5_integration_manifest.yaml",
+  "captured_at": "2025-01-15T10:30:00Z",
+  "captured_by": "book-example-ci"
+}

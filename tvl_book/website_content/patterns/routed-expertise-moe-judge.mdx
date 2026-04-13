@@ -1,0 +1,106 @@
+---
+id: pattern-routed-expertise-moe-judge
+slug: routed-expertise-moe-judge
+title: Routed Expertise / MoE + Judge
+summary: Run multiple specialized experts over the same task, then tune the judging or aggregation rule that decides which expert output wins or how they combine.
+family: Breadth Scaling
+sort_order: 3
+estimated_minutes: 18
+tuned_variables:
+  - experts to run
+  - routing policy
+  - expert diversity source
+  - judge policy
+  - aggregation rule
+decision_axes:
+  - Specialist lift vs cumulative cost
+  - Diversity vs duplicated effort
+  - Judge quality vs additional latency
+failure_modes:
+  - Experts converge on the same blind spot because diversity is cosmetic.
+  - The judge prefers style over correctness or evidence.
+  - Routing overhead exceeds the benefit of specialization.
+related_sections:
+  - why-tvl-exists/design-goals-at-a-glance
+  - integration-patterns/field-notes-replay-the-optimization-story
+  - integration-patterns/manifests-and-promotion
+concept_refs:
+  - tvars
+  - triagent-integration
+  - promotion-policy
+primary_example: /examples/tool-use.tvl.yml
+---
+
+Routed expertise treats specialization as an inference-time design choice. Instead of betting on one
+general pass, the system runs several experts or roles, then hands control to a judge or aggregation
+policy. This is mixture-of-experts thinking applied to workflow design rather than only model
+architecture.
+
+## What Gets Tuned
+
+The usual beginner mistake is to ask only whether to add experts. The more useful question is which
+control surface is actually being changed:
+
+- how many experts are active
+- what makes them meaningfully different
+- whether routing happens before execution or only at selection time
+- whether the system chooses one winner or merges several outputs
+
+That turns routed expertise into a governed pattern rather than a hand-built committee.
+
+<ConceptCallout title="Industrial Use" tone="integration">
+  Specialization can often be introduced as a workflow variable long before a team invests in new
+  model training or more complex serving infrastructure.
+</ConceptCallout>
+
+## Judging Is Part of the Pattern
+
+The judge is not an afterthought. Once several experts run, the real system behavior depends on:
+
+- what evidence the judge sees
+- whether the judge scores, ranks, or selects
+- how ties and close calls are handled
+
+In other words, the judge becomes another tuned component on the same evaluation plane.
+
+```yaml
+tvars:
+  - name: experts_to_run
+    type: int
+    domain:
+      set: [1, 2, 3]
+  - name: routing_policy
+    type: enum[str]
+    domain: ["fixed_roles", "retrieval_hint", "validator_gated"]
+  - name: judge_policy
+    type: enum[str]
+    domain: ["best_score", "pairwise_compare", "merge_then_rank"]
+```
+
+## Failure Modes to Watch
+
+Specialist systems can fail in subtle ways:
+
+- all experts are different in wording but not in information
+- the judge learns a superficial preference and amplifies it
+- one expensive expert dominates latency without lifting success rate
+
+That is why routed expertise needs the same evidence discipline as any other tunable pattern.
+
+<PitfallCard title="Fake Diversity">
+  Three experts with the same context, the same prompt frame, and the same evaluation lens are
+  rarely meaningfully diverse. They are usually just a more expensive single-system sample.
+</PitfallCard>
+
+## Operational Checklist
+
+- Log which experts ran and why they were selected.
+- Measure marginal gain per added expert, not just final best-of-N accuracy.
+- Treat judge prompts and rubrics as governed variables too.
+- Record whether the winning expert varies across workload slices.
+
+<KnowledgeCheck prompt="Why is the judge part of the control surface rather than just glue code?">
+  Because once multiple experts exist, the system outcome depends on how they are compared or merged.
+  A weak judge can erase the value of specialization, while a strong judge can make a small expert
+  set worthwhile.
+</KnowledgeCheck>

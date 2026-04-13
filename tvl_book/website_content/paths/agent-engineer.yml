@@ -1,0 +1,24 @@
+id: agent-engineer
+title: Agent Engineer
+audience: AI and software engineers learning how to shape, evaluate, and govern agent workflows.
+goal: Move from basic TVL fluency to pattern comparison and safe multi-pattern composition for production.
+sections:
+- getting-fluent-in-tvl/minimal-working-spec
+- getting-fluent-in-tvl/validation-warm-up
+- training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces
+- training-agents-with-tuned-variables/choosing-tuned-variables-for-agent-systems
+- training-agents-with-tuned-variables/budgets-feedback-and-promotion-loops
+- pattern-anatomy-and-evaluation/how-to-read-a-pattern-control-surface
+- pattern-anatomy-and-evaluation/batching-map-reduce-and-routed-expertise
+- pattern-anatomy-and-evaluation/reflection-judges-and-committee-decisions
+- composing-patterns-for-production/scaffold-controller-and-bundle-logic
+- composing-patterns-for-production/safe-composition-rules
+- composing-patterns-for-production/when-to-stop-adding-patterns
+- integration-patterns/manifests-and-promotion
+entry_sections:
+- getting-fluent-in-tvl/minimal-working-spec
+- training-agents-with-tuned-variables/from-runtime-patterns-to-training-surfaces
+completion_sections:
+- composing-patterns-for-production/when-to-stop-adding-patterns
+- integration-patterns/manifests-and-promotion
+estimated_minutes: 114

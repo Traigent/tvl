@@ -1,0 +1,21 @@
+id: operator
+title: Operator
+audience: Platform and reliability engineers owning rollout safety.
+goal: Operate constraints, overlays, provenance, and promotion evidence confidently
+  during change and incident response.
+sections:
+- constraints-units-safety-nets/two-kinds-of-constraints
+- constraints-units-safety-nets/derived-constraints
+- constraints-units-safety-nets/testing-constraints
+- patterns-for-real-deployments/layered-specifications
+- patterns-for-real-deployments/hotfix-playbook
+- patterns-for-real-deployments/provenance-matters
+- integration-patterns/tvl-cli-tools
+- integration-patterns/manifests-and-promotion
+entry_sections:
+- constraints-units-safety-nets/two-kinds-of-constraints
+- patterns-for-real-deployments/hotfix-playbook
+completion_sections:
+- integration-patterns/tvl-cli-tools
+- integration-patterns/manifests-and-promotion
+estimated_minutes: 72

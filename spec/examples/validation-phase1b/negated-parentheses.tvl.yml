@@ -1,0 +1,34 @@
+# Example: Negated Parentheses
+tvl:
+  module: corp.validation.negated_parentheses
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: agent
+    type: enum[str]
+    domain: ["mini", "pro"]
+  - name: max_calls
+    type: int
+    domain:
+      range: [0, 5]
+
+constraints:
+  structural:
+    - expr: not (agent = 'pro') or (max_calls >= 1 and max_calls <= 3)
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01

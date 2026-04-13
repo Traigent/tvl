@@ -1,0 +1,53 @@
+---
+id: chapter-08-scaffold-controller-and-bundle-logic
+slug: scaffold-controller-and-bundle-logic
+title: Scaffold, Controller, and Bundle Logic
+summary: The cleanest multi-pattern systems separate the stable scaffold from the controller that adds extra search, reflection, or judging behavior.
+chapter: composing-patterns-for-production
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- pattern-composition
+- triagent-integration
+- pattern-control-surface
+example_refs:
+- /examples/book/ch5_integration_pipeline.sh
+opal_bridge: false
+---
+
+The simplest way to reason about a pattern bundle is to split it into two layers:
+
+- scaffold: the stable workflow structure that already works on its own
+- controller: the extra mechanism that adds search, reflection, judging, or another adaptive policy
+
+This matches the way many effective systems are built. A narrow-waist base does the core work, and
+one bounded controller is allowed to change the operating point.
+
+<ConceptCallout title="Production Heuristic" tone="integration">
+
+Prefer one clear scaffold plus one clear controller before trying several interacting controllers at
+ once.
+
+</ConceptCallout>
+
+This is also how you keep the study plane interpretable. If the scaffold and controller are both
+changing at the same time, it becomes harder to explain where the gains came from or why the bundle
+failed.
+
+```yaml
+tvars:
+  - name: scaffold_variant
+    type: enum[str]
+    domain: ["scaffold_only", "scaffold_plus_reflect", "scaffold_plus_judge"]
+  - name: controller_budget
+    type: int
+    domain:
+      set: [1, 2, 4]
+```
+
+<KnowledgeCheck prompt="Why is a scaffold-versus-controller split useful in multi-pattern systems?">
+
+It keeps the bundle interpretable. Reviewers can ask whether the stable workflow is strong on its
+own and whether the controller adds enough lift to justify its extra cost and complexity.
+
+</KnowledgeCheck>

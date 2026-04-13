@@ -1,0 +1,44 @@
+---
+id: 6
+slug: training-agents-with-tuned-variables
+title: Training Agents with Tuned Variables
+summary: Turn agent design choices into explicit TVARs, evaluation budgets, and promotion rules instead of leaving them buried in prompts and orchestration code.
+estimated_minutes: 20
+learning_objectives:
+- Identify which parts of an agent workflow should become governed tuned variables.
+- Separate static pattern names from the actual control surface that must be evaluated.
+- Design feedback and promotion loops for agent changes before shipping them into production.
+prerequisites:
+- getting-fluent-in-tvl
+- constraints-units-safety-nets
+path_tags:
+- agent-engineer
+- quickstart
+- architect
+primary_example: /examples/tool-use.tvl.yml
+---
+
+Agent systems are often described with pattern names such as routing, debate, reflection, or map-reduce.
+Those names are useful, but they are not the operational contract. What matters in practice is the
+control surface underneath them: budgets, counts, ordering, judges, reducers, stop rules, and
+evidence thresholds.
+
+This chapter translates that idea into a TVL-oriented workflow. Instead of treating an agent as a
+frozen prompt stack, treat it as a governed system with explicit tuned variables and measured release
+criteria.
+
+<ConceptCallout title="Simple Framing" tone="info">
+
+- The pattern name tells you the scaffold.
+- The tuned variables tell you what can change.
+- The promotion policy tells you when a changed scaffold is safe enough to ship.
+
+</ConceptCallout>
+
+<ConceptCallout title="Why This Chapter Exists" tone="hint">
+
+Many teams can sketch an agent architecture but still cannot answer the deployment question: which
+parts are allowed to vary, how much experimentation budget is justified, and what evidence would make
+an updated workflow promotable?
+
+</ConceptCallout>

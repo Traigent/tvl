@@ -1,0 +1,57 @@
+Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:
+
+| TVL Syntax | Meaning | NOT This |
+|----------------|---------|----------|
+| `model = "gpt-4o"` | Equality | `model == "gpt-4o"` |
+| `temperature <= 0.5` | Comparison | `params.temperature <= 0.5` |
+| `A and B` | Conjunction | `A && B` |
+| `A or B` | Disjunction | `A \|\| B` |
+| `not A` | Negation | `!A` |
+| `x in {"a", "b"}` | Set membership | `x in ["a", "b"]` |
+
+### Expression Form vs Implication Form
+
+```yaml
+# Fragment: structural constraints only
+constraints:
+  structural:
+    # Expression form - always enforced
+    - expr: "temperature <= 1.0"
+
+    # Implication form - when/then (sugar for: not(when) or then)
+    - when: model = "gpt-4o"
+      then: temperature <= 0.5
+```
+
+### Complete Example
+
+```yaml
+# Fragment: structural constraints showcasing all syntax forms
+constraints:
+  structural:
+    # Safety bound on temperature
+    - expr: "0.0 <= temperature <= 1.0"
+
+    # Premium models need lower temperature for consistency
+    - when: model = "gpt-4o"
+      then: temperature <= 0.5
+
+    # Deep retrieval requires more tokens
+    - when: retrieval_depth >= 5
+      then: max_tokens >= 512
+
+    # Forbidden combination (use negation)
+    - expr: "not (temperature > 0.9 and max_tokens < 256)"
+
+    # Set membership
+    - when: use_caching = true
+      then: model in {"gpt-4o-mini", "claude-3-haiku"}
+```
+
+<PitfallCard title="Debugging Constraint Failures" tone="reliability">
+
+Run `tvl-check-structural spec.yml` to see which constraints are unsatisfiable.
+The tool reports an UNSAT core when available, showing the minimal conflicting subset.
+Use `--json` for machine-readable output.
+
+</PitfallCard>

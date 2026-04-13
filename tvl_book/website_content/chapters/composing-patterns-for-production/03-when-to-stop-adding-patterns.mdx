@@ -1,0 +1,49 @@
+---
+id: chapter-08-when-to-stop-adding-patterns
+slug: when-to-stop-adding-patterns
+title: When to Stop Adding Patterns
+summary: A pattern stack should stop growing when the next controller increases complexity faster than it improves the governed operating point.
+chapter: composing-patterns-for-production
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- pattern-composition
+- promotion-policy
+- validation-workflow
+example_refs:
+- /examples/book/ch5_integration_manifest.yaml
+opal_bridge: false
+---
+
+There is a recurring failure mode in agent engineering: once one pattern helps, every new problem
+looks like an invitation to add another controller. The result is a workflow that appears advanced
+but becomes difficult to benchmark, explain, and operate.
+
+The stopping rule should be explicit:
+
+- does the added pattern improve the governed operating point?
+- is the gain large enough to justify the additional cost and latency?
+- can reviewers still explain the release decision with one manifest and one evaluation story?
+
+If the answer turns fuzzy, that is often the point to stop.
+
+<PredictionPrompt prompt="A four-pattern bundle scores slightly higher than a two-pattern bundle, but reviewers cannot say which controller produced the gain. Should it promote?">
+
+Usually no. If the gain cannot be explained and replayed clearly enough for review, the bundle is not
+yet a strong governed candidate even if one benchmark number improved.
+
+</PredictionPrompt>
+
+<ConceptCallout title="Conservative Default" tone="tip">
+
+Prefer the simplest pattern stack that reaches the target operating point. Extra structure should be
+earned with clear marginal lift and a stable validation story.
+
+</ConceptCallout>
+
+<KnowledgeCheck prompt="What is the practical stopping rule for pattern composition?">
+
+Stop when the next pattern increases complexity faster than it improves the governed operating point,
+or when the resulting evidence and rollback story become harder to explain than the gain is worth.
+
+</KnowledgeCheck>

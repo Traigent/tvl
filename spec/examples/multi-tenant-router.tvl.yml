@@ -1,0 +1,63 @@
+# Example: Multi-Tenant Model Router
+# Demonstrates conditional logic and tier-based constraints for a SaaS application.
+tvl:
+  module: saas.router.tier_policy
+
+environment:
+  snapshot_id: "2024-03-01T00:00:00Z"
+  bindings:
+    router: release-2024-03
+
+evaluation_set:
+  dataset: s3://datasets/saas-requests/sample.jsonl
+  seed: 42
+
+tvars:
+  - name: user_tier
+    type: enum[str]
+    domain: ["free", "pro", "enterprise"]
+    # This is an input variable (context), not a tunable, but TVL treats them similarly for validation
+
+  - name: model_id
+    type: enum[str]
+    domain: ["gpt-3.5-turbo", "gpt-4o", "claude-3-haiku", "claude-3.5-sonnet"]
+
+  - name: max_tokens
+    type: int
+    domain:
+      range: [256, 4096]
+
+constraints:
+  structural:
+    # Free tier is restricted to cheaper, faster models
+    - when: user_tier = "free"
+      then: model_id in ["gpt-3.5-turbo", "claude-3-haiku"]
+
+    # Free tier has lower token limits
+    - when: user_tier = "free"
+      then: max_tokens <= 1024
+
+    # Enterprise gets access to everything, but defaults to high-performance
+    - when: user_tier = "enterprise"
+      then: max_tokens >= 2048
+
+objectives:
+  - name: latency_p99
+    metric_ref: metrics.latency_p99.v1
+    direction: minimize
+  - name: quality_score
+    metric_ref: metrics.quality_score.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    latency_p99: 10.0
+    quality_score: 0.1
+
+exploration:
+  strategy:
+    type: nsga2
+  budgets:
+    max_trials: 50

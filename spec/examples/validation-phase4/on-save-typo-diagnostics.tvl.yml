@@ -1,0 +1,46 @@
+# Example: On-save Quick Fix Diagnostics
+# Open in VS Code to trigger Phase 4 linting; saving should surface quick fixes for the typo
+# (`retriver.k`) and the boolean/int comparison.
+tvl:
+  module: corp.validation.ide_on_save_typos
+
+environment:
+  snapshot_id: "2025-02-01T00:00:00Z"
+  bindings:
+    dataset_version: "dev"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: use_examples
+    type: enum[str]
+    domain: ["none", "few_shot"]
+  - name: retriever.k
+    type: int
+    domain:
+      range: [1, 8]
+  - name: reranker.enabled
+    type: bool
+    domain: [true, false]
+
+constraints:
+  structural:
+    - expr: retriver.k >= 2        # typo: missing 'e' in retriever
+    - expr: reranker.enabled <= 0  # boolean compared to an int; quick fix suggests `= true`
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01
+
+exploration:
+  strategy:
+    type: grid

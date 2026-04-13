@@ -1,0 +1,110 @@
+---
+id: chapter-04-layered-specifications
+slug: layered-specifications
+title: Layered Specifications
+summary: Base modules stay fully valid, while overlays capture environment-specific
+  narrowing before composition.
+chapter: patterns-for-real-deployments
+estimated_minutes: 7
+interactive: false
+concept_refs:
+- overlays
+- safe-narrowing
+- environment-snapshot
+example_refs:
+- /examples/book/ch4_base_module.tvl.yml
+- /examples/book/ch4_staging.overlay.yml
+opal_bridge: false
+---
+
+**Base module** (valid TVL):
+
+```yaml
+# base.tvl.yml - full TVL module
+tvl:
+  module: corp.support.rag_bot
+
+environment:
+  snapshot_id: "2025-01-20T00:00:00Z"
+  bindings:
+    llm_gateway: us-east-1
+
+evaluation_set:
+  dataset: s3://datasets/book/overlays/base.jsonl
+  seed: 2025
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o", "claude-3-haiku"]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.05
+  - name: retriever.k
+    type: int
+    domain:
+      range: [0, 20]
+
+constraints:
+  structural:
+    - when: "retriever.k >= 12"
+      then: "temperature <= 0.4"
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+  - name: cost_usd
+    metric_ref: metrics.cost_usd.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    quality: 0.01
+    latency_p95_ms: 50
+    cost_usd: 0.001
+
+exploration:
+  strategy:
+    type: nsga2
+  budgets:
+    max_trials: 200
+    max_wallclock_s: 7200
+```
+
+**Staging overlay** (NOT a standalone TVL module):
+
+```yaml
+# ch4_staging.overlay.yml - requires preprocessing
+_tvl_overlay:
+  extends: ch4_base_module.tvl.yml
+
+overrides:
+  evaluation_set:
+    dataset: s3://datasets/book/overlays/staging.jsonl
+  tvars:
+    - name: temperature
+      domain:
+        range: [0.0, 0.6]
+        resolution: 0.05
+  exploration:
+    budgets:
+      max_trials: 100
+      max_wallclock_s: 3600
+```
+
+**Compose to valid TVL:**
+
+```bash
+tvl-compose ch4_staging.overlay.yml -o staging.tvl.yml
+tvl-validate staging.tvl.yml  # Passes!
+```

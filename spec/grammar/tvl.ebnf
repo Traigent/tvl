@@ -1,0 +1,152 @@
+(* TVL — Abstract syntax oriented EBNF *)
+(* Formal specification for Tuned Variables Language *)
+
+module        = header, environment, evaluation_set, tvars, constraints, objectives, promotion_policy, [exploration] ;
+
+header        = "tvl", ":", "{", "module", ":", ident, [",", "validation", ":", validation_opts], "}", [ "tvl_version", ":", string ] ;
+validation_opts = "{", [ "skip_budget_checks", ":", boolean ], [ ",", "skip_cost_estimation", ":", boolean ], "}" ;
+
+environment   = "environment", ":", "{",
+                "snapshot_id", ":", string,              (* RFC3339 timestamp for E_τ *)
+                [ ",", "bindings", ":", object ],        (* opaque deployment references: retriever index, gateway, catalog version *)
+                [ ",", "context", ":", object ],         (* numeric environment facts used by operational preconditions *)
+                "}" ;
+
+evaluation_set = "evaluation_set", ":", "{", "dataset", ":", string, [ ",", "seed", ":", integer ], "}" ;
+
+(* ==================== TYPE SYSTEM ==================== *)
+(* TVL supports a closed set of types with product semantics for tuples *)
+
+tvars         = "tvars", ":", "[", { tvar_decl { "," } }, "]" ;
+tvar_decl     = "{", "name", ":", ident, ",", "type", ":", type, ",", "domain", ":", domain_spec, "}" ;
+
+(* Type grammar - complete specification *)
+type          = base_type | compound_type ;
+base_type     = "bool" | "int" | "float" ;
+compound_type = enum_type | tuple_type | callable_type ;
+
+(* Enum types: finite discrete sets over a base element type *)
+enum_type     = "enum[", enum_element, "]" ;
+enum_element  = "str" | "int" | "float" ;
+
+(* Tuple types: product type (A × B × ...) - NOT a tagged union *)
+(* Semantics: Configuration space grows as Cartesian product of component domains *)
+tuple_type    = "tuple[", type_list, "]" ;
+type_list     = type, { ",", type } ;
+
+(* Callable types: reference to protocol-defined functions *)
+(* Resolution: Lazy at specialization time via registry lookup *)
+callable_type = "callable[", ProtoId, "]" ;
+ProtoId       = ident ;                                  (* Protocol identifier in registry *)
+
+(* ==================== DOMAIN SPECIFICATIONS ==================== *)
+(* Domains are specialized by environment snapshots (E_τ) *)
+
+domain_spec   = enum_vals | range_spec | set_vals | registry_ref | tuple_components ;
+
+(* Finite enumeration of literal values *)
+enum_vals     = "[", value, { ",", value }, "]" ;
+
+(* Numeric range with optional discretization *)
+range_spec    = "{", "range", ":", "[", number, ",", number, "]",
+                [ ",", "resolution", ":", number ],      (* Default: 1 for int, 0.001 for float *)
+                "}" ;
+
+(* Explicit set (wrapper form for metadata attachment) *)
+set_vals      = "{", "set", ":", "[", value, { ",", value }, "]", "}" ;
+
+(* Tuple product domain: each component is itself a domain spec *)
+tuple_components = "{", "components", ":", "[", tuple_component, { ",", tuple_component }, "]", "}" ;
+tuple_component  = enum_vals | range_spec | set_vals | registry_ref | tuple_components ;
+(* Implementation note: for tuple components, float ranges require explicit resolution
+   to guarantee finite deterministic enumeration in the reference checker. *)
+
+(* Registry reference for dynamic domain resolution *)
+(* Resolved lazily: registry_ref → resolve(E_τ, R) → set[values] *)
+registry_ref  = "{", "registry", ":", ident,
+                [ ",", "filter", ":", filter_expr ],     (* Optional predicate for filtering *)
+                [ ",", "version", ":", string ],         (* Optional version constraint *)
+                "}" ;
+filter_expr   = string ;                                 (* Implementation-defined predicate *)
+
+constraints   = "constraints", ":", "{", [ structural ], [ ",", derived ], "}" ;
+structural    = "structural", ":", "[", { struct_clause { "," } }, "]" ;
+struct_clause = "{", ( ("when", ":", formula, ",", "then", ":", formula) | ("expr", ":", formula) ), "}" ;
+derived       = "derived", ":", "[", { "{", "require", ":", lin_arith_expr, "}" { "," } }, "]" ;
+
+objectives    = "objectives", ":", "[", { objective_decl { "," } }, "]" ;
+objective_decl= std_objective | band_objective ;
+std_objective = "{", "name", ":", ident, [ ",", "metric_ref", ":", string ], ",", "direction", ":", ("maximize" | "minimize"), "}" ;
+band_objective= "{", "name", ":", ident, [ ",", "metric_ref", ":", string ], ",", "band", ":", "{",
+                 "target", ":", ( "[" , number, ",", number, "]" | "{", "center", ":", number, ",", "tol", ":", number, "}" ),
+                 [ ",", "test", ":", "TOST" ], [ ",", "alpha", ":", number ], "}", "}" ;
+
+promotion_policy = "promotion_policy", ":", "{",
+                   "dominance", ":", "epsilon_pareto",
+                   [ ",", "alpha", ":", number ],            (* defaults to 0.05 when omitted *)
+                   [ ",", "min_effect", ":", "{", ident, ":", number, { ",", ident, ":", number }, "}" ],
+                   [ ",", "adjust", ":", ("none" | "bonferroni" | "holm" | "BH") ],
+                   [ ",", "chance_constraints", ":", "[", { "{", "name", ":", ident, ",", "threshold", ":", number, ",", "confidence", ":", number, "}" { "," } }, "]" ],
+                   [ ",", "tie_breakers", ":", "{", ident, ":", ("min" | "max" | "min_abs_deviation" | "custom"), { ",", ident, ":", ("min" | "max" | "min_abs_deviation" | "custom") }, "}" ],
+                   "}" ;
+
+exploration   = "exploration", ":", "{",
+                "strategy", ":", "{", "type", ":", ("random" | "grid" | "tpe" | "cmaes" | "nsga2" | "custom"), { "," key, ":", value }, "}",
+                [ ",", "initial_sampling", ":", value ],
+                [ ",", "parallelism", ":", "{", "max_parallel_trials", ":", integer, { "," key, ":", value }, "}" ],
+                [ ",", "convergence", ":", "{", "metric", ":", ("hypervolume_improvement" | "none"), [ ",", "window", ":", integer ], [ ",", "threshold", ":", number ], "}" ],
+                [ ",", "budgets", ":", "{", [ "max_trials", ":", integer ], [ ",", "max_spend_usd", ":", number ], [ ",", "max_wallclock_s", ":", integer ], "}" ],
+                "}" ;
+
+(* ==================== CONSTRAINT LANGUAGE ==================== *)
+(* Typed Disjunctive Normal Form (DNF) - NOT CEL *)
+(* Compiles to SAT/SMT (QF_LIA/QF_LRA) for decidability *)
+
+(* Structural constraints: Boolean formulas over TVARs *)
+(* Evaluated at structural feasibility check (F^str) *)
+formula       = implication ;
+implication   = disjunction , [ "=>" , formula ] ;        (* Sugar: A => B ≡ ¬A ∨ B *)
+disjunction   = conjunction , { "or" , conjunction } ;
+conjunction   = unary , { "and" , unary } ;
+unary         = [ "not" ] , ( atom | "(" , formula , ")" ) ;
+
+(* Atoms: type-checked predicates over TVARs *)
+atom          = equality_atom | comparison_atom | interval_atom | tvar_eq_atom | membership_atom ;
+
+(* Equality: t (=|!=) a where typeof(t) = typeof(a) *)
+equality_atom = ident , ("=" | "!=") , value ;
+
+(* Comparison: t (>=|<=|>|<) n where t is numeric (int/float) and n is numeric literal *)
+comparison_atom = ident , (">=" | "<=" | ">" | "<") , number ;
+
+(* Interval: a <= t <= b where t is numeric and a <= b *)
+interval_atom = number , ("<=" | "<") , ident , ("<=" | "<") , number ;
+
+(* TVAR equality: t1 (=|!=) t2 where typeof(t1) = typeof(t2) *)
+tvar_eq_atom  = ident , ("=" | "!=") , ident ;
+
+(* Set membership: t in S where S ⊆ domain(t) *)
+membership_atom = ident , "in" , set_literal ;
+
+set_literal   = "{" , value , { "," , value } , "}" ;
+(* Comparisons only accept numeric literals; TVAR-to-TVAR checks are limited to equality/inequality. *)
+
+(* ==================== DERIVED CONSTRAINTS ==================== *)
+(* Linear arithmetic over numeric env.context symbols (not TVARs) *)
+(* Evaluated at operational feasibility check (F^op) *)
+lin_arith_expr= affine_term , { ("+" | "-") , affine_term } , comparison_op , number ;
+affine_term   = [ coefficient , "*" ] , env_ident | coefficient ;
+comparison_op = "<=" | ">=" | "=" | "<" | ">" ;
+coefficient   = number ;
+env_ident     = ident ;                                  (* Must resolve to numeric env.context symbols, not TVARs *)
+
+(* ==================== TERMINALS ==================== *)
+ident         = ? identifier: [a-zA-Z_][a-zA-Z0-9_.]* ? ;
+number        = ? number literal: -?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)? ? ;
+integer       = ? integer literal: -?[0-9]+ ? ;
+string        = ? quoted string literal with backslash escapes ("..." or '...') ? ;
+value         = number | string | boolean | tuple_val ;
+tuple_val     = "(" , value , { "," , value } , ")" ;
+boolean       = "true" | "false" ;
+key           = ident ;
+object        = "{" , { key , ":" , value , { "," } } , "}" ;

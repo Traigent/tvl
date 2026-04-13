@@ -1,0 +1,60 @@
+---
+id: material-capstone-governed-adaptation-challenge
+slug: capstone-governed-adaptation-challenge
+title: Capstone Governed Adaptation Challenge
+summary: A capstone project that asks the learner to write a TVL contract, justify its constraints, design overlays, and define the promotion evidence bundle.
+audience: Learners who have finished the core TVL book and want a portfolio-style challenge.
+material_type: Capstone
+sort_order: 5
+estimated_minutes: 90
+objectives:
+  - Author a credible TVL module for a non-trivial AI system.
+  - Explain the boundary between structural rules, `env.context.*` feasibility checks, and runtime evidence.
+  - Design a rollout package with overlays, provenance, and promotion artifacts.
+related_sections:
+  - getting-fluent-in-tvl/minimal-working-spec
+  - constraints-units-safety-nets/derived-constraints
+  - patterns-for-real-deployments/module-composition-with-tvl-compose
+  - patterns-for-real-deployments/provenance-matters
+  - integration-patterns/manifests-and-promotion
+---
+
+## Challenge Brief
+
+Choose an AI workflow that changes under real operational pressure: a support bot, retrieval pipeline, model router, evaluation harness, or agent workflow. Write the contract you would want before allowing automated tuning.
+
+## Required Outputs
+
+- One TVL module with at least three meaningful TVARs.
+- At least two structural constraints and two `env.context.*` feasibility checks.
+- One staging overlay and one production or hotfix overlay.
+- A description of the manifest fields required for promotion.
+
+## Evaluation Rubric
+
+### Contract Quality
+
+- Are the TVARs decision-relevant and typed correctly?
+- Do the objectives match what the team actually cares about?
+- Does the promotion policy define a believable shipping standard?
+
+### Safety Quality
+
+- Are invalid combinations blocked structurally?
+- Are environment-scoped limits kept in the correct boundary?
+- Does the overlay strategy narrow risk rather than widen it?
+
+### Operational Quality
+
+- Can another engineer reproduce the decision later?
+- Is rollback planning explicit?
+- Would the evidence bundle stand up in an audit?
+
+## Submission Prompt
+
+Write a one-page defense of your design answering:
+
+- Why these knobs?
+- Why these constraints?
+- Why this promotion threshold?
+- What would make you refuse to ship even after optimization found a winner?

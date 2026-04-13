@@ -1,0 +1,27 @@
+# Generated deployment manifest linking TVL, Triagent (TVO), and DVL.
+manifest:
+  spec_path: tvl_book/examples/ch1_motivation_experiment.tvl.yml
+  spec_sha: 7c2f31be
+  tvl_lock: tvl_book/examples/ch5_tvl.lock
+  provenance: tvl_book/examples/ch5_provenance.json
+triagent:
+  pipeline: campus-orientation-rag
+  optimizer: TVO
+  deployment_target: production
+  evaluation_job: triagent optimize --spec tvl_book/examples/ch1_motivation_experiment.tvl.yml --output results/
+  promotion_gate: epsilon_pareto
+  rollback_on:
+    - latency_regression
+    - constraint_violation
+dvl:
+  dataset_version: faq/v2024.10
+  drift_tests:
+    - faq-topic-shift
+    - forbidden-pii
+  validation_suite: tvl_book/examples/ch5_dvl_suite.json
+integration_checks:
+  - tvl-validate tvl_book/examples/ch1_motivation_experiment.tvl.yml
+  - tvl-check-structural tvl_book/examples/ch1_motivation_experiment.tvl.yml
+  - tvl-check-operational tvl_book/examples/ch1_motivation_experiment.tvl.yml
+  - dvl validate tvl_book/examples/ch5_dvl_suite.json
+  - triagent deploy --dry-run campus-orientation-rag

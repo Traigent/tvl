@@ -1,0 +1,5 @@
+module: campus.orientation.rag
+snapshot_id: "2025-01-15T00:00:00Z"
+evaluation_set: s3://datasets/faq/onboarding-v2.jsonl
+spec_sha: 7c2f31be
+lock_generated_at: "2025-01-15T10:30:00Z"

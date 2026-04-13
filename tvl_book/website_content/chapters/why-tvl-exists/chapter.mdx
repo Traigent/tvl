@@ -1,0 +1,30 @@
+---
+id: 1
+slug: why-tvl-exists
+title: Why TVL Exists
+summary: Why tuned variables and governed optimization are required for modern AI
+  systems under drift.
+estimated_minutes: 18
+learning_objectives:
+- Recognize why static configuration breaks under model, latency, and budget drift.
+- 'Understand the core TVL loop: declare, validate, explore, and promote with evidence.'
+- Anchor the rest of the book on the Campus Orientation RAG running example.
+prerequisites: []
+path_tags:
+- quickstart
+- architect
+- operator
+primary_example: /examples/rag-support-bot.tvl.yml
+---
+
+TVL grew out of a simple observation: **LLM applications never sit still**. Model catalogs evolve, latency budgets
+oscillate with traffic spikes, and cost ceilings reset when finance reviews the bill. Hard-coded configuration
+forces engineers to either over-provision permanently or ship blind during drift events. TVL reframes
+configuration as a tuned, governed artifact that evolves alongside the environment.
+
+<ConceptCallout title="TVL in One Sentence" tone="info">
+
+TVL is a machine-readable contract for “what can change, what must stay safe, and what evidence is required
+before a better configuration ships.”
+
+</ConceptCallout>

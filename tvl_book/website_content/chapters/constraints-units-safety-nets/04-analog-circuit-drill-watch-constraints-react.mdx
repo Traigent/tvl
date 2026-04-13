@@ -1,0 +1,29 @@
+---
+id: chapter-03-analog-circuit-drill-watch-constraints-react
+slug: analog-circuit-drill-watch-constraints-react
+title: Analog Circuit Drill · Watch Constraints React
+summary: Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback
+  the moment a slider moves.
+chapter: constraints-units-safety-nets
+estimated_minutes: 7
+interactive: true
+concept_refs:
+- microsim-lab
+- structural-constraints
+- derived-constraints
+example_refs:
+- /examples/validation-phase2/structural-sat.tvl.yml
+opal_bridge: false
+---
+
+Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.
+
+<MicrosimEmbed title="Orientation RAG Circuit" src="/book-assets/microsims/orientation-rag-circuit/main.html#latency-spike" height={640} />
+
+Each warning mirrors a structural constraint:
+
+- **Latency under 800 ms** — raises amber/red when the simulated configuration breaches the ceiling.
+- **Cost under $0.12** — highlights the response-token capacitor if the API budget slips.
+- **Rerank weight ≥ 0.3** — conditional guard for `retriever_top_k >= 40` to prevent noisy answers.
+
+Challenge yourself to bring all three back to green without dropping quality below 75.

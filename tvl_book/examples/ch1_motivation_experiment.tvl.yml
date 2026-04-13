@@ -1,0 +1,97 @@
+# Campus Orientation RAG - TVL Specification
+# This example demonstrates type-safe tuning, safety constraints, and governed promotion.
+
+tvl:
+  module: campus.orientation.rag
+
+# Environment snapshot anchors the spec to a point in time
+environment:
+  snapshot_id: "2025-01-15T00:00:00Z"
+  bindings:
+    retriever_index: campus-faq-v1
+    llm_gateway: us-east-1
+  context:
+    gateway_baseline_latency_ms: 180
+    provider_input_price_usd_per_1k_tokens: 0.03
+
+# Evaluation dataset for optimization trials
+evaluation_set:
+  dataset: s3://datasets/faq/onboarding-v2.jsonl
+  seed: 2025
+
+# Tuned Variables (TVARs) - the parameters we optimize
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o", "claude-3-haiku"]
+
+  - name: temperature
+    type: float
+    domain:
+      range: [0.1, 0.8]
+      resolution: 0.05
+
+  - name: max_tokens
+    type: int
+    domain:
+      set: [256, 512, 768]
+
+  - name: retrieval_depth
+    type: int
+    domain:
+      range: [2, 6]
+
+# Constraints: structural (checked before trials) and operational preconditions
+constraints:
+  structural:
+    # Premium models need lower temperature for consistency
+    - when: model = "gpt-4o"
+      then: temperature <= 0.5
+    # Deep retrieval requires more tokens
+    - when: retrieval_depth >= 5
+      then: max_tokens >= 512
+
+  derived:
+    # Operational preconditions on the declared environment context
+    - require: env.context.gateway_baseline_latency_ms <= 250
+    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
+
+# Multi-objective optimization targets
+objectives:
+  - name: answer_quality
+    metric_ref: metrics.answer_quality.v1
+    direction: maximize
+  - name: response_latency_p95_ms
+    metric_ref: metrics.response_latency_p95_ms.v1
+    direction: minimize
+  - name: token_cost_usd
+    metric_ref: metrics.token_cost_usd.v1
+    direction: minimize
+
+# Promotion policy with statistical guarantees
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    answer_quality: 0.02
+    response_latency_p95_ms: 50
+    token_cost_usd: 0.005
+  chance_constraints:
+    - name: latency_slo_violation_rate
+      threshold: 0.05
+      confidence: 0.95
+    - name: toxicity_violation_rate
+      threshold: 0.01
+      confidence: 0.95
+    - name: pii_violation_rate
+      threshold: 0.001
+      confidence: 0.95
+
+# Exploration configuration
+exploration:
+  strategy:
+    type: nsga2
+  budgets:
+    max_trials: 60
+    max_wallclock_s: 2400

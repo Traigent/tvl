@@ -1,0 +1,47 @@
+# Example: Empty Domain Error (E1002)
+# Per spec: Empty enum domain is a hard error for CLI, warning for LSP.
+# This spec should FAIL validation with error code E1002.
+
+tvl:
+  module: corp.validation.empty_domain_error
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  # ERROR: Empty enum domain
+  - name: model
+    type: enum[str]
+    domain: []              # E1002: empty_domain
+
+  # Valid TVAR for comparison
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+
+constraints:
+  structural: []
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.0
+
+exploration:
+  strategy:
+    type: grid
+
+# Expected validation result:
+# - Error: E1002 empty_domain at tvars[0].domain
+# - Severity: error (CLI), warning (LSP)

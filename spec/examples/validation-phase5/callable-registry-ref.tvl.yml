@@ -1,0 +1,62 @@
+# Example: Callable Type with Registry Reference
+# Per spec: callable[ProtoId] requires ProtoId in registry dom(R).
+# Resolution is lazy - validated at specialization time.
+
+tvl:
+  module: corp.validation.callable_registry
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+  bindings:
+    model_catalog: provider-catalog-2025-01-01
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  # Callable TVAR referencing a registry
+  - name: reranker
+    type: callable[RerankerProto]
+    domain:
+      registry: corp.rerankers
+      filter: "category = 'neural'"
+      version: ">=1.0.0"
+
+  # Another callable with different protocol
+  - name: chunker
+    type: callable[ChunkerProto]
+    domain:
+      registry: corp.chunkers
+
+  # Standard enum for comparison
+  - name: retrieval_strategy
+    type: enum[str]
+    domain: ["dense", "sparse", "hybrid"]
+
+constraints:
+  structural:
+    # Hybrid retrieval requires neural reranker
+    - when: "retrieval_strategy = 'hybrid'"
+      then: "reranker != null"
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+  - name: cost_usd
+    metric_ref: metrics.cost_usd.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01
+    cost_usd: 0.001
+
+exploration:
+  strategy:
+    type: tpe
+  budgets:
+    max_trials: 100

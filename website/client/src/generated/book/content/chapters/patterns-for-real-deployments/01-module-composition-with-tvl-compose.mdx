@@ -1,0 +1,8 @@
+The TVL core schema defines standalone, self-contained modules. To support inheritance and overlays,
+we use **preprocessing** rather than extending the core schema:
+
+```text
+base.tvl.yml + staging.overlay.yml  →  tvl-compose  →  staging.tvl.yml (valid TVL)
+```
+
+This keeps the core spec simple while enabling powerful composition patterns.

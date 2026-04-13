@@ -1,0 +1,81 @@
+# Example: Multi-Agent Router
+# Demonstrates TVL for agent orchestration with task completion and routing metrics.
+tvl:
+  module: examples.agent_router
+
+environment:
+  snapshot_id: "2024-03-01T00:00:00Z"
+  bindings:
+    orchestrator: v2.1
+    agent_pool: us-west-2
+  context:
+    max_agents: 5
+    timeout_budget_ms: 30000
+
+evaluation_set:
+  dataset: s3://datasets/multi-agent-tasks/routing-bench.jsonl
+  seed: 2024
+
+tvars:
+  - name: routing_model
+    type: enum[str]
+    domain: ["rules", "classifier", "llm"]
+  - name: fallback_threshold
+    type: float
+    domain:
+      range: [0.5, 0.95]
+      resolution: 0.05
+  - name: max_hops
+    type: int
+    domain:
+      range: [1, 5]
+  - name: enable_caching
+    type: bool
+    domain: [true, false]
+
+constraints:
+  structural:
+    # Rules-based routing requires high confidence threshold
+    - when: routing_model = "rules"
+      then: fallback_threshold >= 0.9
+    # LLM routing is expensive; limit hop count
+    - when: routing_model = "llm"
+      then: max_hops <= 3
+  # Operational preconditions are over numeric environment context only
+  derived:
+    - require: env.context.max_agents >= 2
+    - require: env.context.timeout_budget_ms >= 5000
+
+objectives:
+  - name: task_completion_rate
+    metric_ref: metrics.task_completion_rate.v1
+    direction: maximize
+  - name: avg_hops
+    metric_ref: metrics.avg_hops.v1
+    direction: minimize
+  - name: routing_latency_ms
+    metric_ref: metrics.routing_latency_ms.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    task_completion_rate: 0.02
+    avg_hops: 0.5
+    routing_latency_ms: 10
+  chance_constraints:
+    # At most 3% timeout violations with 95% confidence
+    - name: timeout_slo
+      threshold: 0.03
+      confidence: 0.95
+
+exploration:
+  strategy:
+    type: nsga2
+  convergence:
+    metric: hypervolume_improvement
+    window: 5
+    threshold: 0.01
+  budgets:
+    max_trials: 64

@@ -1,0 +1,203 @@
+/* TVL Custom Styles - Dark Mode Support */
+
+/* ============================================
+   Color Variables
+   ============================================ */
+
+:root {
+  /* Light mode colors */
+  --tvl-text-primary: #1a1a2e;
+  --tvl-text-secondary: #4a4a6a;
+  --tvl-text-muted: #6b6b8a;
+  --tvl-bg-primary: #ffffff;
+  --tvl-bg-secondary: #f8f9fa;
+  --tvl-bg-code: #f5f5f5;
+  --tvl-border: #e0e0e0;
+  --tvl-accent: #5c6bc0;
+  --tvl-success: #4caf50;
+  --tvl-warning: #ff9800;
+  --tvl-error: #f44336;
+  --tvl-quote-bg: #f0f4ff;
+  --tvl-quote-border: #5c6bc0;
+}
+
+[data-md-color-scheme="slate"] {
+  /* Dark mode colors */
+  --tvl-text-primary: #e8e8e8;
+  --tvl-text-secondary: #b0b0b0;
+  --tvl-text-muted: #888888;
+  --tvl-bg-primary: #1e1e2e;
+  --tvl-bg-secondary: #2a2a3e;
+  --tvl-bg-code: #2d2d3d;
+  --tvl-border: #404050;
+  --tvl-accent: #7c8cff;
+  --tvl-success: #69db7c;
+  --tvl-warning: #ffd43b;
+  --tvl-error: #ff6b6b;
+  --tvl-quote-bg: #2a2a4e;
+  --tvl-quote-border: #7c8cff;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+/* Ensure blockquotes adapt to theme */
+blockquote {
+  background-color: var(--tvl-quote-bg);
+  border-left: 4px solid var(--tvl-quote-border);
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+  border-radius: 0 8px 8px 0;
+}
+
+blockquote p {
+  color: var(--tvl-text-secondary);
+  margin: 0;
+}
+
+blockquote em {
+  color: var(--tvl-text-primary);
+}
+
+/* Strong text in dark mode */
+[data-md-color-scheme="slate"] strong {
+  color: var(--tvl-text-primary);
+}
+
+/* ============================================
+   Cards & Grid
+   ============================================ */
+
+/* Grid cards styling */
+.md-typeset .grid.cards > ul > li {
+  background-color: var(--tvl-bg-secondary);
+  border: 1px solid var(--tvl-border);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--tvl-accent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   Code Blocks
+   ============================================ */
+
+/* Inline code */
+.md-typeset code {
+  background-color: var(--tvl-bg-code);
+  color: var(--tvl-text-primary);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+}
+
+/* Code block titles */
+.md-typeset .highlight > .filename {
+  background-color: var(--tvl-bg-secondary);
+  border-bottom: 1px solid var(--tvl-border);
+}
+
+/* ============================================
+   Demo SVG Containers
+   ============================================ */
+
+/* SVG demo container - ensure visibility in both modes */
+.md-typeset figure {
+  background-color: var(--tvl-bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1.5rem 0;
+  border: 1px solid var(--tvl-border);
+}
+
+.md-typeset figure img {
+  border-radius: 4px;
+  max-width: 100%;
+  height: auto;
+}
+
+.md-typeset figcaption {
+  color: var(--tvl-text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  margin-top: 0.75rem;
+}
+
+/* ============================================
+   Admonitions
+   ============================================ */
+
+/* Info admonition in dark mode */
+[data-md-color-scheme="slate"] .md-typeset .admonition.info,
+[data-md-color-scheme="slate"] .md-typeset details.info {
+  background-color: rgba(92, 107, 192, 0.1);
+  border-color: var(--tvl-accent);
+}
+
+/* ============================================
+   Navigation & Header
+   ============================================ */
+
+/* Smooth transition for theme toggle */
+.md-header,
+.md-nav,
+.md-main,
+.md-footer {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ============================================
+   Tables
+   ============================================ */
+
+.md-typeset table:not([class]) {
+  background-color: var(--tvl-bg-primary);
+  border: 1px solid var(--tvl-border);
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--tvl-bg-secondary);
+  color: var(--tvl-text-primary);
+}
+
+.md-typeset table:not([class]) td {
+  border-color: var(--tvl-border);
+}
+
+/* ============================================
+   Links
+   ============================================ */
+
+.md-typeset a {
+  color: var(--tvl-accent);
+}
+
+.md-typeset a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================
+   Hero Section Enhancement
+   ============================================ */
+
+/* Make the opening quotes stand out */
+.md-typeset > blockquote:first-of-type {
+  font-size: 1.1rem;
+}
+
+/* Second blockquote (the solution) - highlight it */
+.md-typeset > blockquote:nth-of-type(2) {
+  background: linear-gradient(135deg, var(--tvl-quote-bg) 0%, rgba(92, 107, 192, 0.15) 100%);
+  border-left-width: 5px;
+}
+
+[data-md-color-scheme="slate"] .md-typeset > blockquote:nth-of-type(2) {
+  background: linear-gradient(135deg, var(--tvl-quote-bg) 0%, rgba(124, 140, 255, 0.2) 100%);
+}

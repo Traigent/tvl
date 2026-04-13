@@ -1,0 +1,19 @@
+TVL enforces explicit typing on all tuned variables:
+
+<ConceptCallout title="Why This Matters" tone="info">
+
+For an application engineer, the type system is what keeps tuning from turning into guesswork.
+It makes the optimizer’s choices explicit: a boolean switch is different from an integer budget,
+which is different from a short approved list of model names.
+
+</ConceptCallout>
+
+| Type | Description | Domain Examples |
+|------|-------------|-----------------|
+| `bool` | Boolean flag | `[true, false]` |
+| `int` | Integer value | `range: [1, 10]` or `set: [1, 2, 4, 8]` |
+| `float` | Floating-point | `range: [0.0, 1.0]` with optional `resolution` |
+| `enum[str]` | Finite set of strings | `["gpt-4o", "claude-3"]` |
+| `enum[int]` | Finite set of integers | `[100, 500, 1000]` |
+| `tuple[...]` | Product type | Cartesian product of component domains |
+| `callable[Proto]` | Protocol reference | Registry-backed function lookup |

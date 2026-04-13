@@ -1,0 +1,56 @@
+tvl:
+  module: book.quickstart.simple_rag_qa
+
+environment:
+  snapshot_id: "2025-01-20T00:00:00Z"
+  bindings:
+    retriever_index: campus-faq-v1
+    llm_gateway: us-east-1
+
+evaluation_set:
+  dataset: s3://datasets/campus-rag/dev.jsonl
+  seed: 2025
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "claude-3-haiku"]
+
+  - name: retriever.k
+    type: int
+    domain:
+      set: [3, 5, 8]
+
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 0.6]
+      resolution: 0.1
+
+constraints:
+  structural:
+    - when: "retriever.k = 8"
+      then: "temperature <= 0.3"
+
+objectives:
+  - name: answer_accuracy
+    metric_ref: metrics.answer_accuracy.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    answer_accuracy: 0.01
+    latency_p95_ms: 50
+
+exploration:
+  strategy:
+    type: grid
+  budgets:
+    max_trials: 24
+    max_wallclock_s: 900

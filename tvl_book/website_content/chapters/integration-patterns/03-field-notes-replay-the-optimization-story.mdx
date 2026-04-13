@@ -1,0 +1,51 @@
+---
+id: chapter-05-field-notes-replay-the-optimization-story
+slug: field-notes-replay-the-optimization-story
+title: Field Notes · Replay the Optimization Story
+summary: The Orientation RAG lab includes the same presets we evaluate in CI. Jump
+  between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives
+  while DVL enforces guardrails.
+chapter: integration-patterns
+estimated_minutes: 6
+interactive: true
+concept_refs:
+- microsim-lab
+- triagent-integration
+- promotion-manifest
+example_refs:
+- /examples/ci_pipeline.sh
+opal_bridge: false
+---
+
+The Orientation RAG lab includes the same presets we evaluate in CI. Jump between **Baseline**, **Latency Spike**,
+and **Budget Shift** to see how TVO trades objectives while DVL enforces guardrails.
+
+<MicrosimEmbed title="Orientation RAG Circuit" src="/book-assets/microsims/orientation-rag-circuit/main.html#budget-shift" height={640} />
+
+- Compare the latency and cost read-outs before and after each preset.
+- Click **Copy YAML** to capture the snapshot TVO would export.
+- Note how the constraint badges align with promotion gates—green across the board before approving production.
+
+<ConceptCallout title="CI Recipe" tone="integration">
+
+```bash
+# 1. Validate the spec
+tvl-validate path/to/spec.tvl.yml
+
+# 2. Check constraints are satisfiable
+tvl-check-structural path/to/spec.tvl.yml
+
+# 3. Run optimization (Triagent)
+triagent optimize --spec path/to/spec.tvl.yml --output results/
+
+# 4. Validate promotion candidate
+tvl-measure-validate path/to/spec.tvl.yml results/config.yml results/measurements.yml
+
+# 5. Run promotion gate (compare incumbent vs candidate)
+tvl-ci-gate path/to/spec.tvl.yml results/incumbent.yml results/candidate.yml --json
+
+# 6. Data quality check (DVL)
+dvl validate suites/faq-orientation.json
+```
+
+</ConceptCallout>

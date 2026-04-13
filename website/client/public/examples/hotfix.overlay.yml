@@ -1,0 +1,14 @@
+# Chapter 4 example: Temporary production hotfix overlay.
+# This file is composed into a valid TVL module via `tvl-compose`.
+
+_tvl_overlay:
+  extends: ch4_production.overlay.yml
+
+overrides:
+  tvars:
+    - name: model
+      domain: ["gpt-4o-mini"]
+  exploration:
+    budgets:
+      max_trials: 12
+      max_wallclock_s: 600

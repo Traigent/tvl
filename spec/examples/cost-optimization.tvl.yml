@@ -1,0 +1,61 @@
+# Example: Cost Optimization with Quality Floor
+# Demonstrates minimizing cost while ensuring quality does not drop below a threshold.
+tvl:
+  module: finance.summarization.cost_opt
+
+environment:
+  snapshot_id: "2024-03-01T00:00:00Z"
+  bindings:
+    summarizer: v2.0.0
+  context:
+    provider_input_price_usd_per_1k_tokens: 0.03
+
+evaluation_set:
+  dataset: s3://datasets/finance-docs/quarterly.jsonl
+  seed: 123
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o", "gpt-4o-mini", "llama-3-70b"]
+
+  - name: compression_ratio
+    type: float
+    domain:
+      range: [0.1, 0.5]
+      resolution: 0.1
+
+  - name: use_cache
+    type: bool
+    domain: [true, false]
+
+constraints:
+  derived:
+    # Only run this study under a cheap enough provider snapshot
+    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
+
+objectives:
+  - name: cost_per_1k_runs
+    metric_ref: metrics.cost_per_1k_runs.v1
+    direction: minimize
+  - name: quality_score
+    metric_ref: metrics.quality_score.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  # We are willing to sacrifice a tiny bit of quality for significant cost savings,
+  # but the provider-price precondition above is a hard feasibility check.
+  alpha: 0.02
+  min_effect:
+    cost_per_1k_runs: 0.01
+    quality_score: 0.1
+  chance_constraints:
+    - { name: low_quality_violations, threshold: 0.05, confidence: 0.95 }
+    - { name: latency_sla_violations, threshold: 0.01, confidence: 0.95 }
+
+exploration:
+  strategy:
+    type: nsga2
+  budgets:
+    max_trials: 100

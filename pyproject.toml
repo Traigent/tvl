@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tvl-spec"
+version = "1.0.0"
+description = "TVL (Tuned Variables Language) spec, tools, and SDK"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Traigent Team", email = "open-source@traigent.com" }]
+urls = { Homepage = "https://tvl-lang.org", Repository = "https://github.com/tvl-lang/tvl" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "PyYAML>=6.0",
+  "jsonschema>=4.19",
+  "ortools>=9.8",
+  "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "z3-solver>=4.12; platform_system != 'Windows'",  # optional
+  "mkdocs-material[imaging]>=9.2",
+  "pytest>=8",
+  "datasets>=3",
+  "huggingface_hub>=0.31",
+]
+
+[project.scripts]
+tvl-parse = "tvl_tools.tvl_parse.cli:main"
+tvl-lint = "tvl_tools.tvl_lint.cli:main"
+tvl-validate = "tvl_tools.tvl_validate.cli:main"
+tvl-ci-gate = "tvl_tools.tvl_ci_gate.cli:main"
+tvl-config-validate = "tvl_tools.tvl_config_validate.cli:main"
+tvl-measure-validate = "tvl_tools.tvl_measure_validate.cli:main"
+tvl-check-structural = "tvl_tools.tvl_check_structural.cli:main"
+tvl-check-operational = "tvl_tools.tvl_check_operational.cli:main"
+tvl-compose = "tvl_tools.tvl_compose.cli:main"
+tvl-microsim-bridge = "tvl_tools.microsim_bridge.cli:main"
+
+[project.entry-points."mkdocs.plugins"]
+social_override = "tvl_book_plugins.social_override:SocialOverridePlugin"
+
+[tool.setuptools]
+zip-safe = true
+packages = [
+  "tvl",
+  "tvl_book_plugins",
+  "tvl_tools",
+  "tvl_tools.tvl_parse",
+  "tvl_tools.tvl_lint",
+  "tvl_tools.tvl_validate",
+  "tvl_tools.tvl_ci_gate",
+  "tvl_tools.tvl_config_validate",
+  "tvl_tools.tvl_measure_validate",
+  "tvl_tools.tvl_check_structural",
+  "tvl_tools.tvl_check_operational",
+  "tvl_tools.tvl_compose",
+  "tvl_tools.microsim_bridge",
+]
+package-dir = { tvl = "python/tvl", tvl_book_plugins = "python/tvl_book_plugins", tvl_tools = "tvl_tools" }

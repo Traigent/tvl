@@ -1,0 +1,20 @@
+---
+id: chapter-05-deterministic-artifacts
+slug: deterministic-artifacts
+title: Deterministic Artifacts
+summary: Every TVL workflow should leave behind deterministic artifacts so decisions
+  stay reproducible and reviewable.
+chapter: integration-patterns
+estimated_minutes: 5
+interactive: false
+concept_refs: []
+example_refs: []
+opal_bridge: false
+---
+
+Every TVL workflow produces deterministic artifacts for auditability:
+
+- `spec.tvl.yml` — the validated TVL module
+- `config.yml` — the promoted configuration assignment
+- `measurements.yml` — evaluation results (metrics, sample sizes)
+- `provenance.json` — metadata (timestamps, runners, environment snapshot)

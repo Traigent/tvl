@@ -1,0 +1,113 @@
+---
+id: pattern-map-reduce-with-llms
+slug: map-reduce-with-llms
+title: Map-Reduce with LLMs
+summary: Split a task into smaller bounded subproblems, run parallel or repeated map passes, then tune the reducer that merges them into one governed answer.
+family: Decomposition
+sort_order: 2
+estimated_minutes: 18
+tuned_variables:
+  - mapper granularity
+  - items per map shard
+  - reducer prompt
+  - merge policy
+  - conflict resolution threshold
+decision_axes:
+  - Parallel coverage vs reducer complexity
+  - Local answer quality vs global coherence
+  - Shard independence vs expensive recombination
+failure_modes:
+  - Mappers omit context needed for a good global answer.
+  - Reducers flatten disagreements instead of resolving them.
+  - Shard boundaries drift, creating duplicate or contradictory evidence.
+related_sections:
+  - getting-fluent-in-tvl/validation-warm-up
+  - constraints-units-safety-nets/testing-constraints
+  - integration-patterns/manifests-and-promotion
+concept_refs:
+  - tvars
+  - validation-workflow
+  - promotion-policy
+primary_example: /examples/text-to-sql.tvl.yml
+---
+
+Map-reduce with LLMs takes a task that is too broad or too noisy for a single pass and turns it into
+two governable stages: bounded map work and bounded reduction. The pattern is close to batching, but
+the intent is different. Batching keeps multiple items in one prompt. Map-reduce intentionally
+splits the work first, then asks a reducer to reconcile the partial outputs.
+
+## Where It Helps
+
+This pattern is useful when:
+
+- the full input is too large or too heterogeneous for one clean answer
+- the task naturally decomposes into subquestions, files, documents, or claims
+- you need evidence from several local passes before choosing a final result
+
+The reducer becomes the decisive control point. A weak reducer throws away the benefit of the map
+phase, while an overpowered reducer can become just another monolithic pass that hides where the
+information came from.
+
+<ConceptCallout title="Pattern Boundary" tone="hint">
+  If the map stage is doing independent bounded work and a later stage is synthesizing or arbitrating
+  those outputs, you are in map-reduce territory rather than plain batching.
+</ConceptCallout>
+
+## Tuned Variables That Matter
+
+| Variable | Role | Typical question |
+| --- | --- | --- |
+| `mapper granularity` | Size of each subproblem | How small can each shard be before context is lost? |
+| `items per map shard` | Local packing density | When is shard overhead too high? |
+| `reducer prompt` | Merge instructions | Does the reducer summarize, rank, or arbitrate? |
+| `merge policy` | Combination rule | Union, weighted merge, best-evidence pick, or another policy |
+| `conflict threshold` | Escalation trigger | When should inconsistent shard outputs block promotion? |
+
+## Why It Needs Governance
+
+Map-reduce often looks safer than it is because every local pass is small. The operational risk moves
+to recombination:
+
+- did the sharding hide cross-shard dependencies?
+- did the reducer over-trust one mapper?
+- can the final answer still be traced back to local evidence?
+
+That is why the reducer policy belongs in the tuned-variable surface and why the promotion evidence
+should record both shard-level behavior and final merged outcome.
+
+```yaml
+tvars:
+  - name: shard_size
+    type: int
+    domain:
+      set: [1, 2, 4]
+  - name: reduce_policy
+    type: enum[str]
+    domain: ["merge", "rank_then_select", "conflict_escalate"]
+  - name: conflict_threshold
+    type: float
+    domain:
+      set: [0.0, 0.2, 0.4]
+```
+
+The point is not that these exact variables are universal. The point is that decomposition itself
+should be tunable, not hard-coded.
+
+<PitfallCard title="Hidden Reducer Debt">
+  Teams sometimes instrument the map phase carefully and treat the reducer as a simple prompt tail.
+  That usually fails. The reducer is where evidence can be over-compressed, contradictions can be
+  erased, and traceability can disappear.
+</PitfallCard>
+
+## Operational Checklist
+
+- Keep shard creation deterministic enough to replay.
+- Measure reducer-only cost and latency separately from mapper cost.
+- Track disagreement rate across shards, not just final pass rate.
+- Preserve enough shard provenance that failed outputs can be audited.
+
+<KnowledgeCheck prompt="What makes map-reduce different from just making the prompt smaller?">
+  The defining move is staged decomposition plus governed recombination. The system is not merely
+  using less context; it is creating intermediate answers whose merge policy must be tuned and
+  evaluated.
+</KnowledgeCheck>

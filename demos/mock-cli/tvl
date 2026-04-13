@@ -1,0 +1,156 @@
+#!/bin/bash
+# Mock TVL CLI for demo recordings
+# This simulates tvl commands with realistic output
+
+set -e
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+case "$1" in
+    validate)
+        file="${2:-spec.tvl.yml}"
+        echo -e "${CYAN}tvl${NC} ${BOLD}validate${NC} $file"
+        echo ""
+        sleep 0.5
+
+        if [[ "$file" == *"broken"* ]]; then
+            echo -e "${RED}error${NC}[E1002]: empty domain"
+            echo "  --> $file:8:13"
+            echo "   |"
+            echo " 8 |     domain: []"
+            echo "   |             ^^ domain must contain at least one value"
+            echo ""
+            echo -e "${RED}error${NC}[E2001]: undeclared TVAR"
+            echo "  --> $file:12:13"
+            echo "   |"
+            echo "12 |     - expr: 'unknown_var = true'"
+            echo "   |              ^^^^^^^^^^^ 'unknown_var' is not declared"
+            echo ""
+            echo -e "${YELLOW}warning${NC}[E2007]: float equality"
+            echo "  --> $file:13:13"
+            echo "   |"
+            echo "13 |     - expr: 'temp = 0.5'"
+            echo "   |              ^^^^^^^^^^^ consider using range instead"
+            echo ""
+            echo -e "${RED}✗${NC} Validation failed: 2 errors, 1 warning"
+            exit 1
+        else
+            echo -e "  ${GREEN}✓${NC} Schema valid"
+            echo -e "  ${GREEN}✓${NC} TVARs well-typed (3 declarations)"
+            echo -e "  ${GREEN}✓${NC} Constraints well-formed"
+            echo -e "  ${GREEN}✓${NC} Objectives complete"
+            echo -e "  ${GREEN}✓${NC} Promotion policy valid"
+            echo ""
+            echo -e "${GREEN}✓${NC} Validation passed"
+        fi
+        ;;
+
+    check-sat)
+        file="${2:-spec.tvl.yml}"
+        echo -e "${CYAN}tvl${NC} ${BOLD}check-sat${NC} $file"
+        echo ""
+        sleep 0.3
+        echo "Compiling constraints to SMT..."
+        sleep 0.5
+        echo -e "  ${GREEN}✓${NC} Structural constraints: SAT"
+        echo -e "  ${GREEN}✓${NC} Domain constraints: SAT"
+        echo ""
+        echo -e "${GREEN}✓${NC} Constraints are satisfiable"
+        echo "  Configuration space: ~1,200 points"
+        ;;
+
+    witness)
+        file="${2:-spec.tvl.yml}"
+        echo -e "${CYAN}tvl${NC} ${BOLD}witness${NC} $file"
+        echo ""
+        sleep 0.3
+        echo "Finding satisfying assignment..."
+        sleep 0.5
+        echo ""
+        echo -e "${BOLD}Witness:${NC}"
+        echo "  model: 'claude-3'"
+        echo "  use_cot: false"
+        echo "  temperature: 0.3"
+        ;;
+
+    info)
+        file="${2:-spec.tvl.yml}"
+        echo -e "${CYAN}tvl${NC} ${BOLD}info${NC} $file"
+        echo ""
+        echo -e "${BOLD}Module:${NC} $(basename "$file" .tvl.yml)"
+        echo -e "${BOLD}Version:${NC} TVL 0.9"
+        echo ""
+        echo -e "${BOLD}TVARs:${NC}"
+        echo "  • model      enum[str]   ['gpt-4-turbo', 'claude-3-sonnet']"
+        echo "  • temperature float      [0.0, 1.0]"
+        echo "  • max_tokens  int        [100, 2000]"
+        echo ""
+        echo -e "${BOLD}Objectives:${NC}"
+        echo "  • quality    ↑ maximize"
+        echo "  • cost_usd   ↓ minimize"
+        echo ""
+        echo -e "${BOLD}Constraints:${NC} 0 structural, 0 derived"
+        echo -e "${BOLD}Exploration:${NC} TPE, max 50 trials"
+        ;;
+
+    explain)
+        code="$2"
+        echo -e "${CYAN}tvl${NC} ${BOLD}explain${NC} $code"
+        echo ""
+        case "$code" in
+            E1002)
+                echo -e "${BOLD}E1002: empty_domain${NC}"
+                echo ""
+                echo "The domain of a TVAR must contain at least one value."
+                echo "An empty domain means no valid configurations exist."
+                echo ""
+                echo -e "${BOLD}Example of error:${NC}"
+                echo "  - name: model"
+                echo "    type: enum[str]"
+                echo "    domain: []  # ← E1002: empty domain"
+                echo ""
+                echo -e "${BOLD}Fix:${NC}"
+                echo "  domain: ['gpt-4', 'claude-3']"
+                ;;
+            E2001)
+                echo -e "${BOLD}E2001: undeclared_tvar${NC}"
+                echo ""
+                echo "A constraint references a TVAR that is not declared."
+                echo ""
+                echo -e "${BOLD}Fix:${NC} Declare the TVAR or fix the spelling."
+                ;;
+            *)
+                echo "Unknown error code: $code"
+                ;;
+        esac
+        ;;
+
+    --help|-h)
+        echo -e "${CYAN}tvl${NC} - Tuned Variable Language CLI"
+        echo ""
+        echo -e "${BOLD}USAGE:${NC}"
+        echo "    tvl <COMMAND> [OPTIONS]"
+        echo ""
+        echo -e "${BOLD}COMMANDS:${NC}"
+        echo "    validate    Validate a TVL specification"
+        echo "    check-sat   Check constraint satisfiability"
+        echo "    witness     Find a satisfying assignment"
+        echo "    info        Display spec information"
+        echo "    explain     Explain an error code"
+        echo ""
+        echo -e "${BOLD}OPTIONS:${NC}"
+        echo "    -h, --help  Show this help"
+        ;;
+
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'tvl --help' for usage"
+        exit 1
+        ;;
+esac

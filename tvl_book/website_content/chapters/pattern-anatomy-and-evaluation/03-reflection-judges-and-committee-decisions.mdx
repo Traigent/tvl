@@ -1,0 +1,56 @@
+---
+id: chapter-07-reflection-judges-and-committee-decisions
+slug: reflection-judges-and-committee-decisions
+title: Reflection, Judges, and Committee Decisions
+summary: Depth-oriented refinement and committee-style decision patterns both add reasoning cost, but they do it for different purposes and must be evaluated with different evidence.
+chapter: pattern-anatomy-and-evaluation
+estimated_minutes: 8
+interactive: false
+concept_refs:
+- depth-scaling-patterns
+- committee-judging
+- promotion-policy
+example_refs:
+- /examples/rag-support-bot.tvl.yml
+opal_bridge: false
+---
+
+[Reflective Refinement](/book/patterns/reflective-refinement) and
+[Judge Committees / Debate](/book/patterns/judge-committees-debate) are often grouped together
+because both add more reasoning work after a first pass. But their jobs are different.
+
+- reflection asks: can one draft improve through bounded self-critique?
+- committee or debate asks: should several views argue or vote before a decision is accepted?
+
+Reflection is primarily a revision controller. Committee patterns are primarily uncertainty-management
+and arbitration mechanisms.
+
+<ConceptCallout title="Decision Rule" tone="info">
+
+If the main risk is a weak first draft, evaluate reflection first. If the main risk is ambiguous or
+disputed correctness, committees and judges deserve earlier budget.
+
+</ConceptCallout>
+
+Their evidence expectations differ too:
+
+- reflection should show marginal lift per added round
+- committees should show better calibration, not just more activity
+
+Without that distinction, teams can spend several extra calls and still learn very little about why a
+workflow improved.
+
+<PitfallCard title="More Rounds, Same Mistake">
+
+If a reflection loop keeps preserving the assumptions of the first draft, more rounds only increase
+latency. Likewise, a committee of highly correlated judges can create the appearance of rigor without
+adding real calibration.
+
+</PitfallCard>
+
+<KnowledgeCheck prompt="What is the key difference between reflection and committee patterns?">
+
+Reflection is a bounded revise loop over one evolving answer. Committee and debate patterns use
+controlled disagreement across several views or judges before accepting a decision.
+
+</KnowledgeCheck>

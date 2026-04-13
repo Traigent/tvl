@@ -1,0 +1,38 @@
+# Example: Operational Budgets (Skip Checks)
+# Demonstrates using tvl.validation options to bypass budget/cost validation.
+tvl:
+  module: corp.validation.operational_skip
+  validation:
+    skip_budget_checks: true
+    skip_cost_estimation: true
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: strategy
+    type: enum[str]
+    domain: ["grid", "random"]
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.0
+
+exploration:
+  strategy:
+    type: random
+  budgets:
+    max_trials: 10

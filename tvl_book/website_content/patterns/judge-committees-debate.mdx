@@ -1,0 +1,102 @@
+---
+id: pattern-judge-committees-debate
+slug: judge-committees-debate
+title: Judge Committees / Debate
+summary: Introduce controlled disagreement among solvers or judges, then tune the committee size, rounds, and aggregation rule that convert disagreement into a release decision.
+family: Consensus
+sort_order: 5
+estimated_minutes: 18
+tuned_variables:
+  - committee size
+  - debate rounds
+  - communication topology
+  - rubric
+  - aggregation policy
+decision_axes:
+  - Better calibration vs more latency and token cost
+  - Richer disagreement vs coordination overhead
+  - Dynamic judge selection vs reproducibility
+failure_modes:
+  - Debate amplifies confident but wrong arguments.
+  - Judges correlate too strongly, so the committee is only cosmetic.
+  - Aggregation rules hide split decisions that should block rollout.
+related_sections:
+  - why-tvl-exists/design-goals-at-a-glance
+  - constraints-units-safety-nets/testing-constraints
+  - integration-patterns/manifests-and-promotion
+concept_refs:
+  - promotion-policy
+  - triagent-integration
+  - validation-workflow
+primary_example: /examples/rag-support-bot.tvl.yml
+---
+
+Judge committees and debate patterns introduce disagreement on purpose. Instead of trusting a single
+answer or a single evaluation pass, the system creates multiple views, then tunes how those views are
+compared, argued over, and collapsed into a decision.
+
+## Two Common Variants
+
+1. Solver-side debate: several solvers produce or defend answers over one or more rounds.
+2. Judge-side committees: several evaluators score or rank candidate outputs, sometimes with dynamic
+team selection.
+
+The shared engineering idea is controlled disagreement plus governed aggregation.
+
+<ConceptCallout title="Why Teams Use It" tone="tip">
+  When correctness is hard to define procedurally, committees become a practical alternative to both
+  single-sample outputs and constant human review.
+</ConceptCallout>
+
+## What Needs Tuning
+
+The pattern becomes expensive quickly, so its control surface matters:
+
+- how many agents or judges participate
+- how many rounds are allowed
+- whether agents see each other’s arguments directly
+- which rubric governs scoring
+- how ties, splits, or abstentions are handled
+
+```yaml
+tvars:
+  - name: committee_size
+    type: int
+    domain:
+      set: [1, 3, 5]
+  - name: debate_rounds
+    type: int
+    domain:
+      set: [0, 1, 2]
+  - name: aggregation_policy
+    type: enum[str]
+    domain: ["majority_vote", "weighted_vote", "judge_select"]
+```
+
+## What Makes It Operationally Tricky
+
+Disagreement is only useful if the system can tell whether it reflects:
+
+- real uncertainty about the task
+- genuine perspective diversity
+- or just noisy restatements of the same mistake
+
+That is why committee composition and aggregation rules should be visible in the evidence bundle, not
+buried in prompt text.
+
+<PitfallCard title="Cosmetic Committees">
+  A committee of nearly identical judges can create the appearance of rigor without improving
+  calibration. Diversity source and aggregation policy matter at least as much as committee size.
+</PitfallCard>
+
+## Operational Checklist
+
+- Measure agreement rate and disagreement resolution rate, not just final vote.
+- Log minority positions when promotion decisions are close.
+- Compare static committees with dynamic judge selection explicitly.
+- Decide ahead of time whether split decisions should promote, retry, or escalate.
+
+<KnowledgeCheck prompt="Why is aggregation policy central in committee and debate patterns?">
+  Because disagreement alone does not improve a system. The operational value comes from how that
+  disagreement is interpreted, scored, and turned into a governed release or answer decision.
+</KnowledgeCheck>

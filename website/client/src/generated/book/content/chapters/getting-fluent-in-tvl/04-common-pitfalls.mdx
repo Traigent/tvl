@@ -1,0 +1,4 @@
+1. Using wrong type names — it's `enum[str]` not `categorical`, `float` not `continuous`.
+2. Mixing deployment bindings with numeric operating assumptions instead of separating `bindings` and `context`.
+3. Missing `promotion_policy` — this is required in TVL (no implicit defaults).
+4. Constraint syntax errors — use `=` for equality (not `==`), `and`/`or` (not `&&`/`||`).

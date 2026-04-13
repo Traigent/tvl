@@ -1,0 +1,74 @@
+---
+id: chapter-06-choosing-tuned-variables-for-agent-systems
+slug: choosing-tuned-variables-for-agent-systems
+title: Choosing Tuned Variables for Agent Systems
+summary: Good TVARs correspond to real architectural choices, observable trade-offs, and repeatable evaluation slices rather than to every prompt token a team could edit.
+chapter: training-agents-with-tuned-variables
+estimated_minutes: 7
+interactive: false
+concept_refs:
+- tvars
+- evaluation-set
+- pattern-control-surface
+example_refs:
+- /examples/text-to-sql.yml
+- /examples/tool-use.tvl.yml
+opal_bridge: false
+---
+
+Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three
+tests:
+
+1. It changes a meaningful system decision.
+2. It creates a measurable trade-off.
+3. It can be evaluated repeatedly on a stable workload slice.
+
+This is why "rewrite the prompt until it feels better" is a weak engineering process. It changes too
+many things at once and rarely leaves behind a clean study plane.
+
+<ConceptCallout title="Selection Heuristic" tone="tip">
+
+Promote a setting into the governed surface when reviewers would reasonably argue about its value.
+Leave it out when it is only cosmetic, one-off, or impossible to evaluate consistently.
+
+</ConceptCallout>
+
+For agent systems, strong candidate TVARs usually come from one of four places:
+
+- coordination: counts, rounds, routing rules, and reducer policies
+- budgets: token caps, branch factors, retry limits, and validation quotas
+- evidence: judge policy, rubric choice, or conflict threshold
+- environment coupling: retrieval depth, tool inventory, or approved model set
+
+Weak candidate TVARs are typically too local or too brittle. If a variable only matters for one
+temporary prompt revision and cannot survive review, it usually does not belong in the contract.
+
+<PitfallCard title="Overfitting the Surface">
+
+An oversized control surface makes optimization noisy and governance weak. If every prompt phrasing
+becomes a TVAR, reviewers lose sight of which decisions are architecturally meaningful.
+
+</PitfallCard>
+
+```yaml
+tvars:
+  - name: map_shard_size
+    type: int
+    domain:
+      set: [1, 2, 4]
+  - name: judge_committee_size
+    type: int
+    domain:
+      set: [1, 3, 5]
+  - name: branch_budget
+    type: int
+    domain:
+      set: [2, 4, 8]
+```
+
+<KnowledgeCheck prompt="What makes a candidate variable strong enough to add to the governed surface?">
+
+It should map to a real system decision, create a measurable trade-off, and be testable on a stable
+evaluation slice. If it fails those tests, it is usually too weak or too noisy to govern well.
+
+</KnowledgeCheck>

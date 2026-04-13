@@ -1,0 +1,33 @@
+---
+id: chapter-04-provenance-matters
+slug: provenance-matters
+title: Provenance Matters
+summary: Every promotion should capture the exact composed spec, overlay inputs,
+  and replay metadata needed for audits.
+chapter: patterns-for-real-deployments
+estimated_minutes: 5
+interactive: false
+concept_refs:
+- provenance
+- promotion-manifest
+example_refs:
+- /examples/book/ch5_integration_manifest.yaml
+opal_bridge: false
+---
+
+Every promotion should commit:
+
+- `spec.tvl.yml` — the composed, valid TVL module.
+- `spec.overlay.yml` — the overlay that produced it (if any).
+- `provenance.json` — metadata: base SHA, overlay SHA, compose timestamp.
+
+```json
+{
+  "base": "base.tvl.yml@abc123",
+  "overlay": "staging.overlay.yml@def456",
+  "composed_at": "2025-01-15T10:30:00Z",
+  "composed_by": "ci-bot"
+}
+```
+
+This audit trail enables deterministic recreation of exact configurations from version control history.

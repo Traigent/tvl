@@ -1,0 +1,3 @@
+module: ../../spec/examples/rag-support-bot.tvl.yml
+config: ../../spec/configurations/rag-support-bot.config.yml
+measurement: ../../spec/measurements/rag-support-bot.measure.yml

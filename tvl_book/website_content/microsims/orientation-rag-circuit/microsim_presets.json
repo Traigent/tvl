@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "source": {
+    "spec_id": "rag-campus-orientation",
+    "spec_version": "0.1.0"
+  },
+  "defaults": {
+    "max_tokens": 512
+  },
+  "sliders": {
+    "max_tokens": {
+      "min": 256.0,
+      "max": 768.0,
+      "step": 256.0
+    }
+  },
+  "presets": {
+    "baseline": {
+      "max_tokens": 512
+    },
+    "latency-spike": {
+      "max_tokens": 512
+    },
+    "budget-shift": {
+      "max_tokens": 512
+    }
+  }
+}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Orientation RAG Analog Circuit</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="lab-shell">
+      <section class="lab-canvas">
+        <svg viewBox="0 0 640 360" role="img" aria-labelledby="circuit-title circuit-desc">
+          <title id="circuit-title">Orientation RAG Analog Circuit</title>
+          <desc id="circuit-desc">Three tunable components wired in series that map TVL variables to circuit behavior.</desc>
+          <defs>
+            <linearGradient id="meterGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#22c55e"/>
+              <stop offset="50%" stop-color="#facc15"/>
+              <stop offset="100%" stop-color="#ef4444"/>
+            </linearGradient>
+            <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <polygon points="0 0, 6 3, 0 6" fill="#1f2933"></polygon>
+            </marker>
+          </defs>
+
+          <!-- Power Source -->
+          <rect x="40" y="140" width="80" height="80" rx="8" class="component supply"></rect>
+          <text x="80" y="160" class="label title">Campus Load</text>
+          <text x="80" y="185" class="label value" data-field="supplyVoltage">5.0 V</text>
+          <text x="80" y="210" class="label small">Traffic Surge</text>
+
+          <!-- Wire -->
+          <path d="M120 180 H180" class="wire"></path>
+
+          <!-- Component 1 -->
+          <rect x="180" y="120" width="120" height="120" rx="10" class="component resistor" data-component="retriever"></rect>
+          <text x="240" y="140" class="label title">Retriever Top K</text>
+          <text x="240" y="170" class="label value" data-field="retrieverValue">32</text>
+          <text x="240" y="200" class="label small">Context Intake</text>
+          <text x="240" y="225" class="label small" data-field="retrieverOhms">32 Ω</text>
+
+          <path d="M300 180 H360" class="wire"></path>
+
+          <!-- Component 2 -->
+          <rect x="360" y="120" width="120" height="120" rx="10" class="component amplifier" data-component="rerank"></rect>
+          <text x="420" y="140" class="label title">Rerank Weight</text>
+          <text x="420" y="170" class="label value" data-field="rerankValue">0.45</text>
+          <text x="420" y="200" class="label small">Signal Booster</text>
+          <text x="420" y="225" class="label small" data-field="rerankGain">Gain ×1.8</text>
+
+          <path d="M480 180 H520" class="wire"></path>
+
+          <!-- Component 3 -->
+          <rect x="520" y="120" width="120" height="120" rx="10" class="component capacitor" data-component="tokens"></rect>
+          <text x="580" y="140" class="label title">Response Tokens</text>
+          <text x="580" y="170" class="label value" data-field="tokensValue">448</text>
+          <text x="580" y="200" class="label small">Output Buffer</text>
+          <text x="580" y="225" class="label small" data-field="tokensFarads">0.45 F</text>
+
+          <!-- Ground -->
+          <path d="M640 180 H680" class="wire"></path>
+          <line x1="680" y1="180" x2="680" y2="210" class="wire"></line>
+          <line x1="660" y1="210" x2="700" y2="210" class="wire"></line>
+          <line x1="665" y1="220" x2="695" y2="220" class="wire"></line>
+          <line x1="670" y1="230" x2="690" y2="230" class="wire"></line>
+        </svg>
+      </section>
+
+      <section class="lab-controls">
+        <header>
+          <h2>TVL ↔ Circuit Controls</h2>
+          <p class="caption">Adjust the sliders to explore how tuning variables influence latency, cost, and quality.</p>
+        </header>
+
+        <div class="preset-bar" role="toolbar" aria-label="Microsim scenarios">
+          <button type="button" data-preset="baseline" class="preset-button">Baseline</button>
+          <button type="button" data-preset="latency-spike" class="preset-button">Latency Spike</button>
+          <button type="button" data-preset="budget-shift" class="preset-button">Budget Shift</button>
+        </div>
+
+        <div class="control-group">
+          <label for="retriever">Retriever Top K <span data-out="retrieverValue" class="value-tag">32</span></label>
+          <input id="retriever" type="range" min="8" max="64" step="4" value="32">
+          <p class="helper">Higher values enrich context but increase recall latency.</p>
+        </div>
+
+        <div class="control-group">
+          <label for="rerank">Rerank Weight <span data-out="rerankValue" class="value-tag">0.45</span></label>
+          <input id="rerank" type="range" min="0.1" max="0.9" step="0.05" value="0.45">
+          <p class="helper">Boosts faithful answers when the retriever returns noisy passages.</p>
+        </div>
+
+        <div class="control-group">
+          <label for="tokens">Response Tokens <span data-out="tokensValue" class="value-tag">448</span></label>
+          <input id="tokens" type="range" min="256" max="640" step="32" value="448">
+          <p class="helper">Longer outputs give nuance but consume budget and latency.</p>
+        </div>
+
+        <section class="metrics">
+          <article>
+            <h3>Latency</h3>
+            <div class="meter">
+              <div class="meter-fill" data-field="latencyBar"></div>
+            </div>
+            <p><strong data-field="latencyDisplay">620 ms</strong> target ≤ 800 ms</p>
+          </article>
+
+          <article>
+            <h3>Cost</h3>
+            <div class="meter">
+              <div class="meter-fill" data-field="costBar"></div>
+            </div>
+            <p><strong data-field="costDisplay">$0.07</strong> target ≤ $0.12</p>
+          </article>
+
+          <article>
+            <h3>Quality</h3>
+            <div class="meter">
+              <div class="meter-fill" data-field="qualityBar"></div>
+            </div>
+            <p><strong data-field="qualityDisplay">82</strong> target ≥ 75</p>
+          </article>
+        </section>
+
+        <section class="constraints" aria-live="polite">
+          <h3>Constraint Guardrail</h3>
+          <ul>
+            <li data-constraint="latency">Latency under 800 ms<span></span></li>
+            <li data-constraint="cost">Cost under $0.12<span></span></li>
+            <li data-constraint="rerank">Rerank weight ≥ 0.3 when Top K ≥ 40<span></span></li>
+          </ul>
+        </section>
+
+        <section class="notes">
+          <h3>Snapshot</h3>
+          <pre data-field="yamlSnapshot"></pre>
+          <button type="button" id="copyYaml" class="ghost-button">Copy YAML</button>
+        </section>
+      </section>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

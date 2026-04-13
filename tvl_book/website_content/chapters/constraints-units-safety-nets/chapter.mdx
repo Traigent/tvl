@@ -1,0 +1,24 @@
+---
+id: 3
+slug: constraints-units-safety-nets
+title: Constraints, Units, and Safety Nets
+summary: Typed structural rules, operational preconditions, and satisfiability preflights
+  for safe exploration.
+estimated_minutes: 28
+learning_objectives:
+- Differentiate structural rules from operational preconditions.
+- Write TVL-native formulas that compile into deterministic feasibility checks.
+- Use SAT tooling and tests to catch invalid search spaces early.
+prerequisites:
+- why-tvl-exists
+- getting-fluent-in-tvl
+path_tags:
+- quickstart
+- architect
+- operator
+primary_example: /examples/validation-phase2/structural-sat.tvl.yml
+---
+
+TVL uses a **typed Disjunctive Normal Form (DNF)** constraint language that compiles to SAT/SMT solvers
+for formal verification. This chapter shows how to write structural rules and operational preconditions, and test them
+before TVO wastes a single trial.

@@ -1,0 +1,36 @@
+# Example: Structural Constraints (UNSAT)
+# Demonstrates contradictory structural inequalities and the resulting UNSAT core.
+tvl:
+  module: corp.validation.structural_unsat
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: max_calls
+    type: int
+    domain:
+      range: [0, 3]
+
+constraints:
+  structural:
+    - expr: max_calls >= 3
+    - expr: max_calls <= 1
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.0
+
+exploration:
+  strategy:
+    type: grid

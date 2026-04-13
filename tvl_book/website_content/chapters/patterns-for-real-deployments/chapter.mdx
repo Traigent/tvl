@@ -1,0 +1,24 @@
+---
+id: 4
+slug: patterns-for-real-deployments
+title: Patterns for Real Deployments
+summary: Composition, overlays, safe narrowing, and provenance patterns for production
+  operations.
+estimated_minutes: 24
+learning_objectives:
+- Apply environment-aware overlays without polluting the core TVL schema.
+- Use safe narrowing patterns to move from base modules to staging, production, and
+  hotfixes.
+- Capture provenance so promotions remain replayable and reviewable.
+prerequisites:
+- getting-fluent-in-tvl
+- constraints-units-safety-nets
+path_tags:
+- architect
+- operator
+primary_example: /examples/book/ch4_base_module.tvl.yml
+---
+
+Managing multiple environments (dev, staging, production) often requires slight variations of the same TVL
+spec. This chapter covers module composition patterns using `tvl-compose`, a preprocessing tool that flattens
+overlay files into valid TVL modules.

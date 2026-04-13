@@ -1,0 +1,68 @@
+Reflective refinement is the depth-scaling pattern most teams reach for early. The tempting version
+is informal: ask the model to think again. The operational version is stricter. Reflection is a
+budgeted loop with explicit tuned variables governing how critique happens, what is remembered, and
+when the loop stops.
+
+## The Practical Question
+
+The real question is not whether reflection sounds smart. It is whether one or two additional passes
+produce enough measurable lift to justify the extra cost and latency.
+
+That means tuning:
+
+- how many revision rounds are allowed
+- whether critiques come from a rubric, failure trace, or alternate perspective
+- which state is forwarded into the next round
+- which condition terminates the loop
+
+<ConceptCallout title="Useful Reframe" tone="info">
+  Reflection is not a personality trait of the agent. It is a governed controller with a finite
+  budget and an explicit stop rule.
+</ConceptCallout>
+
+## Why It Works
+
+First-pass drafts often fail for systematic reasons:
+
+- they overlook a constraint
+- they optimize the wrong subgoal
+- they overfit to one interpretation of the prompt
+
+Reflection can help because it creates a structured chance to surface those mistakes before the
+system commits to output.
+
+```yaml
+tvars:
+  - name: reflection_rounds
+    type: int
+    domain:
+      set: [0, 1, 2]
+  - name: critique_mode
+    type: enum[str]
+    domain: ["rubric", "failure_trace", "contrastive_view"]
+  - name: stop_rule
+    type: enum[str]
+    domain: ["fixed_budget", "no_change", "score_plateau"]
+```
+
+## Where Teams Go Wrong
+
+Reflection becomes wasteful when it is under-specified. Without a clear critique mode and stop
+criterion, the system often turns one useful pass into several near-duplicate passes.
+
+<PitfallCard title="Loop Without Signal">
+  If the critique cannot point to a concrete defect or measurable rubric miss, extra rounds usually
+  add style variation rather than substantive correction.
+</PitfallCard>
+
+## Operational Checklist
+
+- Compare zero-round, one-round, and two-round settings explicitly.
+- Measure marginal lift per round rather than only best observed performance.
+- Keep critique prompts inspectable so failures can be diagnosed.
+- Treat “no further gain” as a valid stopping outcome, not as a failure to reflect.
+
+<KnowledgeCheck prompt="What makes reflective refinement governable instead of open-ended?">
+  It has an explicit loop budget, a defined critique mechanism, and a stop rule that can be tested
+  against cost, latency, and quality outcomes.
+</KnowledgeCheck>

@@ -1,0 +1,23 @@
+TVL earns its keep when paired with Triagent (TVO) and DVL. Triagent is the optimization platform, TVO is
+the optimizer inside it, and DVL is the data-validation layer. TVO reads TVL specs, explores the
+configuration space, and produces promotion proofs. DVL validates the datasets that power those experiments
+so you never ship a great configuration with stale data.
+
+<ConceptCallout title="How to Read This Chapter" tone="hint">
+
+- First, learn the static toolchain and CI gates.
+- Then connect TVL to runtime systems like TVO and DVL.
+- Finally, treat manifests as the operational record that makes audits, rollback, and reproducibility possible.
+
+</ConceptCallout>
+
+<ConceptCallout title="Simple System Boundary" tone="integration">
+
+- <Term id="triagent-integration">Triagent/TVO</Term> explores the search space described by TVL.
+- <Term id="dvl-integration">DVL</Term> checks whether the data behind those evaluations is still trustworthy.
+- <Term id="opal-bridge">OPAL</Term> is the higher-level authoring layer; TVL remains the governed contract that
+  downstream tooling can validate and audit.
+
+</ConceptCallout>
+
+<MermaidDiagram chart={"flowchart LR\n    A[TVL Spec] -->|tvl-validate| B[CI Gate]\n    B -->|valid| C[Triagent TVO]\n    C -->|promotion proof| D[Deployment]\n    C -->|drift signals| E[DVL Suites]\n    E -->|blocking checks| D"} />

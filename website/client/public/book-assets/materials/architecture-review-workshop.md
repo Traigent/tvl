@@ -1,0 +1,136 @@
+## Workshop Output
+
+- A reviewed TVL contract with open questions captured.
+- An overlay strategy for staging, production, and hotfix use.
+- A list of runtime and evidence artifacts required for promotion.
+
+## Why This Workshop Matters
+
+Architecture reviews often stay abstract: teams talk about governance, overlays, and manifests without stress-testing one
+real contract. This workshop forces that discussion onto a tangible TVL artifact so the review produces a usable
+decision record instead of a vague agreement that "the design seems fine."
+
+## Facilitation Guide
+
+| Phase | Minutes | Activity |
+| :--- | :--- | :--- |
+| Setup | 5 | Read the scenario contract and circle the first thing that worries you. |
+| Contract review | 15 | Review TVARs and objectives. |
+| Constraint and overlay review | 15 | Distinguish structural rules, operational preconditions, and safe narrowing behavior. |
+| Integration review | 15 | Decide what TVO, DVL, and manifest artifacts must exist downstream. |
+| Debrief | 10 | Compare the team record with the exemplar and capture open risks. |
+
+## Scenario Contract
+
+Use this draft based on the campus-orientation RAG example. It is intentionally imperfect.
+
+```yaml
+tvl:
+  module: campus.orientation.rag
+
+environment:
+  snapshot_id: "2025-01-15T00:00:00Z"
+  context:
+    gateway_baseline_latency_ms: 210
+    provider_input_price_usd_per_1k_tokens: 0.04
+
+evaluation_set:
+  dataset: s3://datasets/campus/orientation_eval.jsonl
+  seed: 42
+
+tvars:
+  - name: retriever_top_k
+    type: int
+    domain:
+      set: [8, 16, 24, 40, 56]
+  - name: rerank_weight
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: response_tokens
+    type: int
+    domain:
+      set: [256, 512, 1024]
+
+constraints:
+  structural:
+    - expr: "response_tokens <= 1024"
+  derived:
+    - require: env.context.gateway_baseline_latency_ms <= 250
+
+objectives:
+  - name: answer_accuracy
+    metric_ref: metrics.answer_accuracy.v1
+    direction: maximize
+  - name: latency_ms
+    metric_ref: metrics.latency_ms.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    answer_accuracy: 0.01
+    latency_ms: 20
+```
+
+Review goal:
+
+- find at least three issues or missing decisions before this contract is allowed into production review
+- decide what should be fixed in the contract itself versus in overlays, runtime systems, or promotion evidence
+
+## Review Prompts
+
+### Contract Completeness
+
+- Which decision can the optimizer make that a reviewer would still reject?
+- Which critical objective is missing from the contract today?
+- Are any TVARs really deployment toggles that should be handled outside TVL?
+
+### Safe Narrowing
+
+- What changes between staging and production?
+- Which hotfix adjustments must narrow the safe search space rather than widen it?
+- What provenance must be recorded every time a composed spec is generated?
+
+### Runtime Boundary
+
+- Which checks belong in TVL itself?
+- Which checks belong in OPAL or runtime-side metadata?
+- Which measurements must appear in the promotion manifest for later audit?
+
+## Decision Record Template
+
+- **Accepted TVAR set**
+- **Structural constraints to encode now**
+- **Operational preconditions required from `env.context.*`**
+- **Overlay policy**
+- **Promotion evidence bundle**
+- **Open risks**
+
+## Exemplar Decision Record
+
+Different scenario, same review standard.
+
+- **Accepted TVAR set**
+  `model`, `retrieval_top_k`, `response_tokens`
+- **Structural constraints to encode now**
+  if `retrieval_top_k >= 40`, require `rerank_weight >= 0.3`
+- **Operational preconditions required from `env.context.*`**
+  gateway baseline latency and provider price must stay inside the agreed preflight envelope
+- **Overlay policy**
+  staging may widen observation fields, but production and hotfix overlays may only narrow the search surface
+- **Promotion evidence bundle**
+  composed spec, overlay identifier, validation logs, evaluation-set hash, candidate configuration, measurement file,
+  rollback note
+- **Open risks**
+  no explicit production overlay yet; operational preconditions do not yet cover request headroom
+
+## Debrief
+
+Before you close, answer:
+
+1. Which issue belonged in the contract rather than in a downstream tool?
+2. Which issue could be handled by a safe overlay instead of a base-spec rewrite?
+3. Which missing artifact would make this review unsafe to approve?

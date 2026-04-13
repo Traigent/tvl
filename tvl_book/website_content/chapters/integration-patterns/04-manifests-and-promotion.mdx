@@ -1,0 +1,62 @@
+---
+id: chapter-05-manifests-and-promotion
+slug: manifests-and-promotion
+title: Manifests and Promotion
+summary: After a successful optimization run, the manifest becomes the audit record
+  for what changed, why it won, and whether rollout is safe.
+chapter: integration-patterns
+estimated_minutes: 5
+interactive: false
+concept_refs:
+- promotion-manifest
+- triagent-integration
+- opal-bridge
+- dvl-integration
+example_refs:
+- /examples/book/ch5_integration_manifest.yaml
+opal_bridge: true
+---
+
+After a successful <Term id="triagent-integration">TVO</Term> run, <Term id="triagent-integration">Triagent</Term>
+emits a manifest bundling:
+
+- Resolved spec SHA and artifact locations
+- Validation logs from the CLI tools
+- Promotion gate decision (pass/fail/defer)
+- DVL drift checks (pass/fail with links)
+- Rollback instructions if thresholds regress
+
+Treat the manifest as a living audit trail. Every deployment should point to it.
+
+<ConceptCallout title="What This Means in Simple Terms" tone="integration">
+
+A <Term id="promotion-manifest">promotion manifest</Term> is the receipt for a rollout decision. It answers:
+
+- Which exact TVL spec did we run?
+- Which candidate won, and by what evidence?
+- Did data-quality checks pass?
+- How do we reproduce or roll back the decision later?
+
+</ConceptCallout>
+
+<ConceptCallout title="Where OPAL Fits" tone="integration">
+
+If <Term id="opal-bridge">OPAL</Term> is used upstream, it helps authors describe intent in a higher-level form.
+That intent is then lowered into TVL plus runtime-side metadata. The deployment contract still points back to
+TVL and the manifest, because those are the artifacts that reviewers and automation can validate consistently.
+
+</ConceptCallout>
+
+<PredictionPrompt prompt="A rollout regresses a week later. Which artifact should you inspect first to reconstruct the decision and roll back safely?">
+
+Start with the manifest. It is the quickest route to the resolved spec, the winning candidate, the validation trail,
+the data checks, and the rollback instructions that explain why the system was promoted in the first place.
+
+</PredictionPrompt>
+
+<KnowledgeCheck prompt="If an auditor asks 'why did this configuration ship?', which artifact should answer first?">
+
+The <Term id="promotion-manifest">promotion manifest</Term> should answer first. It is the audit receipt that ties the
+resolved TVL contract, supporting evidence, and operational decision into one reproducible record.
+
+</KnowledgeCheck>

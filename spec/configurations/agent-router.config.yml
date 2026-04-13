@@ -1,0 +1,11 @@
+config_id: agent-router.default
+module_id: examples.agent_router
+module_version: "1.0"
+assignments:
+  routing_model: classifier
+  fallback_threshold: 0.75
+  max_hops: 3
+  enable_caching: true
+metadata:
+  trials: 120
+  seed: 7

@@ -1,0 +1,87 @@
+tvl:
+  module: book.constraints.safety_nets
+
+environment:
+  snapshot_id: "2025-01-20T00:00:00Z"
+  context:
+    gateway_baseline_latency_ms: 180
+    provider_input_price_usd_per_1k_tokens: 0.03
+    rpm_limit: 600
+    rpm_current_load: 420
+
+evaluation_set:
+  dataset: s3://datasets/book/constraints/dev.jsonl
+  seed: 2025
+
+tvars:
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.05
+
+  - name: max_tokens
+    type: int
+    domain:
+      range: [128, 1024]
+
+  - name: cache_ttl_hours
+    type: float
+    domain:
+      range: [0.5, 12.0]
+      resolution: 0.5
+
+  - name: retriever_top_k
+    type: int
+    domain:
+      range: [5, 50]
+
+  - name: rerank_weight
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.05
+
+constraints:
+  structural:
+    # Basic safety bounds and interval syntax.
+    - expr: "0.0 <= temperature <= 1.0"
+    - expr: "128 <= max_tokens <= 1024"
+
+    # Units live in names (hours, ms, usd, etc.); constraints stay typed and explicit.
+    - expr: "cache_ttl_hours >= 1.0"
+
+    # Conditional requirement (implication sugar).
+    - when: "retriever_top_k >= 40"
+      then: "rerank_weight >= 0.3"
+
+    # Forbidden combination encoded as a negated conjunction.
+    - expr: "not (rerank_weight > 0.8 and cache_ttl_hours < 2.0)"
+
+  derived:
+    # Operational preconditions are runtime checks over env.context symbols.
+    - require: env.context.gateway_baseline_latency_ms <= 250
+    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
+    - require: env.context.rpm_limit - env.context.rpm_current_load >= 50
+
+objectives:
+  - name: stability
+    metric_ref: metrics.stability.v1
+    direction: maximize
+  - name: cost_usd
+    metric_ref: metrics.cost_usd.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    stability: 0.01
+    cost_usd: 0.001
+
+exploration:
+  strategy:
+    type: grid
+  budgets:
+    max_trials: 40

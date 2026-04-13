@@ -1,0 +1,57 @@
+---
+id: chapter-06-budgets-feedback-and-promotion-loops
+slug: budgets-feedback-and-promotion-loops
+title: Budgets, Feedback, and Promotion Loops
+summary: Agent tuning becomes maintainable only when the exploration budget, evaluation feedback, and promotion rule are designed together instead of as separate afterthoughts.
+chapter: training-agents-with-tuned-variables
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- promotion-policy
+- validation-workflow
+- pattern-control-surface
+example_refs:
+- /examples/ci_pipeline.sh
+- /examples/book/ch5_integration_manifest.yaml
+opal_bridge: false
+---
+
+An agent workflow should not only expose tuned variables. It should also expose the loop that turns a
+candidate setting into a release decision:
+
+- how much budget is available for exploration
+- which feedback signal is trusted
+- which evidence threshold permits promotion
+
+Those three pieces belong together. A wide search surface with no trustworthy evaluation loop is just
+expensive guesswork. A strict promotion rule with no exploration budget prevents improvement.
+
+<ConceptCallout title="Operational Rule" tone="integration">
+
+Treat the exploration budget, validation workflow, and promotion policy as one system boundary. If
+one of them is underspecified, the others become hard to interpret.
+
+</ConceptCallout>
+
+For agent systems this usually means answering:
+
+- what is the allowed optimization budget per release cycle?
+- what metric or rubric can reject a superficially impressive but risky pattern?
+- what artifact will explain later why a specific workflow was promoted?
+
+The final answer is usually a manifest-backed promotion loop, not just a better prompt.
+
+<PredictionPrompt prompt="A tuned workflow looks stronger in a one-off run but the review team cannot replay the evidence. Is that a promotable win?">
+
+No. A governed win must survive replay, validation, and review. Without that evidence trail, the
+change is interesting but not ready for rollout.
+
+</PredictionPrompt>
+
+<KnowledgeCheck prompt="Why should budgets, feedback, and promotion be designed together?">
+
+Because they define one release loop. The budget controls how much exploration is allowed, the
+feedback determines what counts as improvement, and the promotion rule determines whether the result
+is safe enough to ship.
+
+</KnowledgeCheck>

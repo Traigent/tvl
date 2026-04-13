@@ -1,0 +1,18 @@
+# Chapter 4 example: Staging overlay for the base TVL module.
+# This file is composed into a valid TVL module via `tvl-compose`.
+
+_tvl_overlay:
+  extends: ch4_base_module.tvl.yml
+
+overrides:
+  evaluation_set:
+    dataset: s3://datasets/book/overlays/staging.jsonl
+  tvars:
+    - name: temperature
+      domain:
+        range: [0.0, 0.6]
+        resolution: 0.05
+  exploration:
+    budgets:
+      max_trials: 100
+      max_wallclock_s: 3600

@@ -1,0 +1,52 @@
+---
+id: chapter-08-safe-composition-rules
+slug: safe-composition-rules
+title: Safe Composition Rules
+summary: Pattern bundles should narrow or discipline the operational surface unless there is strong evidence that a broader bundle is still governable.
+chapter: composing-patterns-for-production
+estimated_minutes: 6
+interactive: false
+concept_refs:
+- pattern-composition
+- safe-narrowing
+- promotion-manifest
+example_refs:
+- /examples/book/ch4_staging.overlay.yml
+- /examples/book/ch4_hotfix.overlay.yml
+opal_bridge: false
+---
+
+Composition rules deserve the same skepticism as overlays. A new bundle should not silently widen
+risk just because it combines individually attractive components.
+
+In practice, safe composition often means:
+
+- fewer active controllers in production than in experimentation
+- tighter retry or branch budgets in staging and rollout
+- manifest evidence that records exactly which bundle shape was promoted
+
+<ConceptCallout title="Carry Over the Overlay Mindset" tone="info">
+
+Use the same instinct as <Term id="safe-narrowing">safe narrowing</Term>: when in doubt, make the
+production composition more constrained and easier to audit than the exploratory version.
+
+</ConceptCallout>
+
+The right default is conservative. If a bundle increases uncertainty about who made the decision,
+what evidence was used, or how to roll back, it is probably not ready for the production plane.
+
+<PitfallCard title="Bundle Without Provenance">
+
+The most dangerous multi-pattern systems are not always the most complex. They are the ones that
+cannot explain, after the fact, which controller fired, which judge won, or which shard output
+actually drove the release decision.
+
+</PitfallCard>
+
+<KnowledgeCheck prompt="How does safe narrowing apply to pattern composition?">
+
+It means production bundles should generally be more constrained, more replayable, and easier to
+audit than exploratory bundles unless there is strong evidence that a broader composition is still
+safe and governable.
+
+</KnowledgeCheck>

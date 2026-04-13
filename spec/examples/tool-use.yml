@@ -1,0 +1,68 @@
+# Example: Tool-Use Agent
+# Demonstrates: banded objective with TOST, promotion policy epsilons, and
+# structural implication encoded with the typed DNF surface syntax.
+tvl:
+  module: corp.tooling.tool_use
+
+environment:
+  snapshot_id: "2024-03-01T00:00:00Z"
+  bindings:
+    orchestrator: release-2024-02
+  context:
+    max_cost_usd: 1.50
+
+evaluation_set:
+  dataset: s3://datasets/tool-use-evals/latest.parquet
+  seed: 1337
+
+tvars:
+  - name: agent
+    type: enum[str]
+    domain: ["tools-mini", "tools-pro"]
+  - name: max_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 3, 4, 5]
+  - name: planner.temperature
+    type: float
+    domain:
+      set: [0.0, 0.25, 0.5, 0.75, 1.0]
+
+constraints:
+  structural:
+    - when: agent = 'tools-mini'
+      then: max_calls <= 4
+  derived:
+    - require: env.context.max_cost_usd <= 1.50
+
+objectives:
+  - name: success_rate
+    metric_ref: metrics.success_rate.v1
+    direction: maximize
+  - name: fairness_eo_gap
+    metric_ref: metrics.fairness_eo_gap.v1
+    band:
+      target:
+        center: 0.0
+        tol: 0.05
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    success_rate: 0.01
+    # Note: fairness_eo_gap is banded (TOST) — no min_effect entry needed
+  chance_constraints:
+    # Fairness SLO: at most 5% of predictions may violate the EO gap target
+    - name: fairness_slo_violations
+      threshold: 0.05
+      confidence: 0.95
+
+exploration:
+  strategy:
+    type: grid
+  budgets:
+    max_trials: 32

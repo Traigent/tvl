@@ -1,0 +1,44 @@
+[Contextual Batching](/book/patterns/contextual-batching),
+[Map-Reduce with LLMs](/book/patterns/map-reduce-with-llms), and
+[Routed Expertise / MoE + Judge](/book/patterns/routed-expertise-moe-judge) all scale breadth, but
+they solve different problems:
+
+- batching reuses shared context
+- map-reduce decomposes a broad task into bounded shards
+- routed expertise creates several specialist views and compares them
+
+Because they all spend budget on coverage, teams sometimes substitute them for one another too
+quickly. That is usually a mistake.
+
+<ConceptCallout title="Quick Comparison" tone="tip">
+
+- Use batching when shared context is the asset.
+- Use map-reduce when decomposition is the asset.
+- Use routed expertise when specialization and selection are the asset.
+
+</ConceptCallout>
+
+The failure modes are equally different:
+
+- batching dilutes attention
+- map-reduce can lose cross-shard coherence
+- routed expertise can fake diversity or over-trust a weak judge
+
+That is why these patterns should be compared on the same evaluation plane but not collapsed into one
+"more agents equals better" story.
+
+<PredictionPrompt prompt="A task has large repeated context, but the outputs must still be independent and traceable per item. Which breadth pattern should you evaluate first?">
+
+Start with contextual batching. It preserves one shared context while still letting you measure how
+per-item quality changes as packing density grows. Map-reduce and routed expertise solve different
+problems first.
+
+</PredictionPrompt>
+
+<KnowledgeCheck prompt="Why should batching, map-reduce, and routed expertise not be treated as interchangeable breadth tricks?">
+
+They spend budget on different assets: shared context, decomposition, and specialization. Their
+control surfaces and failure modes differ enough that they must be compared explicitly rather than
+treated as one generic scaling move.
+
+</KnowledgeCheck>

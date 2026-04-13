@@ -1,0 +1,68 @@
+---
+id: chapter-05-tvl-cli-tools
+slug: tvl-cli-tools
+title: TVL CLI Tools
+summary: The TVL toolchain provides focused commands for local validation, CI gates,
+  and operational checks.
+chapter: integration-patterns
+estimated_minutes: 7
+interactive: false
+concept_refs:
+- cli-toolchain
+- validation-workflow
+example_refs:
+- /examples/ci_pipeline.sh
+opal_bridge: false
+---
+
+The TVL toolchain provides focused CLI tools for validation and CI integration:
+
+| Tool | Purpose |
+|------|---------|
+| `tvl-parse` | Parse YAML to JSON AST, basic syntax checking |
+| `tvl-lint` | Normative lints: missing min_effect, duplicate TVARs, etc. |
+| `tvl-validate` | JSON Schema + lint validation (combines parse + lint) |
+| `tvl-check-structural` | SAT/SMT satisfiability of structural constraints |
+| `tvl-check-operational` | Runtime validation of operational preconditions (`constraints.derived`) and budgets |
+| `tvl-config-validate` | Check a configuration assignment against spec domains |
+| `tvl-measure-validate` | Validate measurements against spec + promotion policy |
+| `tvl-ci-gate` | Dry-run promotion gate (stub for CI pipelines) |
+| `tvl-compose` | Flatten overlay files into valid TVL modules |
+
+<ConceptCallout title="Install the CLI Once" tone="info">
+
+Clone the repository, then install the TVL package in editable mode from the repo root:
+
+```bash
+git clone https://github.com/Traigent/tvl.git
+cd tvl
+python -m pip install -e ".[dev]"
+```
+
+That exposes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and the rest of the CLI on your shell path.
+
+</ConceptCallout>
+
+### Quick Validation
+
+```bash
+# Validate schema and run lints
+tvl-validate my-spec.tvl.yml
+
+# Check structural constraints are satisfiable
+tvl-check-structural my-spec.tvl.yml
+
+# Full CI pipeline (validation only)
+tvl-validate my-spec.tvl.yml && \
+  tvl-check-structural my-spec.tvl.yml
+```
+
+### Configuration and Measurement Validation
+
+```bash
+# Validate a specific configuration against the spec
+tvl-config-validate my-spec.tvl.yml config.yml
+
+# Validate configuration + measurements for promotion gate
+tvl-measure-validate my-spec.tvl.yml config.yml measurements.yml
+```

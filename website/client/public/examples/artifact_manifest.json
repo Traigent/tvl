@@ -1,0 +1,12 @@
+{
+  "spec_sha": "git:abc123",
+  "config_sha": "git:def456",
+  "environment_snapshot": "2026-02-01T00:00:00Z",
+  "validation": {
+    "tvl_validate": "pass",
+    "tvl_check_structural": "pass",
+    "tvl_measure_validate": "pass"
+  },
+  "promotion_decision": "promote",
+  "created_at": "2026-02-01T11:30:00Z"
+}

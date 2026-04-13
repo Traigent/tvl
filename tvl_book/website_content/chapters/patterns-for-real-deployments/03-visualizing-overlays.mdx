@@ -1,0 +1,21 @@
+---
+id: chapter-04-visualizing-overlays
+slug: visualizing-overlays
+title: Visualizing Overlays
+summary: Each composed output is a valid, standalone TVL module. Overlays are
+  inputs to the composition process, not runtime artifacts.
+chapter: patterns-for-real-deployments
+estimated_minutes: 5
+interactive: false
+concept_refs:
+- overlays
+- safe-narrowing
+example_refs:
+- /examples/book/ch4_base_module.tvl.yml
+opal_bridge: false
+---
+
+<MermaidDiagram chart={"graph TD\n    Base[\"base.tvl.yml<br/>(TVL)\"] -->|tvl-compose| Staging[\"staging.tvl.yml<br/>(TVL)\"]\n    Base -->|tvl-compose| Production[\"production.tvl.yml<br/>(TVL)\"]\n    Production -->|tvl-compose| Hotfix[\"hotfix.tvl.yml<br/>(TVL)\"]"} />
+
+Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process,
+not runtime artifacts.

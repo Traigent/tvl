@@ -1,0 +1,36 @@
+---
+id: 8
+slug: composing-patterns-for-production
+title: Composing Patterns for Production
+summary: Combine agent patterns only when they improve the study plane, not just because each scaffold looked attractive in isolation.
+estimated_minutes: 19
+learning_objectives:
+- Compose several patterns with a clear scaffold-versus-controller split.
+- Apply safe narrowing ideas to multi-pattern workflows before rollout.
+- Decide when additional pattern complexity stops paying for itself.
+prerequisites:
+- training-agents-with-tuned-variables
+- pattern-anatomy-and-evaluation
+- patterns-for-real-deployments
+- integration-patterns
+path_tags:
+- agent-engineer
+- architect
+- operator
+primary_example: /examples/book/ch5_integration_pipeline.sh
+---
+
+Production systems rarely stop at one pattern. The real challenge is composition: which scaffold is
+the base, which controller sits on top, and what evidence says the bundle is better than the simpler
+alternative?
+
+This chapter keeps composition conservative. The goal is not to create the most sophisticated agent.
+The goal is to combine patterns only when the resulting control surface is still understandable,
+measurable, and governable.
+
+<ConceptCallout title="Bias Toward Simplicity" tone="tip">
+
+The burden of proof is on the bundle, not on the simpler baseline. A pattern stack should earn its
+complexity with measurable lift and a stable operational story.
+
+</ConceptCallout>

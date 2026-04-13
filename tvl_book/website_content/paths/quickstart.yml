@@ -1,0 +1,18 @@
+id: quickstart
+title: Quickstart
+audience: Engineers who need a valid TVL module fast.
+goal: Author, validate, and reason about one real TVL module with at least one interactive
+  checkpoint.
+sections:
+- getting-fluent-in-tvl/minimal-working-spec
+- getting-fluent-in-tvl/validation-warm-up
+- getting-fluent-in-tvl/analog-circuit-lab-explore-the-knobs
+- constraints-units-safety-nets/two-kinds-of-constraints
+- constraints-units-safety-nets/testing-constraints
+- integration-patterns/tvl-cli-tools
+entry_sections:
+- getting-fluent-in-tvl/minimal-working-spec
+completion_sections:
+- constraints-units-safety-nets/testing-constraints
+- integration-patterns/tvl-cli-tools
+estimated_minutes: 42

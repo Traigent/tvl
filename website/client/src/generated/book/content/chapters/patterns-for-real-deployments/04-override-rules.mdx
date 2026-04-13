@@ -1,0 +1,15 @@
+`tvl-compose` validates safe narrowing for the following:
+
+| Override Type | Allowed | Not Allowed |
+|--------------|---------|-------------|
+| Enum domain | Remove values | Add new values |
+| Numeric range | Narrow bounds | Widen bounds |
+| Budget | Decrease | Increase beyond base |
+
+<ConceptCallout title="Current Validation Scope" tone="info">
+
+The current implementation validates enum narrowing, range narrowing, and budget decreases.
+Resolution changes and constraint modifications are merged without validation—ensure your
+overlays follow safe narrowing practices for these fields.
+
+</ConceptCallout>

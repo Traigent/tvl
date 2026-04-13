@@ -1,0 +1,15 @@
+- **Type-safe tuning variables** separate categorical choice from continuous ranges.
+- **Deterministic exports** make generated files (such as `params.yaml`) reproducible in CI.
+- **Declarative constraints** (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers.
+- **Governed promotion** requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out.
+
+<ConceptCallout title="Night-Before-Launch Scenario" tone="example">
+
+The onboarding chatbot is hours away from orientation week. A new model release promises higher quality,
+    but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and
+    rerun <Term id="triagent-integration">TVO</Term>. The optimizer explores safely and promotes only when
+    constraints hold—no frantic code edits.
+
+<MermaidDiagram chart={"timeline\n    title TVL Response Loop\n    Baseline Spec : Generate lock files, run smoke tests\n    Model Catalog Update : Widen enum choices, rerun TVO\n    Latency Spike : Tighten constraints, regenerate manifests\n    Budget Shift : Adjust objectives, capture reviewer sign-off"} />
+
+</ConceptCallout>

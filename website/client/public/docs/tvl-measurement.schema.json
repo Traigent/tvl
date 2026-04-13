@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tvl-lang.org/schemas/tvl-measurement.schema.json",
+  "title": "TVL Measurement Bundle",
+  "type": "object",
+  "properties": {
+    "bundle_id": { "type": "string" },
+    "config_id": { "type": "string" },
+    "module_id": { "type": "string" },
+    "objective_values": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "samples": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 1
+          },
+          "mean": { "type": "number" },
+          "std": { "type": "number", "minimum": 0.0 },
+          "n": { "type": "integer", "minimum": 1 },
+          "paired": { "type": "boolean" }
+        },
+        "anyOf": [
+          { "required": ["samples"] },
+          { "required": ["mean", "std", "n"] }
+        ],
+        "additionalProperties": true
+      }
+    },
+    "chance_outcomes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "violations": { "type": "integer", "minimum": 0 },
+          "trials": { "type": "integer", "minimum": 1 }
+        },
+        "required": ["violations", "trials"],
+        "additionalProperties": true
+      }
+    },
+    "objectives": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "observed": { "type": "number" },
+          "delta": { "type": "number" },
+          "p_value": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "lower": { "type": "number" },
+          "upper": { "type": "number" },
+          "metric": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "chance": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "observed": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "p_value": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "trials": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": { "type": "object" }
+  },
+  "anyOf": [
+    { "required": ["objective_values"] },
+    { "required": ["objectives"] }
+  ],
+  "additionalProperties": false
+}

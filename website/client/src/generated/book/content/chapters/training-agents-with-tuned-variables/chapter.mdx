@@ -1,0 +1,24 @@
+Agent systems are often described with pattern names such as routing, debate, reflection, or map-reduce.
+Those names are useful, but they are not the operational contract. What matters in practice is the
+control surface underneath them: budgets, counts, ordering, judges, reducers, stop rules, and
+evidence thresholds.
+
+This chapter translates that idea into a TVL-oriented workflow. Instead of treating an agent as a
+frozen prompt stack, treat it as a governed system with explicit tuned variables and measured release
+criteria.
+
+<ConceptCallout title="Simple Framing" tone="info">
+
+- The pattern name tells you the scaffold.
+- The tuned variables tell you what can change.
+- The promotion policy tells you when a changed scaffold is safe enough to ship.
+
+</ConceptCallout>
+
+<ConceptCallout title="Why This Chapter Exists" tone="hint">
+
+Many teams can sketch an agent architecture but still cannot answer the deployment question: which
+parts are allowed to vary, how much experimentation budget is justified, and what evidence would make
+an updated workflow promotable?
+
+</ConceptCallout>

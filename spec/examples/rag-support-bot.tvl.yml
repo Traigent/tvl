@@ -1,0 +1,74 @@
+# Example: RAG Support Bot Baseline
+# Demonstrates multi-objective NSGA-II configuration with structural and derived latency constraints.
+tvl:
+  module: corp.support.rag_bot
+
+environment:
+  snapshot_id: "2024-02-15T00:00:00Z"
+  bindings:
+    retriever: bm25-v3
+    llm_gateway: us-east-1
+  context:
+    gateway_baseline_latency_ms: 180
+    provider_input_price_usd_per_1k_tokens: 0.03
+
+evaluation_set:
+  dataset: s3://datasets/support-tickets/dev.jsonl
+  seed: 2024
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o", "llama3.1"]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.05
+  - name: retriever.k
+    type: int
+    domain:
+      range: [0, 20]
+  - name: zero_shot
+    type: bool
+    domain: [true, false]
+
+constraints:
+  structural:
+    - when: zero_shot = true
+      then: retriever.k = 0
+  # Operational preconditions are over numeric environment context (not TVARs or measured outcomes)
+  derived:
+    - require: env.context.gateway_baseline_latency_ms <= 250
+    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.01
+    latency_p95_ms: 50
+  chance_constraints:
+    # Chance constraints are violation-rate SLO checks (0 <= threshold <= 1).
+    # Here: allow at most 5% SLO violations with 95% confidence.
+    - name: latency_slo
+      threshold: 0.05
+      confidence: 0.95
+
+exploration:
+  strategy:
+    type: nsga2
+  convergence:
+    metric: hypervolume_improvement
+    window: 5
+    threshold: 0.01
+  budgets:
+    max_trials: 48

@@ -1,0 +1,78 @@
+# Example: Chance Constraints with Clopper-Pearson CI
+# Per spec: Chance constraints pass iff the one-sided Clopper-Pearson
+# upper bound on violation rate is at or below the threshold.
+# Used for SLO verification with statistical guarantees.
+
+tvl:
+  module: corp.validation.chance_constraint
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+  seed: 42
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4-turbo", "claude-3-opus", "claude-3-sonnet"]
+  - name: use_safety_filter
+    type: bool
+    domain: [true, false]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+
+constraints:
+  structural:
+    # If using safety-critical model, must enable safety filter
+    - when: "model = 'gpt-4-turbo'"
+      then: "use_safety_filter = true"
+  derived: []
+
+objectives:
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+  - name: cost_usd
+    metric_ref: metrics.cost_usd.v1
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm
+  min_effect:
+    quality: 0.01
+    latency_p95_ms: 20
+    cost_usd: 0.001
+
+  # Chance constraints for SLO verification
+  # Thresholds are maximum allowed violation rates.
+  chance_constraints:
+    # Safety: at most 2% unsafe responses
+    - name: safety_violation_rate
+      threshold: 0.02
+      confidence: 0.95      # 95% confidence using Clopper-Pearson
+
+    # Hallucination: at most 5% hallucinations
+    - name: hallucination_rate
+      threshold: 0.05
+      confidence: 0.90
+
+    # Latency SLO: at most 1% of requests above 3000ms
+    - name: latency_slo_violation_rate
+      threshold: 0.01
+      confidence: 0.99
+
+exploration:
+  strategy:
+    type: tpe
+  budgets:
+    max_trials: 500
+    max_spend_usd: 100.0

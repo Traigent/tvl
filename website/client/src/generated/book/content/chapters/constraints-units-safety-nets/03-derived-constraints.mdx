@@ -1,0 +1,23 @@
+TVL writes operational preconditions under `constraints.derived`. These are linear inequalities over
+**environment symbols** (not TVARs), and they are evaluated at runtime against the current environment snapshot.
+
+```yaml
+# Fragment: operational preconditions over environment symbols
+constraints:
+  derived:
+    # Provider price guard
+    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
+
+    # Baseline gateway latency guard
+    - require: env.context.gateway_baseline_latency_ms <= 250
+
+    # Request headroom guard
+    - require: env.context.rpm_limit - env.context.rpm_current_load >= 50
+```
+
+**Supported operations:** `+`, `-`, scalar multiplication, and comparisons (`<=`, `>=`, `=`, `<`, `>`).
+
+**Not supported:** Multiplication between symbols (`a * b`), division, exponentiation.
+
+If you need to gate on measured runtime metrics such as observed `latency_p95_ms`, carry those checks in
+operational tooling or promotion manifests instead of encoding them as TVL operational preconditions.

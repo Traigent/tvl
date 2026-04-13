@@ -1,0 +1,75 @@
+# Example: Banded Objective with TOST
+# Per spec: Banded objectives use Two One-Sided Tests (TOST) for equivalence testing.
+# Band passes iff mean is within [L, U] at specified alpha level.
+
+tvl:
+  module: corp.validation.banded_objective_tost
+
+environment:
+  snapshot_id: "2025-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4-turbo", "claude-3-sonnet"]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+
+constraints:
+  structural: []
+  derived: []
+
+objectives:
+  # Standard directional objectives
+  - name: quality
+    metric_ref: metrics.quality.v1
+    direction: maximize
+
+  - name: latency_p95_ms
+    metric_ref: metrics.latency_p95_ms.v1
+    direction: minimize
+
+  # Banded objective: response length should be within target range
+  # Using [L, U] interval specification
+  - name: response_length_tokens
+    metric_ref: metrics.response_length_tokens.v1
+    band:
+      target: [100, 200]    # Target interval [L, U]
+      test: TOST            # Two One-Sided Tests
+      alpha: 0.05           # Significance level
+
+  # Banded objective: cost should be near target
+  # Using center + tolerance specification
+  - name: cost_per_query_usd
+    metric_ref: metrics.cost_per_query_usd.v1
+    band:
+      target:
+        center: 0.01        # Target center
+        tol: 0.005          # Tolerance (so band is [0.005, 0.015])
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  adjust: holm             # Holm default for multi-objective superiority checks
+  min_effect:
+    quality: 0.01
+    latency_p95_ms: 50
+    # Note: banded objectives don't need min_effect entries
+
+exploration:
+  strategy:
+    type: nsga2
+  budgets:
+    max_trials: 200
+  convergence:
+    metric: hypervolume_improvement
+    window: 20
+    threshold: 0.001

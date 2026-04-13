@@ -1,0 +1,59 @@
+{
+  "scopeName": "source.tvl",
+  "name": "TVL",
+  "patterns": [
+    { "include": "source.yaml" },
+    {
+      "match": "^(\\s*)(tvl|tvl_version)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.class.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(environment|evaluation_set|workload)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.namespace.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(tvars)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.type.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(constraints)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.tag.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(objectives)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.function.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(promotion_policy)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.constant.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(exploration)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.interface.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(structural|derived)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.other.attribute-name.tvl" }
+      }
+    },
+    {
+      "name": "support.function.tvl.constraint",
+      "match": "\\b(when|then|require|band|target|test|direction|dominance|alpha|adjust|min_effect|chance_constraints|threshold|confidence|strategy|budgets|convergence|domain|components|set|range|resolution|registry|filter|version)\\b"
+    }
+  ]
+}

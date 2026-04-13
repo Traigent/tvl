@@ -1,0 +1,29 @@
+Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above;
+latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.
+
+<PredictionPrompt prompt="Before you touch the controls, predict which change will usually hurt latency fastest: broader retrieval, heavier reranking, or longer responses.">
+
+In this lab, broader retrieval and longer responses tend to move latency first because they widen the amount of work
+per request. Reranking matters too, but it is easier to understand once you see the latency and quality gauges move
+together.
+
+</PredictionPrompt>
+
+<MicrosimEmbed title="Orientation RAG Circuit" src="/book-assets/microsims/orientation-rag-circuit/main.html" height={640} />
+
+[Open the lab in a new tab](/book-assets/microsims/orientation-rag-circuit/main.html)
+
+**Suggested Prompts**
+
+- Start from the **Baseline** preset, bump `retriever_top_k` to 56, and observe the latency gauge. When does the red
+  guardrail trigger?
+- Move the `rerank_weight` slider below 0.3 while `retriever_top_k` ≥ 40. What warning do you see? Why does the
+  constraint exist?
+- Hold `retriever_top_k` steady and stretch `response_tokens`. What trade-off emerges between cost and quality?
+
+<KnowledgeCheck prompt="What should this lab teach you before Chapter 3 formalizes the rule system?">
+
+It should make one idea concrete: TVARs are not abstract config fields. Each knob changes cost, latency, and quality,
+and some combinations should be ruled out before the optimizer wastes trials on them.
+
+</KnowledgeCheck>

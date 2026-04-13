@@ -1,0 +1,18 @@
+---
+id: chapter-02-common-pitfalls
+slug: common-pitfalls
+title: Common Pitfalls
+summary: The most common early mistakes are wrong type names, missing promotion policy,
+  and constraint syntax borrowed from other languages.
+chapter: getting-fluent-in-tvl
+estimated_minutes: 5
+interactive: false
+concept_refs: []
+example_refs: []
+opal_bridge: false
+---
+
+1. Using wrong type names — it's `enum[str]` not `categorical`, `float` not `continuous`.
+2. Mixing deployment bindings with numeric operating assumptions instead of separating `bindings` and `context`.
+3. Missing `promotion_policy` — this is required in TVL (no implicit defaults).
+4. Constraint syntax errors — use `=` for equality (not `==`), `and`/`or` (not `&&`/`||`).
