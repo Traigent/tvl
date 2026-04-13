@@ -16,14 +16,14 @@ export default function BookTbd() {
               </div>
               <CardTitle className="text-3xl">Book Content Coming Up</CardTitle>
               <CardDescription className="text-base leading-7 text-foreground/80">
-                The book and academy materials are still being reviewed. The draft content remains in the project, but
-                this public tab is temporarily replaced while the specification and examples continue to publish.
+                Additional study materials are being prepared. Use the specification and examples to learn the
+                language and tooling today.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="rounded-lg border border-border/70 bg-background/60 p-4 text-sm leading-7 text-muted-foreground">
-                Use the published sections below while the book is in review. The draft academy content has not been
-                deleted; it is only hidden from the main entry surface for now.
+                The current public site focuses on the language reference and worked examples. This section will host
+                longer-form learning material.
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link href="/specification">

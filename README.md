@@ -1,8 +1,7 @@
 # TVL
 
 TVL (Tuned Variable Language) is a typed specification language for governed tuning, validation, and promotion of AI agents and other adaptive systems.
-
-This repository is the day-1 public home for TVL. In the short term, some materials here are copied from existing Traigent repositories while we converge on a single source of truth. That duplication is intentional for now.
+It includes the language spec, validators, CLI tools, editor support, examples, educational materials, and website source for `tvl-lang.org`.
 
 ## What Is Here
 
@@ -52,13 +51,14 @@ cd website
 python3 scripts/sync_canonical_resources.py
 ```
 
-## Repository Status
+## Using This Repository
 
-This repo is being assembled as a TVL-first open-source home. Current priorities:
+Start with:
 
-1. keep the core spec and validators stable
-2. keep the public website and examples aligned with the canonical content
-3. gradually remove short-term duplication from legacy internal repos
+1. `spec/examples/` for complete TVL modules
+2. `docs/` for the language reference and walkthroughs
+3. `tvl_tools/` and `python/` for validation and automation
+4. `website/` if you are working on the public site
 
 ## License
 

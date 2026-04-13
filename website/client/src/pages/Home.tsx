@@ -197,8 +197,7 @@ export default function Home() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4">Explore TVL</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Start with concrete examples, then go deeper into the
-              specification. The book content is temporarily hidden while it is
-              being reviewed.
+              specification. Longer-form study materials are being prepared.
             </p>
           </div>
 
@@ -241,9 +240,9 @@ export default function Home() {
                   </div>
                   <CardTitle>Book (Temporarily Hidden)</CardTitle>
                   <CardDescription>
-                    The draft academy content is still in review. Use the
-                    specification and examples for now; the book tab will
-                    return after cleanup.
+                    Additional study materials are being prepared. Start with
+                    the specification and examples, then return here for the
+                    full learning track.
                   </CardDescription>
                 </CardHeader>
               </Card>
