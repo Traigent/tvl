@@ -8,5 +8,5 @@ These modules illustrate the new `tvl-check-structural` CLI. Run the checker to 
 | `structural-unsat.tvl.yml` | Contradictory constraints producing an UNSAT core |
 
 ```bash
-tvl-check-structural tvl/spec/examples/validation-phase2/structural-sat.tvl.yml
+tvl-check-structural spec/examples/validation-phase2/structural-sat.tvl.yml
 ```

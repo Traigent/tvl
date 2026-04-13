@@ -9,7 +9,7 @@ These examples exercise the new typed-surface checks implemented in Phase 1A. R
 | `float-equality-warning.tvl.yml` | Floating-point equality warning on structural constraints |
 
 ```bash
-tvl-lint tvl/spec/examples/validation-phase1a/structural-type-errors.tvl.yml
+tvl-lint spec/examples/validation-phase1a/structural-type-errors.tvl.yml
 ```
 
 All examples include the minimum viable module blocks (module, environment, evaluation_set, tvars, objectives, promotion_policy) so they pass schema validation and surface only the intended issues.

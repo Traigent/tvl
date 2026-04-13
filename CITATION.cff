@@ -8,7 +8,7 @@ version: 1.0.0
 date-released: 2026-02-01
 license: MIT
 license-url: https://opensource.org/licenses/MIT
-repository-code: https://github.com/tvl-lang/tvl
+repository-code: https://github.com/Traigent/tvl
 url: https://tvl-lang.org
 keywords:
   - ai-configuration
@@ -20,4 +20,3 @@ abstract: >-
   TVL (Tuned Variables Language) is a typed specification language for
   AI agent configuration with formal semantics, structural constraints,
   multi-objective optimization, and statistically-rigorous promotion gates.
-

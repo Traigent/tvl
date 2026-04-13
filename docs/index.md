@@ -44,7 +44,7 @@ TVL is the contract boundary for governed adaptation in AI systems. A TVL module
 
 ## A Valid TVL Example
 
-The example below mirrors the canonical `rag-support-bot.tvl.yml` module shipped in `tvl/spec/examples`:
+The example below mirrors the canonical `rag-support-bot.tvl.yml` module shipped in `spec/examples`:
 
 ```yaml title="rag-support-bot.tvl.yml"
 tvl:

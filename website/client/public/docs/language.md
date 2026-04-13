@@ -485,7 +485,7 @@ Interpretation:
 
 *   Keep `environment.snapshot_id` and `evaluation_set.dataset` explicit for reproducibility.
 *   Use structural constraints for TVAR logic and operational preconditions (`constraints.derived`) for `env.context.*` checks.
-*   Mirror production-facing modules in `tvl/spec/examples` so docs, tests, and CI stay aligned.
+*   Mirror production-facing modules in `spec/examples` so docs, tests, and CI stay aligned.
 *   Treat `promotion_policy` as mandatory governance, not optional metadata.
 
 ## Appendix
@@ -497,7 +497,7 @@ This page is a teaching-oriented overview. The normative sources in this reposit
 
 *   `tvl/spec/grammar/tvl.ebnf`
 *   `tvl/spec/grammar/tvl.schema.json`
-*   `tvl/spec/examples/*.yml`
+*   `spec/examples/*.yml`
 
 For the full formal treatment, the repository also includes:
 

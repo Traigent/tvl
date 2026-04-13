@@ -102,7 +102,7 @@ objectives:
 
 - [TVL Documentation](https://tvl-lang.org)
 - [TVL CLI Reference](https://tvl-lang.org/tools/cli-reference)
-- [Examples](https://github.com/tvl-lang/tvl/tree/main/spec/examples)
+- [Examples](https://github.com/Traigent/tvl/tree/main/spec/examples)
 
 ## About
 

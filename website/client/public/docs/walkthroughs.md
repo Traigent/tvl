@@ -1,6 +1,6 @@
 # Example Walkthroughs
 
-These examples are aligned to the current TVL schema and mirror the canonical modules under `tvl/spec/examples`.
+These examples are aligned to the current TVL schema and mirror the canonical modules under `spec/examples`.
 
 ## Suggested Walkthrough Order
 

@@ -10,5 +10,5 @@ These specs demonstrate the Phase 1B grammar enhancements (parentheses, negation
 Run the linter to inspect canonical paths and warnings:
 
 ```bash
-tvl-lint tvl/spec/examples/validation-phase1b/negated-parentheses.tvl.yml
+tvl-lint spec/examples/validation-phase1b/negated-parentheses.tvl.yml
 ```

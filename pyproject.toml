@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Traigent Team", email = "open-source@traigent.com" }]
-urls = { Homepage = "https://tvl-lang.org", Repository = "https://github.com/tvl-lang/tvl" }
+urls = { Homepage = "https://tvl-lang.org", Repository = "https://github.com/Traigent/tvl" }
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
