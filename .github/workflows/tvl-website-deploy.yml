@@ -65,6 +65,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install website sync dependency
+        run: python -m pip install "PyYAML>=6"
+
       - name: Install website dependencies
         working-directory: website
         run: pnpm install --frozen-lockfile
