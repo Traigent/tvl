@@ -69,4 +69,4 @@ if you want to run them without API keys.
 - Modify the configuration spaces and rerun; compare manifests and promotion decisions.
 - Pipe the results into `tvl_tools.tvl_measure_validate` to double-check metric definitions.
 - Capture screenshots of interesting runs (console output, Streamlit charts) and drop them into
-  `tvl/tvl_book/intelligent-textbooks/docs/img/` for inclusion in case studies or the Playground page.
+  `tvl_book/figures/` for inclusion in case studies or the Playground page.

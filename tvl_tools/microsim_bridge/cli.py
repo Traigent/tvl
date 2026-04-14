@@ -20,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-o",
         "--output",
         type=Path,
-        default=Path("tvl/tvl_book/intelligent-textbooks/docs/sims/orientation-rag-circuit/microsim_presets.json"),
+        default=Path("tvl_book/website_content/microsims/orientation-rag-circuit/microsim_presets.json"),
         help="Destination JSON file (defaults to the book's MicroSim location).",
     )
     parser.add_argument(

@@ -1,0 +1,107 @@
+name: Deploy TVL Website
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/tvl-website-deploy.yml"
+      - "website/**"
+      - "spec/**"
+      - "docs/**"
+      - "tvl_book/**"
+      - "python/**"
+      - "tvl_tools/**"
+  workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: "Git ref to deploy"
+        required: false
+        default: "main"
+
+concurrency:
+  group: deploy-tvl-website
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
+      TVL_WEBSITE_S3_BUCKET: ${{ vars.TVL_WEBSITE_S3_BUCKET }}
+      TVL_WEBSITE_CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.TVL_WEBSITE_CLOUDFRONT_DISTRIBUTION_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.deploy_ref || github.ref }}
+
+      - name: Validate deployment settings
+        run: |
+          test -n "${{ secrets.AWS_ROLE_TO_ASSUME }}"
+          test -n "$AWS_REGION"
+          test -n "$TVL_WEBSITE_S3_BUCKET"
+          test -n "$TVL_WEBSITE_CLOUDFRONT_DISTRIBUTION_ID"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install website dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck TVL website
+        working-directory: website
+        run: pnpm run check
+
+      - name: Build TVL website
+        working-directory: website
+        run: pnpm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy fingerprinted assets
+        run: |
+          aws s3 sync \
+            website/dist/public/assets/ \
+            "s3://${TVL_WEBSITE_S3_BUCKET}/assets/" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable"
+
+      - name: Deploy site files
+        run: |
+          aws s3 sync \
+            website/dist/public/ \
+            "s3://${TVL_WEBSITE_S3_BUCKET}/" \
+            --delete \
+            --exclude "assets/*" \
+            --cache-control "public,max-age=0,must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$TVL_WEBSITE_CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*"

@@ -49,7 +49,7 @@ Set `TRAIGENT_MOCK_MODE=true` if you want to experiment without live API keys.
 
 !!! tip "Capture the UI"
     When you capture screenshots or GIFs of the Playground, store them under
-    `tvl/tvl_book/intelligent-textbooks/docs/img/` (for example `playground-dashboard.png`). Reference them from
+    `tvl_book/figures/` (for example `playground-dashboard.png`). Reference them from
     chapters or case studies to illustrate optimization progress or drift investigations.
 
 ## Advanced Tools
