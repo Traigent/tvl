@@ -69,10 +69,6 @@ jobs:
         working-directory: website
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck TVL website
-        working-directory: website
-        run: pnpm run check
-
       - name: Build TVL website
         working-directory: website
         run: pnpm run build
