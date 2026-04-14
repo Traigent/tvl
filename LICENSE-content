@@ -1,0 +1,25 @@
+Creative Commons Attribution 4.0 International
+
+The authored content listed below is licensed under the Creative Commons
+Attribution 4.0 International License (CC-BY-4.0).
+
+Covered paths in this repository:
+
+- `docs/`
+- `formalization/`
+- `tvl_book/website_content/`
+- `tvl_book/figures/`
+- `tvl_book/tvl_specification.pdf`
+- `website/client/public/docs/`
+- `website/client/public/book-assets/`
+
+You are free to share and adapt this material for any purpose, including
+commercial use, provided that you give appropriate credit, provide a link to
+the license, and indicate whether changes were made.
+
+License URL:
+
+- https://creativecommons.org/licenses/by/4.0/
+
+Unless a file or subdirectory states otherwise, materials outside the covered
+paths above follow the repository's default Apache-2.0 license in `LICENSE`.

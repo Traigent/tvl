@@ -1,7 +1,7 @@
 # TVL - Tuned Variables Language
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/traigent.tvl?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=traigent.tvl)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![License: Apache--2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg?style=flat-square)](https://www.apache.org/licenses/LICENSE-2.0)
 
 VS Code extension for [TVL (Tuned Variables Language)](https://tvl-lang.org) - the declarative language for defining how your AI systems should be tuned.
 
@@ -110,4 +110,4 @@ TVL is developed by [Traigent](https://traigent.com), the LLM optimization platf
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+Apache-2.0 - see [LICENSE](LICENSE) for details.

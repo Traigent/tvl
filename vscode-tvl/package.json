@@ -4,13 +4,13 @@
   "description": "Syntax highlighting and validation for TVL (Tuned Variables Language) configuration files",
   "version": "0.1.0",
   "publisher": "traigent",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tvl-lang/vscode-tvl"
+    "url": "https://github.com/Traigent/tvl"
   },
   "bugs": {
-    "url": "https://github.com/tvl-lang/vscode-tvl/issues"
+    "url": "https://github.com/Traigent/tvl/issues"
   },
   "homepage": "https://tvl-lang.org",
   "engines": {

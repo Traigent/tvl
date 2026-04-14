@@ -62,8 +62,9 @@ Start with:
 
 ## License
 
-- Root repository materials are currently under the MIT license in [LICENSE](LICENSE), unless a subdirectory provides its own license file.
-- CLI tools in `tvl_tools/` retain their Apache 2.0 license.
+- Code, schemas, validators, CLI tools, editor support, tests, executable examples, and the website application are licensed under Apache-2.0 in [LICENSE](LICENSE), unless a subdirectory provides its own license file.
+- Authored documentation, website/book learning content, formalization notes, figures, and the specification PDF are licensed under CC-BY-4.0 as described in [LICENSE-content](LICENSE-content).
+- Generated website copies in `website/client/public/docs/` and `website/client/public/book-assets/` follow the same CC-BY-4.0 content license as their canonical sources.
 
 ## Links
 

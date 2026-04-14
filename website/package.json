@@ -2,7 +2,7 @@
   "name": "tvl-website",
   "version": "1.0.0",
   "type": "module",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "vite --host --port 3002",
     "build": "pnpm run sync:canonical && vite build && node scripts/prepare_static_deploy.mjs && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
