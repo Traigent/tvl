@@ -63,13 +63,13 @@ Typical output:
 ```
 [OPERATIONAL] ERROR optimization.budget.max_trials:
   value 5000 exceeds policy limit 500 (environment=finals_week)
-[OPERATIONAL] WARNING evaluation.workloads[policy_changes]:
+[OPERATIONAL] WARNING evaluation_sets[policy_changes]:
   dataset dvl://faq/policy-2024 missing required drift suite "faq-topic-shift"
 ```
 
 !!! info "Remediation steps"
     - Budget errors highlight overrides that violate guardrails—tighten the spec or update the policy repo.
-    - Dataset warnings surface missing DVL suites—wire the workload into an approved drift test before promotion.
+    - Dataset warnings surface missing DVL suites—wire the evaluation set into an approved drift test before promotion.
 
 ### CI Gate Summary
 

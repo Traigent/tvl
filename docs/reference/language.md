@@ -94,7 +94,7 @@ One distinction will help for the rest of the page. TVL operates on three differ
 How to read it:
 
 *   `environment` tells you which environment snapshot this agent was evaluated against: which retriever index and gateway were active while this study ran.
-*   `evaluation_set` tells you which question set supplies the evidence. This is the shared workload used to compare candidate settings fairly.
+*   `evaluation_set` tells you which question set supplies the evidence. This is the shared evaluation set used to compare candidate settings fairly.
 *   `tvars` lists the knobs TVL is allowed to tune. In this example, TVL can choose the model, retrieval depth, and answer randomness.
 *   `constraints.structural` encodes constraints between design choices. If we retrieve a lot of passages (`retriever.k = 8`), we force lower temperature so the answer stays grounded.
 *   This first example stops at structural rules. Operational preconditions come later, once the basic module shape is already clear.
@@ -194,7 +194,7 @@ Why `bindings` exist:
 
 ## Evaluation Set
 
-`evaluation_set` defines the shared workload used to compare candidates fairly. It tells the runtime which dataset or benchmark slice supplies the evidence for objective measurements and promotion decisions.
+`evaluation_set` defines the shared evaluation set used to compare candidates fairly. It tells the runtime which dataset or benchmark slice supplies the evidence for objective measurements and promotion decisions.
 
 Key fields:
 
@@ -213,7 +213,7 @@ Rules that matter:
 
 *   Keep the evaluation set fixed while comparing candidate configurations in the same study.
 *   If you switch datasets, slices, or benchmark protocols, treat that as new evidence rather than a continuation of the same comparison.
-*   Store the workload reference here, not measured outcomes. Observed metrics belong in measurement artifacts, not in the module.
+*   Store the evaluation-set reference here, not measured outcomes. Observed metrics belong in measurement artifacts, not in the module.
 *   Keep `dataset` explicit even for internal or generated benchmarks so promotion decisions remain auditable.
 
 ## What The Verifiers Are Checking

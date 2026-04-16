@@ -28,7 +28,7 @@ timeline
 
 ## Running Example · Campus Orientation RAG
 
-We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is
+We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is
 quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift
 over time. This TVL file is the baseline we will extend.
 

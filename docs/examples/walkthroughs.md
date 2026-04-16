@@ -42,7 +42,7 @@ Use this when you want the current statistical features:
 
 Source: [text-to-sql.yml](https://github.com/Traigent/tvl/blob/main/spec/examples/text-to-sql.yml)
 
-This is a good example of a tighter single-pipeline workload:
+This is a good example of a tighter single-pipeline evaluation set:
 
 *   banded token-budget objective
 *   standard quality objective

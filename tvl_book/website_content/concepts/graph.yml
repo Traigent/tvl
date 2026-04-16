@@ -26,7 +26,7 @@ concepts:
   - patterns-for-real-deployments/layered-specifications
 - id: evaluation-set
   term: Evaluation Set
-  definition: The workload and optional seed used to compare configurations consistently.
+  definition: The evaluation set and optional seed used to compare configurations consistently.
   prerequisites:
   - drift-governance
   sections:
