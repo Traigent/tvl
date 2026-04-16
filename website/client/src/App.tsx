@@ -15,6 +15,7 @@ import Examples from "./pages/Examples";
 import Chapter from "./pages/Chapter";
 import Section from "./pages/Section";
 import SpecViewer from "./pages/SpecViewer";
+import GitHubRepo from "./pages/GitHubRepo";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/book/chapter/:chapterSlug" component={Chapter} />
       <Route path="/book/chapter/:chapterSlug/section/:sectionSlug" component={Section} />
       <Route path="/examples" component={Examples} />
+      <Route path="/github" component={GitHubRepo} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

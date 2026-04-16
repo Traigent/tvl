@@ -33,7 +33,7 @@ export default function Layout({ children }: LayoutProps) {
               <span className="text-primary-foreground font-bold text-xl">TVL</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-lg leading-none">Tuned Variable Language</span>
+              <span className="font-bold text-lg leading-none">Tuned Variables Language</span>
               <span className="text-xs text-muted-foreground">AI Pipeline Adaptation</span>
             </div>
           </Link>
@@ -121,8 +121,13 @@ export default function Layout({ children }: LayoutProps) {
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Source Repository
+                    Official TVL GitHub Repository
                   </a>
+                </li>
+                <li>
+                  <Link href="/github" className="text-muted-foreground hover:text-foreground transition-colors">
+                    Tuned Variables Language (TVL) on GitHub
+                  </Link>
                 </li>
               </ul>
             </div>

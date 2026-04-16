@@ -1,4 +1,5 @@
 import Layout from "@/components/Layout";
+import Seo from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock3, Code2, FileText } from "lucide-react";
@@ -7,6 +8,12 @@ import { Link } from "wouter";
 export default function BookTbd() {
   return (
     <Layout>
+      <Seo
+        title="TVL Book | Coming Soon | Traigent"
+        description="The TVL book is still being prepared. Use the specification and examples to learn the language and tooling today."
+        path="/book"
+        robots="noindex,nofollow"
+      />
       <section className="py-24 bg-gradient-to-br from-primary/10 via-transparent to-primary/5">
         <div className="container max-w-3xl">
           <Card className="border-primary/30 bg-card/90 shadow-xl shadow-primary/5">

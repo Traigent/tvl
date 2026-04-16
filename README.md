@@ -1,6 +1,6 @@
-# TVL
+# Tuned Variables Language (TVL) by Traigent
 
-TVL (Tuned Variable Language) is a typed specification language for governed tuning, validation, and promotion of AI agents and other adaptive systems.
+The official GitHub repository for TVL, Traigent’s typed specification language for governed tuning, validation, and promotion of AI agents and other adaptive systems.
 It includes the language spec, validators, CLI tools, editor support, examples, educational materials, and website source for `tvl-lang.org`.
 
 ## What Is Here
@@ -69,5 +69,6 @@ Start with:
 ## Links
 
 - Website: <https://tvl-lang.org>
+- Official TVL GitHub repository page: <https://tvl-lang.org/github>
 - Repository: <https://github.com/Traigent/tvl>
 - Issues: <https://github.com/Traigent/tvl/issues>
