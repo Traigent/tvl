@@ -14,11 +14,11 @@ concepts:
   - drift-governance
   sections:
   - getting-fluent-in-tvl/minimal-working-spec
-  - getting-fluent-in-tvl/tvl-0-9-type-system
+  - getting-fluent-in-tvl/tvl-types-and-domains
 - id: environment-snapshot
   term: Environment Snapshot
-  definition: A concrete identifier and component set that anchors a TVL module to
-    the environment used during evaluation.
+  definition: A snapshot ID plus optional bindings and numeric context that anchor
+    a TVL module to the operating setting used during evaluation.
   prerequisites:
   - drift-governance
   sections:
@@ -33,13 +33,13 @@ concepts:
   - why-tvl-exists/running-example-campus-orientation-rag
   - getting-fluent-in-tvl/minimal-working-spec
 - id: type-system
-  term: TVL Type System
+  term: TVL Types and Domains
   definition: Explicit domain shapes for TVARs such as bool, int, float, enum, tuple,
     and callable references.
   prerequisites:
   - tvars
   sections:
-  - getting-fluent-in-tvl/tvl-0-9-type-system
+  - getting-fluent-in-tvl/tvl-types-and-domains
 - id: structural-constraints
   term: Structural Rules
   definition: Typed formulas over TVARs that prune invalid assignments before trials
@@ -53,11 +53,12 @@ concepts:
 - id: derived-constraints
   term: Operational Preconditions
   definition: In TVL syntax, these are feasibility checks under `constraints.derived`
-    over environment symbols such as budgets, quotas, and approved external limits.
+    over `env.context.*` symbols such as provider price, baseline latency, and request
+    headroom.
   prerequisites:
   - structural-constraints
   sections:
-  - constraints-units-safety-nets/derived-constraints
+  - constraints-units-safety-nets/operational-preconditions
   - constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react
 - id: operational-checks
   term: Operational Checks
@@ -66,7 +67,7 @@ concepts:
   prerequisites:
   - derived-constraints
   sections:
-  - constraints-units-safety-nets/derived-constraints
+  - constraints-units-safety-nets/operational-preconditions
   - integration-patterns/tvl-cli-tools
 - id: satisfiability
   term: Satisfiability Preflight

@@ -5,7 +5,7 @@ goal: Understand the language model, constraints, overlays, and integration cont
   end to end.
 sections:
 - why-tvl-exists/running-example-campus-orientation-rag
-- getting-fluent-in-tvl/tvl-0-9-type-system
+- getting-fluent-in-tvl/tvl-types-and-domains
 - constraints-units-safety-nets/structural-constraint-syntax
 - patterns-for-real-deployments/layered-specifications
 - patterns-for-real-deployments/visualizing-overlays
@@ -13,7 +13,7 @@ sections:
 - integration-patterns/manifests-and-promotion
 entry_sections:
 - why-tvl-exists/running-example-campus-orientation-rag
-- getting-fluent-in-tvl/tvl-0-9-type-system
+- getting-fluent-in-tvl/tvl-types-and-domains
 completion_sections:
 - patterns-for-real-deployments/provenance-matters
 - integration-patterns/manifests-and-promotion

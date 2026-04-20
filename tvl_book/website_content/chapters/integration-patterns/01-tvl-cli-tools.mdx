@@ -49,13 +49,18 @@ That exposes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and the rest of
 # Validate schema and run lints
 tvl-validate my-spec.tvl.yml
 
-# Check structural constraints are satisfiable
+# Check structural rules are satisfiable
 tvl-check-structural my-spec.tvl.yml
 
-# Full CI pipeline (validation only)
-tvl-validate my-spec.tvl.yml && \
-  tvl-check-structural my-spec.tvl.yml
+# Check operational preconditions against env.context
+tvl-check-operational my-spec.tvl.yml --json
 ```
+
+Think of that as the minimum trustworthy sequence:
+
+1. `tvl-validate` catches shape and lint problems.
+2. `tvl-check-structural` confirms there is still a legal search space.
+3. `tvl-check-operational` confirms the current operating assumptions still permit the study.
 
 ### Configuration and Measurement Validation
 

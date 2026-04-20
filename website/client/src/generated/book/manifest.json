@@ -20,8 +20,8 @@
       "primaryExample": "/examples/rag-support-bot.tvl.yml",
       "introModulePath": "/src/generated/book/content/chapters/why-tvl-exists/chapter.mdx",
       "introExcerpt": [
-        "TVL grew out of a simple observation: LLM applications never sit still . Model catalogs evolve, latency budgets oscillate with traffic spikes, and cost ceilings reset when finance reviews the bill. Hard-coded configuration forces engineers to either over-provision permanently or ship blind during drift events. TVL reframes configuration as a tuned, governed artifact that evolves alongside the environment.",
-        "TVL is a machine-readable contract for “what can change, what must stay safe, and what evidence is required before a better configuration ships.”"
+        "TVL grew out of a simple observation: AI systems do not live in a static world . Models change, latency shifts with traffic, provider prices move, and product expectations tighten after deployment. Hard-coded configuration pushes teams toward one of two bad habits: leave too much risk hidden in code, or keep making ad hoc changes with no stable contract to review.",
+        "TVL reframes that situation. Instead of treating agent behavior as a pile of scattered config and prompt edits, it gives product and engineering one governed artifact that says what may vary, what must stay safe, and what evidence is required before change ships."
       ],
       "sections": [
         {
@@ -44,15 +44,15 @@
           "route": "/book/chapter/why-tvl-exists/section/design-goals-at-a-glance",
           "modulePath": "/src/generated/book/content/chapters/why-tvl-exists/01-design-goals-at-a-glance.mdx",
           "excerpt": [
-            "- Type-safe tuning variables separate categorical choice from continuous ranges. - Deterministic exports make generated files (such as params.yaml) reproducible in CI. - Declarative constraints (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers. - Governed promotion requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out.",
-            "The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and rerun TVO . The optimizer explores safely and promotes only when constraints hold—no frantic code edits."
+            "- Explicit tuned variables make the changeable surface reviewable instead of leaving it buried in prompts or runtime code. - Clear rule boundaries separate structural design rules from operational preconditions over env.context. . - Reusable evaluation hooks keep metric definitions attached to objectives instead of scattered across scripts. - Governed promotion requires declared evidence before production changes roll out. - Deterministic exports make generated files and downstream artifacts reproducible in CI.",
+            "The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but gateway latency just doubled. With TVL you keep the guardrails, narrow or widen the approved surface, and rerun the optimizer instead of making frantic code edits. The system explores safely and only recommends promotion when the declared evidence is strong enough."
           ]
         },
         {
           "id": "chapter-01-running-example-campus-orientation-rag",
           "slug": "running-example-campus-orientation-rag",
           "title": "Running Example · Campus Orientation RAG",
-          "summary": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+          "summary": "We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
           "chapter": "why-tvl-exists",
           "estimatedMinutes": 8,
           "interactive": false,
@@ -68,7 +68,7 @@
           "route": "/book/chapter/why-tvl-exists/section/running-example-campus-orientation-rag",
           "modulePath": "/src/generated/book/content/chapters/why-tvl-exists/02-running-example-campus-orientation-rag.mdx",
           "excerpt": [
-            "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+            "We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
             "```yaml Campus Orientation RAG - TVL Specification tvl: module: campus.orientation.rag",
             "Environment snapshot anchors the spec to a point in time environment: snapshot id: \"2025-01-15T00:00:00Z\" bindings: retriever index: campus-faq-v1 llm gateway: us-east-1 context: gateway baseline latency ms: 180 provider input price usd per 1k tokens: 0.03"
           ]
@@ -139,7 +139,7 @@
           "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/01-minimal-working-spec.mdx",
           "excerpt": [
             "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer.",
-            "- TVARs are the knobs the optimizer is allowed to turn. - The evaluation set is the shared test workload used to compare candidates fairly. - The promotion policy is the shipping rulebook: it says what counts as a real win.",
+            "- TVARs are the knobs the optimizer is allowed to turn. - environment.bindings pins the concrete system pieces this study is attached to. - The evaluation set is the shared evaluation set used to compare candidates fairly. - metric ref tells the evaluator how each objective is computed. - The promotion policy is the shipping rulebook: it says what counts as a real win.",
             "It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only about what can change; it is also about what evidence is required before a change is allowed to ship."
           ]
         },
@@ -162,16 +162,16 @@
           "route": "/book/chapter/getting-fluent-in-tvl/section/validation-warm-up",
           "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/02-validation-warm-up.mdx",
           "excerpt": [
-            "Use tvl-validate to check your spec against the TVL schema:",
+            "Start with tvl-validate to catch cheap mistakes before you do anything more expensive:",
             "The fast win is structure. tvl-validate catches missing sections, bad shapes, and schema mismatches. It does not tell you whether the candidate is good, safe, or operationally feasible in production.",
             "tvl-validate is the fast sanity check. In simple terms, it answers:"
           ]
         },
         {
-          "id": "chapter-02-tvl-0-9-type-system",
-          "slug": "tvl-0-9-type-system",
-          "title": "TVL Type System",
-          "summary": "TVL enforces explicit typing on every tuned variable so search spaces stay interpretable and safe.",
+          "id": "chapter-02-tvl-types-and-domains",
+          "slug": "tvl-types-and-domains",
+          "title": "TVL Types and Domains",
+          "summary": "Choose types and domains that keep the search space reviewable, meaningful, and small enough to govern.",
           "chapter": "getting-fluent-in-tvl",
           "estimatedMinutes": 5,
           "interactive": false,
@@ -183,12 +183,12 @@
             "/examples/tool-use.tvl.yml"
           ],
           "opalBridge": false,
-          "route": "/book/chapter/getting-fluent-in-tvl/section/tvl-0-9-type-system",
-          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/03-tvl-0-9-type-system.mdx",
+          "route": "/book/chapter/getting-fluent-in-tvl/section/tvl-types-and-domains",
+          "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/03-tvl-types-and-domains.mdx",
           "excerpt": [
-            "TVL enforces explicit typing on all tuned variables:",
-            "For an application engineer, the type system is what keeps tuning from turning into guesswork. It makes the optimizer’s choices explicit: a boolean switch is different from an integer budget, which is different from a short approved list of model names.",
-            "| Type | Description | Domain Examples | |------|-------------|-----------------| | bool | Boolean flag | [true, false] | | int | Integer value | range: [1, 10] or set: [1, 2, 4, 8] | | float | Floating-point | range: [0.0, 1.0] with optional resolution | | enum[str] | Finite set of strings | [\"gpt-4o\", \"claude-3\"] | | enum[int] | Finite set of integers | [100, 500, 1000] | | tuple[...] | Product type | Cartesian product of component domains | | callable[Proto] | Protocol reference | Registry-backed function lookup |"
+            "TVL types exist to make the search space explicit. A reviewer should be able to look at a TVAR and understand what kind of decision it represents and how many possibilities the optimizer is being allowed to explore.",
+            "Most teams only need four forms at first: bool, int, float, and enum[str]. Those cover switches, counts, thresholds, and approved named options. Start there unless you have a clear reason to expose something more advanced.",
+            "| Type | Best used for | Domain Examples | |------|---------------|-----------------| | bool | A real on/off engineering switch | [true, false] | | int | Counts, limits, rounds, shard sizes | range: [1, 10] or set: [1, 2, 4, 8] | | float | Thresholds or continuous trade-off knobs | range: [0.0, 1.0] with optional resolution | | enum[str] | A short approved list of named options | [\"gpt-4o\", \"claude-3\"] | | enum[int] | A small approved list of integer settings | [100, 500, 1000] |"
           ]
         },
         {
@@ -205,7 +205,9 @@
           "route": "/book/chapter/getting-fluent-in-tvl/section/common-pitfalls",
           "modulePath": "/src/generated/book/content/chapters/getting-fluent-in-tvl/04-common-pitfalls.mdx",
           "excerpt": [
-            "1. Using wrong type names — it's enum[str] not categorical, float not continuous. 2. Mixing deployment bindings with numeric operating assumptions instead of separating bindings and context. 3. Missing promotion policy — this is required in TVL (no implicit defaults). 4. Constraint syntax errors — use = for equality (not ==), and/or (not &&/||)."
+            "These are the mistakes that slow new authors down most often:",
+            "1. Using familiar-but-wrong type names. TVL wants enum[str], int, and float, not labels like categorical or continuous. 2. Mixing pinned system bindings with numeric operating assumptions. Put deployed identifiers in environment.bindings; put numeric feasibility inputs in environment.context. 3. Forgetting the rollout rulebook. A spec without promotion policy tells us what can change, but not what evidence is needed before change ships. 4. Borrowing syntax from other languages. Use = instead of ==, and and / or instead of && / ||.",
+            "Before you commit a new module, ask:"
           ]
         },
         {
@@ -258,7 +260,8 @@
       "primaryExample": "/examples/validation-phase2/structural-sat.tvl.yml",
       "introModulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/chapter.mdx",
       "introExcerpt": [
-        "TVL uses a typed Disjunctive Normal Form (DNF) constraint language that compiles to SAT/SMT solvers for formal verification. This chapter shows how to write structural rules and operational preconditions, and test them before TVO wastes a single trial."
+        "This chapter is about ruling out bad experiments early.",
+        "In practice, most authors only need two ideas:"
       ],
       "sections": [
         {
@@ -275,6 +278,7 @@
             "operational-checks"
           ],
           "exampleRefs": [
+            "/examples/rag-support-bot.tvl.yml",
             "/examples/text-to-sql.tvl.yml"
           ],
           "opalBridge": false,
@@ -283,14 +287,14 @@
           "excerpt": [
             "TVL separates constraints into two categories:",
             "The env.context. rule belongs in constraints.derived because it depends on the execution environment. temperature <= 0.8 is a structural rule because it is a formula over TVARs and can be checked before any trials run.",
-            "| Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural | Before trials run (static) | Rules over TVARs that define valid configuration space | | Operational Preconditions | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom |"
+            "| Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural Rules | Before trials run | Constraints between design choices that define the valid search space | | Operational Preconditions | Before or during a study, against env.context. | Feasibility checks over the declared operating assumptions such as provider price, baseline latency, and request headroom |"
           ]
         },
         {
           "id": "chapter-03-structural-constraint-syntax",
           "slug": "structural-constraint-syntax",
           "title": "Structural Constraint Syntax",
-          "summary": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:.",
+          "summary": "Structural rules use a small TVL formula language over TVARs. Learn the common forms first and the solver theory second.",
           "chapter": "constraints-units-safety-nets",
           "estimatedMinutes": 7,
           "interactive": false,
@@ -305,14 +309,14 @@
           "route": "/book/chapter/constraints-units-safety-nets/section/structural-constraint-syntax",
           "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/02-structural-constraint-syntax.mdx",
           "excerpt": [
-            "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:",
+            "You do not need to memorize solver terminology to write good structural rules. In practice, most authors use a small TVL formula language over TVARs:",
             "| TVL Syntax | Meaning | NOT This | |----------------|---------|----------| | model = \"gpt-4o\" | Equality | model == \"gpt-4o\" | | temperature <= 0.5 | Comparison | params.temperature <= 0.5 | | A and B | Conjunction | A && B | | A or B | Disjunction | A \\|\\| B | | not A | Negation | !A | | x in {\"a\", \"b\"} | Set membership | x in [\"a\", \"b\"] |",
             "Expression Form vs Implication Form"
           ]
         },
         {
-          "id": "chapter-03-derived-constraints",
-          "slug": "derived-constraints",
+          "id": "chapter-03-operational-preconditions",
+          "slug": "operational-preconditions",
           "title": "Operational Preconditions",
           "summary": "Operational preconditions in TVL are written under `constraints.derived` and checked against the current environment snapshot.",
           "chapter": "constraints-units-safety-nets",
@@ -324,15 +328,16 @@
             "environment-snapshot"
           ],
           "exampleRefs": [
-            "/examples/validation-phase3/budget-invalid.tvl.yml"
+            "/examples/rag-support-bot.tvl.yml",
+            "/examples/text-to-sql.tvl.yml"
           ],
           "opalBridge": false,
-          "route": "/book/chapter/constraints-units-safety-nets/section/derived-constraints",
-          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/03-derived-constraints.mdx",
+          "route": "/book/chapter/constraints-units-safety-nets/section/operational-preconditions",
+          "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/03-operational-preconditions.mdx",
           "excerpt": [
-            "TVL writes operational preconditions under constraints.derived. These are linear inequalities over environment symbols (not TVARs), and they are evaluated at runtime against the current environment snapshot.",
-            "```yaml Fragment: operational preconditions over environment symbols constraints: derived: Provider price guard - require: env.context.provider input price usd per 1k tokens <= 0.05",
-            "Baseline gateway latency guard - require: env.context.gateway baseline latency ms <= 250"
+            "TVL writes operational preconditions under constraints.derived. The syntax name is older than the teaching name, so use this rule of thumb:",
+            "- say Operational Preconditions when you explain the concept - write constraints.derived when you author the YAML",
+            "These formulas are linear inequalities over environment symbols in env.context. , not over TVARs. They answer one question: \"is the current operating situation acceptable for running this study?\""
           ]
         },
         {
@@ -363,8 +368,8 @@
         {
           "id": "chapter-03-testing-constraints",
           "slug": "testing-constraints",
-          "title": "Testing Constraints",
-          "summary": "Use tvl-check-structural and unit tests to prove the search space still contains valid configurations.",
+          "title": "Testing Rules Before You Spend Budget",
+          "summary": "Use structural checks, operational checks, and targeted tests to prove the study is worth running before you spend evaluation time.",
           "chapter": "constraints-units-safety-nets",
           "estimatedMinutes": 6,
           "interactive": false,
@@ -374,15 +379,16 @@
             "structural-constraints"
           ],
           "exampleRefs": [
-            "/examples/ci_pipeline.sh"
+            "/examples/validation-phase2/structural-sat.tvl.yml",
+            "/examples/text-to-sql.tvl.yml"
           ],
           "opalBridge": false,
           "route": "/book/chapter/constraints-units-safety-nets/section/testing-constraints",
           "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/05-testing-constraints.mdx",
           "excerpt": [
-            "Use tvl-check-structural to verify your constraints are satisfiable:",
-            "```bash Check if constraints have at least one valid solution tvl-check-structural my-spec.tvl.yml",
-            "JSON output for CI pipelines tvl-check-structural my-spec.tvl.yml --json ```"
+            "Use these checks in order:",
+            "- tvl-check-structural asks whether at least one valid configuration exists. - tvl-check-operational asks whether the current env.context. assumptions let the study proceed.",
+            "If those pass, add targeted tests so future edits do not quietly break the contract. For unit testing in Python, use the TVL SDK:"
           ]
         },
         {
@@ -399,7 +405,8 @@
           "route": "/book/chapter/constraints-units-safety-nets/section/checklist-before-promotion",
           "modulePath": "/src/generated/book/content/chapters/constraints-units-safety-nets/06-checklist-before-promotion.mdx",
           "excerpt": [
-            "1. All structural constraints pass tvl-check-structural (satisfiable). 2. Constraint formulas use TVL syntax (=, and, or, not), not other languages. 3. Operational preconditions (constraints.derived) only reference environment symbols, not TVARs. 4. Unit tests cover both valid and invalid configurations."
+            "Before promotion review, confirm the contract still respects the boundary between design rules, operational assumptions, and measured evidence:",
+            "1. All structural rules pass tvl-check-structural and leave at least one valid configuration. 2. Structural formulas use TVL syntax (=, and, or, not) rather than another language’s syntax. 3. Operational preconditions (constraints.derived) only reference env.context. , not TVARs or measured outcomes. 4. Objectives and metric ref names still match the evaluator that will produce promotion evidence. 5. Unit tests cover both valid and intentionally invalid configurations."
           ]
         }
       ]
@@ -590,8 +597,8 @@
       "primaryExample": "/examples/ci_pipeline.sh",
       "introModulePath": "/src/generated/book/content/chapters/integration-patterns/chapter.mdx",
       "introExcerpt": [
-        "TVL earns its keep when paired with Triagent (TVO) and DVL. Triagent is the optimization platform, TVO is the optimizer inside it, and DVL is the data-validation layer. TVO reads TVL specs, explores the configuration space, and produces promotion proofs. DVL validates the datasets that power those experiments so you never ship a great configuration with stale data.",
-        "- First, learn the static toolchain and CI gates. - Then connect TVL to runtime systems like TVO and DVL. - Finally, treat manifests as the operational record that makes audits, rollback, and reproducibility possible."
+        "TVL earns its keep when paired with real engineering workflow: a validator in CI, an optimizer that explores candidate configurations, and evidence artifacts that support rollout review.",
+        "In our stack, those surrounding systems include Triagent/TVO for optimization and DVL for dataset validation. But the chapter is broader than those names. The core lesson is how a TVL contract fits between local authoring, automated checks, experimentation, and promotion decisions."
       ],
       "sections": [
         {
@@ -763,7 +770,7 @@
           "modulePath": "/src/generated/book/content/chapters/training-agents-with-tuned-variables/02-choosing-tuned-variables-for-agent-systems.mdx",
           "excerpt": [
             "Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three tests:",
-            "1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable workload slice.",
+            "1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable slice of an evaluation set.",
             "This is why \"rewrite the prompt until it feels better\" is a weak engineering process. It changes too many things at once and rarely leaves behind a clean study plane."
           ]
         },
@@ -817,7 +824,7 @@
       "primaryExample": "/examples/text-to-sql.yml",
       "introModulePath": "/src/generated/book/content/chapters/pattern-anatomy-and-evaluation/chapter.mdx",
       "introExcerpt": [
-        "Once teams can expose agent variables explicitly, the next question is comparative: which pattern is the right one to use under the current workload, budget, and failure mode? This chapter gives a compact way to read pattern pages and compare them as disciplined engineering options.",
+        "Once teams can expose agent variables explicitly, the next question is comparative: which pattern is the right one to use under the current evaluation set, budget, and failure mode? This chapter gives a compact way to read pattern pages and compare them as disciplined engineering options.",
         "- Start with the scaffold family. - Then read the tuned variables and decision axes. - Only then decide whether the pattern deserves budget on your study plane."
       ],
       "sections": [
@@ -1044,7 +1051,7 @@
       ],
       "relatedSections": [
         "why-tvl-exists/running-example-campus-orientation-rag",
-        "getting-fluent-in-tvl/tvl-0-9-type-system",
+        "getting-fluent-in-tvl/tvl-types-and-domains",
         "patterns-for-real-deployments/layered-specifications",
         "patterns-for-real-deployments/visualizing-overlays",
         "integration-patterns/manifests-and-promotion"
@@ -1116,7 +1123,7 @@
       ],
       "relatedSections": [
         "getting-fluent-in-tvl/minimal-working-spec",
-        "constraints-units-safety-nets/derived-constraints",
+        "constraints-units-safety-nets/operational-preconditions",
         "patterns-for-real-deployments/module-composition-with-tvl-compose",
         "patterns-for-real-deployments/provenance-matters",
         "integration-patterns/manifests-and-promotion"
@@ -1429,7 +1436,7 @@
       "goal": "Understand the language model, constraints, overlays, and integration contracts end to end.",
       "sections": [
         "why-tvl-exists/running-example-campus-orientation-rag",
-        "getting-fluent-in-tvl/tvl-0-9-type-system",
+        "getting-fluent-in-tvl/tvl-types-and-domains",
         "constraints-units-safety-nets/structural-constraint-syntax",
         "patterns-for-real-deployments/layered-specifications",
         "patterns-for-real-deployments/visualizing-overlays",
@@ -1438,7 +1445,7 @@
       ],
       "entrySections": [
         "why-tvl-exists/running-example-campus-orientation-rag",
-        "getting-fluent-in-tvl/tvl-0-9-type-system"
+        "getting-fluent-in-tvl/tvl-types-and-domains"
       ],
       "completionSections": [
         "patterns-for-real-deployments/provenance-matters",
@@ -1453,7 +1460,7 @@
       "goal": "Operate constraints, overlays, provenance, and promotion evidence confidently during change and incident response.",
       "sections": [
         "constraints-units-safety-nets/two-kinds-of-constraints",
-        "constraints-units-safety-nets/derived-constraints",
+        "constraints-units-safety-nets/operational-preconditions",
         "constraints-units-safety-nets/testing-constraints",
         "patterns-for-real-deployments/layered-specifications",
         "patterns-for-real-deployments/hotfix-playbook",
@@ -1514,13 +1521,13 @@
       ],
       "sections": [
         "getting-fluent-in-tvl/minimal-working-spec",
-        "getting-fluent-in-tvl/tvl-0-9-type-system"
+        "getting-fluent-in-tvl/tvl-types-and-domains"
       ]
     },
     {
       "id": "environment-snapshot",
       "term": "Environment Snapshot",
-      "definition": "A concrete identifier and component set that anchors a TVL module to the environment used during evaluation.",
+      "definition": "A snapshot ID plus optional bindings and numeric context that anchor a TVL module to the operating setting used during evaluation.",
       "prerequisites": [
         "drift-governance"
       ],
@@ -1532,7 +1539,7 @@
     {
       "id": "evaluation-set",
       "term": "Evaluation Set",
-      "definition": "The workload and optional seed used to compare configurations consistently.",
+      "definition": "The evaluation set and optional seed used to compare configurations consistently.",
       "prerequisites": [
         "drift-governance"
       ],
@@ -1543,13 +1550,13 @@
     },
     {
       "id": "type-system",
-      "term": "TVL Type System",
+      "term": "TVL Types and Domains",
       "definition": "Explicit domain shapes for TVARs such as bool, int, float, enum, tuple, and callable references.",
       "prerequisites": [
         "tvars"
       ],
       "sections": [
-        "getting-fluent-in-tvl/tvl-0-9-type-system"
+        "getting-fluent-in-tvl/tvl-types-and-domains"
       ]
     },
     {
@@ -1568,12 +1575,12 @@
     {
       "id": "derived-constraints",
       "term": "Operational Preconditions",
-      "definition": "In TVL syntax, these are feasibility checks under `constraints.derived` over environment symbols such as budgets, quotas, and approved external limits.",
+      "definition": "In TVL syntax, these are feasibility checks under `constraints.derived` over `env.context.*` symbols such as provider price, baseline latency, and request headroom.",
       "prerequisites": [
         "structural-constraints"
       ],
       "sections": [
-        "constraints-units-safety-nets/derived-constraints",
+        "constraints-units-safety-nets/operational-preconditions",
         "constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react"
       ]
     },
@@ -1585,7 +1592,7 @@
         "derived-constraints"
       ],
       "sections": [
-        "constraints-units-safety-nets/derived-constraints",
+        "constraints-units-safety-nets/operational-preconditions",
         "integration-patterns/tvl-cli-tools"
       ]
     },
@@ -1831,7 +1838,7 @@
         "architect",
         "operator"
       ],
-      "text": "- Type-safe tuning variables separate categorical choice from continuous ranges. - Deterministic exports make generated files (such as params.yaml) reproducible in CI. - Declarative constraints (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers. - Governed promotion requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out. The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and rerun TVO . The optimizer explores safely and promotes only when constraints hold—no frantic code edits.",
+      "text": "- Explicit tuned variables make the changeable surface reviewable instead of leaving it buried in prompts or runtime code. - Clear rule boundaries separate structural design rules from operational preconditions over env.context. . - Reusable evaluation hooks keep metric definitions attached to objectives instead of scattered across scripts. - Governed promotion requires declared evidence before production changes roll out. - Deterministic exports make generated files and downstream artifacts reproducible in CI. The onboarding chatbot is hours away from orientation week. A new model release promises higher quality, but gateway latency just doubled. With TVL you keep the guardrails, narrow or widen the approved surface, and rerun the optimizer instead of making frantic code edits. The system explores safely and only recommends promotion when the declared evidence is strong enough.",
       "sectionKey": "why-tvl-exists/design-goals-at-a-glance"
     },
     {
@@ -1841,7 +1848,7 @@
       "chapterSlug": "why-tvl-exists",
       "chapterTitle": "Why TVL Exists",
       "sectionSlug": "running-example-campus-orientation-rag",
-      "summary": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
+      "summary": "We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend.",
       "route": "/book/chapter/why-tvl-exists/section/running-example-campus-orientation-rag",
       "conceptRefs": [
         "running-example",
@@ -1853,7 +1860,7 @@
         "architect",
         "operator"
       ],
-      "text": "We revisit a retrieval-augmented system that answers student questions throughout the book. The workload is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend. Download /examples/rag-support-bot.tvl.yml and run tvl-validate rag-support-bot.tvl.yml to check the spec against the TVL schema. The validator catches type mismatches, domain violations, and unsatisfiable constraints.",
+      "text": "We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift over time. This TVL file is the baseline we will extend. Download /examples/rag-support-bot.tvl.yml and run tvl-validate rag-support-bot.tvl.yml to check the spec against the TVL schema. The validator catches type mismatches, domain violations, and unsatisfiable constraints.",
       "sectionKey": "why-tvl-exists/running-example-campus-orientation-rag"
     },
     {
@@ -1892,7 +1899,7 @@
         "quickstart",
         "architect"
       ],
-      "text": "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer. - TVARs are the knobs the optimizer is allowed to turn. - The evaluation set is the shared test workload used to compare candidates fairly. - The promotion policy is the shipping rulebook: it says what counts as a real win. It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only about what can change; it is also about what evidence is required before a change is allowed to ship. If you are coming from standard software configuration, the easiest way to read this file is: 1. environment tells you which deployed index and gateway this spec was evaluated against. 2. tvars tells you what can change. 3. objectives tells you what “better” means. 4. promotion policy tells you when “better” is strong enough to ship. - Every TVAR has an explicit type and domain? - environment.bindings names the concrete system pieces the study used? - Objectives declared with direction: maximize or minimize? - promotion policy includes min effect for each objective? - environment.snapshot id is an RFC3339 timestamp? tvars says what may change. objectives say what better means. promotion policy says when “better” is credible and large enough to justify rollout.",
+      "text": "Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the optimizer. - TVARs are the knobs the optimizer is allowed to turn. - environment.bindings pins the concrete system pieces this study is attached to. - The evaluation set is the shared evaluation set used to compare candidates fairly. - metric ref tells the evaluator how each objective is computed. - The promotion policy is the shipping rulebook: it says what counts as a real win. It would still describe knobs and objectives, but it would stop short of a real governed contract. TVL is not only about what can change; it is also about what evidence is required before a change is allowed to ship. If you are coming from standard software configuration, the easiest way to read this file is: 1. environment tells you which deployed index and gateway this spec was evaluated against, plus any numeric operating assumptions you choose to declare in context. 2. tvars tells you what can change. 3. objectives plus metric ref tells you what “better” means and how the evaluator will calculate it. 4. promotion policy tells you when “better” is strong enough to ship. - Every TVAR has an explicit type and domain? - environment.bindings names the concrete system pieces the study used? - environment.context appears only if you need numeric operating assumptions for operational preconditions? - Objectives declared with direction: maximize or minimize? - Every objective that needs a specific evaluator points to it with metric ref? - promotion policy includes min effect for each objective? - environment.snapshot id is an RFC3339 timestamp? tvars says what may change. objectives say what better means. promotion policy says when “better” is credible and large enough to justify rollout.",
       "sectionKey": "getting-fluent-in-tvl/minimal-working-spec"
     },
     {
@@ -1912,18 +1919,18 @@
         "quickstart",
         "architect"
       ],
-      "text": "Use tvl-validate to check your spec against the TVL schema: The fast win is structure. tvl-validate catches missing sections, bad shapes, and schema mismatches. It does not tell you whether the candidate is good, safe, or operationally feasible in production. tvl-validate is the fast sanity check. In simple terms, it answers: - “Did I include the required sections?” - “Did I spell the structure correctly?” - “Are the values shaped the way TVL expects?” It does not prove that your search space is useful or safe by itself. That is where the broader validation workflow comes in. For deeper inspection, use this helper script to print the TVARs and their domains: If you are new to the toolchain, think of this sequence as the software-engineering version of “compile before you optimize.” The goal is to catch cheap mistakes while they are still cheap. Passing schema validation is only the first gate. You still need parsing, linting, structural feasibility checks, and operational checks to know whether the search space is usable and whether rollout evidence will stand up in review.",
+      "text": "Start with tvl-validate to catch cheap mistakes before you do anything more expensive: The fast win is structure. tvl-validate catches missing sections, bad shapes, and schema mismatches. It does not tell you whether the candidate is good, safe, or operationally feasible in production. tvl-validate is the fast sanity check. In simple terms, it answers: - “Did I include the required sections?” - “Did I spell the structure correctly?” - “Are the values shaped the way TVL expects?” It does not prove that your search space is useful or safe by itself. That is where the broader validation workflow comes in. After schema validation passes, the next two checks are: - tvl-check-structural asks whether at least one valid assignment exists. - tvl-check-operational asks whether the declared env.context. assumptions currently allow the study to run. For deeper inspection, use this helper script to print the TVARs and their domains: If you are new to the toolchain, think of this sequence as the software-engineering version of “compile before you optimize.” The goal is to catch cheap mistakes while they are still cheap. Passing schema validation is only the first gate. You still need parsing, linting, structural feasibility checks, and operational checks to know whether the search space is usable before you even reach rollout evidence.",
       "sectionKey": "getting-fluent-in-tvl/validation-warm-up"
     },
     {
-      "id": "chapter-02-tvl-0-9-type-system",
+      "id": "chapter-02-tvl-types-and-domains",
       "kind": "section",
-      "title": "TVL Type System",
+      "title": "TVL Types and Domains",
       "chapterSlug": "getting-fluent-in-tvl",
       "chapterTitle": "Getting Fluent in TVL",
-      "sectionSlug": "tvl-0-9-type-system",
-      "summary": "TVL enforces explicit typing on every tuned variable so search spaces stay interpretable and safe.",
-      "route": "/book/chapter/getting-fluent-in-tvl/section/tvl-0-9-type-system",
+      "sectionSlug": "tvl-types-and-domains",
+      "summary": "Choose types and domains that keep the search space reviewable, meaningful, and small enough to govern.",
+      "route": "/book/chapter/getting-fluent-in-tvl/section/tvl-types-and-domains",
       "conceptRefs": [
         "tvars",
         "type-system"
@@ -1932,8 +1939,8 @@
         "quickstart",
         "architect"
       ],
-      "text": "TVL enforces explicit typing on all tuned variables: For an application engineer, the type system is what keeps tuning from turning into guesswork. It makes the optimizer’s choices explicit: a boolean switch is different from an integer budget, which is different from a short approved list of model names. | Type | Description | Domain Examples | |------|-------------|-----------------| | bool | Boolean flag | [true, false] | | int | Integer value | range: [1, 10] or set: [1, 2, 4, 8] | | float | Floating-point | range: [0.0, 1.0] with optional resolution | | enum[str] | Finite set of strings | [\"gpt-4o\", \"claude-3\"] | | enum[int] | Finite set of integers | [100, 500, 1000] | | tuple[...] | Product type | Cartesian product of component domains | | callable[Proto] | Protocol reference | Registry-backed function lookup |",
-      "sectionKey": "getting-fluent-in-tvl/tvl-0-9-type-system"
+      "text": "TVL types exist to make the search space explicit. A reviewer should be able to look at a TVAR and understand what kind of decision it represents and how many possibilities the optimizer is being allowed to explore. Most teams only need four forms at first: bool, int, float, and enum[str]. Those cover switches, counts, thresholds, and approved named options. Start there unless you have a clear reason to expose something more advanced. | Type | Best used for | Domain Examples | |------|---------------|-----------------| | bool | A real on/off engineering switch | [true, false] | | int | Counts, limits, rounds, shard sizes | range: [1, 10] or set: [1, 2, 4, 8] | | float | Thresholds or continuous trade-off knobs | range: [0.0, 1.0] with optional resolution | | enum[str] | A short approved list of named options | [\"gpt-4o\", \"claude-3\"] | | enum[int] | A small approved list of integer settings | [100, 500, 1000] | Do not choose a TVL type based on how the value is stored in code. Choose it based on the engineering decision you want reviewers to understand. A model choice is usually enum[str]; a branch count is usually int; a safety threshold is usually float. Advanced forms you can skip on a first read | Type | When it is worth using | |------|-------------------------| | tuple[...] | When one governed choice is naturally a product of several smaller choices | | callable[Proto] | When a runtime resolves approved implementations from a registry rather than from inline YAML | These forms are useful, but they are not part of the minimum mental model for writing a clean first TVL module. Because the point is to expose a governed list of approved options. enum[str] makes that list explicit, reviewable, and bounded for optimization.",
+      "sectionKey": "getting-fluent-in-tvl/tvl-types-and-domains"
     },
     {
       "id": "chapter-02-common-pitfalls",
@@ -1949,7 +1956,7 @@
         "quickstart",
         "architect"
       ],
-      "text": "1. Using wrong type names — it's enum[str] not categorical, float not continuous. 2. Mixing deployment bindings with numeric operating assumptions instead of separating bindings and context. 3. Missing promotion policy — this is required in TVL (no implicit defaults). 4. Constraint syntax errors — use = for equality (not ==), and/or (not &&/||).",
+      "text": "These are the mistakes that slow new authors down most often: 1. Using familiar-but-wrong type names. TVL wants enum[str], int, and float, not labels like categorical or continuous. 2. Mixing pinned system bindings with numeric operating assumptions. Put deployed identifiers in environment.bindings; put numeric feasibility inputs in environment.context. 3. Forgetting the rollout rulebook. A spec without promotion policy tells us what can change, but not what evidence is needed before change ships. 4. Borrowing syntax from other languages. Use = instead of ==, and and / or instead of && / ||. Before you commit a new module, ask: - Can I explain each TVAR as a real engineering decision? - Have I kept environment bindings separate from env.context. assumptions? - Would another engineer know how this spec decides when a change is promotable?",
       "sectionKey": "getting-fluent-in-tvl/common-pitfalls"
     },
     {
@@ -1992,7 +1999,7 @@
         "architect",
         "operator"
       ],
-      "text": "TVL separates constraints into two categories: The env.context. rule belongs in constraints.derived because it depends on the execution environment. temperature | Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural | Before trials run (static) | Rules over TVARs that define valid configuration space | | Operational Preconditions | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom | Operational metrics such as measured latency or token cost belong in measurements, manifests, and runtime gates. TVL keeps constraints.derived scoped to env.context. feasibility checks. Because TVL uses constraints.derived` for feasibility checks over the environment, not for observed experiment results. Measured latency belongs in objectives, manifests, and rollout evidence so reviewers can distinguish promises from outcomes.",
+      "text": "TVL separates constraints into two categories: The env.context. rule belongs in constraints.derived because it depends on the execution environment. temperature | Category | Evaluated When | Purpose | |----------|---------------|---------| | Structural Rules | Before trials run | Constraints between design choices that define the valid search space | | Operational Preconditions | Before or during a study, against env.context. | Feasibility checks over the declared operating assumptions such as provider price, baseline latency, and request headroom | Operational metrics such as observed latency, measured token cost, or hallucination rate belong in measurements, manifests, and promotion gates. TVL keeps constraints.derived scoped to env.context. feasibility checks so reviewers can tell the difference between assumptions and outcomes. Because TVL uses constraints.derived` for feasibility checks over the environment, not for observed experiment results. Measured latency belongs in objectives, manifests, and rollout evidence so reviewers can distinguish promises from outcomes.",
       "sectionKey": "constraints-units-safety-nets/two-kinds-of-constraints"
     },
     {
@@ -2002,7 +2009,7 @@
       "chapterSlug": "constraints-units-safety-nets",
       "chapterTitle": "Constraints, Units, and Safety Nets",
       "sectionSlug": "structural-constraint-syntax",
-      "summary": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:.",
+      "summary": "Structural rules use a small TVL formula language over TVARs. Learn the common forms first and the solver theory second.",
       "route": "/book/chapter/constraints-units-safety-nets/section/structural-constraint-syntax",
       "conceptRefs": [
         "structural-constraints",
@@ -2013,18 +2020,18 @@
         "architect",
         "operator"
       ],
-      "text": "Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages: | TVL Syntax | Meaning | NOT This | |----------------|---------|----------| | model = \"gpt-4o\" | Equality | model == \"gpt-4o\" | | temperature Run tvl-check-structural spec.yml to see which constraints are unsatisfiable. The tool reports an UNSAT core when available, showing the minimal conflicting subset. Use --json` for machine-readable output.",
+      "text": "You do not need to memorize solver terminology to write good structural rules. In practice, most authors use a small TVL formula language over TVARs: | TVL Syntax | Meaning | NOT This | |----------------|---------|----------| | model = \"gpt-4o\" | Equality | model == \"gpt-4o\" | | temperature Run tvl-check-structural spec.yml to see which constraints are unsatisfiable. The tool reports an UNSAT core when available, showing the minimal conflicting subset. Use --json for machine-readable output. If the rule talks only about TVARs, it is structural. If it needs env.context. , it is not structural and belongs under constraints.derived`.",
       "sectionKey": "constraints-units-safety-nets/structural-constraint-syntax"
     },
     {
-      "id": "chapter-03-derived-constraints",
+      "id": "chapter-03-operational-preconditions",
       "kind": "section",
       "title": "Operational Preconditions",
       "chapterSlug": "constraints-units-safety-nets",
       "chapterTitle": "Constraints, Units, and Safety Nets",
-      "sectionSlug": "derived-constraints",
+      "sectionSlug": "operational-preconditions",
       "summary": "Operational preconditions in TVL are written under `constraints.derived` and checked against the current environment snapshot.",
-      "route": "/book/chapter/constraints-units-safety-nets/section/derived-constraints",
+      "route": "/book/chapter/constraints-units-safety-nets/section/operational-preconditions",
       "conceptRefs": [
         "derived-constraints",
         "operational-checks",
@@ -2035,8 +2042,8 @@
         "architect",
         "operator"
       ],
-      "text": "TVL writes operational preconditions under constraints.derived. These are linear inequalities over environment symbols (not TVARs), and they are evaluated at runtime against the current environment snapshot. Supported operations: +, -, scalar multiplication, and comparisons ( =, =, ). Not supported: Multiplication between symbols (a b), division, exponentiation. If you need to gate on measured runtime metrics such as observed latency p95 ms, carry those checks in operational tooling or promotion manifests instead of encoding them as TVL operational preconditions.",
-      "sectionKey": "constraints-units-safety-nets/derived-constraints"
+      "text": "TVL writes operational preconditions under constraints.derived. The syntax name is older than the teaching name, so use this rule of thumb: - say Operational Preconditions when you explain the concept - write constraints.derived when you author the YAML These formulas are linear inequalities over environment symbols in env.context. , not over TVARs. They answer one question: \"is the current operating situation acceptable for running this study?\" What belongs here: - current provider price - current baseline gateway latency - quota or request headroom that determines whether the study is feasible right now What does not belong here: - measured candidate latency - hallucination rate - toxicity rate - post-evaluation cost outcomes Supported operations: +, -, scalar multiplication, and comparisons ( =, =, ). Not supported: Multiplication between symbols (a b), division, exponentiation. If you need to gate on measured runtime metrics such as observed latency p95 ms, carry those checks in operational tooling or promotion manifests instead of encoding them as TVL operational preconditions. Because operational preconditions describe whether the environment is suitable for running the study. Measured outcomes are evidence about how a candidate performed after the study ran, so they belong in objectives, manifests, and promotion gates.",
+      "sectionKey": "constraints-units-safety-nets/operational-preconditions"
     },
     {
       "id": "chapter-03-analog-circuit-drill-watch-constraints-react",
@@ -2063,11 +2070,11 @@
     {
       "id": "chapter-03-testing-constraints",
       "kind": "section",
-      "title": "Testing Constraints",
+      "title": "Testing Rules Before You Spend Budget",
       "chapterSlug": "constraints-units-safety-nets",
       "chapterTitle": "Constraints, Units, and Safety Nets",
       "sectionSlug": "testing-constraints",
-      "summary": "Use tvl-check-structural and unit tests to prove the search space still contains valid configurations.",
+      "summary": "Use structural checks, operational checks, and targeted tests to prove the study is worth running before you spend evaluation time.",
       "route": "/book/chapter/constraints-units-safety-nets/section/testing-constraints",
       "conceptRefs": [
         "satisfiability",
@@ -2079,7 +2086,7 @@
         "architect",
         "operator"
       ],
-      "text": "Use tvl-check-structural to verify your constraints are satisfiable: For unit testing in Python, use the TVL SDK: Run the tests:",
+      "text": "Use these checks in order: - tvl-check-structural asks whether at least one valid configuration exists. - tvl-check-operational asks whether the current env.context. assumptions let the study proceed. If those pass, add targeted tests so future edits do not quietly break the contract. For unit testing in Python, use the TVL SDK: Run the tests: The whole point of these tools is to catch broken contracts before a tuner, evaluator, or CI job burns time on them. Run the static and operational checks long before you discuss promotion.",
       "sectionKey": "constraints-units-safety-nets/testing-constraints"
     },
     {
@@ -2097,7 +2104,7 @@
         "architect",
         "operator"
       ],
-      "text": "1. All structural constraints pass tvl-check-structural (satisfiable). 2. Constraint formulas use TVL syntax (=, and, or, not), not other languages. 3. Operational preconditions (constraints.derived) only reference environment symbols, not TVARs. 4. Unit tests cover both valid and invalid configurations.",
+      "text": "Before promotion review, confirm the contract still respects the boundary between design rules, operational assumptions, and measured evidence: 1. All structural rules pass tvl-check-structural and leave at least one valid configuration. 2. Structural formulas use TVL syntax (=, and, or, not) rather than another language’s syntax. 3. Operational preconditions (constraints.derived) only reference env.context. , not TVARs or measured outcomes. 4. Objectives and metric ref names still match the evaluator that will produce promotion evidence. 5. Unit tests cover both valid and intentionally invalid configurations.",
       "sectionKey": "constraints-units-safety-nets/checklist-before-promotion"
     },
     {
@@ -2234,7 +2241,7 @@
         "architect",
         "operator"
       ],
-      "text": "The TVL toolchain provides focused CLI tools for validation and CI integration: | Tool | Purpose | |------|---------| | tvl-parse | Parse YAML to JSON AST, basic syntax checking | | tvl-lint | Normative lints: missing min effect, duplicate TVARs, etc. | | tvl-validate | JSON Schema + lint validation (combines parse + lint) | | tvl-check-structural | SAT/SMT satisfiability of structural constraints | | tvl-check-operational | Runtime validation of operational preconditions (constraints.derived) and budgets | | tvl-config-validate | Check a configuration assignment against spec domains | | tvl-measure-validate | Validate measurements against spec + promotion policy | | tvl-ci-gate | Dry-run promotion gate (stub for CI pipelines) | | tvl-compose | Flatten overlay files into valid TVL modules | Clone the repository, then install the TVL package in editable mode from the repo root: That exposes tvl-validate, tvl-lint, tvl-check-structural, and the rest of the CLI on your shell path. Quick Validation Configuration and Measurement Validation",
+      "text": "The TVL toolchain provides focused CLI tools for validation and CI integration: | Tool | Purpose | |------|---------| | tvl-parse | Parse YAML to JSON AST, basic syntax checking | | tvl-lint | Normative lints: missing min effect, duplicate TVARs, etc. | | tvl-validate | JSON Schema + lint validation (combines parse + lint) | | tvl-check-structural | SAT/SMT satisfiability of structural constraints | | tvl-check-operational | Runtime validation of operational preconditions (constraints.derived) and budgets | | tvl-config-validate | Check a configuration assignment against spec domains | | tvl-measure-validate | Validate measurements against spec + promotion policy | | tvl-ci-gate | Dry-run promotion gate (stub for CI pipelines) | | tvl-compose | Flatten overlay files into valid TVL modules | Clone the repository, then install the TVL package in editable mode from the repo root: That exposes tvl-validate, tvl-lint, tvl-check-structural, and the rest of the CLI on your shell path. Quick Validation Think of that as the minimum trustworthy sequence: 1. tvl-validate catches shape and lint problems. 2. tvl-check-structural confirms there is still a legal search space. 3. tvl-check-operational confirms the current operating assumptions still permit the study. Configuration and Measurement Validation",
       "sectionKey": "integration-patterns/tvl-cli-tools"
     },
     {
@@ -2341,7 +2348,7 @@
         "quickstart",
         "architect"
       ],
-      "text": "Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three tests: 1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable workload slice. This is why \"rewrite the prompt until it feels better\" is a weak engineering process. It changes too many things at once and rarely leaves behind a clean study plane. Promote a setting into the governed surface when reviewers would reasonably argue about its value. Leave it out when it is only cosmetic, one-off, or impossible to evaluate consistently. For agent systems, strong candidate TVARs usually come from one of four places: - coordination: counts, rounds, routing rules, and reducer policies - budgets: token caps, branch factors, retry limits, and validation quotas - evidence: judge policy, rubric choice, or conflict threshold - environment coupling: retrieval depth, tool inventory, or approved model set Weak candidate TVARs are typically too local or too brittle. If a variable only matters for one temporary prompt revision and cannot survive review, it usually does not belong in the contract. An oversized control surface makes optimization noisy and governance weak. If every prompt phrasing becomes a TVAR, reviewers lose sight of which decisions are architecturally meaningful. It should map to a real system decision, create a measurable trade-off, and be testable on a stable evaluation slice. If it fails those tests, it is usually too weak or too noisy to govern well.",
+      "text": "Not every editable parameter deserves to become a TVAR. A useful tuned variable should satisfy three tests: 1. It changes a meaningful system decision. 2. It creates a measurable trade-off. 3. It can be evaluated repeatedly on a stable slice of an evaluation set. This is why \"rewrite the prompt until it feels better\" is a weak engineering process. It changes too many things at once and rarely leaves behind a clean study plane. Promote a setting into the governed surface when reviewers would reasonably argue about its value. Leave it out when it is only cosmetic, one-off, or impossible to evaluate consistently. For agent systems, strong candidate TVARs usually come from one of four places: - coordination: counts, rounds, routing rules, and reducer policies - budgets: token caps, branch factors, retry limits, and validation quotas - evidence: judge policy, rubric choice, or conflict threshold - environment coupling: retrieval depth, tool inventory, or approved model set Weak candidate TVARs are typically too local or too brittle. If a variable only matters for one temporary prompt revision and cannot survive review, it usually does not belong in the contract. An oversized control surface makes optimization noisy and governance weak. If every prompt phrasing becomes a TVAR, reviewers lose sight of which decisions are architecturally meaningful. It should map to a real system decision, create a measurable trade-off, and be testable on a stable slice of an evaluation set. If it fails those tests, it is usually too weak or too noisy to govern well.",
       "sectionKey": "training-agents-with-tuned-variables/choosing-tuned-variables-for-agent-systems"
     },
     {
@@ -2539,7 +2546,7 @@
         "promotion-policy"
       ],
       "pathTags": [],
-      "text": "Routed expertise treats specialization as an inference-time design choice. Instead of betting on one general pass, the system runs several experts or roles, then hands control to a judge or aggregation policy. This is mixture-of-experts thinking applied to workflow design rather than only model architecture. What Gets Tuned The usual beginner mistake is to ask only whether to add experts. The more useful question is which control surface is actually being changed: - how many experts are active - what makes them meaningfully different - whether routing happens before execution or only at selection time - whether the system chooses one winner or merges several outputs That turns routed expertise into a governed pattern rather than a hand-built committee. Specialization can often be introduced as a workflow variable long before a team invests in new model training or more complex serving infrastructure. Judging Is Part of the Pattern The judge is not an afterthought. Once several experts run, the real system behavior depends on: - what evidence the judge sees - whether the judge scores, ranks, or selects - how ties and close calls are handled In other words, the judge becomes another tuned component on the same evaluation plane. Failure Modes to Watch Specialist systems can fail in subtle ways: - all experts are different in wording but not in information - the judge learns a superficial preference and amplifies it - one expensive expert dominates latency without lifting success rate That is why routed expertise needs the same evidence discipline as any other tunable pattern. Three experts with the same context, the same prompt frame, and the same evaluation lens are rarely meaningfully diverse. They are usually just a more expensive single-system sample. Operational Checklist - Log which experts ran and why they were selected. - Measure marginal gain per added expert, not just final best-of-N accuracy. - Treat judge prompts and rubrics as governed variables too. - Record whether the winning expert varies across workload slices. Because once multiple experts exist, the system outcome depends on how they are compared or merged. A weak judge can erase the value of specialization, while a strong judge can make a small expert set worthwhile.",
+      "text": "Routed expertise treats specialization as an inference-time design choice. Instead of betting on one general pass, the system runs several experts or roles, then hands control to a judge or aggregation policy. This is mixture-of-experts thinking applied to workflow design rather than only model architecture. What Gets Tuned The usual beginner mistake is to ask only whether to add experts. The more useful question is which control surface is actually being changed: - how many experts are active - what makes them meaningfully different - whether routing happens before execution or only at selection time - whether the system chooses one winner or merges several outputs That turns routed expertise into a governed pattern rather than a hand-built committee. Specialization can often be introduced as a workflow variable long before a team invests in new model training or more complex serving infrastructure. Judging Is Part of the Pattern The judge is not an afterthought. Once several experts run, the real system behavior depends on: - what evidence the judge sees - whether the judge scores, ranks, or selects - how ties and close calls are handled In other words, the judge becomes another tuned component on the same evaluation plane. Failure Modes to Watch Specialist systems can fail in subtle ways: - all experts are different in wording but not in information - the judge learns a superficial preference and amplifies it - one expensive expert dominates latency without lifting success rate That is why routed expertise needs the same evidence discipline as any other tunable pattern. Three experts with the same context, the same prompt frame, and the same evaluation lens are rarely meaningfully diverse. They are usually just a more expensive single-system sample. Operational Checklist - Log which experts ran and why they were selected. - Measure marginal gain per added expert, not just final best-of-N accuracy. - Treat judge prompts and rubrics as governed variables too. - Record whether the winning expert varies across evaluation-set slices. Because once multiple experts exist, the system outcome depends on how they are compared or merged. A weak judge can erase the value of specialization, while a strong judge can make a small expert set worthwhile.",
       "patternSlug": "routed-expertise-moe-judge",
       "family": "Breadth Scaling"
     },

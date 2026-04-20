@@ -9,8 +9,8 @@ is a structural rule because it is a formula over TVARs and can be checked befor
 
 | Category | Evaluated When | Purpose |
 |----------|---------------|---------|
-| **Structural** | Before trials run (static) | Rules over TVARs that define valid configuration space |
-| **Operational Preconditions** | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom |
+| **Structural Rules** | Before trials run | Constraints between design choices that define the valid search space |
+| **Operational Preconditions** | Before or during a study, against `env.context.*` | Feasibility checks over the declared operating assumptions such as provider price, baseline latency, and request headroom |
 
 ```yaml
 # Fragment: constraints section only (embed in full TVL module)
@@ -28,8 +28,9 @@ constraints:
     - require: env.context.rpm_limit - env.context.rpm_current_load >= 50
 ```
 
-Operational metrics such as measured latency or token cost belong in measurements, manifests, and runtime
-gates. TVL keeps `constraints.derived` scoped to `env.context.*` feasibility checks.
+Operational metrics such as observed latency, measured token cost, or hallucination rate belong in
+measurements, manifests, and promotion gates. TVL keeps `constraints.derived` scoped to
+`env.context.*` feasibility checks so reviewers can tell the difference between assumptions and outcomes.
 
 <KnowledgeCheck prompt="Why does TVL keep measured runtime outcomes such as observed latency out of operational preconditions (`constraints.derived`)?">
 

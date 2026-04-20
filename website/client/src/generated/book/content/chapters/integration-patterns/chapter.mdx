@@ -1,7 +1,9 @@
-TVL earns its keep when paired with Triagent (TVO) and DVL. Triagent is the optimization platform, TVO is
-the optimizer inside it, and DVL is the data-validation layer. TVO reads TVL specs, explores the
-configuration space, and produces promotion proofs. DVL validates the datasets that power those experiments
-so you never ship a great configuration with stale data.
+TVL earns its keep when paired with real engineering workflow: a validator in CI, an optimizer that
+explores candidate configurations, and evidence artifacts that support rollout review.
+
+In our stack, those surrounding systems include Triagent/TVO for optimization and DVL for dataset
+validation. But the chapter is broader than those names. The core lesson is how a TVL contract fits
+between local authoring, automated checks, experimentation, and promotion decisions.
 
 <ConceptCallout title="How to Read This Chapter" tone="hint">
 
@@ -13,11 +15,14 @@ so you never ship a great configuration with stale data.
 
 <ConceptCallout title="Simple System Boundary" tone="integration">
 
-- <Term id="triagent-integration">Triagent/TVO</Term> explores the search space described by TVL.
-- <Term id="dvl-integration">DVL</Term> checks whether the data behind those evaluations is still trustworthy.
-- <Term id="opal-bridge">OPAL</Term> is the higher-level authoring layer; TVL remains the governed contract that
-  downstream tooling can validate and audit.
+- TVL declares the contract.
+- CI and local tooling validate the contract before studies run.
+- An optimizer consumes the contract and searches the approved surface.
+- Promotion artifacts explain why one candidate is allowed to ship.
+
+If you use our wider stack, <Term id="triagent-integration">Triagent/TVO</Term>, <Term id="dvl-integration">DVL</Term>,
+and <Term id="opal-bridge">OPAL</Term> fill those downstream roles. The contract still stays in TVL.
 
 </ConceptCallout>
 
-<MermaidDiagram chart={"flowchart LR\n    A[TVL Spec] -->|tvl-validate| B[CI Gate]\n    B -->|valid| C[Triagent TVO]\n    C -->|promotion proof| D[Deployment]\n    C -->|drift signals| E[DVL Suites]\n    E -->|blocking checks| D"} />
+<MermaidDiagram chart={"flowchart LR\n    A[TVL Spec] -->|tvl-validate| B[CI Gate]\n    B -->|valid| C[Optimizer]\n    C -->|promotion proof| D[Deployment Review]\n    C -->|dataset dependencies| E[Data Validation]\n    E -->|blocking checks| D"} />

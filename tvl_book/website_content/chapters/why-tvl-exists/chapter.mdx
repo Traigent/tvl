@@ -17,14 +17,26 @@ path_tags:
 primary_example: /examples/rag-support-bot.tvl.yml
 ---
 
-TVL grew out of a simple observation: **LLM applications never sit still**. Model catalogs evolve, latency budgets
-oscillate with traffic spikes, and cost ceilings reset when finance reviews the bill. Hard-coded configuration
-forces engineers to either over-provision permanently or ship blind during drift events. TVL reframes
-configuration as a tuned, governed artifact that evolves alongside the environment.
+TVL grew out of a simple observation: **AI systems do not live in a static world**. Models change,
+latency shifts with traffic, provider prices move, and product expectations tighten after deployment.
+Hard-coded configuration pushes teams toward one of two bad habits: leave too much risk hidden in code,
+or keep making ad hoc changes with no stable contract to review.
+
+TVL reframes that situation. Instead of treating agent behavior as a pile of scattered config and prompt
+edits, it gives product and engineering one governed artifact that says what may vary, what must stay safe,
+and what evidence is required before change ships.
 
 <ConceptCallout title="TVL in One Sentence" tone="info">
 
 TVL is a machine-readable contract for “what can change, what must stay safe, and what evidence is required
 before a better configuration ships.”
+
+</ConceptCallout>
+
+<ConceptCallout title="Why Teams Adopt It" tone="hint">
+
+- Product teams can declare goals, guardrails, and rollout expectations explicitly.
+- Engineering teams can tune, validate, and ship against that same contract.
+- Reviewers can tell the difference between design choices, environment assumptions, and promotion evidence.
 
 </ConceptCallout>

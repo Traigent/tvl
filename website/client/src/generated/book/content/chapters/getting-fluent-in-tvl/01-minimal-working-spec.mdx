@@ -4,7 +4,9 @@ optimizer.
 <ConceptCallout title="Plain-English Translation" tone="info">
 
 - <Term id="tvars">TVARs</Term> are the knobs the optimizer is allowed to turn.
-- The <Term id="evaluation-set">evaluation set</Term> is the shared test workload used to compare candidates fairly.
+- `environment.bindings` pins the concrete system pieces this study is attached to.
+- The <Term id="evaluation-set">evaluation set</Term> is the shared evaluation set used to compare candidates fairly.
+- `metric_ref` tells the evaluator how each objective is computed.
 - The <Term id="promotion-policy">promotion policy</Term> is the shipping rulebook: it says what counts as a real win.
 
 </ConceptCallout>
@@ -78,16 +80,18 @@ exploration:
 
 If you are coming from standard software configuration, the easiest way to read this file is:
 
-1. `environment` tells you which deployed index and gateway this spec was evaluated against.
+1. `environment` tells you which deployed index and gateway this spec was evaluated against, plus any numeric operating assumptions you choose to declare in `context`.
 2. `tvars` tells you what can change.
-3. `objectives` tells you what “better” means.
+3. `objectives` plus `metric_ref` tells you what “better” means and how the evaluator will calculate it.
 4. `promotion_policy` tells you when “better” is strong enough to ship.
 
 <ConceptCallout title="Checklist Before You Commit" tone="tip">
 
 - Every TVAR has an explicit `type` and `domain`?
 - `environment.bindings` names the concrete system pieces the study used?
+- `environment.context` appears only if you need numeric operating assumptions for operational preconditions?
 - Objectives declared with `direction: maximize` or `minimize`?
+- Every objective that needs a specific evaluator points to it with `metric_ref`?
 - `promotion_policy` includes `min_effect` for each objective?
 - `environment.snapshot_id` is an RFC3339 timestamp?
 

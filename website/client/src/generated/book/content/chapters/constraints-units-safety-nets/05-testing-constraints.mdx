@@ -1,14 +1,15 @@
-Use `tvl-check-structural` to verify your constraints are satisfiable:
+Use these checks in order:
 
 ```bash
-# Check if constraints have at least one valid solution
 tvl-check-structural my-spec.tvl.yml
-
-# JSON output for CI pipelines
-tvl-check-structural my-spec.tvl.yml --json
+tvl-check-operational my-spec.tvl.yml --json
 ```
 
-For unit testing in Python, use the TVL SDK:
+- `tvl-check-structural` asks whether at least one valid configuration exists.
+- `tvl-check-operational` asks whether the current `env.context.*` assumptions let the study proceed.
+
+If those pass, add targeted tests so future edits do not quietly break the contract. For unit testing
+in Python, use the TVL SDK:
 
 ```python
 from tvl import loader, structural_sat
@@ -32,3 +33,10 @@ Run the tests:
 ```bash
 pytest test_constraints.py -v
 ```
+
+<ConceptCallout title="Cheap Checks First" tone="tip">
+
+The whole point of these tools is to catch broken contracts before a tuner, evaluator, or CI job burns
+time on them. Run the static and operational checks long before you discuss promotion.
+
+</ConceptCallout>

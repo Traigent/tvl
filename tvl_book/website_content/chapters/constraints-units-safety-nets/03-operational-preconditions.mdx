@@ -1,0 +1,69 @@
+---
+id: chapter-03-operational-preconditions
+slug: operational-preconditions
+title: Operational Preconditions
+summary: Operational preconditions in TVL are written under `constraints.derived`
+  and checked against the current environment snapshot.
+chapter: constraints-units-safety-nets
+estimated_minutes: 5
+interactive: false
+concept_refs:
+- derived-constraints
+- operational-checks
+- environment-snapshot
+example_refs:
+- /examples/rag-support-bot.tvl.yml
+- /examples/text-to-sql.tvl.yml
+opal_bridge: false
+---
+
+TVL writes operational preconditions under `constraints.derived`. The syntax name is older than the
+teaching name, so use this rule of thumb:
+
+- say **Operational Preconditions** when you explain the concept
+- write `constraints.derived` when you author the YAML
+
+These formulas are linear inequalities over **environment symbols** in `env.context.*`, not over TVARs.
+They answer one question: "is the current operating situation acceptable for running this study?"
+
+```yaml
+# Fragment: operational preconditions over environment symbols
+constraints:
+  derived:
+    # Provider price guard
+    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
+
+    # Baseline gateway latency guard
+    - require: env.context.gateway_baseline_latency_ms <= 250
+
+    # Request headroom guard
+    - require: env.context.rpm_limit - env.context.rpm_current_load >= 50
+```
+
+What belongs here:
+
+- current provider price
+- current baseline gateway latency
+- quota or request headroom that determines whether the study is feasible right now
+
+What does **not** belong here:
+
+- measured candidate latency
+- hallucination rate
+- toxicity rate
+- post-evaluation cost outcomes
+
+**Supported operations:** `+`, `-`, scalar multiplication, and comparisons (`<=`, `>=`, `=`, `<`, `>`).
+
+**Not supported:** Multiplication between symbols (`a * b`), division, exponentiation.
+
+If you need to gate on measured runtime metrics such as observed `latency_p95_ms`, carry those checks in
+operational tooling or promotion manifests instead of encoding them as TVL operational preconditions.
+
+<KnowledgeCheck prompt="Why does TVL keep measured runtime outcomes out of operational preconditions?">
+
+Because operational preconditions describe whether the environment is suitable for running the study.
+Measured outcomes are evidence about how a candidate performed after the study ran, so they belong in
+objectives, manifests, and promotion gates.
+
+</KnowledgeCheck>

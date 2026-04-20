@@ -18,10 +18,10 @@ The table below maps each TVL section to its responsibilities.
 |---------|------------------|
 | `tvl` | Module namespace identifier |
 | `tvl_version` | Language version (currently `"1.0"`) |
-| `environment` | Snapshot ID and component references anchoring the spec |
+| `environment` | Snapshot ID plus optional `bindings` and `context` that anchor evaluation |
 | `evaluation_set` | Dataset URI and optional seed for reproducibility |
 | `tvars` | Tuned variables with explicit types (`bool`, `int`, `float`, `enum[str]`) and domains |
 | `constraints` | Structural rules and operational preconditions (`constraints.derived`) |
-| `objectives` | Metrics to maximize/minimize, including banded targets |
-| `promotion_policy` | ε-Pareto dominance settings, α-level, min effects, and confidence-based release gates (`chance_constraints`) |
+| `objectives` | Metrics to maximize/minimize; `metric_ref` names the evaluator that computes each one |
+| `promotion_policy` | The rollout rulebook: effect sizes, statistical settings, and optional confidence-based release gates |
 | `exploration` | Search strategy, budgets, and convergence criteria |

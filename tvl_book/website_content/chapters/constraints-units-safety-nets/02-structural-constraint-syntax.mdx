@@ -2,8 +2,8 @@
 id: chapter-03-structural-constraint-syntax
 slug: structural-constraint-syntax
 title: Structural Constraint Syntax
-summary: Structural constraints use typed DNF formulas over TVARs. The syntax differs
-  from general-purpose languages:.
+summary: Structural rules use a small TVL formula language over TVARs. Learn the
+  common forms first and the solver theory second.
 chapter: constraints-units-safety-nets
 estimated_minutes: 7
 interactive: false
@@ -15,7 +15,8 @@ example_refs:
 opal_bridge: false
 ---
 
-Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:
+You do not need to memorize solver terminology to write good structural rules. In practice, most
+authors use a small TVL formula language over TVARs:
 
 | TVL Syntax | Meaning | NOT This |
 |----------------|---------|----------|
@@ -72,3 +73,10 @@ The tool reports an UNSAT core when available, showing the minimal conflicting s
 Use `--json` for machine-readable output.
 
 </PitfallCard>
+
+<ConceptCallout title="What To Remember" tone="tip">
+
+If the rule talks only about TVARs, it is structural. If it needs `env.context.*`, it is not structural
+and belongs under `constraints.derived`.
+
+</ConceptCallout>

@@ -1,4 +1,16 @@
-1. Using wrong type names — it's `enum[str]` not `categorical`, `float` not `continuous`.
-2. Mixing deployment bindings with numeric operating assumptions instead of separating `bindings` and `context`.
-3. Missing `promotion_policy` — this is required in TVL (no implicit defaults).
-4. Constraint syntax errors — use `=` for equality (not `==`), `and`/`or` (not `&&`/`||`).
+These are the mistakes that slow new authors down most often:
+
+1. **Using familiar-but-wrong type names.** TVL wants `enum[str]`, `int`, and `float`, not labels like `categorical` or `continuous`.
+2. **Mixing pinned system bindings with numeric operating assumptions.** Put deployed identifiers in `environment.bindings`; put numeric feasibility inputs in `environment.context`.
+3. **Forgetting the rollout rulebook.** A spec without `promotion_policy` tells us what can change, but not what evidence is needed before change ships.
+4. **Borrowing syntax from other languages.** Use `=` instead of `==`, and `and` / `or` instead of `&&` / `||`.
+
+<ConceptCallout title="Fast Self-Check" tone="tip">
+
+Before you commit a new module, ask:
+
+- Can I explain each TVAR as a real engineering decision?
+- Have I kept environment bindings separate from `env.context.*` assumptions?
+- Would another engineer know how this spec decides when a change is promotable?
+
+</ConceptCallout>

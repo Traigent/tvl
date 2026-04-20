@@ -431,7 +431,7 @@ def build_paths() -> None:
             "goal": "Understand the language model, constraints, overlays, and integration contracts end to end.",
             "sections": [
                 "why-tvl-exists/running-example-campus-orientation-rag",
-                "getting-fluent-in-tvl/tvl-0-9-type-system",
+                "getting-fluent-in-tvl/tvl-types-and-domains",
                 "constraints-units-safety-nets/structural-constraint-syntax",
                 "patterns-for-real-deployments/layered-specifications",
                 "patterns-for-real-deployments/visualizing-overlays",
@@ -440,7 +440,7 @@ def build_paths() -> None:
             ],
             "entry_sections": [
                 "why-tvl-exists/running-example-campus-orientation-rag",
-                "getting-fluent-in-tvl/tvl-0-9-type-system",
+                "getting-fluent-in-tvl/tvl-types-and-domains",
             ],
             "completion_sections": [
                 "patterns-for-real-deployments/provenance-matters",
@@ -455,7 +455,7 @@ def build_paths() -> None:
             "goal": "Operate constraints, overlays, provenance, and promotion evidence confidently during change and incident response.",
             "sections": [
                 "constraints-units-safety-nets/two-kinds-of-constraints",
-                "constraints-units-safety-nets/derived-constraints",
+                "constraints-units-safety-nets/operational-preconditions",
                 "constraints-units-safety-nets/testing-constraints",
                 "patterns-for-real-deployments/layered-specifications",
                 "patterns-for-real-deployments/hotfix-playbook",
@@ -501,13 +501,13 @@ def build_concepts() -> None:
                 "prerequisites": ["drift-governance"],
                 "sections": [
                     "getting-fluent-in-tvl/minimal-working-spec",
-                    "getting-fluent-in-tvl/tvl-0-9-type-system",
+                    "getting-fluent-in-tvl/tvl-types-and-domains",
                 ],
             },
             {
                 "id": "environment-snapshot",
                 "term": "Environment Snapshot",
-                "definition": "A concrete identifier and component set that anchors a TVL module to the environment used during evaluation.",
+                "definition": "A snapshot ID plus optional bindings and numeric context that anchor a TVL module to the operating setting used during evaluation.",
                 "prerequisites": ["drift-governance"],
                 "sections": [
                     "why-tvl-exists/running-example-campus-orientation-rag",
@@ -517,7 +517,7 @@ def build_concepts() -> None:
             {
                 "id": "evaluation-set",
                 "term": "Evaluation Set",
-                "definition": "The workload and optional seed used to compare configurations consistently.",
+                "definition": "The evaluation set and optional seed used to compare configurations consistently.",
                 "prerequisites": ["drift-governance"],
                 "sections": [
                     "why-tvl-exists/running-example-campus-orientation-rag",
@@ -526,11 +526,11 @@ def build_concepts() -> None:
             },
             {
                 "id": "type-system",
-                "term": "TVL Type System",
+                "term": "TVL Types and Domains",
                 "definition": "Explicit domain shapes for TVARs such as bool, int, float, enum, tuple, and callable references.",
                 "prerequisites": ["tvars"],
                 "sections": [
-                    "getting-fluent-in-tvl/tvl-0-9-type-system",
+                    "getting-fluent-in-tvl/tvl-types-and-domains",
                 ],
             },
             {
@@ -545,11 +545,11 @@ def build_concepts() -> None:
             },
             {
                 "id": "derived-constraints",
-                "term": "Derived Constraints",
-                "definition": "Operational feasibility checks over environment symbols such as budgets, quotas, and approved external limits.",
+                "term": "Operational Preconditions",
+                "definition": "In TVL syntax, these are feasibility checks under `constraints.derived` over `env.context.*` symbols such as provider price, baseline latency, and request headroom.",
                 "prerequisites": ["structural-constraints"],
                 "sections": [
-                    "constraints-units-safety-nets/derived-constraints",
+                    "constraints-units-safety-nets/operational-preconditions",
                     "constraints-units-safety-nets/analog-circuit-drill-watch-constraints-react",
                 ],
             },
@@ -559,7 +559,7 @@ def build_concepts() -> None:
                 "definition": "Runtime validation steps that gate feasibility budgets, environment constraints, and deployment readiness.",
                 "prerequisites": ["derived-constraints"],
                 "sections": [
-                    "constraints-units-safety-nets/derived-constraints",
+                    "constraints-units-safety-nets/operational-preconditions",
                     "integration-patterns/tvl-cli-tools",
                 ],
             },

@@ -1,0 +1,47 @@
+TVL types exist to make the search space explicit. A reviewer should be able to look at a TVAR and
+understand what kind of decision it represents and how many possibilities the optimizer is being
+allowed to explore.
+
+<ConceptCallout title="Why This Matters" tone="info">
+
+Most teams only need four forms at first: `bool`, `int`, `float`, and `enum[str]`. Those cover
+switches, counts, thresholds, and approved named options. Start there unless you have a clear reason
+to expose something more advanced.
+
+</ConceptCallout>
+
+| Type | Best used for | Domain Examples |
+|------|---------------|-----------------|
+| `bool` | A real on/off engineering switch | `[true, false]` |
+| `int` | Counts, limits, rounds, shard sizes | `range: [1, 10]` or `set: [1, 2, 4, 8]` |
+| `float` | Thresholds or continuous trade-off knobs | `range: [0.0, 1.0]` with optional `resolution` |
+| `enum[str]` | A short approved list of named options | `["gpt-4o", "claude-3"]` |
+| `enum[int]` | A small approved list of integer settings | `[100, 500, 1000]` |
+
+<PitfallCard title="Type The Decision, Not The Storage Format">
+
+Do not choose a TVL type based on how the value is stored in code. Choose it based on the engineering
+decision you want reviewers to understand. A model choice is usually `enum[str]`; a branch count is
+usually `int`; a safety threshold is usually `float`.
+
+</PitfallCard>
+
+<details>
+  <summary>Advanced forms you can skip on a first read</summary>
+
+  | Type | When it is worth using |
+  |------|-------------------------|
+  | `tuple[...]` | When one governed choice is naturally a product of several smaller choices |
+  | `callable[Proto]` | When a runtime resolves approved implementations from a registry rather than from inline YAML |
+
+  These forms are useful, but they are not part of the minimum mental model for writing a clean first
+  TVL module.
+
+</details>
+
+<KnowledgeCheck prompt="Why is `enum[str]` often a better fit than a free-form string for model or policy choices?">
+
+Because the point is to expose a governed list of approved options. `enum[str]` makes that list
+explicit, reviewable, and bounded for optimization.
+
+</KnowledgeCheck>

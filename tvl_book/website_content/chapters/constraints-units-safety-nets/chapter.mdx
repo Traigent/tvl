@@ -19,6 +19,20 @@ path_tags:
 primary_example: /examples/validation-phase2/structural-sat.tvl.yml
 ---
 
-TVL uses a **typed Disjunctive Normal Form (DNF)** constraint language that compiles to SAT/SMT solvers
-for formal verification. This chapter shows how to write structural rules and operational preconditions, and test them
-before TVO wastes a single trial.
+This chapter is about ruling out bad experiments early.
+
+In practice, most authors only need two ideas:
+
+1. **Structural Rules** block bad combinations of design choices before exploration starts.
+2. **Operational Preconditions** block a study when the current `env.context.*` conditions make it infeasible.
+
+The solver details matter, but they are not the place to start. First learn the boundary between those
+two rule types and what each one is supposed to protect.
+
+<ConceptCallout title="Mental Model" tone="info">
+
+Structural rules answer: "which combinations should never be tried?"
+
+Operational preconditions answer: "is the current operating situation acceptable for running this study at all?"
+
+</ConceptCallout>

@@ -12,7 +12,11 @@ example_refs: []
 opal_bridge: false
 ---
 
-1. All structural constraints pass `tvl-check-structural` (satisfiable).
-2. Constraint formulas use TVL syntax (`=`, `and`, `or`, `not`), not other languages.
-3. Operational preconditions (`constraints.derived`) only reference environment symbols, not TVARs.
-4. Unit tests cover both valid and invalid configurations.
+Before promotion review, confirm the contract still respects the boundary between design rules,
+operational assumptions, and measured evidence:
+
+1. All structural rules pass `tvl-check-structural` and leave at least one valid configuration.
+2. Structural formulas use TVL syntax (`=`, `and`, `or`, `not`) rather than another language’s syntax.
+3. Operational preconditions (`constraints.derived`) only reference `env.context.*`, not TVARs or measured outcomes.
+4. Objectives and `metric_ref` names still match the evaluator that will produce promotion evidence.
+5. Unit tests cover both valid and intentionally invalid configurations.

@@ -15,7 +15,7 @@ example_refs:
 opal_bridge: false
 ---
 
-Use `tvl-validate` to check your spec against the TVL schema:
+Start with `tvl-validate` to catch cheap mistakes before you do anything more expensive:
 
 <PredictionPrompt prompt="Before you run it, predict what `tvl-validate` can catch immediately: a misspelled section name, a bad rollout decision, or a slow candidate.">
 
@@ -41,6 +41,17 @@ It does **not** prove that your search space is useful or safe by itself. That i
 <Term id="validation-workflow">validation workflow</Term> comes in.
 
 </ConceptCallout>
+
+After schema validation passes, the next two checks are:
+
+```bash
+cd tvl_book/examples
+tvl-check-structural ch2_hello_tvl.tvl.yml
+tvl-check-operational ch2_hello_tvl.tvl.yml --json
+```
+
+- `tvl-check-structural` asks whether at least one valid assignment exists.
+- `tvl-check-operational` asks whether the declared `env.context.*` assumptions currently allow the study to run.
 
 For deeper inspection, use this helper script to print the TVARs and their domains:
 
@@ -127,6 +138,6 @@ If you are new to the toolchain, think of this sequence as the software-engineer
 <KnowledgeCheck prompt="If schema validation passes, what still remains before you trust the spec operationally?">
 
 Passing schema validation is only the first gate. You still need parsing, linting, structural feasibility checks, and
-operational checks to know whether the search space is usable and whether rollout evidence will stand up in review.
+operational checks to know whether the search space is usable before you even reach rollout evidence.
 
 </KnowledgeCheck>
