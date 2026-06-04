@@ -1,0 +1,43 @@
+# Phase 6 (RFC 0001): |gates| must equal |stages| - 1 (RFC §3.8).
+# Expected: ERROR cascade_arity — 3 stages with 1 gate.
+tvl:
+  module: corp.validation.cascade_arity
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o"]
+
+cvars:
+  - name: theta
+    type: float
+    calibration:
+      source: pool_a
+
+policies:
+  - name: broken_cascade
+    kind: policy
+    strategy: cascade
+    stages: [cheap, mid, strong]
+    gates:
+      - kind: margin_below
+        threshold: theta     # only one gate for three stages
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02

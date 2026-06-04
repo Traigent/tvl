@@ -1,0 +1,59 @@
+# Phase 6 (RFC 0001): VALID 1.1 module — cvars + policies + require_calibration.
+# Expected: no errors; the conformance-positive case for the validators packet.
+tvl:
+  module: corp.validation.cvars_happy
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o"]
+  - name: retriever.k
+    type: int
+    domain:
+      range: [0, 20]
+
+cvars:
+  - name: router.margin_threshold
+    type: float
+    domain:
+      range: [0.0, 1.0]          # validity domain: closed interval, no resolution (RFC §3.3)
+    calibration:
+      source: margin_eval_pool
+      signal: vote_margin_v1
+      calibrator: budget_threshold_v1
+      depends_on: [model, retriever.k]
+    governance:
+      require_calibration: true
+    scope:
+      node: router
+
+policies:
+  - name: cheap_strong_cascade
+    kind: policy
+    strategy: cascade
+    stages: [cheap, strong]
+    gates:
+      - kind: margin_below
+        threshold: router.margin_threshold
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+  require_calibration:
+    enabled: true
+    hash_covered_context: [model_versions]

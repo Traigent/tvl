@@ -90,6 +90,16 @@
       "description": "Ordered list of TVAR declarations (Γ) including `name`, `type`, and `domain` entries.",
       "items": { "$ref": "#/$defs/TVarDecl" }
     },
+    "cvars": {
+      "type": "array",
+      "description": "TVL 1.1 (RFC 0001): ordered list of calibrated-variable declarations — governed but NOT searched; absent from Γ, the configuration space, and structural SAT.",
+      "items": { "$ref": "#/$defs/CVarDecl" }
+    },
+    "policies": {
+      "type": "array",
+      "description": "TVL 1.1 (RFC 0001): named operational policy declarations (first strategy: cascade). Operational layer — never enters Γ, F^str, or the dominance relation.",
+      "items": { "$ref": "#/$defs/PolicyDecl" }
+    },
     "constraints": {
       "type": "object",
       "description": "Constraint sets split between structural (TVAR formulas) and derived (linear constraints over numeric `env.context.*` symbols) clauses.",
@@ -206,6 +216,22 @@
             "enum": ["min", "max", "min_abs_deviation", "custom"],
             "description": "Tie-breaking strategy for the corresponding objective."
           }
+        },
+        "require_calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "description": "TVL 1.1 (RFC 0001 §3.5/§3.6): strict evidence mode — certificate freshness is validated against the hash-covered calibration context. The mandatory ctx_core is implicit and immutable; hash_covered_context selects EXTENSION keys only.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "hash_covered_context": {
+              "type": "array",
+              "description": "Optional extension keys added to the always-hashed ctx_core.",
+              "items": {
+                "enum": ["stage_versions", "model_versions", "budget_assumptions", "cost_assumptions"]
+              }
+            }
+          }
         }
       }
     },
@@ -307,7 +333,98 @@
         "domain": {
           "$ref": "#/$defs/DomainSpec",
           "description": "Domain specification applicable to the declared type; specialised via the environment (§III.A, Appendix X)."
-        }
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "Scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.1 (RFC 0001 §3.7(6)): optional ownership metadata (node/agent/workflow). Informational — metadata layer (§1.5.3).",
+      "properties": {
+        "node": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "agent": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "workflow": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "CVarDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "calibration"],
+      "description": "TVL 1.1 (RFC 0001 §3.3): calibrated-variable declaration. The optional domain is a VALIDITY domain (closed interval for float ranges; no resolution required) — never a search domain.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique name in the shared tvars ∪ cvars ∪ policies namespace."
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(bool|int|float|enum\\[(str|int|float)\\])$",
+          "description": "Declared CVAR type (primitive or enum; tuple/callable deferred)."
+        },
+        "domain": {
+          "$ref": "#/$defs/DomainSpec",
+          "description": "OPTIONAL validity domain — membership check on the calibrated output."
+        },
+        "calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "signal": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "calibrator": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "depends_on": {
+              "type": "array",
+              "description": "Tuned parents π ⊆ N_T — a freshness relation, NOT a constraint.",
+              "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+            }
+          }
+        },
+        "governance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "require_calibration": { "type": "boolean" }
+          }
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "GateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "threshold"],
+      "description": "TVL 1.1 (RFC 0001 §3.8): cascade gate. threshold is a namespace reference that MUST resolve to a CVAR (kind-checked by the lints).",
+      "properties": {
+        "kind": { "const": "margin_below" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "PolicyDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "strategy", "stages"],
+      "description": "TVL 1.1 (RFC 0001 §3.8): named operational policy. stages are OPAQUE runtime stage identifiers (environment.bindings precedent), NOT namespace references.",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "kind": { "const": "policy" },
+        "strategy": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GateDecl" }
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
       }
     },
     "DomainSpec": {

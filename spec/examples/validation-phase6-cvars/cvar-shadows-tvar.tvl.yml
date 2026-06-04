@@ -1,0 +1,34 @@
+# Phase 6 (RFC 0001): binding-partition collision (RFC §3.1).
+# Expected: ERROR cvar_shadows_tvar — "model" declared as both tvar and cvar.
+tvl:
+  module: corp.validation.cvar_shadows_tvar
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o"]
+
+cvars:
+  - name: model            # collides with the tvar above
+    type: float
+    calibration:
+      source: pool_a
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02

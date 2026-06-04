@@ -27,9 +27,20 @@ class TypeContext:
     environment_symbols: Set[str]
     issues: List[Issue]
     clause_ids: Dict[Tuple[Any, ...], str]
+    cvar_names: Set[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.cvar_names is None:
+            self.cvar_names = set()
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+# TVL 1.1 normative identifier (RFC 0001 §3.7(2)): ASCII dotted segments, no
+# empty segments, no leading/trailing dots, no hyphens. Enforced on the NEW
+# surfaces (cvars/policies/scope) as errors; legacy tvar names are untouched.
+_NORMATIVE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_CTX_EXT_KEYS = {"stage_versions", "model_versions", "budget_assumptions", "cost_assumptions"}
+_CVAR_TYPE_RE = re.compile(r"^(bool|int|float|enum\[(str|int|float)\])$")
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
 _NON_LINEAR_TOKENS_STRUCTURAL = {"*", "/", "^"}
 _NON_LINEAR_TOKENS_DERIVED = {"/", "^"}
@@ -47,6 +58,9 @@ def lint_module(doc: Dict[str, Any], precision: int = 1000) -> List[Issue]:
     """
     issues: List[Issue] = []
     _lint_duplicate_tvars(doc, issues)
+    _lint_cvars(doc, issues)
+    _lint_policies(doc, issues)
+    _lint_namespace(doc, issues)
     _lint_environment(doc, issues)
     context = _build_type_context(doc)
     issues.extend(context.issues)
@@ -87,6 +101,370 @@ def _lint_duplicate_tvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
             )
         else:
             seen[name] = idx
+
+
+def _uses_11_constructs(doc: Dict[str, Any]) -> bool:
+    """RFC 0001 §3.7(5): the new-surface opt-in that escalates prefix
+    collisions from warning to error."""
+    if doc.get("cvars") or doc.get("policies"):
+        return True
+    promotion = doc.get("promotion_policy") or {}
+    if isinstance(promotion, dict) and promotion.get("require_calibration"):
+        return True
+    tvars = doc.get("tvars") or []
+    if isinstance(tvars, list) and any(
+        isinstance(d, dict) and d.get("scope") for d in tvars
+    ):
+        return True
+    return False
+
+
+def _check_scope(decl: Dict[str, Any], path: List[Any], name: Any, issues: List[Issue]) -> None:
+    """Validate the optional ownership-scope metadata (RFC 0001 §3.7(6))."""
+    scope = decl.get("scope")
+    if scope is None:
+        return
+    if not isinstance(scope, dict):
+        issues.append(
+            {
+                "code": "invalid_scope",
+                "message": "scope must be an object with node/agent/workflow fields",
+                "path": path + ["scope"],
+                "severity": "error",
+            }
+        )
+        return
+    for key, value in scope.items():
+        if key not in {"node", "agent", "workflow"}:
+            issues.append(
+                {
+                    "code": "invalid_scope",
+                    "message": f"scope field '{key}' is not one of node/agent/workflow",
+                    "path": path + ["scope", key],
+                    "severity": "error",
+                }
+            )
+        elif not isinstance(value, str) or not _NORMATIVE_IDENT_RE.match(value):
+            issues.append(
+                {
+                    "code": "invalid_scope",
+                    "message": f"scope.{key} must be a valid identifier",
+                    "path": path + ["scope", key],
+                    "severity": "error",
+                }
+            )
+    node = scope.get("node")
+    if isinstance(name, str) and isinstance(node, str) and "." in name:
+        if name.split(".", 1)[0] != node:
+            issues.append(
+                {
+                    "code": "scope_prefix_mismatch",
+                    "message": (
+                        f"declaration '{name}' has dotted prefix "
+                        f"'{name.split('.', 1)[0]}' but scope.node is '{node}'"
+                    ),
+                    "path": path + ["scope", "node"],
+                    "severity": "warning",
+                }
+            )
+
+
+def _lint_cvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
+    """RFC 0001 §3.3 — calibrated-variable declarations (governed, NOT searched)."""
+    cvars = doc.get("cvars")
+    if cvars is None:
+        return
+    if not isinstance(cvars, list):
+        issues.append(
+            {
+                "code": "invalid_cvars",
+                "message": "cvars must be a list of declarations",
+                "path": ["cvars"],
+                "severity": "error",
+            }
+        )
+        return
+    tvar_names = {
+        d.get("name")
+        for d in (doc.get("tvars") or [])
+        if isinstance(d, dict) and isinstance(d.get("name"), str)
+    }
+    seen: Set[str] = set()
+    for idx, decl in enumerate(cvars):
+        if not isinstance(decl, dict):
+            issues.append(
+                {
+                    "code": "invalid_cvar_decl",
+                    "message": "cvar declarations must be objects",
+                    "path": ["cvars", idx],
+                    "severity": "error",
+                }
+            )
+            continue
+        name = decl.get("name")
+        if not isinstance(name, str) or not _NORMATIVE_IDENT_RE.match(name):
+            issues.append(
+                {
+                    "code": "invalid_cvar_name",
+                    "message": "cvar declarations require a valid identifier name",
+                    "path": ["cvars", idx, "name"],
+                    "severity": "error",
+                }
+            )
+            continue
+        if name in seen:
+            issues.append(
+                {
+                    "code": "duplicate_cvar",
+                    "message": f"CVAR '{name}' is declared multiple times",
+                    "path": ["cvars", idx, "name"],
+                    "severity": "error",
+                }
+            )
+        seen.add(name)
+        raw_type = decl.get("type")
+        if not isinstance(raw_type, str) or not _CVAR_TYPE_RE.match(raw_type):
+            issues.append(
+                {
+                    "code": "unsupported_cvar_type",
+                    "message": (
+                        f"CVAR '{name}' type must be bool, int, float, or enum[...]"
+                        " (tuple/callable deferred)"
+                    ),
+                    "path": ["cvars", idx, "type"],
+                    "severity": "error",
+                }
+            )
+        calibration = decl.get("calibration")
+        if not isinstance(calibration, dict) or not isinstance(
+            calibration.get("source"), str
+        ):
+            issues.append(
+                {
+                    "code": "cvar_missing_source",
+                    "message": f"CVAR '{name}' requires calibration.source",
+                    "path": ["cvars", idx, "calibration"],
+                    "severity": "error",
+                }
+            )
+            calibration = {}
+        depends_on = calibration.get("depends_on") or []
+        if isinstance(depends_on, list):
+            for ref_idx, ref in enumerate(depends_on):
+                if ref not in tvar_names:
+                    issues.append(
+                        {
+                            "code": "missing_ref",
+                            "message": (
+                                f"CVAR '{name}' depends_on '{ref}' which does not "
+                                "resolve to a declared TVAR (exact match; CVAR/policy "
+                                "parents are deferred in v1)"
+                            ),
+                            "path": ["cvars", idx, "calibration", "depends_on", ref_idx],
+                            "severity": "error",
+                        }
+                    )
+        governance = decl.get("governance")
+        if governance is not None and (
+            not isinstance(governance, dict)
+            or not isinstance(governance.get("require_calibration", False), bool)
+        ):
+            issues.append(
+                {
+                    "code": "invalid_cvar_governance",
+                    "message": f"CVAR '{name}' governance.require_calibration must be a boolean",
+                    "path": ["cvars", idx, "governance"],
+                    "severity": "error",
+                }
+            )
+        _check_scope(decl, ["cvars", idx], name, issues)
+
+
+def _lint_policies(doc: Dict[str, Any], issues: List[Issue]) -> None:
+    """RFC 0001 §3.8 — operational policy declarations (cascade strategy)."""
+    policies = doc.get("policies")
+    if policies is None:
+        return
+    if not isinstance(policies, list):
+        issues.append(
+            {
+                "code": "invalid_policies",
+                "message": "policies must be a list of declarations",
+                "path": ["policies"],
+                "severity": "error",
+            }
+        )
+        return
+    cvar_names = {
+        d.get("name")
+        for d in (doc.get("cvars") or [])
+        if isinstance(d, dict) and isinstance(d.get("name"), str)
+    }
+    seen: Set[str] = set()
+    for idx, decl in enumerate(policies):
+        if not isinstance(decl, dict):
+            issues.append(
+                {
+                    "code": "invalid_policy_decl",
+                    "message": "policy declarations must be objects",
+                    "path": ["policies", idx],
+                    "severity": "error",
+                }
+            )
+            continue
+        name = decl.get("name")
+        if not isinstance(name, str) or not _NORMATIVE_IDENT_RE.match(name):
+            issues.append(
+                {
+                    "code": "invalid_policy_name",
+                    "message": "policy declarations require a valid identifier name",
+                    "path": ["policies", idx, "name"],
+                    "severity": "error",
+                }
+            )
+            continue
+        if name in seen:
+            issues.append(
+                {
+                    "code": "duplicate_policy",
+                    "message": f"policy '{name}' is declared multiple times",
+                    "path": ["policies", idx, "name"],
+                    "severity": "error",
+                }
+            )
+        seen.add(name)
+        if decl.get("kind") != "policy":
+            issues.append(
+                {
+                    "code": "invalid_policy_kind",
+                    "message": f"policy '{name}' kind must be the literal 'policy'",
+                    "path": ["policies", idx, "kind"],
+                    "severity": "error",
+                }
+            )
+        strategy = decl.get("strategy")
+        if strategy != "cascade":
+            issues.append(
+                {
+                    "code": "unknown_policy_strategy",
+                    "message": f"policy '{name}' strategy '{strategy}' is not in the v1 registry (cascade)",
+                    "path": ["policies", idx, "strategy"],
+                    "severity": "error",
+                }
+            )
+        stages = decl.get("stages")
+        if not isinstance(stages, list) or len(stages) < 1:
+            issues.append(
+                {
+                    "code": "cascade_arity",
+                    "message": f"policy '{name}' requires stages with at least one entry",
+                    "path": ["policies", idx, "stages"],
+                    "severity": "error",
+                }
+            )
+            stages = []
+        if len(stages) != len(set(stages)):
+            issues.append(
+                {
+                    "code": "duplicate_stage",
+                    "message": f"policy '{name}' declares duplicate stage identifiers",
+                    "path": ["policies", idx, "stages"],
+                    "severity": "error",
+                }
+            )
+        gates = decl.get("gates") or []
+        if stages and isinstance(gates, list) and len(gates) != max(len(stages) - 1, 0):
+            issues.append(
+                {
+                    "code": "cascade_arity",
+                    "message": (
+                        f"policy '{name}' declares {len(gates)} gate(s) for "
+                        f"{len(stages)} stage(s); |gates| must equal |stages| - 1"
+                    ),
+                    "path": ["policies", idx, "gates"],
+                    "severity": "error",
+                }
+            )
+        if isinstance(gates, list):
+            for gate_idx, gate in enumerate(gates):
+                if not isinstance(gate, dict):
+                    continue
+                if gate.get("kind") != "margin_below":
+                    issues.append(
+                        {
+                            "code": "unknown_gate_kind",
+                            "message": f"policy '{name}' gate kind must be 'margin_below' in v1",
+                            "path": ["policies", idx, "gates", gate_idx, "kind"],
+                            "severity": "error",
+                        }
+                    )
+                threshold = gate.get("threshold")
+                if threshold not in cvar_names:
+                    issues.append(
+                        {
+                            "code": "missing_ref",
+                            "message": (
+                                f"policy '{name}' gate threshold '{threshold}' must "
+                                "resolve to a declared CVAR (kind-checked namespace ref)"
+                            ),
+                            "path": ["policies", idx, "gates", gate_idx, "threshold"],
+                            "severity": "error",
+                        }
+                    )
+        _check_scope(decl, ["policies", idx], name, issues)
+
+
+def _lint_namespace(doc: Dict[str, Any], issues: List[Issue]) -> None:
+    """RFC 0001 §3.7 — ONE shared declaration namespace + prefix collisions."""
+    entries: List[Tuple[str, str, List[Any]]] = []  # (name, block, path)
+    for block in ("tvars", "cvars", "policies"):
+        decls = doc.get(block) or []
+        if not isinstance(decls, list):
+            continue
+        for idx, decl in enumerate(decls):
+            if isinstance(decl, dict) and isinstance(decl.get("name"), str):
+                entries.append((decl["name"], block, [block, idx, "name"]))
+
+    by_name: Dict[str, List[Tuple[str, List[Any]]]] = {}
+    for name, block, path in entries:
+        by_name.setdefault(name, []).append((block, path))
+    for name, occurrences in by_name.items():
+        blocks = {block for block, _ in occurrences}
+        if len(occurrences) > 1 and len(blocks) > 1:
+            code = (
+                "cvar_shadows_tvar"
+                if blocks >= {"tvars", "cvars"}
+                else "policy_name_conflict"
+            )
+            issues.append(
+                {
+                    "code": code,
+                    "message": (
+                        f"'{name}' is declared in multiple blocks "
+                        f"({', '.join(sorted(blocks))}) — tvars, cvars, and policies "
+                        "share one namespace"
+                    ),
+                    "path": occurrences[-1][1],
+                    "severity": "error",
+                }
+            )
+
+    severity = "error" if _uses_11_constructs(doc) else "warning"
+    unique_names = sorted(by_name)
+    for shorter in unique_names:
+        prefix = shorter + "."
+        if any(longer.startswith(prefix) for longer in unique_names):
+            issues.append(
+                {
+                    "code": "namespace_prefix_collision",
+                    "message": (
+                        f"'{shorter}' is a strict dotted prefix of another declared "
+                        "name; attribute-style access becomes ambiguous"
+                    ),
+                    "path": by_name[shorter][0][1],
+                    "severity": severity,
+                }
+            )
 
 
 def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
@@ -157,11 +535,17 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
             )
 
     environment_symbols = _collect_environment_symbols(doc.get("environment"))
+    cvar_names = {
+        d.get("name")
+        for d in (doc.get("cvars") or [])
+        if isinstance(d, dict) and isinstance(d.get("name"), str)
+    }
     return TypeContext(
         gamma=gamma,
         environment_symbols=environment_symbols,
         issues=issues,
         clause_ids={},
+        cvar_names=cvar_names,
     )
 
 
@@ -584,6 +968,23 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
 
     type_info = context.gamma.get(literal.ident)
     if type_info is None:
+        if literal.ident in context.cvar_names:
+            # RFC 0001 §3.2/P5: cvars are governed but NOT searched — they
+            # never enter Γ or the SAT encoding. Precise diagnostic, not the
+            # generic undeclared_tvar.
+            add(
+                {
+                    "code": "cvar_in_structural_constraint",
+                    "message": (
+                        f"Structural constraint references CVAR '{literal.ident}' — "
+                        "calibrated variables are governed but not searched; "
+                        "substitute as a constant if intended"
+                    ),
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
         add(
             {
                 "code": "undeclared_tvar",
@@ -1033,6 +1434,8 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
     if not isinstance(policy, dict):
         return
 
+    _lint_require_calibration(policy, issues)
+
     alpha = policy.get("alpha")
     if not _is_number(alpha) or not (0 < float(alpha) < 1):
         issues.append(
@@ -1126,6 +1529,65 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     "severity": "error",
                 }
             )
+
+
+def _lint_require_calibration(policy: Dict[str, Any], issues: List[Issue]) -> None:
+    """RFC 0001 §3.5 — strict evidence mode declaration. The mandatory
+    ctx_core is implicit and immutable; hash_covered_context selects
+    EXTENSION keys only (a key outside the enum is an error)."""
+    spec = policy.get("require_calibration")
+    if spec is None:
+        return
+    if not isinstance(spec, dict) or not isinstance(spec.get("enabled"), bool):
+        issues.append(
+            {
+                "code": "invalid_require_calibration",
+                "message": "promotion_policy.require_calibration requires a boolean 'enabled'",
+                "path": ["promotion_policy", "require_calibration"],
+                "severity": "error",
+            }
+        )
+        return
+    context_keys = spec.get("hash_covered_context")
+    if context_keys is None:
+        return
+    if not isinstance(context_keys, list):
+        issues.append(
+            {
+                "code": "invalid_calibration_context",
+                "message": "hash_covered_context must be a list of extension keys",
+                "path": ["promotion_policy", "require_calibration", "hash_covered_context"],
+                "severity": "error",
+            }
+        )
+        return
+    for idx, key in enumerate(context_keys):
+        if key not in _CTX_EXT_KEYS:
+            issues.append(
+                {
+                    "code": "invalid_calibration_context",
+                    "message": (
+                        f"'{key}' is not a freshness-context EXTENSION key; the "
+                        "mandatory core is implicit and not module-configurable"
+                    ),
+                    "path": [
+                        "promotion_policy",
+                        "require_calibration",
+                        "hash_covered_context",
+                        idx,
+                    ],
+                    "severity": "error",
+                }
+            )
+    if len(context_keys) != len(set(context_keys)):
+        issues.append(
+            {
+                "code": "invalid_calibration_context",
+                "message": "hash_covered_context keys must be unique",
+                "path": ["promotion_policy", "require_calibration", "hash_covered_context"],
+                "severity": "error",
+            }
+        )
 
 
 def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:

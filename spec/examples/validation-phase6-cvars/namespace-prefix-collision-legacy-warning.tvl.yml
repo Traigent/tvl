@@ -1,0 +1,34 @@
+# Phase 6 (RFC 0001): the SAME prefix collision in a pure-1.0 module
+# (RFC §3.7(5) — P1 protection).
+# Expected: WARNING namespace_prefix_collision only; the module REMAINS VALID
+# (no 1.1 constructs are used, so validity is untouched).
+tvl:
+  module: corp.validation.prefix_collision_legacy
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: retriever
+    type: bool
+    domain: [true, false]
+  - name: retriever.k
+    type: int
+    domain:
+      range: [0, 8]
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
