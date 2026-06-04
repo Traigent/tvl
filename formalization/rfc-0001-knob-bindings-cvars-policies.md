@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v2 — revised after cross-model review round 1 (REJECT, 15 findings — see §10); awaiting re-review and owner acceptance |
+| **Status** | Draft v3 — revised after cross-model review rounds 1–2 (see §10); awaiting round-3 re-review and owner acceptance |
 | **Target language version** | TVL 1.1 (conservative extension of 1.0) |
 | **Tracking** | `FR-TVL-CVARS-POLICIES-V1` · ChangeSession `cs_607ce2f4f8833804` |
 | **Phases covered** | Phase 0 (scope freeze) · Phase 1 (formal semantics) · Phase 2 (property claims) |
@@ -250,14 +250,29 @@ ctx_core = ( ctx_schema_version,        — version of this context schema AND t
 ctx_ext  ⊆ { stage_versions, model_versions, budget_assumptions, cost_assumptions }
 ```
 
-**Validity**:
+**Validity** — every certificate field participates; the audit copies (`target`,
+`evidence`) must agree with the live context so a certificate cannot *display*
+one context while *hashing* another (cross-model review round 2, new finding 1):
 
 ```
 valid(cert, n, v, ctx_now) ⟺ cert.subject.cvar = n
+                            ∧ cert.subject.type = τ(n)
                             ∧ cert.subject.value_hash = H_c(v)
+                            ∧ cert.target = ctx_now.target
+                            ∧ cert.evidence.n = ctx_now.evidence_n
+                            ∧ cert.evidence.pool_hash = ctx_now.dataset_hash
                             ∧ cert.issued_hash = H_c(ctx_now)
                             ∧ cert.decision = CERTIFIED
 ```
+
+**Signal observations** (the other persisted-signal shape, referenced by P8) are
+likewise closed:
+
+```
+SignalObservation ::= ⟨ signal : Ident, value : FiniteFloat, n : ℕ, split : Ident ⟩
+```
+
+— no metadata map, no content-typed field.
 
 Because `t|π` is in the mandatory core, **certificates are parent-specific by
 construction**: a new suggested value for any parent makes the certificate stale via
@@ -491,8 +506,22 @@ be present-and-empty — cross-model review round 1, finding 13):
 module     = header, environment, evaluation_set, tvars, [ cvars ], constraints,
              objectives, promotion_policy, [ policies ], [ exploration ] ;
 
-scope_spec = "scope", ":", "{", [ "node", ":", ident ], [ ",", "agent", ":", ident ],
-             [ ",", "workflow", ":", ident ], "}" ;
+(* scope is expressible with any single field or combination, no leading comma *)
+scope_spec  = "scope", ":", "{", [ scope_field, { ",", scope_field } ], "}" ;
+scope_field = ( "node" | "agent" | "workflow" ), ":", ident ;
+
+(* AMENDED 1.0 production: tvar_decl gains the optional scope (the one
+   existing-production change; additive and optional) *)
+tvar_decl   = "{", "name", ":", ident, ",", "type", ":", type,
+              ",", "domain", ":", domain_spec, [ ",", scope_spec ], "}" ;
+
+(* AMENDED 1.0 production: promotion_policy gains require_calibration *)
+require_calibration_spec = "require_calibration", ":", "{",
+              "enabled", ":", boolean,
+              [ ",", "hash_covered_context", ":", "[",
+                [ ctx_ext_key, { ",", ctx_ext_key } ], "]" ], "}" ;
+ctx_ext_key = "stage_versions" | "model_versions"
+            | "budget_assumptions" | "cost_assumptions" ;
 
 cvars      = "cvars", ":", "[", [ cvar_decl, { ",", cvar_decl } ], "]" ;
 cvar_decl  = "{", "name", ":", ident, ",", "type", ":", type,
@@ -541,7 +570,7 @@ TVL validators (cross-model review round 1, finding 15).
 | **P5** | SAT preservation | For any module M and its cvar/policy-stripped projection M⁻: `compile_constraints(M)` and `compile_constraints(M⁻)` produce identical variable sets (= `N_T`) and identical clause sets; satisfiability coincides | Phase 3: encoding-equality model; Phase 4: lock test asserting solver domain keys = tvar names on modules with cvars |
 | **P6** | Namespace uniqueness | Each namespace reference (`depends_on`, `gates[].threshold`) resolves to exactly one declaration of the required kind or errs; duplicate names across tvars ∪ cvars ∪ policies err; prefix collisions diagnosed per §3.7(5) | Phase 3: shadowing/collision/kind-mismatch model; Phase 4: lints `cvar_shadows_tvar`, `policy_name_conflict`, `namespace_prefix_collision`, `missing_ref`, `duplicate_stage` |
 | **P7** | Fail-closed strictness | Under `strict(M, c)`: each of {R6, R8, calibrator ⊥, gate exception (§3.6), gate no_decision} ⟹ no promotion ∧ no winner-by-objective fallback | Phase 3: promotion-verdict reachability model (all five verdicts reachable, none promotes); →SDK spy tests on the four leak sites |
-| **P8** | Privacy | The certificate (§3.5) and signal-observation shapes are closed: every field is an identifier, type, hash, count, split label, or enum — no raw-content-typed field exists to leak. `policies[].parameters` is explicitly outside the guarantee | Phase 4: schema-level closed-shape check; →SDK canary test in observation emission |
+| **P8** | Privacy | The certificate and `SignalObservation` shapes (both defined in §3.5) are closed: every field is an identifier, type, hash, finite number, count, split label, or enum — no raw-content-typed field exists to leak. `policies[].parameters` is explicitly outside the guarantee | Phase 4: schema-level closed-shape check over the §3.5 shapes; →SDK canary test in observation emission |
 
 ## 5. Documented assumptions
 
@@ -644,6 +673,7 @@ existing example/conformance corpus passes unchanged.
 | Round | Reviewer | Verdict | Disposition |
 |---|---|---|---|
 | 1 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 12 blocking, 3 non-blocking | All 15 addressed in Draft v2 (below) |
+| 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 11/15 resolved, 4 partial; 2 new blocking, 1 non-blocking | Addressed in Draft v3: (a) `valid(…)` now checks the full subject (incl. `type = τ(n)`) AND the audit copies `target`/`evidence{n, pool_hash}` against the live context — a certificate cannot display one context while hashing another; (b) `scope_spec` rewritten with a proper field alternation (agent-only/workflow-only expressible) and `tvar_decl` explicitly amended to carry it; (c) `require_calibration_spec` EBNF production added (the promotion_policy extension is no longer prose-only); (d) `SignalObservation` closed shape defined in §3.5 and referenced by P8. The round-2 verification also confirmed: gates[].threshold consistent with §3.7(4); m=1/no-gates consistent; the §3.9 YAML example validates against the draft shapes. |
 
 Round-1 finding dispositions:
 
