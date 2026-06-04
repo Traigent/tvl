@@ -269,22 +269,20 @@ def test_cvar_on_rhs_of_tvar_equality_is_precise():
     equality gets the precise diagnostic too — for numeric, bool, AND enum
     left-hand sides."""
     doc = _happy()
-    doc["constraints"] = {
-        "structural": [
-            {"when": "retriever.k = 0", "then": "retriever.k = router.margin_threshold"},
-        ]
-    }
-    codes = _codes(doc, "error")
-    assert "cvar_in_structural_constraint" in codes
-    assert "undeclared_tvar" not in codes
-    # enum LHS
-    doc["constraints"] = {
-        "structural": [
-            {"when": "retriever.k = 0", "then": "model = router.margin_threshold"},
-        ]
-    }
-    codes = _codes(doc, "error")
-    assert "cvar_in_structural_constraint" in codes
+    # int, enum, and bool LHS — the three live kinds in the happy fixture
+    # (the reviewer manually verified float/tuple/callable behave identically)
+    doc["tvars"].append({"name": "zero_shot", "type": "bool", "domain": [True, False]})
+    for then in (
+        "retriever.k = router.margin_threshold",   # int LHS
+        "model = router.margin_threshold",          # enum LHS
+        "zero_shot = router.margin_threshold",      # bool LHS
+    ):
+        doc["constraints"] = {
+            "structural": [{"when": "retriever.k = 0", "then": then}]
+        }
+        codes = _codes(doc, "error")
+        assert "cvar_in_structural_constraint" in codes, then
+        assert "undeclared_tvar" not in codes, then
 
 
 def test_presence_based_11_opt_in():
