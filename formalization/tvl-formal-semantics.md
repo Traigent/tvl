@@ -182,6 +182,29 @@ Only the dominance relation (`min_effect`, `alpha`, `adjust`) is comparative. Ch
 
 These fields affect *how* optimization is performed, not *what* constitutes a valid or acceptable configuration.
 
+#### 1.5.5 Governed-but-not-searched fields (TVL 1.1 — proposed)
+
+> **Status**: proposed by [RFC 0001](rfc-0001-knob-bindings-cvars-policies.md)
+> (Knob bindings: calibrated variables and policies). Normative semantics live in the
+> RFC until it is accepted; this subsection reserves the category so the layering
+> stays coherent.
+
+TVL 1.1 introduces a fourth field category: declarations that are **parsed, typed,
+and governed but absent from the search semantics** — they never enter Γ,
+`Config(Δ, E_τ)`, or `F^str`, so Theorem 8.1 (SAT soundness) and the §9 promotion
+theorems are unaffected by construction.
+
+| Field | Layer | Role |
+|-------|-------|------|
+| `cvars[].name/type/domain` | Governed (new) | Calibrated variables: optimizer-invisible, certificate-backed values resolved per configuration |
+| `cvars[].calibration.*` | Operational (§1.5.2) | Calibrator/evidence identification; freshness-context inputs |
+| `policies[].*` | Operational (§1.5.2) | Named operational policies (e.g. cascade) — like `exploration.*` |
+| `promotion_policy.require_calibration` | Acceptability (Layer 2, §1.5.4) | Strict evidence mode; certificate-freshness filter alongside `chance_constraints` |
+| `scope` (any declaration) | Metadata (§1.5.3) | Node/agent/workflow ownership annotation |
+
+Calibrated variables enter the formal semantics only when explicitly substituted as
+constants into structural constraints — an extension deferred by RFC 0001.
+
 ---
 
 ## 2. Abstract Syntax
