@@ -2,14 +2,20 @@
 
 This is a MODEL, not the implementation: types are tiny, value spaces are
 finite, and the semantics transcribe the RFC clauses one-to-one so that
-property checks read like the spec. Section references are to
-formalization/rfc-0001-knob-bindings-cvars-policies.md (Draft v2).
+property checks read like the spec.
+
+PINNED RFC REVISION: Draft v4, branch feature/cvars-policies-rfc, commit
+b036485 (cross-model review round-4 ACCEPT). Section references are to
+formalization/rfc-0001-knob-bindings-cvars-policies.md at that revision —
+the RFC lives on its own branch per the one-branch-per-packet rule, so the
+pin is by SHA, not by merge.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
@@ -65,6 +71,8 @@ class CVar:
     depends_on: Tuple[str, ...] = ()
     validity_domain: Optional[Tuple[float, float]] = None  # closed interval (§3.3)
     require_calibration: bool = False
+    certificate_backed_target: bool = False  # §3.6 fifth disjunct
+    target_epsilon: Optional[float] = None  # chance-style target level (R8 floor)
     signal: str = "sig_v1"
     calibrator: str = "cal_v1"
     calibrator_version: str = "1"
@@ -93,6 +101,7 @@ class Module:
     # promotion_policy strict-mode declarations (§3.6)
     require_calibration_enabled: bool = False
     has_chance_constraints: bool = False
+    has_guaranteed_selection_target: bool = False  # operational profile (§3.6)
 
     @property
     def n_t(self) -> FrozenSet[str]:
@@ -143,6 +152,31 @@ def namespace_diagnostics(module: Module) -> List[Tuple[str, str]]:
     return diags
 
 
+IDENT_RE = __import__("re").compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+)
+
+
+def declaration_diagnostics(module: Module) -> List[Tuple[str, str]]:
+    """Static per-declaration diagnostics beyond the namespace rules:
+    the §3.7(2) Ident grammar, §3.8 duplicate_stage and cascade arity.
+    (scope_prefix_mismatch and the policy kind/strategy registries are
+    Phase 4 lint obligations — see the fixture README.)"""
+    diags: List[Tuple[str, str]] = []
+    for name in module.declared_names:
+        if not IDENT_RE.match(name):
+            diags.append(("invalid_ident", name))
+    for policy in module.policies:
+        if len(policy.stages) != len(set(policy.stages)):
+            diags.append(("duplicate_stage", policy.name))
+        if policy.strategy == "cascade":
+            if len(policy.stages) < 1:
+                diags.append(("cascade_arity", policy.name))
+            elif len(policy.gates) != len(policy.stages) - 1:
+                diags.append(("cascade_arity", policy.name))
+    return diags
+
+
 def uses_11_constructs(module: Module) -> bool:
     """§3.7(5): the new-surface opt-in that escalates prefix collisions."""
     return bool(module.cvars or module.policies or module.require_calibration_enabled)
@@ -177,10 +211,15 @@ class FreshnessContext:
     extensions: Tuple[Tuple[str, Any], ...] = ()  # subset of CTX_EXT_KEYS
 
     def freshness_hash(self) -> str:
+        parent_names = [name for name, _ in self.tuned_parent_values]
+        if len(parent_names) != len(set(parent_names)):
+            raise ValueError("duplicate_tuned_parent")
         core = {
             "ctx_schema_version": CTX_SCHEMA_VERSION,
             "cvar_name": self.cvar_name,
-            "tuned_parent_values": list(self.tuned_parent_values),
+            # RFC: "sorted by name" is part of the definition — the model
+            # ENFORCES it rather than trusting the caller.
+            "tuned_parent_values": sorted(self.tuned_parent_values, key=lambda kv: kv[0]),
             "calibration_source_id": self.calibration_source_id,
             "signal_spec_hash": self.signal_spec_hash,
             "calibrator_id": self.calibrator_id,
@@ -192,10 +231,17 @@ class FreshnessContext:
             "eval_split": self.eval_split,
             "target": self.target,
         }
-        for key, _ in self.extensions:
+        ext_keys = [key for key, _ in self.extensions]
+        for key in ext_keys:
             if key not in CTX_EXT_KEYS:
                 raise ValueError(f"invalid_calibration_context: {key}")
-        return h_c({"core": core, "ext": list(self.extensions)})
+        if len(ext_keys) != len(set(ext_keys)):
+            raise ValueError("duplicate_calibration_context_key")
+        # Canonical: extensions are a MAP — order-insensitive by sorting on
+        # key before hashing (the JCS object-key rule, which a list of pairs
+        # would otherwise bypass).
+        ext_sorted = sorted(self.extensions, key=lambda kv: kv[0])
+        return h_c({"core": core, "ext": [list(kv) for kv in ext_sorted]})
 
 
 CERTIFIED = "CERTIFIED"
@@ -297,6 +343,17 @@ class Calibrator:
         return self.value
 
 
+def _type_conforms(value: Any, cvar_type: str) -> bool:
+    """R5 type conformance (model form of the RFC's τ(n) check)."""
+    if cvar_type == "bool":
+        return isinstance(value, bool)
+    if cvar_type == "int":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if cvar_type == "float":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, str)  # enum[str]/str-like
+
+
 @dataclass(frozen=True)
 class Resolution:
     accepted: bool
@@ -314,8 +371,7 @@ def resolve(
     certificates: Mapping[str, Certificate],
     contexts: Mapping[str, FreshnessContext],
     *,
-    eval_split: str = "eval",
-    evidence_floor: int = 0,
+    eval_items: frozenset = frozenset(),
 ) -> Resolution:
     """Transcription of RFC §3.4: Accept ⟺ ¬(R1∨...∨R8) ∧ ∀ calibrators ≠ ⊥.
 
@@ -364,24 +420,29 @@ def resolve(
     if n_t & n_c:
         rejections.append(R3_DUPLICATE_PROVIDER)
 
-    # R4: phase mismatch — a CVAR consumed (as gate threshold) must be
-    # resolvable, i.e. its calibrator/evidence present before use.
-    consumed = {g.threshold for p in module.policies for g in p.gates}
-    for name in consumed & n_c:
-        if name not in calibrators or name not in evidence:
+    # R4: phase mismatch — EVERY declared CVAR must be producible (its
+    # calibrator and evidence registered) BEFORE resolution consumes it: the
+    # resolved config includes every n ∈ N_C (RFC §3.4), so a missing
+    # producer is a phase error regardless of gate consumption.
+    for cvar in module.cvars:
+        if cvar.name not in calibrators or cvar.name not in evidence:
             rejections.append(R4_PHASE_MISMATCH)
 
-    # R7: evidence leakage — calibration evidence drawn from the eval split.
+    # R7: evidence leakage — the RFC condition is the true intersection
+    # 𝓔_cal ∩ 𝓔_eval ≠ ∅ over evidence items (not a split-label proxy).
     for cvar in module.cvars:
         ev = evidence.get(cvar.name)
-        if ev is not None and ev.split == eval_split:
+        if ev is not None and set(ev.items) & set(eval_items):
             rejections.append(R7_EVIDENCE_LEAKAGE)
 
-    # R8: insufficient evidence.
+    # R8: insufficient evidence — the epsilon-derived conformal floor
+    # n_cal < ⌈1/ε⌉ − 1 for a chance-style target at level ε (RFC §3.4).
     for cvar in module.cvars:
         ev = evidence.get(cvar.name)
-        if ev is not None and len(ev.items) < evidence_floor:
-            rejections.append(R8_INSUFFICIENT_EVIDENCE)
+        if ev is not None and cvar.target_epsilon is not None:
+            floor = math.ceil(1.0 / cvar.target_epsilon) - 1
+            if len(ev.items) < floor:
+                rejections.append(R8_INSUFFICIENT_EVIDENCE)
 
     # Run calibrators (only meaningful if structurally sane so far).
     values: Dict[str, Any] = {}
@@ -390,7 +451,7 @@ def resolve(
         cal = calibrators.get(cvar.name)
         ev = evidence.get(cvar.name)
         if cal is None or ev is None:
-            continue  # already covered by R4 when consumed
+            continue  # R4 already recorded above; no value to produce
         try:
             out = cal(
                 {p: suggestion.get(p) for p in cvar.depends_on},
@@ -405,6 +466,9 @@ def resolve(
             bottom.append(cvar.name)
             continue
         values[cvar.name] = out
+        # R5: TYPE conformance (RFC: "validity domain or type").
+        if not _type_conforms(out, cvar.cvar_type):
+            rejections.append(R5_INFEASIBLE_VALUE)
         # R5: validity domain.
         if cvar.validity_domain is not None:
             lo, hi = cvar.validity_domain
@@ -457,11 +521,13 @@ P7_VERDICTS = (
 
 
 def strict(module: Module, consumed_cvars: Sequence[CVar]) -> bool:
-    """RFC §3.6 strict(M, c)."""
+    """RFC §3.6 strict(M, c) — ALL FIVE disjuncts."""
     return (
         module.require_calibration_enabled
         or module.has_chance_constraints
+        or module.has_guaranteed_selection_target
         or any(c.require_calibration for c in consumed_cvars)
+        or any(c.certificate_backed_target for c in consumed_cvars)
     )
 
 

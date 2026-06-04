@@ -84,6 +84,8 @@ def test_p5_encoding_identical_with_and_without_new_blocks(constraints, extra_bl
     assert set(compiled_base.domains) == set(compiled_ext.domains)
     assert set(compiled_ext.domains) == {"model", "zero_shot", "retriever.k"}
     assert compiled_base.domains == compiled_ext.domains
+    # Identical CLAUSE sets (P5's strongest form, not just the verdict).
+    assert compiled_base.constraints == compiled_ext.constraints
 
     # Identical satisfiability verdict.
     sat_base = check_structural_satisfiable(compiled_base)

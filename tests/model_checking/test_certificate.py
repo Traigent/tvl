@@ -170,3 +170,28 @@ def test_forged_subject_cross_context_rejected():
     # query A with A's own live context: issued_hash (covering cvar_name) fails
     ctx_a = _ctx(cvar_name="theta_a")
     assert not forged.valid_for("theta_a", "float", 0.5, ctx_a)
+
+
+def test_extension_order_insensitive():
+    """Canonical hashing: the SAME extension map in a different order must
+    hash identically (extensions are a map, not a sequence)."""
+    a = _ctx(extensions=(("model_versions", "mv1"), ("stage_versions", "sv1")))
+    b = _ctx(extensions=(("stage_versions", "sv1"), ("model_versions", "mv1")))
+    assert a.freshness_hash() == b.freshness_hash()
+
+
+def test_duplicate_extension_key_rejected():
+    ctx = _ctx(extensions=(("model_versions", "a"), ("model_versions", "b")))
+    with pytest.raises(ValueError, match="duplicate_calibration_context_key"):
+        ctx.freshness_hash()
+
+
+def test_parent_order_insensitive_and_duplicates_rejected():
+    """tuned_parent_values is sorted-by-name BY THE MODEL (not trusted from
+    the caller); duplicate parent names are rejected."""
+    a = _ctx(tuned_parent_values=(("a", 1), ("b", 2)))
+    b = _ctx(tuned_parent_values=(("b", 2), ("a", 1)))
+    assert a.freshness_hash() == b.freshness_hash()
+    dup = _ctx(tuned_parent_values=(("a", 1), ("a", 2)))
+    with pytest.raises(ValueError, match="duplicate_tuned_parent"):
+        dup.freshness_hash()

@@ -10,9 +10,11 @@ import itertools
 
 from .model import (
     CVar,
+    Gate,
     Module,
     Policy,
     TVar,
+    declaration_diagnostics,
     namespace_diagnostics,
     uses_11_constructs,
 )
@@ -91,3 +93,39 @@ def test_shared_namespace_spans_all_three_blocks():
         assert any(
             code == "duplicate_name" for code, _ in namespace_diagnostics(module)
         ), module
+
+
+def test_ident_grammar_enforced():
+    """§3.7(2): ASCII dotted identifiers, no empty segments/leading dots."""
+    bad_names = ["1bad", "a..b", ".a", "a.", "a-b", "café"]
+    for name in bad_names:
+        module = Module(tvars=(TVar(name, (0,)),))
+        assert ("invalid_ident", name) in declaration_diagnostics(module), name
+    good = Module(tvars=(TVar("a_1.b2", (0,)),))
+    assert not declaration_diagnostics(good)
+
+
+def test_duplicate_stage_diagnosed():
+    module = Module(
+        cvars=(CVar("theta", source="s"),),
+        policies=(
+            Policy(
+                "p", "cascade", ("cheap", "cheap"), (Gate("margin_below", "theta"),)
+            ),
+        ),
+    )
+    assert ("duplicate_stage", "p") in declaration_diagnostics(module)
+
+
+def test_cascade_arity_diagnosed_statically():
+    three_stages_one_gate = Module(
+        cvars=(CVar("theta", source="s"),),
+        policies=(
+            Policy(
+                "p", "cascade", ("a", "b", "c"), (Gate("margin_below", "theta"),)
+            ),
+        ),
+    )
+    assert ("cascade_arity", "p") in declaration_diagnostics(three_stages_one_gate)
+    m1_no_gates = Module(policies=(Policy("p", "cascade", ("only",)),))
+    assert ("cascade_arity", "p") not in declaration_diagnostics(m1_no_gates)

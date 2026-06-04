@@ -29,6 +29,7 @@ from .model import (
 STRICT_TRIGGERS = {
     "require_calibration": dict(require_calibration_enabled=True),
     "chance_constraints": dict(has_chance_constraints=True),
+    "guaranteed_selection": dict(has_guaranteed_selection_target=True),
 }
 
 
@@ -37,6 +38,7 @@ def _module(**flags) -> Module:
 
 
 GOVERNED_CVAR = CVar("theta", source="src", require_calibration=True)
+CERT_TARGET_CVAR = CVar("theta", source="src", certificate_backed_target=True)
 PLAIN_CVAR = CVar("theta", source="src", require_calibration=False)
 
 
@@ -46,7 +48,8 @@ def test_strict_trigger_enumeration():
     assert not strict(_module(), [PLAIN_CVAR])
     for flags in STRICT_TRIGGERS.values():
         assert strict(_module(**flags), [PLAIN_CVAR])
-    assert strict(_module(), [GOVERNED_CVAR])  # per-CVAR trigger alone
+    assert strict(_module(), [GOVERNED_CVAR])  # per-CVAR governance trigger alone
+    assert strict(_module(), [CERT_TARGET_CVAR])  # certificate-backed target alone
 
 
 @pytest.mark.parametrize("trigger_name,flags", list(STRICT_TRIGGERS.items()))
@@ -147,3 +150,12 @@ def test_cascade_tie_does_not_change_selection():
     assert cascade_select(
         ["cheap", "strong"], [0.5], [VoteStats(margin=0.6, tie=True)]
     ) == cascade_select(["cheap", "strong"], [0.5], [VoteStats(margin=0.6, tie=False)])
+
+
+@pytest.mark.parametrize("verdict", P7_VERDICTS)
+@pytest.mark.parametrize("beats", [False, True])
+def test_p7_certificate_backed_target_trigger(verdict, beats):
+    """§3.6 fifth disjunct: a consumed CVAR with a certificate-backed
+    TargetProperty alone makes promotion strict."""
+    outcome = promotion_outcome(_module(), [CERT_TARGET_CVAR], verdict, beats)
+    assert outcome == NO_CERTIFIED_SELECTION

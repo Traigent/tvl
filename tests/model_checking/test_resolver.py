@@ -127,12 +127,21 @@ def _mutations():
         return m, s, f, c, e, ce, {"theta": stale_ctx}, R6_STALE_CERTIFICATE
 
     def leakage(m, s, f, c, e, ce, cx):
-        leaky = {"theta": Evidence(items=("i0",) * 10, split="eval")}
+        # calibration pool SHARES item ids with the eval split (true
+        # intersection, not a split-label proxy)
+        leaky = {"theta": Evidence(items=("e0", "i1", "i2"), split="cal")}
         return m, s, f, c, leaky, ce, cx, R7_EVIDENCE_LEAKAGE
 
     def insufficient(m, s, f, c, e, ce, cx):
+        # chance-style target at epsilon = 0.1 -> conformal floor
+        # ceil(1/0.1) - 1 = 9; only one calibration item is provided
+        bad = Module(
+            tvars=m.tvars,
+            cvars=(CVar("theta", source="src", target_epsilon=0.1),),
+            policies=(),
+        )
         tiny = {"theta": Evidence(items=("i0",), split="cal")}
-        return m, s, f, c, tiny, ce, cx, R8_INSUFFICIENT_EVIDENCE
+        return bad, s, f, c, tiny, {}, {}, R8_INSUFFICIENT_EVIDENCE
 
     return [
         ("R2_depends_on", missing_ref),
@@ -151,7 +160,7 @@ def _mutations():
 def test_p3_each_rejection_reachable_and_blocks(name, mutator):
     base = _happy_inputs()
     module, sugg, fixed, cals, evs, certs, ctxs, expected = mutator(*base)
-    kwargs = {"evidence_floor": 2} if name == "R8" else {}
+    kwargs = {"eval_items": frozenset({"e0", "e1"})} if name == "R7" else {}
     res = resolve(module, sugg, fixed, cals, evs, certs, ctxs, **kwargs)
     assert not res.accepted
     assert expected in res.rejections, (name, res.rejections)
@@ -227,10 +236,56 @@ def test_biconditional_exhaustive_small_scope():
             ),
         )
         fixed = {"model": "m1"} if fixed_collision else {}
-        ev = Evidence(("i0", "i1"), "eval" if leaky else "cal")
+        ev = Evidence(("i0", "i1"), "cal")
         cal = Calibrator(value=None if bottom else 0.5)
-        res = resolve(module, {"model": "m1"}, fixed, {"theta": cal}, {"theta": ev}, {}, {})
+        res = resolve(
+            module,
+            {"model": "m1"},
+            fixed,
+            {"theta": cal},
+            {"theta": ev},
+            {},
+            {},
+            eval_items=frozenset({"i0"}) if leaky else frozenset(),
+        )
         should_accept = not (bad_ref or fixed_collision or leaky or bottom)
         assert res.accepted == should_accept, (bad_ref, fixed_collision, leaky, bottom, res)
         if not should_accept and not (bad_ref or fixed_collision or leaky):
             assert res.rejections == (NO_DECISION_VERDICT,)
+
+
+def test_unproduced_cvar_is_phase_mismatch_even_when_unconsumed():
+    """Review (fresh round, finding 1): a DECLARED CVAR with no registered
+    calibrator/evidence must reject as R4 even if nothing consumes it — the
+    resolved config includes every n ∈ N_C, so acceptance without the value
+    would violate the Accept biconditional."""
+    module = Module(
+        tvars=(TVar("model", ("m1",)),),
+        cvars=(CVar("orphan", source="src"),),  # declared, never consumed
+    )
+    res = resolve(module, {"model": "m1"}, {}, {}, {}, {}, {})
+    assert not res.accepted
+    assert R4_PHASE_MISMATCH in res.rejections
+
+
+def test_accepted_config_contains_every_declared_cvar():
+    """Accept ⟹ dom(config) ⊇ N_C (the completeness half made concrete)."""
+    module, sugg, fixed, cals, evs, certs, ctxs = _happy_inputs()
+    res = resolve(module, sugg, fixed, cals, evs, certs, ctxs)
+    assert res.accepted
+    assert set(res.config) >= {c.name for c in module.cvars}
+
+
+def test_r5_type_conformance(  # codex fresh-round finding 2
+):
+    """A float CVAR whose calibrator returns a non-float value rejects as R5
+    even with NO validity domain declared (RFC R5: 'domain OR TYPE')."""
+    module = Module(
+        tvars=(TVar("model", ("m1",)),),
+        cvars=(CVar("theta", source="src", cvar_type="float"),),
+    )
+    cals = {"theta": Calibrator(value="not-a-number")}
+    evs = {"theta": Evidence(("i0", "i1"), "cal")}
+    res = resolve(module, {"model": "m1"}, {}, cals, evs, {}, {})
+    assert not res.accepted
+    assert R5_INFEASIBLE_VALUE in res.rejections
