@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v3 — revised after cross-model review rounds 1–2 (see §10); awaiting round-3 re-review and owner acceptance |
+| **Status** | Draft v4 — revised after cross-model review rounds 1–3 (see §10); awaiting final confirmation and owner acceptance |
 | **Target language version** | TVL 1.1 (conservative extension of 1.0) |
 | **Tracking** | `FR-TVL-CVARS-POLICIES-V1` · ChangeSession `cs_607ce2f4f8833804` |
 | **Phases covered** | Phase 0 (scope freeze) · Phase 1 (formal semantics) · Phase 2 (property claims) |
@@ -255,7 +255,8 @@ ctx_ext  ⊆ { stage_versions, model_versions, budget_assumptions, cost_assumpti
 one context while *hashing* another (cross-model review round 2, new finding 1):
 
 ```
-valid(cert, n, v, ctx_now) ⟺ cert.subject.cvar = n
+valid(cert, n, v, ctx_now) ⟺ ctx_now.cvar_name = n
+                            ∧ cert.subject.cvar = n
                             ∧ cert.subject.type = τ(n)
                             ∧ cert.subject.value_hash = H_c(v)
                             ∧ cert.target = ctx_now.target
@@ -264,6 +265,12 @@ valid(cert, n, v, ctx_now) ⟺ cert.subject.cvar = n
                             ∧ cert.issued_hash = H_c(ctx_now)
                             ∧ cert.decision = CERTIFIED
 ```
+
+The first conjunct (`ctx_now.cvar_name = n`, cross-model review round 3) closes
+the forged-subject hole: a certificate issued against CVAR B's context cannot
+validate CVAR A by forging `subject.cvar = A`, because the live context
+presented for A must itself name A — and then `issued_hash` (which covers
+`cvar_name`) cannot match.
 
 **Signal observations** (the other persisted-signal shape, referenced by P8) are
 likewise closed:
@@ -674,6 +681,7 @@ existing example/conformance corpus passes unchanged.
 |---|---|---|---|
 | 1 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 12 blocking, 3 non-blocking | All 15 addressed in Draft v2 (below) |
 | 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 11/15 resolved, 4 partial; 2 new blocking, 1 non-blocking | Addressed in Draft v3: (a) `valid(…)` now checks the full subject (incl. `type = τ(n)`) AND the audit copies `target`/`evidence{n, pool_hash}` against the live context — a certificate cannot display one context while hashing another; (b) `scope_spec` rewritten with a proper field alternation (agent-only/workflow-only expressible) and `tvar_decl` explicitly amended to carry it; (c) `require_calibration_spec` EBNF production added (the promotion_policy extension is no longer prose-only); (d) `SignalObservation` closed shape defined in §3.5 and referenced by P8. The round-2 verification also confirmed: gates[].threshold consistent with §3.7(4); m=1/no-gates consistent; the §3.9 YAML example validates against the draft shapes. |
+| 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 7/8 v3 deltas confirmed resolved; ONE remaining blocker | Addressed in Draft v4: `valid(…)` gains the first conjunct `ctx_now.cvar_name = n`, closing the forged-subject hole (a certificate issued against CVAR B's hashed context can no longer validate CVAR A via a forged `subject.cvar`). Model + test added in the model-checking packet. |
 
 Round-1 finding dispositions:
 
