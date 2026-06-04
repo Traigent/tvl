@@ -1,0 +1,36 @@
+# Phase 6 (RFC 0001): depends_on must resolve to a declared TVAR (RFC §3.3/§3.7(4)).
+# Expected: ERROR missing_ref — "ghost" resolves to nothing; "theta" naming a
+# CVAR parent would be equally invalid in v1 (TVARs only).
+tvl:
+  module: corp.validation.cvar_missing_parent
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o"]
+
+cvars:
+  - name: theta
+    type: float
+    calibration:
+      source: pool_a
+      depends_on: [ghost]   # no such declaration
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02

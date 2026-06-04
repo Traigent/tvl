@@ -1,0 +1,40 @@
+# Phase 6 (RFC 0001): prefix collision in a module USING 1.1 constructs
+# (RFC §3.7(5) — new-surface opt-in).
+# Expected: ERROR namespace_prefix_collision — "retriever" is a strict dotted
+# prefix of "retriever.k" and the module declares cvars.
+tvl:
+  module: corp.validation.prefix_collision_error
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: retriever
+    type: bool
+    domain: [true, false]
+  - name: retriever.k
+    type: int
+    domain:
+      range: [0, 8]
+
+cvars:
+  - name: theta
+    type: float
+    calibration:
+      source: pool_a
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02

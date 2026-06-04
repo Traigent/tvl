@@ -1,0 +1,39 @@
+# Phase 6 (RFC 0001): cvars are governed-but-not-searched — a structural
+# constraint referencing one is diagnosed precisely (RFC §3.2 / P5).
+# Expected: ERROR cvar_in_structural_constraint ("governed but not searched;
+# substitute as a constant"), NOT the generic undeclared_tvar. The SAT
+# encoding must contain ONLY tvar names either way (the P5 lock).
+tvl:
+  module: corp.validation.cvar_in_structural
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: zero_shot
+    type: bool
+    domain: [true, false]
+
+cvars:
+  - name: theta
+    type: float
+    calibration:
+      source: pool_a
+
+constraints:
+  structural:
+    - when: zero_shot = true
+      then: theta = 0.5      # references a CVAR — governed, not searched
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02

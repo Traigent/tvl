@@ -1,0 +1,43 @@
+# Phase 6 (RFC 0001): stage ids must be unique within one policy (RFC §3.8).
+# Expected: ERROR duplicate_stage — "cheap" appears twice.
+tvl:
+  module: corp.validation.duplicate_stage
+
+environment:
+  snapshot_id: "2026-06-04T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o"]
+
+cvars:
+  - name: theta
+    type: float
+    calibration:
+      source: pool_a
+
+policies:
+  - name: dup_stage_cascade
+    kind: policy
+    strategy: cascade
+    stages: [cheap, cheap]
+    gates:
+      - kind: margin_below
+        threshold: theta
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
