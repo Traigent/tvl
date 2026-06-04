@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v4 — **cross-model review ACCEPT** (round 4, see §10); awaiting owner acceptance (human-only gate) |
+| **Status** | **ACCEPTED** — owner acceptance recorded 2026-06-05 (nimrod, interactive) after cross-model ACCEPT ×2 (anchored round 4 + fresh-pass confirmation); see §10 |
 | **Target language version** | TVL 1.1 (conservative extension of 1.0) |
 | **Tracking** | `FR-TVL-CVARS-POLICIES-V1` · ChangeSession `cs_607ce2f4f8833804` |
 | **Phases covered** | Phase 0 (scope freeze) · Phase 1 (formal semantics) · Phase 2 (property claims) |
