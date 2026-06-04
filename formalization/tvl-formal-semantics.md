@@ -198,6 +198,7 @@ theorems are unaffected by construction.
 |-------|-------|------|
 | `cvars[].name/type/domain` | Governed (new) | Calibrated variables: optimizer-invisible, certificate-backed values resolved per configuration |
 | `cvars[].calibration.*` | Operational (§1.5.2) | Calibrator/evidence identification; freshness-context inputs |
+| `cvars[].governance.require_calibration` | Acceptability (Layer 2, §1.5.4) | Per-CVAR strict-mode opt-in (a `strict(M, c)` disjunct) |
 | `policies[].*` | Operational (§1.5.2) | Named operational policies (e.g. cascade) — like `exploration.*` |
 | `promotion_policy.require_calibration` | Acceptability (Layer 2, §1.5.4) | Strict evidence mode; certificate-freshness filter alongside `chance_constraints` |
 | `scope` (any declaration) | Metadata (§1.5.3) | Node/agent/workflow ownership annotation |
