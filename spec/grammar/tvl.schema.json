@@ -410,10 +410,15 @@
       "properties": {
         "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
         "kind": { "const": "policy" },
-        "strategy": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "strategy": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Strategy identifier. The schema checks SHAPE only; the v1 strategy REGISTRY (cascade) is enforced by the normative lints — intentional layering."
+        },
         "stages": {
           "type": "array",
           "minItems": 1,
+          "description": "Opaque runtime stage identifiers, normatively constrained to the TVL Ident grammar per RFC 0001 §3.8 (StageRef ::= Ident; a later relaxation would be non-breaking, a tightening would not).",
           "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
         },
         "gates": {

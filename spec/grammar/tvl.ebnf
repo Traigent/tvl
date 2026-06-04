@@ -28,7 +28,7 @@ scope_field   = ( "node" | "agent" | "workflow" ), ":", ident ;
    The optional domain is a VALIDITY domain (closed interval for floats; no
    resolution required), never a search domain. *)
 cvars         = "cvars", ":", "[", [ cvar_decl, { ",", cvar_decl } ], "]" ;
-cvar_decl     = "{", "name", ":", ident, ",", "type", ":", type,
+cvar_decl     = "{", "name", ":", ident, ",", "type", ":", cvar_type,
                 [ ",", "domain", ":", domain_spec ],
                 ",", "calibration", ":", calibration_spec,
                 [ ",", "governance", ":", governance_spec ],
@@ -37,6 +37,7 @@ calibration_spec = "{", "source", ":", ident, [ ",", "signal", ":", ident ],
                 [ ",", "calibrator", ":", ident ],
                 [ ",", "depends_on", ":", "[", [ ident, { ",", ident } ], "]" ], "}" ;
 governance_spec  = "{", "require_calibration", ":", boolean, "}" ;
+cvar_type     = base_type | enum_type ;   (* tuple/callable CVARs deferred (RFC 0001 §3.3) *)
 
 (* TVL 1.1 (RFC 0001 §3.8) — operational policies. stages are OPAQUE runtime
    stage identifiers (environment.bindings precedent), NOT namespace refs;

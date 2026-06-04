@@ -105,15 +105,17 @@ def _lint_duplicate_tvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
 
 def _uses_11_constructs(doc: Dict[str, Any]) -> bool:
     """RFC 0001 §3.7(5): the new-surface opt-in that escalates prefix
-    collisions from warning to error."""
-    if doc.get("cvars") or doc.get("policies"):
+    collisions from warning to error. PRESENCE-based: an explicit empty
+    `cvars: []`, `policies: []`, `require_calibration: {...}`, or
+    `scope: {}` is still an opt-in to the 1.1 surface."""
+    if "cvars" in doc or "policies" in doc:
         return True
-    promotion = doc.get("promotion_policy") or {}
-    if isinstance(promotion, dict) and promotion.get("require_calibration"):
+    promotion = doc.get("promotion_policy")
+    if isinstance(promotion, dict) and "require_calibration" in promotion:
         return True
     tvars = doc.get("tvars") or []
     if isinstance(tvars, list) and any(
-        isinstance(d, dict) and d.get("scope") for d in tvars
+        isinstance(d, dict) and "scope" in d for d in tvars
     ):
         return True
     return False
@@ -1049,6 +1051,22 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
         value_type = literal.value_types[0] if literal.value_types else None
         if value_type == "IDENT":
             other = context.gamma.get(rhs_raw)
+            if other is None and rhs_raw in context.cvar_names:
+                # RFC 0001 §3.2/P5: CVAR referenced on the RHS of a TVAR
+                # equality — same precise diagnostic as the LHS path.
+                add(
+                    {
+                        "code": "cvar_in_structural_constraint",
+                        "message": (
+                            f"Structural constraint references CVAR '{rhs_raw}' — "
+                            "calibrated variables are governed but not searched; "
+                            "substitute as a constant if intended"
+                        ),
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+                return
             if other is not None:
                 if op not in {"==", "!=", "="}:
                     add(

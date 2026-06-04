@@ -88,7 +88,9 @@ def test_fixture_conformance(name, expected):
         # P1: the legacy module remains VALID — warning only, zero errors.
         assert not error_codes, f"{name}: legacy module must stay valid, got {error_codes}"
     else:
-        assert expected_codes <= error_codes, (name, error_codes)
+        # EXACT equality: the fixture exhibits its diagnostic and NOTHING
+        # else — extra errors would be new-lint false positives.
+        assert error_codes == expected_codes, (name, error_codes)
 
 
 def test_cvar_in_structural_is_precise_not_generic():
@@ -144,6 +146,8 @@ def test_p1_all_existing_examples_unchanged():
         "invalid_require_calibration",
         "invalid_calibration_context",
         "invalid_scope",
+        "duplicate_policy",
+        "namespace_prefix_collision",
     }
     checked = 0
     for path in sorted(EXAMPLES.rglob("*.yml")):
@@ -258,3 +262,42 @@ def test_schema_accepts_scope_on_tvar():
     doc = _happy()
     doc["tvars"][0]["scope"] = {"node": "model"}
     assert not _schema_errors(doc)
+
+
+def test_cvar_on_rhs_of_tvar_equality_is_precise():
+    """RFC §3.2/P5 (review finding): a CVAR referenced on the RHS of a TVAR
+    equality gets the precise diagnostic too — for numeric, bool, AND enum
+    left-hand sides."""
+    doc = _happy()
+    doc["constraints"] = {
+        "structural": [
+            {"when": "retriever.k = 0", "then": "retriever.k = router.margin_threshold"},
+        ]
+    }
+    codes = _codes(doc, "error")
+    assert "cvar_in_structural_constraint" in codes
+    assert "undeclared_tvar" not in codes
+    # enum LHS
+    doc["constraints"] = {
+        "structural": [
+            {"when": "retriever.k = 0", "then": "model = router.margin_threshold"},
+        ]
+    }
+    codes = _codes(doc, "error")
+    assert "cvar_in_structural_constraint" in codes
+
+
+def test_presence_based_11_opt_in():
+    """§3.7(5): an explicit EMPTY cvars list still opts into 1.1 severity —
+    the prefix collision escalates to error."""
+    doc = yaml.safe_load(
+        (FIXTURES / "namespace-prefix-collision-legacy-warning.tvl.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    doc["cvars"] = []
+    issues = [i for i in lint_module(doc) if isinstance(i, dict)]
+    assert any(
+        i["code"] == "namespace_prefix_collision" and i["severity"] == "error"
+        for i in issues
+    )
