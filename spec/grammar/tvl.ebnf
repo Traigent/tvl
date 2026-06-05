@@ -1,7 +1,7 @@
 (* TVL — Abstract syntax oriented EBNF *)
 (* Formal specification for Tuned Variables Language *)
 
-module        = header, environment, evaluation_set, tvars, constraints, objectives, promotion_policy, [exploration] ;
+module        = header, environment, evaluation_set, tvars, [ cvars ], constraints, objectives, promotion_policy, [ policies ], [exploration] ;
 
 header        = "tvl", ":", "{", "module", ":", ident, [",", "validation", ":", validation_opts], "}", [ "tvl_version", ":", string ] ;
 validation_opts = "{", [ "skip_budget_checks", ":", boolean ], [ ",", "skip_cost_estimation", ":", boolean ], "}" ;
@@ -18,7 +18,38 @@ evaluation_set = "evaluation_set", ":", "{", "dataset", ":", string, [ ",", "see
 (* TVL supports a closed set of types with product semantics for tuples *)
 
 tvars         = "tvars", ":", "[", { tvar_decl { "," } }, "]" ;
-tvar_decl     = "{", "name", ":", ident, ",", "type", ":", type, ",", "domain", ":", domain_spec, "}" ;
+tvar_decl     = "{", "name", ":", ident, ",", "type", ":", type, ",", "domain", ":", domain_spec, [ ",", scope_spec ], "}" ;
+
+(* TVL 1.1 (RFC 0001) — ownership scope metadata; any field combination *)
+scope_spec    = "scope", ":", "{", [ scope_field, { ",", scope_field } ], "}" ;
+scope_field   = ( "node" | "agent" | "workflow" ), ":", ident ;
+
+(* TVL 1.1 (RFC 0001 §3.3) — calibrated variables: governed, NOT searched.
+   The optional domain is a VALIDITY domain (closed interval for floats; no
+   resolution required), never a search domain. *)
+cvars         = "cvars", ":", "[", [ cvar_decl, { ",", cvar_decl } ], "]" ;
+cvar_decl     = "{", "name", ":", ident, ",", "type", ":", cvar_type,
+                [ ",", "domain", ":", domain_spec ],
+                ",", "calibration", ":", calibration_spec,
+                [ ",", "governance", ":", governance_spec ],
+                [ ",", scope_spec ], "}" ;
+calibration_spec = "{", "source", ":", ident, [ ",", "signal", ":", ident ],
+                [ ",", "calibrator", ":", ident ],
+                [ ",", "depends_on", ":", "[", [ ident, { ",", ident } ], "]" ], "}" ;
+governance_spec  = "{", "require_calibration", ":", boolean, "}" ;
+cvar_type     = base_type | enum_type ;   (* tuple/callable CVARs deferred (RFC 0001 §3.3) *)
+
+(* TVL 1.1 (RFC 0001 §3.8) — operational policies. stages are OPAQUE runtime
+   stage identifiers (environment.bindings precedent), NOT namespace refs;
+   gate thresholds ARE namespace refs and must resolve to a CVAR. *)
+policies      = "policies", ":", "[", [ policy_decl, { ",", policy_decl } ], "]" ;
+policy_decl   = "{", "name", ":", ident, ",", "kind", ":", "policy",
+                ",", "strategy", ":", ident,
+                ",", "stages", ":", "[", ident, { ",", ident }, "]",
+                [ ",", "gates", ":", "[", [ gate_decl, { ",", gate_decl } ], "]" ],
+                [ ",", "parameters", ":", object ],
+                [ ",", scope_spec ], "}" ;
+gate_decl     = "{", "kind", ":", "margin_below", ",", "threshold", ":", ident, "}" ;
 
 (* Type grammar - complete specification *)
 type          = base_type | compound_type ;
@@ -88,7 +119,16 @@ promotion_policy = "promotion_policy", ":", "{",
                    [ ",", "adjust", ":", ("none" | "bonferroni" | "holm" | "BH") ],
                    [ ",", "chance_constraints", ":", "[", { "{", "name", ":", ident, ",", "threshold", ":", number, ",", "confidence", ":", number, "}" { "," } }, "]" ],
                    [ ",", "tie_breakers", ":", "{", ident, ":", ("min" | "max" | "min_abs_deviation" | "custom"), { ",", ident, ":", ("min" | "max" | "min_abs_deviation" | "custom") }, "}" ],
+                   [ ",", require_calibration_spec ],
                    "}" ;
+
+(* TVL 1.1 (RFC 0001 §3.5) — strict evidence mode. The mandatory ctx_core is
+   implicit and immutable; hash_covered_context selects EXTENSION keys only. *)
+require_calibration_spec = "require_calibration", ":", "{",
+                   "enabled", ":", boolean,
+                   [ ",", "hash_covered_context", ":", "[", [ ctx_ext_key, { ",", ctx_ext_key } ], "]" ],
+                   "}" ;
+ctx_ext_key   = "stage_versions" | "model_versions" | "budget_assumptions" | "cost_assumptions" ;
 
 exploration   = "exploration", ":", "{",
                 "strategy", ":", "{", "type", ":", ("random" | "grid" | "tpe" | "cmaes" | "nsga2" | "custom"), { "," key, ":", value }, "}",

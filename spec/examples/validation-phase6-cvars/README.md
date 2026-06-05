@@ -5,11 +5,10 @@ packet (`tests/model_checking/`). They are the **executable acceptance bar for
 the validators packet**: the Phase 4 grammar/schema/lint changes are done when
 every fixture below produces exactly its expected diagnostic.
 
-> **Status note (forward fixtures).** The 1.1 surface (`cvars`, `policies`,
-> `require_calibration`, `scope`) is not yet in `tvl.schema.json`, so fixtures
-> using it intentionally FAIL schema validation today. The two
-> `namespace-prefix-collision-*` fixtures and the lint/SAT-level properties are
-> checkable now (the model suite does so at dict level, bypassing the schema).
+> **Status: EXECUTABLE.** The 1.1 surface landed in `tvl.schema.json` /
+> `tvl.ebnf` / `lints.py` (branch `feature/cvars-policies-validators`); every
+> fixture below now produces exactly its expected diagnostic through
+> `tvl-validate` and the conformance suite (`tests/test_cvars_policies.py`).
 
 | Example | Expected outcome after Phase 4 |
 | --- | --- |
