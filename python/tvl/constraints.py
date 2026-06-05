@@ -244,8 +244,8 @@ def _create_variable(model: cp_model.CpModel, domain: Domain) -> cp_model.IntVar
         ub = int(domain.maximum) if domain.maximum is not None else 10_000
         return model.NewIntVar(lb, ub, name)
     if domain.kind == "float":
-        lb = domain._encode_bound(domain.minimum) if domain.minimum is not None else -1_000_000
-        ub = domain._encode_bound(domain.maximum) if domain.maximum is not None else 1_000_000
+        lb = domain._encode_bound_lower(domain.minimum) if domain.minimum is not None else -1_000_000
+        ub = domain._encode_bound_upper(domain.maximum) if domain.maximum is not None else 1_000_000
         return model.NewIntVar(lb, ub, name)
     raise ValueError(f"Unsupported domain type {domain.kind}")
 
