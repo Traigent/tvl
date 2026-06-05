@@ -159,6 +159,18 @@ def test_p1_all_existing_examples_unchanged():
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(doc, dict) or "tvars" not in doc:
             continue
+        # Schema check FIRST: no legacy module may acquire a NEW schema
+        # rejection from a name-pattern tightening (e.g. the TVarDecl.name
+        # Ident pattern) — the lint sweep alone cannot see schema-level
+        # regressions. Deliberately-invalid corpus fixtures keep their OLD
+        # rejections, so assert specifically on pattern errors at name sites.
+        name_pattern_errors = [
+            e.message
+            for e in _schema_errors(doc)
+            if "does not match" in e.message
+            and any(str(seg) == "name" for seg in e.absolute_path)
+        ]
+        assert not name_pattern_errors, (path.name, name_pattern_errors[:3])
         codes = {
             i["code"]
             for i in lint_module(doc)
