@@ -315,6 +315,17 @@ def test_p8_new_declaration_shapes_are_closed():
     defs = schema["$defs"]
     for shape in ("CVarDecl", "PolicyDecl", "GateDecl", "Scope"):
         assert defs[shape].get("additionalProperties") is False, shape
-    # the documented exception: parameters is an opaque object by design
+    # the documented exception: parameters is an opaque object by design —
+    # opaque means NO property schema and NO closing; pin both so a later
+    # "structured parameters" change must consciously revisit P8.
     params = defs["PolicyDecl"]["properties"]["parameters"]
     assert params.get("type") == "object"
+    assert "properties" not in params, "parameters grew a schema — revisit P8"
+    assert params.get("additionalProperties") is not False
+    # the single normative Ident pattern now covers TVAR names too (the
+    # legacy hole the EBNF sync exposed): all four name sites share it.
+    ident = "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+    tvar_name = defs["TVarDecl"]["properties"]["name"]
+    assert tvar_name.get("pattern") == ident, tvar_name
+    assert defs["CVarDecl"]["properties"]["name"].get("pattern") == ident
+    assert defs["PolicyDecl"]["properties"]["name"].get("pattern") == ident
