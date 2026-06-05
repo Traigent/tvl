@@ -181,7 +181,11 @@ coefficient   = number ;
 env_ident     = ident ;                                  (* Must resolve to numeric env.context symbols, not TVARs *)
 
 (* ==================== TERMINALS ==================== *)
-ident         = ? identifier: [a-zA-Z_][a-zA-Z0-9_.]* ? ;
+ident         = ? identifier: [A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)* ? ;
+                                                         (* The single normative Ident grammar (RFC 0001 §3.7(2)):
+                                                            dot-separated segments, each starting with a letter or
+                                                            underscore — no leading/trailing/double dots. Matches
+                                                            tvl.schema.json's pattern exactly. *)
 number        = ? number literal: -?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)? ? ;
 integer       = ? integer literal: -?[0-9]+ ? ;
 string        = ? quoted string literal with backslash escapes ("..." or '...') ? ;

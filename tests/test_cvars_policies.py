@@ -11,6 +11,7 @@ Two layers:
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 
@@ -52,6 +53,8 @@ def _codes(doc: dict, severity: str | None = None) -> set:
 
 EXPECTED = {
     "cvar-policies-happy.tvl.yml": (set(), None),
+    "cvar-calibrated-threshold.tvl.yml": (set(), None),
+    "policy-cascade.tvl.yml": (set(), None),
     "cvar-shadows-tvar.tvl.yml": ({"cvar_shadows_tvar"}, None),
     "cvar-missing-parent-ref.tvl.yml": ({"missing_ref"}, None),
     "gate-threshold-not-cvar.tvl.yml": ({"missing_ref"}, None),
@@ -299,3 +302,19 @@ def test_presence_based_11_opt_in():
         i["code"] == "namespace_prefix_collision" and i["severity"] == "error"
         for i in issues
     )
+
+
+def test_p8_new_declaration_shapes_are_closed():
+    """P8 schema canary (closes the recorded Phase-4 deferral): every TVL 1.1
+    declaration shape is CLOSED — additionalProperties:false — so no open
+    payload field exists to smuggle content. policy.parameters stays the one
+    deliberate opaque object (explicitly OUT of the P8 guarantee, RFC §3.8)."""
+    schema = json.loads(
+        (BASE / "spec" / "grammar" / "tvl.schema.json").read_text(encoding="utf-8")
+    )
+    defs = schema["$defs"]
+    for shape in ("CVarDecl", "PolicyDecl", "GateDecl", "Scope"):
+        assert defs[shape].get("additionalProperties") is False, shape
+    # the documented exception: parameters is an opaque object by design
+    params = defs["PolicyDecl"]["properties"]["parameters"]
+    assert params.get("type") == "object"

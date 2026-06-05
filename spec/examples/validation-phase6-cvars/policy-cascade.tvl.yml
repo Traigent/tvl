@@ -1,0 +1,47 @@
+# Canonical example (RFC 0001 §3.8): a two-stage CascadePolicy whose gate
+# threshold is a calibrated variable. Expected: valid, no diagnostics.
+# |gates| = |stages| - 1; escalate ⟺ margin < θ where θ is the CVAR.
+tvl:
+  module: corp.examples.policy_cascade
+
+environment:
+  snapshot_id: "2026-06-05T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/examples/dev.parquet
+
+tvars:
+  - name: cheap_model
+    type: enum[str]
+    domain: ["gpt-4o-mini"]
+  - name: strong_model
+    type: enum[str]
+    domain: ["gpt-4o"]
+
+cvars:
+  - name: margin_threshold
+    type: float
+    calibration:
+      source: margin_eval_pool
+      signal: vote_margin_v1
+    governance:
+      require_calibration: true
+
+policies:
+  - name: cheap_strong_cascade
+    kind: policy                 # the literal discriminator (RFC §3.8)
+    strategy: cascade
+    stages: [cheap_model, strong_model]
+    gates:
+      - kind: margin_below
+        threshold: margin_threshold   # MUST reference a declared CVAR
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
