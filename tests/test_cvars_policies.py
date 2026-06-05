@@ -11,6 +11,7 @@ Two layers:
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 
@@ -52,6 +53,8 @@ def _codes(doc: dict, severity: str | None = None) -> set:
 
 EXPECTED = {
     "cvar-policies-happy.tvl.yml": (set(), None),
+    "cvar-calibrated-threshold.tvl.yml": (set(), None),
+    "policy-cascade.tvl.yml": (set(), None),
     "cvar-shadows-tvar.tvl.yml": ({"cvar_shadows_tvar"}, None),
     "cvar-missing-parent-ref.tvl.yml": ({"missing_ref"}, None),
     "gate-threshold-not-cvar.tvl.yml": ({"missing_ref"}, None),
@@ -156,6 +159,24 @@ def test_p1_all_existing_examples_unchanged():
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(doc, dict) or "tvars" not in doc:
             continue
+        # Schema check FIRST: no legacy module may acquire a NEW schema
+        # rejection from a name-pattern tightening (e.g. the TVarDecl.name
+        # Ident pattern) — the lint sweep alone cannot see schema-level
+        # regressions. Deliberately-invalid corpus fixtures keep their OLD
+        # rejections, so assert specifically on pattern errors at name sites.
+        def _flatten(errors):
+            for e in errors:
+                yield e
+                if e.context:
+                    yield from _flatten(e.context)
+
+        name_pattern_errors = [
+            e.message
+            for e in _flatten(_schema_errors(doc))
+            if e.validator == "pattern"
+            and any(str(seg) == "name" for seg in e.absolute_path)
+        ]
+        assert not name_pattern_errors, (path.name, name_pattern_errors[:3])
         codes = {
             i["code"]
             for i in lint_module(doc)
@@ -299,3 +320,30 @@ def test_presence_based_11_opt_in():
         i["code"] == "namespace_prefix_collision" and i["severity"] == "error"
         for i in issues
     )
+
+
+def test_p8_new_declaration_shapes_are_closed():
+    """P8 schema canary (closes the recorded Phase-4 deferral): every TVL 1.1
+    declaration shape is CLOSED — additionalProperties:false — so no open
+    payload field exists to smuggle content. policy.parameters stays the one
+    deliberate opaque object (explicitly OUT of the P8 guarantee, RFC §3.8)."""
+    schema = json.loads(
+        (BASE / "spec" / "grammar" / "tvl.schema.json").read_text(encoding="utf-8")
+    )
+    defs = schema["$defs"]
+    for shape in ("CVarDecl", "PolicyDecl", "GateDecl", "Scope"):
+        assert defs[shape].get("additionalProperties") is False, shape
+    # the documented exception: parameters is an opaque object by design —
+    # opaque means NO property schema and NO closing; pin both so a later
+    # "structured parameters" change must consciously revisit P8.
+    params = defs["PolicyDecl"]["properties"]["parameters"]
+    assert params.get("type") == "object"
+    assert "properties" not in params, "parameters grew a schema — revisit P8"
+    assert params.get("additionalProperties") is not False
+    # the single normative Ident pattern now covers TVAR names too (the
+    # legacy hole the EBNF sync exposed): all four name sites share it.
+    ident = "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+    tvar_name = defs["TVarDecl"]["properties"]["name"]
+    assert tvar_name.get("pattern") == ident, tvar_name
+    assert defs["CVarDecl"]["properties"]["name"].get("pattern") == ident
+    assert defs["PolicyDecl"]["properties"]["name"].get("pattern") == ident

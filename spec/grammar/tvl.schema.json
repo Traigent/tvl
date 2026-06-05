@@ -323,7 +323,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Unique TVAR identifier; dotted names allowed for nested structures (§III.A)."
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique TVAR identifier; dotted names allowed for nested structures (§III.A). Pattern is the single normative Ident grammar (RFC 0001 §3.7(2)) — previously unpatterned, which let TVAR names bypass the shared-namespace lexical rule the 1.1 declarations enforce."
         },
         "type": {
           "type": "string",

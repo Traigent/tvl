@@ -1,0 +1,39 @@
+# Canonical example (RFC 0001 §3.3): ONE calibrated variable — a routing
+# threshold produced by a calibrator, governed by require_calibration.
+# Expected: valid, no diagnostics. The minimal CVAR-bearing module.
+tvl:
+  module: corp.examples.cvar_threshold
+
+environment:
+  snapshot_id: "2026-06-05T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/examples/dev.parquet
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "gpt-4o"]
+
+cvars:
+  - name: margin_threshold
+    type: float
+    domain:
+      range: [0.0, 1.0]          # validity domain — never searched (RFC §3.3)
+    calibration:
+      source: margin_eval_pool   # calibration evidence pool (disjoint from eval)
+      signal: vote_margin_v1
+      calibrator: budget_threshold_v1
+      depends_on: [model]        # freshness relation: cert is parent-specific
+    governance:
+      require_calibration: true  # strict evidence mode (RFC §3.6)
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
