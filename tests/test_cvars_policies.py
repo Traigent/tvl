@@ -164,10 +164,16 @@ def test_p1_all_existing_examples_unchanged():
         # Ident pattern) — the lint sweep alone cannot see schema-level
         # regressions. Deliberately-invalid corpus fixtures keep their OLD
         # rejections, so assert specifically on pattern errors at name sites.
+        def _flatten(errors):
+            for e in errors:
+                yield e
+                if e.context:
+                    yield from _flatten(e.context)
+
         name_pattern_errors = [
             e.message
-            for e in _schema_errors(doc)
-            if "does not match" in e.message
+            for e in _flatten(_schema_errors(doc))
+            if e.validator == "pattern"
             and any(str(seg) == "name" for seg in e.absolute_path)
         ]
         assert not name_pattern_errors, (path.name, name_pattern_errors[:3])
