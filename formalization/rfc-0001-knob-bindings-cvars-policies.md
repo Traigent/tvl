@@ -229,6 +229,21 @@ The decision vocabulary is shared with the per-config guarantee certificates alr
 in TraigentSchema (`guarantee_certificate_schema.json`): **one certificate ontology,
 two scopes** — per-config selection there, per-CVAR value here.
 
+**Claim scope (clarification, 2026-06-06 — owner wording audit).** A certificate is
+a *per-variable, procedural* claim: the declared calibration procedure ran, over the
+declared evidence pool, under the freshness context hashed into `issued_hash` — and,
+where the `TargetProperty` carries a statistical bound, that bound's subject is the
+**conditional, component-level property the CVAR controls** (e.g. the acceptance
+region a routing threshold induces), valid only under the §5 assumptions. A
+certificate is **not** a claim about a configuration's end-to-end metrics: those
+remain observations on the evaluation split, governed by the §3.6 promotion
+judgment's statistical controls. A "certified selection" is therefore the
+**conjunction** of two independent statements — the configuration won the §3.6
+promotion judgment on observed metrics, *and* every governed CVAR it consumed
+carries a valid, fresh certificate — and neither statement subsumes the other.
+Implementations and user-facing copy MUST NOT present a certified selection as a
+guarantee of the configuration's observed metric levels.
+
 **Freshness context.** The context has a **mandatory core** — always hashed,
 non-negotiable — and **optional extensions** (cross-model review round 1,
 finding 3 — the module can never opt out of the core):
@@ -683,6 +698,7 @@ existing example/conformance corpus passes unchanged.
 | 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 11/15 resolved, 4 partial; 2 new blocking, 1 non-blocking | Addressed in Draft v3: (a) `valid(…)` now checks the full subject (incl. `type = τ(n)`) AND the audit copies `target`/`evidence{n, pool_hash}` against the live context — a certificate cannot display one context while hashing another; (b) `scope_spec` rewritten with a proper field alternation (agent-only/workflow-only expressible) and `tvar_decl` explicitly amended to carry it; (c) `require_calibration_spec` EBNF production added (the promotion_policy extension is no longer prose-only); (d) `SignalObservation` closed shape defined in §3.5 and referenced by P8. The round-2 verification also confirmed: gates[].threshold consistent with §3.7(4); m=1/no-gates consistent; the §3.9 YAML example validates against the draft shapes. |
 | 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 7/8 v3 deltas confirmed resolved; ONE remaining blocker | Addressed in Draft v4: `valid(…)` gains the first conjunct `ctx_now.cvar_name = n`, closing the forged-subject hole (a certificate issued against CVAR B's hashed context can no longer validate CVAR A via a forged `subject.cvar`). Model + test added in the model-checking packet. |
 | 4 | codex (gpt-5.5, xhigh, read-only) — 2026-06-05 | **ACCEPT** | Final confirmation: `valid()`'s `ctx_now.cvar_name = n` conjunct verified correct and coherent with issuance/ctx_core/parent-specificity; §10 log accurate. No remaining findings. |
+| post-acceptance | owner wording audit (nimrod + claude) — 2026-06-06 | **CLARIFICATION** (non-normative-impact) | §3.5 gains the *Claim scope* paragraph: certificates are per-variable procedural claims about the declared fit + freshness (component-level conditional property where a bound exists), never config-level metric guarantees; "certified selection" defined as the conjunction of the §3.6 promotion win and per-CVAR certificate coverage. Driven by a live misreading: the prior prose allowed "certified" to read as a whole-config guarantee. No semantic rule changed. |
 
 Round-1 finding dispositions:
 
