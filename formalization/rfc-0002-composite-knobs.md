@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT v2** — under cross-model review; owner acceptance pending |
+| **Status** | **DRAFT v3** — under cross-model review; owner acceptance pending |
 | **Target language version** | TVL 1.2 (conservative extension of 1.1) |
 | **Tracking** | `FR-TVL-COMPOSITE-KNOBS-V1` · ChangeSession `cs_aef1b9d2edfa5200` |
 | **Builds on** | RFC 0001 (ACCEPTED): one-Knob model, cvars, certificates, policies, strict promotion |
@@ -141,9 +141,10 @@ Loop      ::= ⟨ body : Arm,
                 max_iters : ℕ≥1 ⟩                (* REQUIRED bound — totality *)
 
 GateDecl  ::= ⟨ kind : margin_below | signal_below,   (* v1 registry *)
-                threshold : Ident,               (* MUST resolve to a CVAR
-                                                    (kind-checked), as RFC 0001 §3.8 *)
-                signal? : SignalSourceRef ⟩      (* REQUIRED iff kind=signal_below *)
+                threshold : Ident,               (* MUST resolve to a CVAR of TVL
+                                                    type int or float (kind- AND
+                                                    type-checked; §3.2 item 6) *)
+                signal? : SignalUse ⟩            (* REQUIRED iff kind=signal_below *)
 
 AcceptDecl ::= ⟨ kind : stat_at_least,           (* v1 registry — acceptance
                                                     direction is ≥, deliberately
@@ -160,18 +161,27 @@ AggregateDecl ::= ⟨ kind : majority_vote | judge_max,  (* v1 registry *)
 
 StopDecl  ::= ⟨ kind : signal_accept | external_accept | exhausted,
                 threshold? : Ident,              (* REQUIRED iff kind=signal_accept:
-                                                    MUST resolve to a CVAR *)
-                signal? : SignalSourceRef,       (* REQUIRED iff kind=signal_accept;
-                                                    a function of state_keys only *)
+                                                    MUST resolve to a CVAR of TVL
+                                                    type int or float *)
+                signal? : SignalUse,             (* REQUIRED iff kind=signal_accept;
+                                                    inputs MUST ⊆ state_keys *)
                 predicate? : Ident ⟩             (* REQUIRED iff kind=external_accept:
                                                     OPAQUE runtime predicate id,
                                                     StageRef-style — outside P8 *)
 
-SignalSourceRef ::= Ident    (* a calibration-source id from the SAME operational
-                                registry RFC 0001 cvars use
-                                (calibration_source_id, §3.5 there): an
-                                implementation-defined identifier, opaque to the
-                                module namespace — NOT a new declaration surface *)
+SignalUse ::= ⟨ spec : SignalSpec,    (* RFC 0001 §3.5's closed signal shape —
+                                         id, version, score function + version,
+                                         comparator + version — hashed H_c(σ)
+                                         exactly as calibration.signal is. NOT a
+                                         calibration SOURCE id: sources identify
+                                         evidence pools; specs identify the signal
+                                         FUNCTION (the RFC 0001 source/signal
+                                         split is preserved) *)
+                inputs : Ident* ⟩     (* the declared input keys the signal reads:
+                                         for stops, MUST ⊆ the loop's state_keys
+                                         (statically checked); for pre-gates,
+                                         opaque input-feature identifiers
+                                         (environment.bindings precedent) *)
 ```
 
 **Well-formedness (statically checked; error codes in §3.11):**
@@ -203,11 +213,32 @@ SignalSourceRef ::= Ident    (* a calibration-source id from the SAME operationa
 7. Ensemble cardinality: present iff `|arms| = 1`
    (`cardinality_arity_mismatch`); must reference a TVAR or CVAR whose
    declared TVL type is `int` (`invalid_cardinality_type`); resolution-time
-   values `k < 1` are rejection **R9** (`invalid_cardinality_value`),
-   extending RFC 0001 §3.4's rejection family.
-8. Loop: `stop.signal`, when present, may reference only declared
-   `state_keys` inputs (`stop_signal_outside_state`); `max_iters ≥ 1`
+   values `k < 1` are rejection **R9** (`invalid_cardinality_value`).
+   **Acceptance-algebra extension (TVL 1.2):** RFC 0001 §3.4's resolution
+   acceptance extends to
+
+   ```
+   Accept₁.₂ ⟺ ¬(R1 ∨ … ∨ R8 ∨ R9) ∧ calibrators ≠ ⊥
+   ```
+
+   with P3/P4 (the two directions of the acceptance biconditional) carrying
+   over verbatim with R9 in the disjunction. This is conservative: a TVL 1.1
+   module declares no composites, so R9 is unreachable and `Accept₁.₂`
+   coincides with RFC 0001's `Accept` on all 1.1 modules.
+8. Loop: `stop.signal.inputs`, when present, MUST be a subset of the
+   declared `state_keys` (`stop_signal_outside_state`); `max_iters ≥ 1`
    (`invalid_max_iters`).
+9. **`tuned_params` entries resolve to TVARs only**: every entry of a
+   stage arm's `tuned_params` MUST resolve (exact match, RFC 0001 §3.7) to
+   a declared TVAR; an entry naming a CVAR, policy, composite, or nothing
+   is rejected (`invalid_tuned_param`). Together with §3.5 this makes C6
+   hold by construction: `required_parents` is a union of validated
+   TVAR-only sets.
+10. **Numeric thresholds**: every gate/accept/stop `threshold` CVAR must
+   have declared TVL type `int` or `float` (`invalid_threshold_type`) —
+   the execution comparisons (`margin < θ`, `σ ≥ θ`, `stat ≥ θ`) are over
+   finite numbers; a non-finite resolved value fails the item's evaluation
+   per the existing exception rules (never a silent comparison).
 
 **Execution semantics.**
 
@@ -459,20 +490,31 @@ offers `unroll`. Outside the conditions no equivalence is claimed.
 
 ### 3.9 Surface syntax (draft normative for the validators packet)
 
+**The arm surface form** — ONE shape, used EVERYWHERE an `Arm` appears
+(cascade `arms[]`, loop `body`, ensemble `arms[]` and `judge`):
+
+```
+ArmSurface ::= Ident                                      (* bare = stage, tuned_params [] *)
+             | { stage: Ident, tuned_params?: [Ident*] }  (* explicit stage form *)
+             | { composite: Ident }                       (* tagged nesting *)
+```
+
+Unknown keys in the object forms reject (`invalid_arm_shape`); absent
+`tuned_params` defaults to `[]`. There is no separate per-composite
+`arm_params` map — parentage is declared ON the arm, so body/judge/nested
+arms are expressed identically.
+
 ```yaml
 composites:
   - name: answerer
     kind: cascade            # cascade | ensemble | loop (closed)
     placement: post          # cascade only; default post
-    arms:                    # bare identifier = STAGE (always);
-      - cheap_stage          #   nesting REQUIRES the tagged form
-      - strong_stage
-    arm_params:              # optional: per-stage tuned_params declaration
-      cheap_stage: [cheap_model, temperature]
-      strong_stage: [strong_model]
+    arms:
+      - { stage: cheap_stage, tuned_params: [cheap_model, temperature] }
+      - { stage: strong_stage, tuned_params: [strong_model] }
     gates:
       - kind: margin_below
-        threshold: router.margin_threshold     # MUST resolve to a CVAR
+        threshold: router.margin_threshold     # CVAR of type float
     pattern: binary_cascade  # provenance annotation (closed shape §3.7)
 
   - name: coder
@@ -514,9 +556,12 @@ fixture in the validators packet):
 `missing_judge` · `unknown_aggregate_kind` · `unknown_stop_kind` ·
 `missing_stop_threshold` · `missing_stop_predicate` ·
 `stop_signal_outside_state` · `invalid_max_iters` ·
-`missing_composite_parent` · `duplicate_stage` (extended scope) — plus the
-RFC 0001 `missing_ref` family reused unchanged for every CVAR/threshold
-reference.
+`missing_composite_parent` · `invalid_tuned_param` ·
+`invalid_threshold_type` · `invalid_arm_shape` ·
+`duplicate_stage` (extended scope) — plus the RFC 0001 `missing_ref`
+family reused unchanged for every CVAR/threshold reference, and rejection
+**R9** (`invalid_cardinality_value`) extending the §3.4 acceptance algebra
+as `Accept₁.₂` (§3.2 item 7).
 
 ## 4. Compatibility and migration (P1 argument)
 
@@ -647,6 +692,8 @@ increment (§2).
 | Round | Reviewer | Verdict | Disposition |
 |---|---|---|---|
 | 1 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 10 blocking, 5 non-blocking | All addressed in Draft v2: (1) arm resolution made tag-driven (`stage`/`composite` tags; bare = stage always; `ambiguous_arm` rejection); (2) pre-cascade made total (first-match-wins routing with fallback arm, per-gate signals + per-gate cost, absent-signal routes onward, `pre_gate_requires_signal`); (3) ensemble cardinality: required iff single-arm, int-typed, R9 rejection for k<1, both cost forms; (4) judge output contract (finite numeric score, exclusion rules, all-excluded fails, deterministic tie-break); (5) loop state formalized (`state_keys` + `stop_signal_outside_state`; pure ⟺ empty); (6) dependency compilation rebuilt as DECLARED parentage (`tuned_params` on stage arms) + static coverage obligations (`missing_composite_parent`), `missing_ref` stays single authority, judge/signal parents included; (7) root-consumption rule (all N_X roots, conservative fail-closed; selective consumption deferred); (8) subsumption made exact (scope?/parameters? carried onto Composite verbatim; empty tuned_params on migrated stages stated as intended ratchet); (9) Provenance closed shape (param_hash only, canary in admission contract); (10) C5 verification split by mechanism incl. condition 4. Non-blocking: full error-code surface §3.11; SignalSourceRef clarified as the RFC 0001 calibration-source registry (no new declaration surface); degenerate fixtures added to §9; AcceptDecl separated from GateDecl with opposite inequality; P6 note absorbed. |
+
+| 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 5 blocking (all on the NEW round-1 machinery); round-1 dispositions confirmed closed | All addressed in Draft v3: (1) R9 integrated into the acceptance algebra — explicit `Accept₁.₂ ⟺ ¬(R1∨…∨R9) ∧ calibrators ≠ ⊥` with P3/P4 carrying over and a conservativity note (R9 unreachable on 1.1 modules); (2) `tuned_params` entries now have a static TVAR-only resolution rule (`invalid_tuned_param`, well-formedness item 9) making C6 hold by construction; (3) `arm_params` map REPLACED by a single ArmSurface form declared ON the arm (bare Ident │ {stage, tuned_params?} │ {composite}) used identically for cascade arms, loop body, ensemble arms and judge — `invalid_arm_shape` for unknown keys; (4) `SignalSourceRef` (a source id) replaced by `SignalUse ⟨spec: SignalSpec, inputs⟩` preserving RFC 0001's source/signal split — the spec is the §3.5 closed signal shape hashed H_c(σ); stop inputs MUST ⊆ state_keys making `stop_signal_outside_state` precisely checkable; (5) numeric threshold type rule (`invalid_threshold_type`: thresholds are int/float CVARs; non-finite resolved values fail evaluation). |
 
 Design pre-review (before Draft v1): Option E architecture ACCEPTed by
 codex (gpt-5.5 xhigh — 4 hard constraints + terminology edits, all
