@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT v6** — under cross-model review; owner acceptance pending |
+| **Status** | **DRAFT v7** — under cross-model review; owner acceptance pending |
 | **Target language version** | TVL 1.2 (conservative extension of 1.1) |
 | **Tracking** | `FR-TVL-COMPOSITE-KNOBS-V1` · ChangeSession `cs_aef1b9d2edfa5200` |
 | **Builds on** | RFC 0001 (ACCEPTED): one-Knob model, cvars, certificates, policies, strict promotion |
@@ -203,8 +203,9 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
 
 1. `kind` ∈ the closed registry (`unknown_composite_kind`); exactly the body
    fields of the declared kind are present — unknown or cross-kind fields
-   reject (closed shapes, exact diagnostics).
-2. Cascade arity: `|gates| = |arms| − 1`; the degenerate `m = 1` cascade has
+   reject (`unknown_composite_field`; closed shapes, exact diagnostics).
+2. Cascade arity: `|gates| = |arms| − 1` (`cascade_arity`, reused from
+   RFC 0001 with identical semantics); the degenerate `m = 1` cascade has
    no gates and always returns its arm (RFC 0001 rule carries over).
    `arms` must be non-empty for every constructor (`empty_arms`).
 3. **Arm resolution is tag-driven and unambiguous**: `composite(x)` must
@@ -793,11 +794,16 @@ New codes introduced by this RFC (each with a happy + rejecting conformance
 fixture in the validators packet). The list and the well-formedness /
 execution rules above are in **1:1 correspondence** — every code below is
 emitted by exactly the cited rule, and every rule that rejects cites exactly
-one of these codes (or the reused RFC 0001 `missing_ref` family):
+one of these codes or a REUSED RFC 0001 code (`missing_ref` family,
+`cascade_arity`, `unknown_gate_kind` — reused with identical semantics on
+the composite construct):
 
 | Code | Emitted by |
 |---|---|
 | `unknown_composite_kind` | item 1 — `kind` outside the closed registry |
+| `unknown_composite_field` | item 1 — unknown or cross-kind body fields on a composite (closed shapes) |
+| `cascade_arity` (reused, RFC 0001) | item 2 — `\|gates\| ≠ \|arms\| − 1` on a cascade composite |
+| `unknown_gate_kind` (reused, RFC 0001) | `GateDecl` — gate kind outside the v1 registry |
 | `composite_binds_value` | §3.1 — a value bound on a composite |
 | `composite_shadows_name` | §3.1 — `N_X` name shadows another class |
 | `duplicate_composite` | §3.1 — duplicate name within `N_X` |
@@ -1014,6 +1020,8 @@ increment (§2).
 | 4 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 1 blocking (round-3 deltas confirmed closed): the signal/threshold calibration binding was not normative | Addressed in Draft v5: §3.2 item 11 — every thresholded construct determines a signal id (explicit `SignalUse.signal` for `signal_below`/`signal_accept`; canonical stat ids `vote_margin`/`vote_agreement` for `margin_below`/`stat_at_least`); `θ.calibration.signal` MUST equal it; static lints `signal_mismatch` + `missing_calibration_signal`; rationale recorded (a threshold calibrated against signal A gating signal B is vacuously fresh); §3.3 notes the rule makes the target-property shapes well-posed. |
 
 | 5 | codex (gpt-5.5, xhigh, read-only, FRESH unanchored) — 2026-06-06 | **REJECT** — 8 blocking + 4 non-blocking | All addressed in Draft v6. Blocking: (FB1) §3.2 item-11 signal binding broke P1 (RFC 0001 leaves `calibration.signal` OPTIONAL) → rule re-scoped to COMPOSITES ONLY, fires at the composite USE SITE, never on `cvars`/`policies`; §4 subsumption narrowed to exact-on-execution-semantics + two intended composite-only ratchets (empty-`tuned_params`, signal binding); §4 P1-preserved sentence added (1.1 modules declare no composites); §9 criterion 3 "lint identically" carved out for the two ratchets. (FB2) use-site `SignalUse.inputs` not freshness-bound → `signal_inputs` added to the RFC 0001 §3.5 `ctx_ext` extension registry (conservative); item-11 rule requires `hash_covered_context ⊇ {signal_inputs}` AND covered value = use-site list when `inputs ≠ []`, else `unbound_signal_inputs`. (FB3) nested-certificate freshness honestly scoped → C3/C6 reworded to per-member coverage / TVAR-only obligations, explicitly NOT cross-level value-dependency freshness; §6 assumption 8 added (riding the §2 CVAR→CVAR deferral) with non-normative SHOULD to re-issue outer certificates on inner recalibration; §2 deferral bullet gains a revisit trigger; §3.6 fold scope note added. (FB4) `leafT` extended so a sampling ensemble's tuned `cardinality` (`{cardinality} ∩ N_T`) is in its leaf set, recursively through nesting. (FB5) post-cascade gate typing with strict placement symmetry — `margin_below` POST-only + gated arm must be margin-bearing (stage / `majority_vote` ensemble) else `gate_arm_incompatible`; `signal_below` PRE-only; `gate_kind_placement_mismatch` covers both misuse directions (retiring `pre_gate_requires_signal`); `missing_gate_signal` for signal-less `signal_below`; future output-signal post-gate noted deferred. (FB6) §3.2.1 closed result algebra `ArmResult ::= output(o, vote_stats?) | no_accept | error` with total/deterministic propagation rules unifying the per-construct exception/no-accept sentences; root no_accept → §3.6 fail-closed under strict / honest no-output (runtime-defined scoring) under non-strict; vote abstention stays internal. (FB7) §3.8 + C5 rewritten — `Unroll` is a SEMANTIC compilation into an internal K-chain IR (no surface state-predicate gate exists), `signal_accept` loops only; `external_accept`/`exhausted` offer no unroll; catalog table made honest (`self_debug` external_accept ⇒ no unroll). (FB8) §3.7/§3.9 — surface `pattern:` is sugar → `Provenance.pattern`; the full closed `Provenance` object is expansion-output (SDK-internal), never surface syntax. Non-blocking: (NB9) §3.3 cross-ref now cites the RFC 0001 §3.5 *Claim scope* paragraph accurately (2026-06-06 post-acceptance owner wording-audit clarification, §10 `post-acceptance` row); (NB10) pre-cascade route fixed to `j = min({ i < m : σ_i(x) ≥ θ_i } ∪ {m})`; (NB11) §3.11 restated as a 1:1 code↔rule table incl. `missing_gate_signal`, `missing_stop_signal`, `unbound_signal_inputs`, `gate_arm_incompatible`, `gate_kind_placement_mismatch`; (NB12) C4 verification narrowed — structural induction validates FORM closure only, operational estimate quality out of scope (assumption 3), cross-impl `c(agg)`/cost forms pinned by SHARED golden cost fixtures. |
+
+| 6 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 1 blocking (all round-5 dispositions confirmed closed): §3.11's 1:1 claim missed codes for cascade arity and cross-kind/unknown body fields | Addressed in Draft v7: `unknown_composite_field` added (item 1); RFC 0001's `cascade_arity` and `unknown_gate_kind` explicitly reused with identical semantics and added to the table; the 1:1 claim wording now names the reused-code set precisely. |
 
 Design pre-review (before Draft v1): Option E architecture ACCEPTed by
 codex (gpt-5.5 xhigh — 4 hard constraints + terminology edits, all
