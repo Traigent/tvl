@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT v4** — under cross-model review; owner acceptance pending |
+| **Status** | **DRAFT v5** — under cross-model review; owner acceptance pending |
 | **Target language version** | TVL 1.2 (conservative extension of 1.1) |
 | **Tracking** | `FR-TVL-COMPOSITE-KNOBS-V1` · ChangeSession `cs_aef1b9d2edfa5200` |
 | **Builds on** | RFC 0001 (ACCEPTED): one-Knob model, cvars, certificates, policies, strict promotion |
@@ -246,6 +246,27 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
    the execution comparisons (`margin < θ`, `σ ≥ θ`, `stat ≥ θ`) are over
    finite numbers; a non-finite resolved value fails the item's evaluation
    per the existing exception rules (never a silent comparison).
+11. **Signal/threshold calibration binding** (cross-model round 4): every
+   thresholded construct determines a signal id —
+
+   ```
+   sig(signal_below g)        = g.signal.signal        (explicit SignalUse)
+   sig(signal_accept stop)    = stop.signal.signal     (explicit SignalUse)
+   sig(margin_below g)        = vote_margin            (canonical stat id)
+   sig(stat_at_least a)       = a.stat                 (vote_margin │ vote_agreement)
+   ```
+
+   where the canonical vote-statistic ids live in the SAME registry
+   namespace as named signals. The threshold CVAR `θ` of every such
+   construct MUST declare `calibration.signal = sig(construct)`: a missing
+   `calibration.signal` on `θ` rejects (`missing_calibration_signal`); a
+   differing one rejects (`signal_mismatch`). Rationale: certificate
+   freshness binds `H_c(σ)` for the signal used DURING CALIBRATION — a
+   threshold calibrated against signal A gating signal B would be
+   **vacuously fresh**. This rule is static (both sides are declared
+   identifiers) and is distinct from `missing_composite_parent`: parent
+   coverage binds tuned-TVAR freshness; this rule binds the measured
+   signal semantics of the threshold itself.
 
 **Execution semantics.**
 
@@ -313,6 +334,10 @@ target-property shape — this is the machine-facing payoff of sealing:
 | `cascade` (pre) | each routing threshold `θ_i` | conditional property of the ROUTE the signal induces (e.g. `P(arm_i adequate │ σ_i ≥ θ_i) ≥ p`) |
 | `ensemble` | `accept.threshold`; `cardinality` when bound Calibrated | acceptance: `P(aggregate correct │ stat ≥ θ) ≥ p`; cardinality: cost-bounded sufficiency |
 | `loop` | `stop.threshold` (signal_accept) | stop adequacy: `P(accepted state meets target │ σ ≥ θ) ≥ p` |
+
+The §3.2 item-11 binding rule makes these target-property shapes
+well-posed: the certificate's `H_c(σ)` covers the very signal the gate
+evaluates at runtime, never a different one.
 
 The **claim scope** paragraph of RFC 0001 §3.5 (2026-06-06 clarification)
 applies verbatim: each certificate is a per-variable, procedural claim about
@@ -576,6 +601,7 @@ fixture in the validators packet):
 `stop_signal_outside_state` · `invalid_max_iters` ·
 `missing_composite_parent` · `invalid_tuned_param` ·
 `invalid_threshold_type` · `invalid_arm_shape` · `invalid_signal_use` ·
+`signal_mismatch` · `missing_calibration_signal` ·
 `duplicate_stage` (extended scope) — plus the RFC 0001 `missing_ref`
 family reused unchanged for every CVAR/threshold reference, and rejection
 **R9** (`invalid_cardinality_value`) extending the §3.4 acceptance algebra
@@ -715,6 +741,8 @@ increment (§2).
 | 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 5 blocking (all on the NEW round-1 machinery); round-1 dispositions confirmed closed | All addressed in Draft v3: (1) R9 integrated into the acceptance algebra — explicit `Accept₁.₂ ⟺ ¬(R1∨…∨R9) ∧ calibrators ≠ ⊥` with P3/P4 carrying over and a conservativity note (R9 unreachable on 1.1 modules); (2) `tuned_params` entries now have a static TVAR-only resolution rule (`invalid_tuned_param`, well-formedness item 9) making C6 hold by construction; (3) `arm_params` map REPLACED by a single ArmSurface form declared ON the arm (bare Ident │ {stage, tuned_params?} │ {composite}) used identically for cascade arms, loop body, ensemble arms and judge — `invalid_arm_shape` for unknown keys; (4) `SignalSourceRef` (a source id) replaced by `SignalUse ⟨spec: SignalSpec, inputs⟩` preserving RFC 0001's source/signal split — the spec is the §3.5 closed signal shape hashed H_c(σ); stop inputs MUST ⊆ state_keys making `stop_signal_outside_state` precisely checkable; (5) numeric threshold type rule (`invalid_threshold_type`: thresholds are int/float CVARs; non-finite resolved values fail evaluation). |
 
 | 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 3 findings (1 model choice + 2 wording residue); rounds 1–2 dispositions confirmed closed (incl. judge-arm coverage via ArmSurface and §3.11 completeness) | All addressed in Draft v4: (1) the signal model is CHOSEN explicitly — `SignalUse.signal` is a named Ident into the SAME registry namespace as RFC 0001's module-facing `calibration.signal` (one signal model across the language; the closed SignalSpec shape enters only through H_c(σ)); SignalSurface grammar added to §3.9 and `invalid_signal_use` to §3.11; (2) stale `arm_params` wording in §4 corrected to per-arm `tuned_params`; (3) §7 terminology fixed (signal ids + opaque input-feature ids; sources reserved for evidence pools). |
+
+| 4 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 1 blocking (round-3 deltas confirmed closed): the signal/threshold calibration binding was not normative | Addressed in Draft v5: §3.2 item 11 — every thresholded construct determines a signal id (explicit `SignalUse.signal` for `signal_below`/`signal_accept`; canonical stat ids `vote_margin`/`vote_agreement` for `margin_below`/`stat_at_least`); `θ.calibration.signal` MUST equal it; static lints `signal_mismatch` + `missing_calibration_signal`; rationale recorded (a threshold calibrated against signal A gating signal B is vacuously fresh); §3.3 notes the rule makes the target-property shapes well-posed. |
 
 Design pre-review (before Draft v1): Option E architecture ACCEPTed by
 codex (gpt-5.5 xhigh — 4 hard constraints + terminology edits, all
