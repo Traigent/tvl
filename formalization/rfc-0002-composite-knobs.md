@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT v3** — under cross-model review; owner acceptance pending |
+| **Status** | **DRAFT v4** — under cross-model review; owner acceptance pending |
 | **Target language version** | TVL 1.2 (conservative extension of 1.1) |
 | **Tracking** | `FR-TVL-COMPOSITE-KNOBS-V1` · ChangeSession `cs_aef1b9d2edfa5200` |
 | **Builds on** | RFC 0001 (ACCEPTED): one-Knob model, cvars, certificates, policies, strict promotion |
@@ -169,19 +169,26 @@ StopDecl  ::= ⟨ kind : signal_accept | external_accept | exhausted,
                                                     OPAQUE runtime predicate id,
                                                     StageRef-style — outside P8 *)
 
-SignalUse ::= ⟨ spec : SignalSpec,    (* RFC 0001 §3.5's closed signal shape —
-                                         id, version, score function + version,
-                                         comparator + version — hashed H_c(σ)
-                                         exactly as calibration.signal is. NOT a
-                                         calibration SOURCE id: sources identify
-                                         evidence pools; specs identify the signal
-                                         FUNCTION (the RFC 0001 source/signal
-                                         split is preserved) *)
+SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAME
+                                         signal namespace RFC 0001's module-facing
+                                         calibration.signal uses (an Ident,
+                                         operationally resolved by the runtime's
+                                         signal registry — NOT a module-namespace
+                                         declaration, and NOT a calibration SOURCE:
+                                         sources identify evidence pools; signals
+                                         identify the scoring FUNCTION. The full
+                                         closed SignalSpec shape enters the formal
+                                         model only through its canonical hash
+                                         H_c(σ), exactly as in RFC 0001 §3.5 —
+                                         one signal model across the language) *)
                 inputs : Ident* ⟩     (* the declared input keys the signal reads:
                                          for stops, MUST ⊆ the loop's state_keys
                                          (statically checked); for pre-gates,
                                          opaque input-feature identifiers
-                                         (environment.bindings precedent) *)
+                                         (environment.bindings precedent).
+                                         Malformed SignalUse objects (missing
+                                         signal, unknown keys, non-list inputs)
+                                         reject: invalid_signal_use *)
 ```
 
 **Well-formedness (statically checked; error codes in §3.11):**
@@ -504,6 +511,17 @@ Unknown keys in the object forms reject (`invalid_arm_shape`); absent
 `arm_params` map — parentage is declared ON the arm, so body/judge/nested
 arms are expressed identically.
 
+**The signal surface form** (everywhere a `SignalUse` appears —
+`signal_below` gates and `signal_accept` stops):
+
+```
+SignalSurface ::= { signal: Ident, inputs?: [Ident*] }   (* inputs default [] *)
+```
+
+`signal` names a registry signal exactly as `calibration.signal` does
+(operationally resolved; one signal model across the language); malformed
+objects reject (`invalid_signal_use`).
+
 ```yaml
 composites:
   - name: answerer
@@ -557,7 +575,7 @@ fixture in the validators packet):
 `missing_stop_threshold` · `missing_stop_predicate` ·
 `stop_signal_outside_state` · `invalid_max_iters` ·
 `missing_composite_parent` · `invalid_tuned_param` ·
-`invalid_threshold_type` · `invalid_arm_shape` ·
+`invalid_threshold_type` · `invalid_arm_shape` · `invalid_signal_use` ·
 `duplicate_stage` (extended scope) — plus the RFC 0001 `missing_ref`
 family reused unchanged for every CVAR/threshold reference, and rejection
 **R9** (`invalid_cardinality_value`) extending the §3.4 acceptance algebra
@@ -583,7 +601,7 @@ PolicyDecl⟨name, "policy", "cascade", stages = s₁..s_m,
 
 `stages` map to stage-tagged arms with empty `tuned_params` (the policy form
 never declared parentage — the obligation lint §3.5 is vacuous on migrated
-forms until authors declare `arm_params`, an explicit and intended
+forms until authors declare per-arm `tuned_params`, an explicit and intended
 ratchet); `parameters?` and `scope?` carry over verbatim with identical
 semantics and the identical outside-P8 categorization. StageRef opacity, the
 gate→CVAR rule, and execution semantics are unchanged (§3.2 incorporates
@@ -642,8 +660,9 @@ The claims above hold under, and only under:
 ## 7. Field categorization (P8 alignment)
 
 Composites introduce **no content-typed fields**: kinds, placements, arity,
-identifiers (names, StageRefs, predicate ids, state keys, signal-source
-ids), one required integer (`max_iters`), and namespace references.
+identifiers (names, StageRefs, predicate ids, state keys, signal ids from
+the `calibration.signal` namespace, opaque input-feature ids), one required
+integer (`max_iters`), and namespace references.
 `Provenance` is a CLOSED shape (identifiers + one canonical hash; raw
 pattern params never serialize — admission-contract canary). Telemetry
 (§3.10) is counts/rates/enums/finite numbers. The opaque escape hatches
@@ -694,6 +713,8 @@ increment (§2).
 | 1 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 10 blocking, 5 non-blocking | All addressed in Draft v2: (1) arm resolution made tag-driven (`stage`/`composite` tags; bare = stage always; `ambiguous_arm` rejection); (2) pre-cascade made total (first-match-wins routing with fallback arm, per-gate signals + per-gate cost, absent-signal routes onward, `pre_gate_requires_signal`); (3) ensemble cardinality: required iff single-arm, int-typed, R9 rejection for k<1, both cost forms; (4) judge output contract (finite numeric score, exclusion rules, all-excluded fails, deterministic tie-break); (5) loop state formalized (`state_keys` + `stop_signal_outside_state`; pure ⟺ empty); (6) dependency compilation rebuilt as DECLARED parentage (`tuned_params` on stage arms) + static coverage obligations (`missing_composite_parent`), `missing_ref` stays single authority, judge/signal parents included; (7) root-consumption rule (all N_X roots, conservative fail-closed; selective consumption deferred); (8) subsumption made exact (scope?/parameters? carried onto Composite verbatim; empty tuned_params on migrated stages stated as intended ratchet); (9) Provenance closed shape (param_hash only, canary in admission contract); (10) C5 verification split by mechanism incl. condition 4. Non-blocking: full error-code surface §3.11; SignalSourceRef clarified as the RFC 0001 calibration-source registry (no new declaration surface); degenerate fixtures added to §9; AcceptDecl separated from GateDecl with opposite inequality; P6 note absorbed. |
 
 | 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 5 blocking (all on the NEW round-1 machinery); round-1 dispositions confirmed closed | All addressed in Draft v3: (1) R9 integrated into the acceptance algebra — explicit `Accept₁.₂ ⟺ ¬(R1∨…∨R9) ∧ calibrators ≠ ⊥` with P3/P4 carrying over and a conservativity note (R9 unreachable on 1.1 modules); (2) `tuned_params` entries now have a static TVAR-only resolution rule (`invalid_tuned_param`, well-formedness item 9) making C6 hold by construction; (3) `arm_params` map REPLACED by a single ArmSurface form declared ON the arm (bare Ident │ {stage, tuned_params?} │ {composite}) used identically for cascade arms, loop body, ensemble arms and judge — `invalid_arm_shape` for unknown keys; (4) `SignalSourceRef` (a source id) replaced by `SignalUse ⟨spec: SignalSpec, inputs⟩` preserving RFC 0001's source/signal split — the spec is the §3.5 closed signal shape hashed H_c(σ); stop inputs MUST ⊆ state_keys making `stop_signal_outside_state` precisely checkable; (5) numeric threshold type rule (`invalid_threshold_type`: thresholds are int/float CVARs; non-finite resolved values fail evaluation). |
+
+| 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 3 findings (1 model choice + 2 wording residue); rounds 1–2 dispositions confirmed closed (incl. judge-arm coverage via ArmSurface and §3.11 completeness) | All addressed in Draft v4: (1) the signal model is CHOSEN explicitly — `SignalUse.signal` is a named Ident into the SAME registry namespace as RFC 0001's module-facing `calibration.signal` (one signal model across the language; the closed SignalSpec shape enters only through H_c(σ)); SignalSurface grammar added to §3.9 and `invalid_signal_use` to §3.11; (2) stale `arm_params` wording in §4 corrected to per-arm `tuned_params`; (3) §7 terminology fixed (signal ids + opaque input-feature ids; sources reserved for evidence pools). |
 
 Design pre-review (before Draft v1): Option E architecture ACCEPTed by
 codex (gpt-5.5 xhigh — 4 hard constraints + terminology edits, all
