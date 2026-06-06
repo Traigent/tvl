@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
@@ -39,7 +39,14 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 # empty segments, no leading/trailing dots, no hyphens. Enforced on the NEW
 # surfaces (cvars/policies/scope) as errors; legacy tvar names are untouched.
 _NORMATIVE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
-_CTX_EXT_KEYS = {"stage_versions", "model_versions", "budget_assumptions", "cost_assumptions"}
+_CTX_EXT_KEYS = {
+    "stage_versions",
+    "model_versions",
+    "budget_assumptions",
+    "cost_assumptions",
+    # TVL 1.2 (RFC 0002 §3.2 item 11): use-site SignalUse.inputs freshness.
+    "signal_inputs",
+}
 _CVAR_TYPE_RE = re.compile(r"^(bool|int|float|enum\[(str|int|float)\])$")
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
 _NON_LINEAR_TOKENS_STRUCTURAL = {"*", "/", "^"}
@@ -60,6 +67,7 @@ def lint_module(doc: Dict[str, Any], precision: int = 1000) -> List[Issue]:
     _lint_duplicate_tvars(doc, issues)
     _lint_cvars(doc, issues)
     _lint_policies(doc, issues)
+    _lint_composites(doc, issues)
     _lint_namespace(doc, issues)
     _lint_environment(doc, issues)
     context = _build_type_context(doc)
@@ -414,6 +422,1030 @@ def _lint_policies(doc: Dict[str, Any], issues: List[Issue]) -> None:
                         }
                     )
         _check_scope(decl, ["policies", idx], name, issues)
+
+
+# ---------------------------------------------------------------------------
+# TVL 1.2 (RFC 0002) — the sealed composite-knob algebra.
+#
+# Sealed registries (§3.2). A fourth member is a NEW RFC, not a registry entry.
+# ---------------------------------------------------------------------------
+_COMPOSITE_KINDS = {"cascade", "ensemble", "loop"}
+_GATE_KINDS = {"margin_below", "signal_below"}
+_AGGREGATE_KINDS = {"majority_vote", "judge_max"}
+_ACCEPT_STATS = {"vote_margin", "vote_agreement"}
+_STOP_KINDS = {"signal_accept", "external_accept", "exhausted"}
+_NUMERIC_CVAR_TYPES = {"int", "float"}
+
+# The canonical vote-statistic ids that live in the SAME registry namespace as
+# named signals (§3.2 item 11): sig(margin_below) = "vote_margin".
+_CANONICAL_VOTE_MARGIN = "vote_margin"
+
+# Exactly the body fields admissible per kind (§3.2 item 1: closed shapes).
+# 'name'/'kind' and the universal optional keys are allowed for every kind.
+_COMPOSITE_COMMON_FIELDS = {"name", "kind", "pattern", "parameters", "scope"}
+_COMPOSITE_KIND_FIELDS = {
+    "cascade": {"placement", "arms", "gates"},
+    "ensemble": {"arms", "cardinality", "aggregate"},
+    "loop": {"body", "state_keys", "stop", "max_iters"},
+}
+
+
+def _is_arm_object(arm: Any, key: str) -> bool:
+    return isinstance(arm, dict) and key in arm
+
+
+def _lint_composites(doc: Dict[str, Any], issues: List[Issue]) -> None:
+    """RFC 0002 §3 — the composite-knob algebra (cascade | ensemble | loop).
+
+    Implements the §3.11 1:1 code↔rule table. Every rejection here fires at the
+    composite USE SITE only — a 1.1 module declares no composites, so none of
+    these lints can fire on it (P1 preserved, §4). The reused RFC 0001 codes
+    (``cascade_arity``, ``unknown_gate_kind``, ``missing_ref``) carry identical
+    semantics onto the composite construct.
+    """
+    composites = doc.get("composites")
+    if composites is None:
+        return
+    if not isinstance(composites, list):
+        issues.append(
+            {
+                "code": "invalid_composites",
+                "message": "composites must be a list of declarations",
+                "path": ["composites"],
+                "severity": "error",
+            }
+        )
+        return
+
+    # Declared identifiers from the other namespace classes (§3.1: composites
+    # join the SAME scoped namespace). Types are tracked for the threshold /
+    # cardinality kind-and-type checks (items 6, 7, 10).
+    tvar_types: Dict[str, str] = {}
+    for d in (doc.get("tvars") or []):
+        if isinstance(d, dict) and isinstance(d.get("name"), str):
+            kind = _normalize_kind(d.get("type")) if isinstance(d.get("type"), str) else None
+            tvar_types[d["name"]] = kind if kind is not None else ""
+    tvar_names = set(tvar_types)
+    cvar_decls: Dict[str, Dict[str, Any]] = {
+        d["name"]: d
+        for d in (doc.get("cvars") or [])
+        if isinstance(d, dict) and isinstance(d.get("name"), str)
+    }
+    cvar_names = set(cvar_decls)
+    other_class_names = set(tvar_names) | cvar_names | {
+        d.get("name")
+        for d in (doc.get("policies") or [])
+        if isinstance(d, dict) and isinstance(d.get("name"), str)
+    }
+
+    # Pass 1: the N_X membership + duplicate/shadow discipline (§3.1).
+    composite_names: Set[str] = set()
+    seen: Set[str] = set()
+    for idx, decl in enumerate(composites):
+        if not isinstance(decl, dict):
+            issues.append(
+                {
+                    "code": "invalid_composite_decl",
+                    "message": "composite declarations must be objects",
+                    "path": ["composites", idx],
+                    "severity": "error",
+                }
+            )
+            continue
+        name = decl.get("name")
+        if not isinstance(name, str) or not _NORMATIVE_IDENT_RE.match(name):
+            issues.append(
+                {
+                    "code": "invalid_composite_name",
+                    "message": "composite declarations require a valid identifier name",
+                    "path": ["composites", idx, "name"],
+                    "severity": "error",
+                }
+            )
+            continue
+        if name in seen:
+            issues.append(
+                {
+                    "code": "duplicate_composite",
+                    "message": f"composite '{name}' is declared multiple times",
+                    "path": ["composites", idx, "name"],
+                    "severity": "error",
+                }
+            )
+        seen.add(name)
+        if name in other_class_names:
+            issues.append(
+                {
+                    "code": "composite_shadows_name",
+                    "message": (
+                        f"composite '{name}' shadows a name already declared as a "
+                        "tvar/cvar/policy — tvars, cvars, policies, and composites "
+                        "share one namespace (N_X)"
+                    ),
+                    "path": ["composites", idx, "name"],
+                    "severity": "error",
+                }
+            )
+        composite_names.add(name)
+
+    composites_by_name: Dict[str, Dict[str, Any]] = {
+        d["name"]: d
+        for d in composites
+        if isinstance(d, dict) and isinstance(d.get("name"), str)
+    }
+
+    # The N_X reference DAG over composite(·) arms, for acyclicity (item 4) and
+    # the leafT/Cal recursive folds (§3.5 / §3.6). Built once over all decls.
+    child_refs = _composite_child_refs(composites, composite_names)
+    cyclic_nodes = _composite_cyclic_nodes(child_refs)
+
+    # Module-level freshness coverage for the §3.2 item-11 signal_inputs rule.
+    ctx_keys, covered_signal_inputs = _doc_calibration_coverage(doc)
+
+    # Pass 2: per-composite well-formedness.
+    for idx, decl in enumerate(composites):
+        if not isinstance(decl, dict) or not isinstance(decl.get("name"), str):
+            continue
+        _lint_one_composite(
+            decl,
+            idx,
+            issues,
+            composite_names=composite_names,
+            composites_by_name=composites_by_name,
+            tvar_names=tvar_names,
+            tvar_types=tvar_types,
+            cvar_decls=cvar_decls,
+            cyclic_nodes=cyclic_nodes,
+            ctx_keys=ctx_keys,
+            covered_signal_inputs=covered_signal_inputs,
+        )
+
+
+def _doc_calibration_coverage(doc: Dict[str, Any]) -> Tuple[Set[str], Optional[List[Any]]]:
+    """The module's freshness-context coverage (RFC 0001 §3.5 / RFC 0002 §3.2
+    item 11). Returns (a) the set of hash_covered_context EXTENSION keys and
+    (b) the ordered value covered under 'signal_inputs'
+    (``require_calibration.signal_inputs``). The item-11 ``unbound_signal_inputs``
+    check is static — both the use-site inputs list and this covered value are
+    declared identifier lists."""
+    policy = doc.get("promotion_policy")
+    if not isinstance(policy, dict):
+        return set(), None
+    spec = policy.get("require_calibration")
+    if not isinstance(spec, dict):
+        return set(), None
+    keys = spec.get("hash_covered_context")
+    if not isinstance(keys, list):
+        return set(), None
+    ctx_keys = {k for k in keys if isinstance(k, str)}
+    covered = spec.get("signal_inputs") if "signal_inputs" in spec else None
+    return ctx_keys, covered if isinstance(covered, list) else None
+
+
+def _composite_child_refs(
+    composites: List[Any], composite_names: Set[str]
+) -> Dict[str, Set[str]]:
+    """The N_X reference graph: composite name → set of composite names it
+    references via tagged ``composite(x)`` arms (in arms / body / judge)."""
+    refs: Dict[str, Set[str]] = {}
+    for decl in composites:
+        if not isinstance(decl, dict) or not isinstance(decl.get("name"), str):
+            continue
+        name = decl["name"]
+        out: Set[str] = refs.setdefault(name, set())
+        for arm in _all_arms_of(decl):
+            if isinstance(arm, dict) and isinstance(arm.get("composite"), str):
+                ref = arm["composite"]
+                if ref in composite_names:
+                    out.add(ref)
+    return refs
+
+
+def _all_arms_of(decl: Dict[str, Any]) -> List[Any]:
+    """Every arm surface a composite carries: cascade/ensemble arms, the loop
+    body, and the ensemble judge — the positions an ``Arm`` may appear (§3.9)."""
+    arms: List[Any] = []
+    raw_arms = decl.get("arms")
+    if isinstance(raw_arms, list):
+        arms.extend(raw_arms)
+    body = decl.get("body")
+    if body is not None:
+        arms.append(body)
+    aggregate = decl.get("aggregate")
+    if isinstance(aggregate, dict):
+        judge = aggregate.get("judge")
+        if judge is not None:
+            arms.append(judge)
+    return arms
+
+
+def _composite_cyclic_nodes(child_refs: Dict[str, Set[str]]) -> Set[str]:
+    """Names that participate in any cycle of the N_X reference graph (item 4).
+
+    Returns every node on a cycle OR reaching one, so the ``composite_cycle``
+    diagnostic fires on each declaration whose expansion would not terminate.
+    """
+    WHITE, GREY, BLACK = 0, 1, 2
+    color: Dict[str, int] = {n: WHITE for n in child_refs}
+    on_cycle: Set[str] = set()
+
+    def visit(node: str, stack: List[str]) -> bool:
+        color[node] = GREY
+        stack.append(node)
+        hit = False
+        for nxt in child_refs.get(node, set()):
+            if color.get(nxt, WHITE) == GREY:
+                # Back-edge: every node from nxt's stack position onward is on a cycle.
+                start = stack.index(nxt)
+                on_cycle.update(stack[start:])
+                hit = True
+            elif color.get(nxt, WHITE) == WHITE:
+                if visit(nxt, stack):
+                    on_cycle.add(node)
+                    hit = True
+            elif nxt in on_cycle:
+                on_cycle.add(node)
+                hit = True
+        stack.pop()
+        color[node] = BLACK
+        return hit
+
+    for n in list(child_refs):
+        if color.get(n, WHITE) == WHITE:
+            visit(n, [])
+    return on_cycle
+
+
+def _lint_one_composite(
+    decl: Dict[str, Any],
+    idx: int,
+    issues: List[Issue],
+    *,
+    composite_names: Set[str],
+    composites_by_name: Dict[str, Dict[str, Any]],
+    tvar_names: Set[str],
+    tvar_types: Dict[str, str],
+    cvar_decls: Dict[str, Dict[str, Any]],
+    cyclic_nodes: Set[str],
+    ctx_keys: Set[str],
+    covered_signal_inputs: Optional[List[Any]],
+) -> None:
+    name = decl["name"]
+    base = ["composites", idx]
+
+    # §3.1 — a composite never binds a value. These value-binding keys carry the
+    # PRECISE composite_binds_value diagnostic (not the generic unknown field one).
+    value_keys = [k for k in ("value", "default", "binding") if k in decl]
+    for offending in value_keys:
+        issues.append(
+            {
+                "code": "composite_binds_value",
+                "message": (
+                    f"composite '{name}' binds a value ('{offending}') — a composite "
+                    "is a namespace/expansion unit, never a binding kind (§3.1)"
+                ),
+                "path": base + [offending],
+                "severity": "error",
+            }
+        )
+
+    # Item 1 — kind registry.
+    kind = decl.get("kind")
+    if kind not in _COMPOSITE_KINDS:
+        issues.append(
+            {
+                "code": "unknown_composite_kind",
+                "message": (
+                    f"composite '{name}' kind '{kind}' is not in the sealed v1 "
+                    "registry (cascade | ensemble | loop)"
+                ),
+                "path": base + ["kind"],
+                "severity": "error",
+            }
+        )
+        # Without a known kind the body fields cannot be checked further.
+        return
+
+    # Item 1 — closed shapes: exactly the body fields of the declared kind.
+    # Value-binding keys are excluded here (carried by composite_binds_value).
+    allowed = _COMPOSITE_COMMON_FIELDS | _COMPOSITE_KIND_FIELDS[kind] | set(value_keys)
+    for field_name in decl:
+        if field_name not in allowed:
+            issues.append(
+                {
+                    "code": "unknown_composite_field",
+                    "message": (
+                        f"composite '{name}' (kind '{kind}') has field '{field_name}' "
+                        "which is unknown or belongs to another constructor (closed shapes)"
+                    ),
+                    "path": base + [field_name],
+                    "severity": "error",
+                }
+            )
+
+    # Item 4 — acyclic N_X reference graph.
+    if name in cyclic_nodes:
+        issues.append(
+            {
+                "code": "composite_cycle",
+                "message": (
+                    f"composite '{name}' participates in a cycle of the composite "
+                    "reference graph; nesting must be acyclic so expansion terminates (§3.2 item 4)"
+                ),
+                "path": base + ["name"],
+                "severity": "error",
+            }
+        )
+
+    ctx = _CompositeCtx(
+        name=name,
+        base=base,
+        issues=issues,
+        composite_names=composite_names,
+        composites_by_name=composites_by_name,
+        tvar_names=tvar_names,
+        tvar_types=tvar_types,
+        cvar_decls=cvar_decls,
+        ctx_keys=ctx_keys,
+        covered_signal_inputs=covered_signal_inputs,
+    )
+
+    # Items 3, 6, 9 — arm resolution + stage-duplicate + tuned_params, over
+    # EVERY arm position (arms / body / judge). Shared so duplicate_stage spans
+    # the whole composite (extended scope, §3.11).
+    _check_arms(decl, kind, ctx)
+
+    if kind == "cascade":
+        _check_cascade(decl, ctx)
+    elif kind == "ensemble":
+        _check_ensemble(decl, ctx)
+    elif kind == "loop":
+        _check_loop(decl, ctx)
+
+    # §3.5 — required_parents(θ) ⊆ depends_on(θ) for every threshold CVAR
+    # (missing_composite_parent). Skip cyclic composites: leafT would not
+    # terminate and the cycle is already reported.
+    if name not in cyclic_nodes:
+        _check_composite_parents(decl, kind, ctx)
+
+
+@dataclass
+class _CompositeCtx:
+    name: str
+    base: List[Any]
+    issues: List[Issue]
+    composite_names: Set[str]
+    composites_by_name: Dict[str, Dict[str, Any]]
+    tvar_names: Set[str]
+    tvar_types: Dict[str, str]
+    cvar_decls: Dict[str, Dict[str, Any]]
+    # Module-level freshness-context coverage (§3.2 item 11 / RFC 0001 §3.5):
+    # the promotion_policy.require_calibration.hash_covered_context keys and the
+    # value covered under 'signal_inputs', resolved once for the whole module.
+    ctx_keys: Set[str] = field(default_factory=set)
+    covered_signal_inputs: Optional[List[Any]] = None
+
+    def add(self, code: str, message: str, path: List[Any], severity: str = "error") -> None:
+        self.issues.append(
+            {"code": code, "message": message, "path": path, "severity": severity}
+        )
+
+
+def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
+    """Items 3/6/9 — arm shape, resolution, stage duplicates, tuned_params,
+    over every arm position in the composite (§3.9 one-shape rule)."""
+    stage_paths: Dict[str, List[Any]] = {}
+
+    def visit_arm(arm: Any, path: List[Any]) -> None:
+        if isinstance(arm, str):
+            # Bare identifier is ALWAYS a stage (§3.2 item 3). A bare id that
+            # collides with a composite name is ambiguous_arm (not silent resolve).
+            if arm in ctx.composite_names:
+                ctx.add(
+                    "ambiguous_arm",
+                    f"composite '{ctx.name}' bare arm '{arm}' collides with a declared "
+                    "composite name; use the tagged {{composite: ...}} form to nest, or "
+                    "rename the stage",
+                    path,
+                )
+            else:
+                _record_stage(arm, path, stage_paths, ctx)
+            return
+        if not isinstance(arm, dict):
+            ctx.add(
+                "invalid_arm_shape",
+                f"composite '{ctx.name}' arm must be a bare stage identifier, "
+                "{{stage, tuned_params?}}, or {{composite}}",
+                path,
+            )
+            return
+        has_stage = "stage" in arm
+        has_composite = "composite" in arm
+        # §3.9 ArmSurface: the stage form allows {stage, tuned_params?}; the
+        # nesting form allows {composite} ONLY — tuned_params on a
+        # composite-tagged arm is a closure bypass (codex P4 round 1).
+        allowed = {"stage", "tuned_params"} if has_stage and not has_composite else {"composite"}
+        unknown = set(arm) - allowed
+        if unknown or (has_stage and has_composite) or not (has_stage or has_composite):
+            ctx.add(
+                "invalid_arm_shape",
+                f"composite '{ctx.name}' arm has an unknown or ambiguous shape; expected "
+                "exactly one of a stage form {{stage, tuned_params?}} or a nesting form "
+                "{{composite}}",
+                path,
+            )
+            return
+        if has_stage:
+            stage_id = arm.get("stage")
+            if isinstance(stage_id, str):
+                _record_stage(stage_id, path + ["stage"], stage_paths, ctx)
+            tuned = arm.get("tuned_params")
+            if tuned is None:
+                tuned = []
+            if isinstance(tuned, list):
+                for tp_idx, tp in enumerate(tuned):
+                    if tp not in ctx.tvar_names:
+                        ctx.add(
+                            "invalid_tuned_param",
+                            f"composite '{ctx.name}' tuned_params entry '{tp}' does not "
+                            "resolve to a declared TVAR (exact match; cvars/policies/"
+                            "composites are not tuned parents)",
+                            path + ["tuned_params", tp_idx],
+                        )
+        else:  # has_composite
+            ref = arm.get("composite")
+            if not isinstance(ref, str) or ref not in ctx.composite_names:
+                ctx.add(
+                    "missing_composite_ref",
+                    f"composite '{ctx.name}' nests composite('{ref}') which does not "
+                    "resolve to any declared composite (exact match into N_X)",
+                    path + ["composite"],
+                )
+
+    # cascade/ensemble arms
+    raw_arms = decl.get("arms")
+    if isinstance(raw_arms, list):
+        for a_idx, arm in enumerate(raw_arms):
+            visit_arm(arm, ctx.base + ["arms", a_idx])
+    # loop body
+    if kind == "loop" and decl.get("body") is not None:
+        visit_arm(decl.get("body"), ctx.base + ["body"])
+    # ensemble judge
+    aggregate = decl.get("aggregate")
+    if isinstance(aggregate, dict) and aggregate.get("judge") is not None:
+        visit_arm(aggregate.get("judge"), ctx.base + ["aggregate", "judge"])
+
+
+def _record_stage(
+    stage_id: str, path: List[Any], stage_paths: Dict[str, List[Any]], ctx: _CompositeCtx
+) -> None:
+    if stage_id in stage_paths:
+        ctx.add(
+            "duplicate_stage",
+            f"composite '{ctx.name}' declares duplicate stage '{stage_id}'",
+            path,
+        )
+    else:
+        stage_paths[stage_id] = path
+
+
+def _threshold_cvar_checks(
+    threshold: Any,
+    path: List[Any],
+    ctx: _CompositeCtx,
+    *,
+    sig_expected: Optional[str],
+    sig_inputs: Sequence[str],
+) -> None:
+    """Items 6, 10, 11 — a gate/accept/stop threshold reference.
+
+    - resolves to a declared CVAR (item 6, reused ``missing_ref``);
+    - that CVAR is int/float-typed (item 10, ``invalid_threshold_type``);
+    - the composite-use-site signal binding (item 11): the CVAR's
+      ``calibration.signal`` MUST equal ``sig_expected``
+      (``missing_calibration_signal`` / ``signal_mismatch``); when the governing
+      ``SignalUse.inputs`` is non-empty the CVAR's promotion-policy
+      ``hash_covered_context`` MUST include ``signal_inputs`` and its covered
+      value MUST equal the use-site list (``unbound_signal_inputs``).
+    """
+    if not isinstance(threshold, str) or threshold not in ctx.cvar_decls:
+        ctx.add(
+            "missing_ref",
+            f"composite '{ctx.name}' threshold '{threshold}' must resolve to a declared "
+            "CVAR (kind-checked namespace ref)",
+            path,
+        )
+        return
+    cvar = ctx.cvar_decls[threshold]
+    cvar_type = cvar.get("type")
+    if cvar_type not in _NUMERIC_CVAR_TYPES:
+        ctx.add(
+            "invalid_threshold_type",
+            f"composite '{ctx.name}' threshold CVAR '{threshold}' has type "
+            f"'{cvar_type}'; gate/accept/stop thresholds must be int or float (§3.2 item 10)",
+            path,
+        )
+
+    # Item 11 — signal/threshold calibration binding (composite use site only).
+    if sig_expected is not None:
+        calibration = cvar.get("calibration")
+        declared_signal = (
+            calibration.get("signal") if isinstance(calibration, dict) else None
+        )
+        if declared_signal is None:
+            ctx.add(
+                "missing_calibration_signal",
+                f"composite '{ctx.name}' uses CVAR '{threshold}' as a threshold but it "
+                f"declares no calibration.signal; the composite obliges it to declare "
+                f"calibration.signal = '{sig_expected}' (§3.2 item 11)",
+                path,
+            )
+        elif declared_signal != sig_expected:
+            ctx.add(
+                "signal_mismatch",
+                f"composite '{ctx.name}' threshold CVAR '{threshold}' is calibrated "
+                f"against signal '{declared_signal}' but the construct measures "
+                f"'{sig_expected}'; a threshold calibrated against one signal gating "
+                "another is vacuously fresh (§3.2 item 11)",
+                path,
+            )
+
+        # Item 11 (cont.) — use-site signal-inputs freshness coverage.
+        if sig_inputs:
+            covered = ctx.covered_signal_inputs
+            covered_list = covered if isinstance(covered, list) else []
+            if "signal_inputs" not in ctx.ctx_keys or list(covered_list) != list(sig_inputs):
+                ctx.add(
+                    "unbound_signal_inputs",
+                    f"composite '{ctx.name}' threshold CVAR '{threshold}' has a governing "
+                    f"SignalUse.inputs {list(sig_inputs)} that is not freshness-bound: its "
+                    "promotion_policy.require_calibration.hash_covered_context must include "
+                    "'signal_inputs' AND the covered value must equal the use-site input "
+                    "list (§3.2 item 11)",
+                    path,
+                )
+
+
+def _check_cascade(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
+    arms = decl.get("arms")
+    arms_list = arms if isinstance(arms, list) else []
+    if not arms_list:
+        ctx.add("empty_arms", f"composite '{ctx.name}' cascade has no arms", ctx.base + ["arms"])
+    gates = decl.get("gates") or []
+    gates_list = gates if isinstance(gates, list) else []
+
+    # Item 2 — cascade arity |gates| = |arms| − 1 (reused code).
+    if arms_list and len(gates_list) != max(len(arms_list) - 1, 0):
+        ctx.add(
+            "cascade_arity",
+            f"composite '{ctx.name}' declares {len(gates_list)} gate(s) for "
+            f"{len(arms_list)} arm(s); |gates| must equal |arms| - 1",
+            ctx.base + ["gates"],
+        )
+
+    placement = decl.get("placement", "post")  # DEFAULT post
+    for g_idx, gate in enumerate(gates_list):
+        if not isinstance(gate, dict):
+            continue
+        gpath = ctx.base + ["gates", g_idx]
+        _check_gate(gate, g_idx, gpath, placement, arms_list, ctx)
+
+
+def _arm_is_margin_bearing(arm: Any, composites_by_name: Dict[str, Dict[str, Any]]) -> bool:
+    """§3.2 item 5: the gated arm must be margin-bearing — either a stage arm
+    (RFC 0001 vote semantics) or an ensemble arm whose aggregate.kind =
+    majority_vote (committee vote statistics). A loop arm, a judge_max ensemble,
+    or any nested cascade (pre OR post) is NOT margin-bearing."""
+    if isinstance(arm, str):
+        return True  # bare = stage
+    if not isinstance(arm, dict):
+        return False
+    if "stage" in arm:
+        return True
+    if "composite" in arm:
+        ref = arm.get("composite")
+        target = composites_by_name.get(ref) if isinstance(ref, str) else None
+        if not isinstance(target, dict):
+            return False  # unresolved — missing_composite_ref already fired
+        if target.get("kind") != "ensemble":
+            return False
+        aggregate = target.get("aggregate")
+        return (
+            isinstance(aggregate, dict)
+            and aggregate.get("kind") == "majority_vote"
+        )
+    return False
+
+
+def _check_gate(
+    gate: Dict[str, Any],
+    g_idx: int,
+    gpath: List[Any],
+    placement: Any,
+    arms_list: List[Any],
+    ctx: _CompositeCtx,
+) -> None:
+    """Items 5, 6, 10, 11 — a composite cascade gate."""
+    gkind = gate.get("kind")
+    if gkind not in _GATE_KINDS:
+        ctx.add(
+            "unknown_gate_kind",
+            f"composite '{ctx.name}' gate kind '{gkind}' is not in the v1 registry "
+            "(margin_below | signal_below)",
+            gpath + ["kind"],
+        )
+        # Unknown kind: still kind-check the threshold ref below, but skip the
+        # placement/typing rules that are keyed on the (now unknown) kind.
+
+    signal_use = gate.get("signal")
+    sig_inputs: Sequence[str] = ()
+    sig_expected: Optional[str] = None
+
+    if gkind == "margin_below":
+        # margin_below is POST-only and gates a margin-bearing arm.
+        if placement == "pre":
+            ctx.add(
+                "gate_kind_placement_mismatch",
+                f"composite '{ctx.name}' uses a margin_below gate under placement 'pre'; "
+                "margin_below is POST-only (§3.2 item 5)",
+                gpath + ["kind"],
+            )
+        else:
+            # The gated arm of g_i (1-indexed gate i) is arm i, i.e. arms_list[g_idx].
+            gated = arms_list[g_idx] if g_idx < len(arms_list) else None
+            if gated is not None and not _arm_is_margin_bearing(gated, ctx.composites_by_name):
+                ctx.add(
+                    "gate_arm_incompatible",
+                    f"composite '{ctx.name}' margin_below gate {g_idx} reads vote statistics "
+                    "from a non-margin-bearing arm; the gated arm must be a stage or a "
+                    "majority_vote ensemble (§3.2 item 5)",
+                    gpath,
+                )
+        sig_expected = _CANONICAL_VOTE_MARGIN  # sig(margin_below) = vote_margin
+    elif gkind == "signal_below":
+        # signal_below is PRE-only and requires a declared signal.
+        if placement != "pre":
+            ctx.add(
+                "gate_kind_placement_mismatch",
+                f"composite '{ctx.name}' uses a signal_below gate under placement 'post'; "
+                "signal_below is PRE-only (§3.2 item 5)",
+                gpath + ["kind"],
+            )
+        ok, sig_name, sig_inputs = _check_signal_use(
+            signal_use, gpath + ["signal"], ctx, required=True, in_state=None
+        )
+        if not ok and signal_use is None:
+            ctx.add(
+                "missing_gate_signal",
+                f"composite '{ctx.name}' signal_below gate {g_idx} is missing its required "
+                "signal field (§3.2 item 5)",
+                gpath,
+            )
+        sig_expected = sig_name  # sig(signal_below g) = g.signal.signal
+
+    _threshold_cvar_checks(
+        gate.get("threshold"),
+        gpath + ["threshold"],
+        ctx,
+        sig_expected=sig_expected,
+        sig_inputs=sig_inputs,
+    )
+
+
+def _check_signal_use(
+    signal_use: Any,
+    path: List[Any],
+    ctx: _CompositeCtx,
+    *,
+    required: bool,
+    in_state: Optional[Set[str]],
+) -> Tuple[bool, Optional[str], Sequence[str]]:
+    """§3.2/§3.9 SignalUse. Returns (well_formed, signal_name, inputs).
+
+    A malformed SignalUse object (missing signal, unknown keys, non-list inputs)
+    rejects ``invalid_signal_use``. When ``in_state`` is provided (loop stop),
+    ``inputs ⊄ state_keys`` rejects ``stop_signal_outside_state`` (item 8).
+    """
+    if signal_use is None:
+        return (False, None, ())
+    if not isinstance(signal_use, dict):
+        ctx.add(
+            "invalid_signal_use",
+            f"composite '{ctx.name}' signal use must be an object {{signal, inputs?}}",
+            path,
+        )
+        return (False, None, ())
+    unknown = set(signal_use) - {"signal", "inputs"}
+    signal_name = signal_use.get("signal")
+    inputs = signal_use.get("inputs", [])
+    malformed = (
+        unknown
+        or not isinstance(signal_name, str)
+        or not isinstance(inputs, list)
+    )
+    if malformed:
+        ctx.add(
+            "invalid_signal_use",
+            f"composite '{ctx.name}' signal use is malformed (missing 'signal', unknown "
+            "keys, or non-list 'inputs')",
+            path,
+        )
+        return (False, signal_name if isinstance(signal_name, str) else None, ())
+    # §3.9 SignalSurface: inputs is Ident* — a non-string or non-Ident
+    # element REJECTS (silent filtering would also suppress
+    # unbound_signal_inputs by emptying the effective list — codex P4
+    # round 1).
+    bad_inputs = [
+        i for i in inputs
+        if not isinstance(i, str) or not _NORMATIVE_IDENT_RE.match(i)
+    ]
+    if bad_inputs:
+        ctx.add(
+            "invalid_signal_use",
+            f"composite '{ctx.name}' signal use has non-Ident 'inputs' "
+            f"elements (inputs is Ident*)",
+            path + ["inputs"],
+        )
+        return (False, signal_name, ())
+    inputs_list = list(inputs)
+    if in_state is not None:
+        outside = [i for i in inputs_list if i not in in_state]
+        if outside:
+            ctx.add(
+                "stop_signal_outside_state",
+                f"composite '{ctx.name}' stop signal reads input keys {outside} that are "
+                "not declared in the loop's state_keys (§3.2 item 8)",
+                path + ["inputs"],
+            )
+    return (True, signal_name, tuple(inputs_list))
+
+
+def _check_ensemble(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
+    arms = decl.get("arms")
+    arms_list = arms if isinstance(arms, list) else []
+    if not arms_list:
+        ctx.add("empty_arms", f"composite '{ctx.name}' ensemble has no arms", ctx.base + ["arms"])
+
+    cardinality = decl.get("cardinality")
+    # Item 7 — cardinality present iff |arms| = 1.
+    if len(arms_list) == 1 and cardinality is None:
+        ctx.add(
+            "cardinality_arity_mismatch",
+            f"composite '{ctx.name}' sampling-form ensemble (|arms| = 1) requires a "
+            "cardinality reference (§3.2 item 7)",
+            ctx.base + ["arms"],
+        )
+    elif len(arms_list) > 1 and cardinality is not None:
+        ctx.add(
+            "cardinality_arity_mismatch",
+            f"composite '{ctx.name}' committee-form ensemble (|arms| > 1) must NOT declare "
+            "a cardinality (§3.2 item 7)",
+            ctx.base + ["cardinality"],
+        )
+    if cardinality is not None:
+        # Cardinality must reference a TVAR or CVAR of TVL type int.
+        card_type = _ref_type(cardinality, ctx)
+        if card_type is None:
+            ctx.add(
+                "missing_ref",
+                f"composite '{ctx.name}' cardinality '{cardinality}' must resolve to a "
+                "declared TVAR or CVAR (kind-checked namespace ref)",
+                ctx.base + ["cardinality"],
+            )
+        elif card_type != "int":
+            ctx.add(
+                "invalid_cardinality_type",
+                f"composite '{ctx.name}' cardinality '{cardinality}' has TVL type "
+                f"'{card_type}'; the sample count must be int-typed (§3.2 item 7)",
+                ctx.base + ["cardinality"],
+            )
+
+    aggregate = decl.get("aggregate")
+    if not isinstance(aggregate, dict):
+        return
+    apath = ctx.base + ["aggregate"]
+    akind = aggregate.get("kind")
+    if akind not in _AGGREGATE_KINDS:
+        ctx.add(
+            "unknown_aggregate_kind",
+            f"composite '{ctx.name}' aggregate kind '{akind}' is not in the v1 registry "
+            "(majority_vote | judge_max)",
+            apath + ["kind"],
+        )
+    if akind == "judge_max" and aggregate.get("judge") is None:
+        ctx.add(
+            "missing_judge",
+            f"composite '{ctx.name}' judge_max aggregate is missing its required judge arm "
+            "(§3.2)",
+            apath,
+        )
+
+    accept = aggregate.get("accept")
+    if isinstance(accept, dict):
+        cpath = apath + ["accept"]
+        stat = accept.get("stat")
+        if stat not in _ACCEPT_STATS:
+            ctx.add(
+                "unknown_aggregate_kind",
+                f"composite '{ctx.name}' accept stat '{stat}' is not in the v1 registry "
+                "(vote_margin | vote_agreement)",
+                cpath + ["stat"],
+            )
+        # sig(stat_at_least a) = a.stat (canonical vote-statistic id).
+        sig_expected = stat if stat in _ACCEPT_STATS else None
+        _threshold_cvar_checks(
+            accept.get("threshold"),
+            cpath + ["threshold"],
+            ctx,
+            sig_expected=sig_expected,
+            sig_inputs=(),  # accept carries no SignalUse; no use-site inputs
+        )
+
+
+def _check_loop(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
+    # Item 8 — max_iters ≥ 1 (totality). The schema pins it to an integer.
+    max_iters = decl.get("max_iters")
+    if isinstance(max_iters, bool) or not isinstance(max_iters, int) or max_iters < 1:
+        ctx.add(
+            "invalid_max_iters",
+            f"composite '{ctx.name}' loop max_iters must be an integer ≥ 1 (totality, §3.2 item 8)",
+            ctx.base + ["max_iters"],
+        )
+
+    state_keys_raw = decl.get("state_keys") or []
+    state_keys = {k for k in state_keys_raw if isinstance(k, str)}
+
+    stop = decl.get("stop")
+    if not isinstance(stop, dict):
+        return
+    spath = ctx.base + ["stop"]
+    skind = stop.get("kind")
+    if skind not in _STOP_KINDS:
+        ctx.add(
+            "unknown_stop_kind",
+            f"composite '{ctx.name}' stop kind '{skind}' is not in the v1 registry "
+            "(signal_accept | external_accept | exhausted)",
+            spath + ["kind"],
+        )
+
+    if skind == "signal_accept":
+        if stop.get("threshold") is None:
+            ctx.add(
+                "missing_stop_threshold",
+                f"composite '{ctx.name}' signal_accept stop is missing its required threshold "
+                "(§3.2)",
+                spath,
+            )
+        signal_use = stop.get("signal")
+        ok, sig_name, sig_inputs = _check_signal_use(
+            signal_use, spath + ["signal"], ctx, required=True, in_state=state_keys
+        )
+        if signal_use is None:
+            ctx.add(
+                "missing_stop_signal",
+                f"composite '{ctx.name}' signal_accept stop is missing its required signal "
+                "(§3.2)",
+                spath,
+            )
+        # sig(signal_accept stop) = stop.signal.signal.
+        if stop.get("threshold") is not None:
+            _threshold_cvar_checks(
+                stop.get("threshold"),
+                spath + ["threshold"],
+                ctx,
+                sig_expected=sig_name,
+                sig_inputs=sig_inputs,
+            )
+    elif skind == "external_accept":
+        if stop.get("predicate") is None:
+            ctx.add(
+                "missing_stop_predicate",
+                f"composite '{ctx.name}' external_accept stop is missing its required "
+                "predicate (§3.2)",
+                spath,
+            )
+
+
+def _ref_type(ref: Any, ctx: _CompositeCtx) -> Optional[str]:
+    """The declared TVL type of a TVAR/CVAR namespace reference, or None if it
+    resolves to neither. CVAR types carry through verbatim; TVAR types are
+    normalized to the base kind (int/float/bool/enum)."""
+    if not isinstance(ref, str):
+        return None
+    if ref in ctx.cvar_decls:
+        return ctx.cvar_decls[ref].get("type")
+    if ref in ctx.tvar_names:
+        return ctx.tvar_types.get(ref)
+    return None
+
+
+def _arm_leaf_tvars(
+    arm: Any, ctx: _CompositeCtx, seen: Set[str]
+) -> Set[str]:
+    """leafT over a single arm (§3.5). stage → its tuned_params ∩ N_T;
+    composite(x) → ⋃ leafT(arms/body/judge(x)) ∪ ({cardinality(x)} ∩ N_T),
+    recursively. Only TVAR-resolving identifiers are kept (C6 codomain)."""
+    if isinstance(arm, str):
+        return set()  # bare stage, empty tuned_params
+    if not isinstance(arm, dict):
+        return set()
+    if "stage" in arm:
+        tuned = arm.get("tuned_params") or []
+        return {t for t in tuned if isinstance(t, str) and t in ctx.tvar_names}
+    if "composite" in arm:
+        ref = arm.get("composite")
+        if not isinstance(ref, str) or ref in seen:
+            return set()
+        target = ctx.composites_by_name.get(ref)
+        if not isinstance(target, dict):
+            return set()
+        return _composite_leaf_tvars(target, ctx, seen | {ref})
+    return set()
+
+
+def _composite_leaf_tvars(
+    decl: Dict[str, Any], ctx: _CompositeCtx, seen: Set[str]
+) -> Set[str]:
+    """leafT(composite) — the union over its arms/body/judge plus a sampling
+    ensemble's Tuned cardinality (§3.5: ({cardinality} ∩ N_T))."""
+    leaves: Set[str] = set()
+    for arm in _all_arms_of(decl):
+        leaves |= _arm_leaf_tvars(arm, ctx, seen)
+    card = decl.get("cardinality")
+    if isinstance(card, str) and card in ctx.tvar_names:
+        leaves.add(card)
+    return leaves
+
+
+def _depends_on(threshold: Any, ctx: _CompositeCtx) -> Set[str]:
+    if not isinstance(threshold, str) or threshold not in ctx.cvar_decls:
+        return set()
+    calibration = ctx.cvar_decls[threshold].get("calibration")
+    if not isinstance(calibration, dict):
+        return set()
+    deps = calibration.get("depends_on") or []
+    return {d for d in deps if isinstance(d, str)}
+
+
+def _check_composite_parents(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
+    """§3.5 — required_parents(θ) ⊆ depends_on(θ) for every threshold CVAR
+    (missing_composite_parent). Purely static: both sides are declared
+    TVAR-only identifier sets. Skipped for thresholds that do not resolve to a
+    CVAR (already reported by missing_ref)."""
+
+    def emit(threshold: Any, required: Set[str], path: List[Any]) -> None:
+        if not isinstance(threshold, str) or threshold not in ctx.cvar_decls:
+            return
+        missing = required - _depends_on(threshold, ctx)
+        if missing:
+            ctx.add(
+                "missing_composite_parent",
+                f"composite '{ctx.name}' threshold CVAR '{threshold}' omits required parent "
+                f"TVAR(s) {sorted(missing)} from its calibration.depends_on; the arm(s) the "
+                "gate observes are parameterized by them (§3.5)",
+                path,
+            )
+
+    if kind == "cascade":
+        arms = decl.get("arms")
+        arms_list = arms if isinstance(arms, list) else []
+        gates = decl.get("gates") or []
+        gates_list = gates if isinstance(gates, list) else []
+        placement = decl.get("placement", "post")
+        # leafT per arm (index-aligned).
+        arm_leaves = [_arm_leaf_tvars(a, ctx, set()) for a in arms_list]
+        for g_idx, gate in enumerate(gates_list):
+            if not isinstance(gate, dict):
+                continue
+            if placement == "pre":
+                # required_parents(θ_i) = leafT(a_i) — the arm the gate admits.
+                required = arm_leaves[g_idx] if g_idx < len(arm_leaves) else set()
+            else:
+                # required_parents(θ_i) = leafT(a₁) ∪ … ∪ leafT(a_i) — the
+                # observed prefix (gate g_i reads a_i and prior arms).
+                required = set().union(*arm_leaves[: g_idx + 1]) if arm_leaves else set()
+            emit(gate.get("threshold"), required, ctx.base + ["gates", g_idx, "threshold"])
+    elif kind == "ensemble":
+        aggregate = decl.get("aggregate")
+        if not isinstance(aggregate, dict):
+            return
+        accept = aggregate.get("accept")
+        if not isinstance(accept, dict):
+            return
+        # required_parents(θ) = ⋃_j leafT(a_j) ∪ leafT(judge) ∪ ({cardinality} ∩ N_T).
+        required = _composite_leaf_tvars(decl, ctx, set())
+        emit(
+            accept.get("threshold"),
+            required,
+            ctx.base + ["aggregate", "accept", "threshold"],
+        )
+    elif kind == "loop":
+        stop = decl.get("stop")
+        if not isinstance(stop, dict) or stop.get("kind") != "signal_accept":
+            return
+        # required_parents(θ in Loop.stop) = leafT(body).
+        required = _arm_leaf_tvars(decl.get("body"), ctx, set())
+        emit(stop.get("threshold"), required, ctx.base + ["stop", "threshold"])
 
 
 def _lint_namespace(doc: Dict[str, Any], issues: List[Issue]) -> None:

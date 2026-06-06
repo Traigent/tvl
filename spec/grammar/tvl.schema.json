@@ -100,6 +100,11 @@
       "description": "TVL 1.1 (RFC 0001): named operational policy declarations (first strategy: cascade). Operational layer — never enters Γ, F^str, or the dominance relation.",
       "items": { "$ref": "#/$defs/PolicyDecl" }
     },
+    "composites": {
+      "type": "array",
+      "description": "TVL 1.2 (RFC 0002): the sealed composite-knob algebra — named bundles of member knobs and gate declarations under a declared control-flow shape (cascade | ensemble | loop). A composite is a namespace/expansion/provenance unit, NOT a binding kind: it never enters Γ, the configuration space, or the dominance relation (§3.1). Conservative extension — a module with no composites block parses byte-identically to TVL 1.1 (§4).",
+      "items": { "$ref": "#/$defs/Composite" }
+    },
     "constraints": {
       "type": "object",
       "description": "Constraint sets split between structural (TVAR formulas) and derived (linear constraints over numeric `env.context.*` symbols) clauses.",
@@ -226,10 +231,18 @@
             "enabled": { "type": "boolean" },
             "hash_covered_context": {
               "type": "array",
-              "description": "Optional extension keys added to the always-hashed ctx_core.",
+              "description": "Optional extension keys added to the always-hashed ctx_core. TVL 1.2 (RFC 0002 §3.2 item 11) adds 'signal_inputs' — the use-site SignalUse.inputs that select which keys the scoring function reads (conservative: an optional extension key; ctx_core is untouched).",
               "items": {
-                "enum": ["stage_versions", "model_versions", "budget_assumptions", "cost_assumptions"]
+                "enum": ["stage_versions", "model_versions", "budget_assumptions", "cost_assumptions", "signal_inputs"]
               }
+            },
+            "signal_inputs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+              },
+              "description": "TVL 1.2 (RFC 0002 §3.2 item 11): the ordered value covered under the 'signal_inputs' freshness-context key — the input-key list the calibration held fixed. A composite-bound threshold whose governing SignalUse has non-empty inputs requires this to be present (in hash_covered_context) AND equal to the use-site ordered input list (unbound_signal_inputs)."
             }
           }
         }
@@ -431,6 +444,160 @@
           "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee."
         },
         "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "Composite": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2/§3.9): a composite-knob declaration. The schema checks SHAPE only and is deliberately OPEN (additionalProperties:true): §3.11 makes the body-field discipline a NORMATIVE LINT (unknown_composite_field for unknown/cross-kind fields; composite_binds_value for a bound value), in 1:1 correspondence with the well-formedness rules. The kind REGISTRY (cascade|ensemble|loop), arm/gate/stop/aggregate registries, namespace references, threshold types, cardinality arity, acyclicity, and the signal/threshold calibration binding are likewise enforced by the lints — the same shape-vs-registry layering RFC 0001 uses for PolicyDecl.strategy, taken one step further so the closed-shape diagnostics are the lints' own (not generic schema_error).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique name in the shared tvars ∪ cvars ∪ policies ∪ composites namespace (N_X). Shadowing/duplication enforced by the lints."
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Constructor discriminator. The schema checks SHAPE only; the SEALED v1 registry (cascade | ensemble | loop) is enforced by the lints (unknown_composite_kind) so a fourth kind reports the normative diagnostic rather than a generic schema error."
+        },
+        "placement": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Cascade only; default post. SHAPE-checked here; the pre|post registry and the kind/placement gate symmetry are enforced by the lints."
+        },
+        "arms": {
+          "type": "array",
+          "description": "Cascade/ensemble arms. Non-emptiness (empty_arms) and arity (cascade_arity, cardinality_arity_mismatch) are enforced by the lints.",
+          "items": { "$ref": "#/$defs/ArmSurface" }
+        },
+        "gates": {
+          "type": "array",
+          "description": "Cascade gates. |gates| = |arms| − 1 (cascade_arity) enforced by the lints.",
+          "items": { "$ref": "#/$defs/CompositeGateDecl" }
+        },
+        "cardinality": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Ensemble sampling-form sample count: a namespace reference to a TVAR or CVAR of TVL type int. Required iff |arms| = 1, forbidden if |arms| > 1 (cardinality_arity_mismatch); int-typed (invalid_cardinality_type); k≥1 is resolution-time R9 (invalid_cardinality_value)."
+        },
+        "aggregate": {
+          "$ref": "#/$defs/AggregateDecl",
+          "description": "Ensemble aggregation declaration."
+        },
+        "body": {
+          "$ref": "#/$defs/ArmSurface",
+          "description": "Loop body — a single arm."
+        },
+        "state_keys": {
+          "type": "array",
+          "description": "Loop threaded-state keys (content-free identifiers; [] ⟺ pure body).",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+          }
+        },
+        "stop": {
+          "$ref": "#/$defs/StopDecl",
+          "description": "Loop stop declaration."
+        },
+        "max_iters": {
+          "type": "integer",
+          "description": "Loop iteration bound (totality). max_iters ≥ 1 enforced by the lints (invalid_max_iters)."
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "The ONLY surface provenance key (RFC 0002 §3.7/§3.9): a flat sugar key mapping to Provenance.pattern. The full closed Provenance object is expansion-output metadata (SDK-internal) — never surface syntax."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee, exactly as PolicyDecl.parameters (§3.2)."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "ArmSurface": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Bare identifier = a stage arm with empty tuned_params (back-compatible with policies.stages). A bare id colliding with a composite name is rejected by the lints (ambiguous_arm)."
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Object arm form: a stage arm {stage, tuned_params?} or a tagged nesting {composite}. The schema is OPEN (additionalProperties:true) and shape-permissive: §3.9 makes the closed-shape check a NORMATIVE LINT (invalid_arm_shape for unknown/ambiguous keys; missing_composite_ref for an unresolved nesting; invalid_tuned_param for non-TVAR tuned_params).",
+          "properties": {
+            "stage": { "type": "string" },
+            "composite": { "type": "string" },
+            "tuned_params": { "type": "array" }
+          }
+        }
+      ],
+      "description": "TVL 1.2 (RFC 0002 §3.9): the ONE arm surface form, used everywhere an Arm appears (cascade arms, loop body, ensemble arms and judge)."
+    },
+    "SignalSurface": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "TVL 1.2 (RFC 0002 §3.9): the SignalUse surface form (signal_below gates and signal_accept stops). signal names a registry signal exactly as calibration.signal does. The schema is OPEN: §3.2/§3.9 make the closed-shape check a NORMATIVE LINT — a malformed SignalUse (missing 'signal', unknown keys, non-list 'inputs') rejects invalid_signal_use, and stop inputs ⊄ state_keys rejects stop_signal_outside_state.",
+      "properties": {
+        "signal": { "type": "string" },
+        "inputs": {
+          "description": "Declared input keys the signal reads. For stops MUST ⊆ state_keys (stop_signal_outside_state); for pre-gates, opaque input-feature identifiers. A non-list value rejects invalid_signal_use (lint)."
+        }
+      }
+    },
+    "CompositeGateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "threshold"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): a composite cascade gate. The gate-kind registry (margin_below | signal_below — unknown_gate_kind, reused from RFC 0001), kind/placement symmetry, margin-bearing arm typing, signal requirement, and threshold-as-CVAR/int-or-float are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "signal": { "$ref": "#/$defs/SignalSurface" }
+      }
+    },
+    "AggregateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): ensemble aggregation. The aggregate-kind registry (majority_vote | judge_max — unknown_aggregate_kind), the judge requirement (missing_judge iff judge_max), and accept-threshold-as-CVAR are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "judge": {
+          "$ref": "#/$defs/ArmSurface",
+          "description": "REQUIRED iff kind=judge_max; stage- or composite-tagged (missing_judge)."
+        },
+        "accept": { "$ref": "#/$defs/AcceptDecl" }
+      }
+    },
+    "AcceptDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "stat", "threshold"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): optional ensemble acceptance (either aggregate kind). Acceptance direction is ≥ — deliberately DISTINCT from cascade escalation's <. kind=stat_at_least, stat ∈ {vote_margin, vote_agreement} (registries enforced by the lints); threshold MUST resolve to a CVAR.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "stat": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "StopDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): loop stop. The stop-kind registry (signal_accept | external_accept | exhausted — unknown_stop_kind), the per-kind required fields (missing_stop_threshold / missing_stop_signal iff signal_accept; missing_stop_predicate iff external_accept), the signal-input ⊆ state_keys rule (stop_signal_outside_state), and threshold-as-CVAR/int-or-float are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "signal": { "$ref": "#/$defs/SignalSurface" },
+        "predicate": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "REQUIRED iff kind=external_accept: OPAQUE runtime predicate id (StageRef-style — outside P8)."
+        }
       }
     },
     "DomainSpec": {

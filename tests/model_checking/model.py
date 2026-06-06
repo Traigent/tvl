@@ -18,6 +18,7 @@ import json
 import math
 import unicodedata
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
 # ---------------------------------------------------------------------------
@@ -307,6 +308,12 @@ R5_INFEASIBLE_VALUE = "infeasible_value"
 R6_STALE_CERTIFICATE = "stale_certificate"
 R7_EVIDENCE_LEAKAGE = "evidence_leakage"
 R8_INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+# RFC 0002 §3.2 item 7: resolution-time ensemble cardinality value rejection
+# (k < 1). It extends RFC 0001's §3.4 acceptance algebra to
+# Accept₁.₂ ⟺ ¬(R1 ∨ … ∨ R8 ∨ R9) ∧ calibrators ≠ ⊥. Conservative: a TVL 1.1
+# module declares no composites, so R9 is unreachable and Accept₁.₂ coincides
+# with RFC 0001's Accept on all 1.1 modules.
+R9_INVALID_CARDINALITY_VALUE = "invalid_cardinality_value"
 NO_DECISION_VERDICT = "no_decision"
 
 ALL_REJECTIONS = (
@@ -318,6 +325,7 @@ ALL_REJECTIONS = (
     R6_STALE_CERTIFICATE,
     R7_EVIDENCE_LEAKAGE,
     R8_INSUFFICIENT_EVIDENCE,
+    R9_INVALID_CARDINALITY_VALUE,
 )
 
 
@@ -372,14 +380,25 @@ def resolve(
     contexts: Mapping[str, FreshnessContext],
     *,
     eval_items: frozenset = frozenset(),
+    cardinality_values: Mapping[str, int] = MappingProxyType({}),
 ) -> Resolution:
-    """Transcription of RFC §3.4: Accept ⟺ ¬(R1∨...∨R8) ∧ ∀ calibrators ≠ ⊥.
+    """Transcription of RFC §3.4 + RFC 0002 §3.2 item 7:
+    Accept₁.₂ ⟺ ¬(R1∨...∨R8∨R9) ∧ ∀ calibrators ≠ ⊥.
 
     The implementation collects EVERY applicable rejection (no short-circuit)
-    so the property checks can assert exact complementarity.
+    so the property checks can assert exact complementarity. ``cardinality_values``
+    maps an ensemble's resolved sample count to its integer value; a value k < 1
+    is the resolution-time R9 rejection (``invalid_cardinality_value``). When the
+    mapping is empty (every TVL 1.1 module, and any composite-free instance) R9
+    is unreachable — preserving RFC 0001's Accept on 1.1 modules.
     """
     rejections: List[str] = []
     n_t, n_c = module.n_t, module.n_c
+
+    # R9 (RFC 0002 §3.2 item 7): resolution-time ensemble cardinality k < 1.
+    for card_name, k in cardinality_values.items():
+        if not isinstance(k, int) or isinstance(k, bool) or k < 1:
+            rejections.append(R9_INVALID_CARDINALITY_VALUE)
 
     # R2: depends_on must resolve to a declared TVAR (exact match, §3.7(4)).
     for cvar in module.cvars:

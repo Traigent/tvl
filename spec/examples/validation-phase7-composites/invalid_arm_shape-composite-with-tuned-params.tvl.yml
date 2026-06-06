@@ -1,0 +1,63 @@
+# Phase 7 (RFC 0002): a COMPOSITE-tagged arm may carry ONLY the 'composite'
+# key (§3.9 ArmSurface) — tuned_params belongs to stage arms.
+# Expected: invalid_arm_shape (codex P4 round-1 mutation probe).
+tvl:
+  module: corp.validation.p7
+environment:
+  snapshot_id: '2026-06-06T00:00:00Z'
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+tvars:
+- name: cheap_model
+  type: enum[str]
+  domain:
+  - a
+  - b
+- name: strong_model
+  type: enum[str]
+  domain:
+  - c
+  - d
+- name: k_samples
+  type: int
+  domain:
+    range:
+    - 1
+    - 9
+cvars:
+- name: router.theta
+  type: float
+  calibration:
+    source: pool
+    signal: vote_margin
+    depends_on: []
+constraints:
+  structural: []
+objectives:
+- name: quality
+  direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+composites:
+- name: inner
+  kind: cascade
+  placement: post
+  arms:
+  - stage: a
+  - stage: b
+  gates:
+  - kind: margin_below
+    threshold: router.theta
+- name: scored
+  kind: ensemble
+  arms:
+  - stage: s
+  cardinality: k_samples
+  aggregate:
+    kind: judge_max
+    judge:
+      composite: inner
+      tuned_params: [cheap_model]

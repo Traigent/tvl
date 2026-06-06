@@ -154,7 +154,9 @@ def test_p1_all_existing_examples_unchanged():
     }
     checked = 0
     for path in sorted(EXAMPLES.rglob("*.yml")):
-        if "validation-phase6-cvars" in str(path):
+        # Skip the forward validators-packet fixtures (phase 6 = RFC 0001,
+        # phase 7 = RFC 0002) — many are deliberately invalid by design.
+        if "validation-phase6-cvars" in str(path) or "validation-phase7-composites" in str(path):
             continue
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(doc, dict) or "tvars" not in doc:

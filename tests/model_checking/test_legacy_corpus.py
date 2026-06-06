@@ -21,12 +21,14 @@ from tvl.lints import lint_module
 
 EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "spec" / "examples"
 
-# The phase-6 fixtures themselves are 1.1-surface documents; exclude them from
-# the LEGACY corpus (they are the forward fixtures, not the 1.0 baseline).
+# The forward fixtures (phase-6 = RFC 0001 1.1 surface, phase-7 = RFC 0002 1.2
+# composites) are the validators-packet acceptance bar — many are deliberately
+# invalid — so they are NOT part of the LEGACY 1.0 baseline corpus.
+_FORWARD_FIXTURE_DIRS = ("validation-phase6-cvars", "validation-phase7-composites")
 CORPUS = sorted(
     p
     for p in EXAMPLES_ROOT.rglob("*.yml")
-    if "validation-phase6-cvars" not in str(p)
+    if not any(d in str(p) for d in _FORWARD_FIXTURE_DIRS)
 )
 
 INJECTED_CVARS = [

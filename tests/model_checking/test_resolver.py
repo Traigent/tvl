@@ -31,6 +31,7 @@ from .model import (
     R6_STALE_CERTIFICATE,
     R7_EVIDENCE_LEAKAGE,
     R8_INSUFFICIENT_EVIDENCE,
+    R9_INVALID_CARDINALITY_VALUE,
     TVar,
     h_c,
     issue_certificate,
@@ -274,6 +275,36 @@ def test_accepted_config_contains_every_declared_cvar():
     res = resolve(module, sugg, fixed, cals, evs, certs, ctxs)
     assert res.accepted
     assert set(res.config) >= {c.name for c in module.cvars}
+
+
+def test_r9_invalid_cardinality_value_reachable_and_blocks():
+    """RFC 0002 §3.2 item 7: a resolved ensemble cardinality k < 1 is the R9
+    rejection (invalid_cardinality_value), surfaced exactly as R1-R8 are — it
+    blocks acceptance under the Accept₁.₂ algebra."""
+    module, sugg, fixed, cals, evs, certs, ctxs = _happy_inputs()
+    for bad_k in (0, -1):
+        res = resolve(
+            module, sugg, fixed, cals, evs, certs, ctxs,
+            cardinality_values={"k": bad_k},
+        )
+        assert not res.accepted
+        assert R9_INVALID_CARDINALITY_VALUE in res.rejections, (bad_k, res.rejections)
+
+
+def test_r9_unreachable_without_composites_conservativity():
+    """Accept₁.₂ coincides with RFC 0001's Accept on every composite-free
+    module: with no cardinality_values the happy path still accepts and R9 is
+    unreachable (P1 / conservative extension)."""
+    module, sugg, fixed, cals, evs, certs, ctxs = _happy_inputs()
+    res = resolve(module, sugg, fixed, cals, evs, certs, ctxs)
+    assert res.accepted
+    assert R9_INVALID_CARDINALITY_VALUE not in res.rejections
+    # A valid k ≥ 1 likewise does not trip R9.
+    res_ok = resolve(
+        module, sugg, fixed, cals, evs, certs, ctxs, cardinality_values={"k": 5}
+    )
+    assert res_ok.accepted
+    assert R9_INVALID_CARDINALITY_VALUE not in res_ok.rejections
 
 
 def test_r5_type_conformance(  # codex fresh-round finding 2

@@ -1,0 +1,115 @@
+# Phase 7 (RFC 0002): VALID 1.2 module — the conformance-positive composite module.
+# Exercises: a governed binary post-cascade with a margin-bearing stage arm and
+# the §3.2 item-11 signal binding; a sampling-form majority_vote ensemble with a
+# tuned cardinality (its TVAR in leafT, §3.5) and an accept threshold; a
+# signal_accept loop (max_iters=3) whose stop signal reads a declared state key
+# and whose use-site inputs are freshness-bound (signal_inputs covered).
+# Expected: no errors.
+tvl:
+  module: corp.validation.composites_happy
+
+environment:
+  snapshot_id: "2026-06-06T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: cheap_model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "haiku"]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: strong_model
+    type: enum[str]
+    domain: ["gpt-4o", "sonnet"]
+  - name: k_samples
+    type: int
+    domain:
+      range: [1, 9]
+
+cvars:
+  # Post-cascade margin gate threshold: sig(margin_below) = vote_margin.
+  # required_parents(θ) = leafT(cheap arm) = {cheap_model, temperature}.
+  - name: router.margin_threshold
+    type: float
+    domain:
+      range: [0.0, 1.0]
+    calibration:
+      source: margin_eval_pool
+      signal: vote_margin
+      depends_on: [cheap_model, temperature]
+    governance:
+      require_calibration: true
+  # Ensemble accept threshold: sig(stat_at_least) = vote_margin.
+  # required_parents(θ) = leafT(arms) ∪ ({k_samples} ∩ N_T) = {cheap_model, k_samples}.
+  - name: vote.accept_threshold
+    type: float
+    calibration:
+      source: ensemble_pool
+      signal: vote_margin
+      depends_on: [cheap_model, k_samples]
+  # Loop stop threshold: sig(signal_accept) = the stop's SignalUse.signal.
+  # The use-site SignalUse.inputs = [draft] is freshness-bound (signal_inputs).
+  - name: refine.stop_threshold
+    type: float
+    calibration:
+      source: refine_pool
+      signal: draft_quality
+      depends_on: [strong_model]
+
+composites:
+  - name: answerer
+    kind: cascade
+    placement: post
+    arms:
+      - { stage: cheap_stage, tuned_params: [cheap_model, temperature] }
+      - { stage: strong_stage, tuned_params: [strong_model] }
+    gates:
+      - kind: margin_below
+        threshold: router.margin_threshold
+    pattern: binary_cascade
+
+  - name: voter
+    kind: ensemble
+    arms:
+      - { stage: cheap_stage, tuned_params: [cheap_model] }
+    cardinality: k_samples
+    aggregate:
+      kind: majority_vote
+      accept:
+        kind: stat_at_least
+        stat: vote_margin
+        threshold: vote.accept_threshold
+    pattern: self_consistency
+
+  - name: refiner
+    kind: loop
+    body: { stage: strong_stage, tuned_params: [strong_model] }
+    state_keys: [draft]
+    stop:
+      kind: signal_accept
+      threshold: refine.stop_threshold
+      signal: { signal: draft_quality, inputs: [draft] }
+    max_iters: 3
+    pattern: self_refine
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+  require_calibration:
+    enabled: true
+    hash_covered_context: [model_versions, signal_inputs]
+    signal_inputs: [draft]
