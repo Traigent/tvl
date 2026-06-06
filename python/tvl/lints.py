@@ -841,7 +841,11 @@ def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
             return
         has_stage = "stage" in arm
         has_composite = "composite" in arm
-        unknown = set(arm) - {"stage", "tuned_params", "composite"}
+        # §3.9 ArmSurface: the stage form allows {stage, tuned_params?}; the
+        # nesting form allows {composite} ONLY — tuned_params on a
+        # composite-tagged arm is a closure bypass (codex P4 round 1).
+        allowed = {"stage", "tuned_params"} if has_stage and not has_composite else {"composite"}
+        unknown = set(arm) - allowed
         if unknown or (has_stage and has_composite) or not (has_stage or has_composite):
             ctx.add(
                 "invalid_arm_shape",
@@ -1147,7 +1151,23 @@ def _check_signal_use(
             path,
         )
         return (False, signal_name if isinstance(signal_name, str) else None, ())
-    inputs_list = [i for i in inputs if isinstance(i, str)]
+    # §3.9 SignalSurface: inputs is Ident* — a non-string or non-Ident
+    # element REJECTS (silent filtering would also suppress
+    # unbound_signal_inputs by emptying the effective list — codex P4
+    # round 1).
+    bad_inputs = [
+        i for i in inputs
+        if not isinstance(i, str) or not _NORMATIVE_IDENT_RE.match(i)
+    ]
+    if bad_inputs:
+        ctx.add(
+            "invalid_signal_use",
+            f"composite '{ctx.name}' signal use has non-Ident 'inputs' "
+            f"elements (inputs is Ident*)",
+            path + ["inputs"],
+        )
+        return (False, signal_name, ())
+    inputs_list = list(inputs)
     if in_state is not None:
         outside = [i for i in inputs_list if i not in in_state]
         if outside:

@@ -105,6 +105,8 @@ EXPECTED: dict[str, set[str]] = {
     "unbound_signal_inputs-not-covered.tvl.yml": {"unbound_signal_inputs"},
     "missing_composite_parent-post-gate-omits-arm-tvar.tvl.yml": {"missing_composite_parent"},
     "invalid_arm_shape-unknown-arm-key.tvl.yml": {"invalid_arm_shape"},
+    "invalid_arm_shape-composite-with-tuned-params.tvl.yml": {"invalid_arm_shape"},
+    "invalid_signal_use-non-ident-inputs.tvl.yml": {"invalid_signal_use"},
     "invalid_signal_use-nonlist-inputs.tvl.yml": {"invalid_signal_use"},
     # --- reused RFC 0001 missing_ref family ---
     "missing_ref-threshold-unknown-cvar.tvl.yml": {"missing_ref"},

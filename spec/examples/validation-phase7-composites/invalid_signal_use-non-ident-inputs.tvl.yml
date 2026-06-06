@@ -1,0 +1,52 @@
+# Phase 7 (RFC 0002): SignalUse.inputs must be Ident* — a non-string element
+# rejects rather than being silently filtered (which would also suppress
+# unbound_signal_inputs). Expected: invalid_signal_use (codex mutation probe).
+tvl:
+  module: corp.validation.composites_pre_cascade
+
+environment:
+  snapshot_id: "2026-06-06T00:00:00Z"
+
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+
+tvars:
+  - name: cheap_model
+    type: enum[str]
+    domain: ["gpt-4o-mini", "haiku"]
+  - name: strong_model
+    type: enum[str]
+    domain: ["gpt-4o", "sonnet"]
+
+cvars:
+  - name: dispatch.route_threshold
+    type: float
+    calibration:
+      source: route_pool
+      signal: route_confidence
+      depends_on: [cheap_model]
+
+composites:
+  - name: dispatcher
+    kind: cascade
+    placement: pre
+    arms:
+      - { stage: cheap_stage, tuned_params: [cheap_model] }
+      - { stage: strong_stage, tuned_params: [strong_model] }
+    gates:
+      - kind: signal_below
+        threshold: dispatch.route_threshold
+        signal: { signal: route_confidence, inputs: [123] }
+
+constraints:
+  structural: []
+
+objectives:
+  - name: quality
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
