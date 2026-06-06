@@ -1,0 +1,51 @@
+# Expected: ERROR invalid_cardinality_type — the cardinality ref must be an
+# int-typed TVAR/CVAR. §3.2 item 7.
+tvl:
+  module: corp.validation.p7
+environment:
+  snapshot_id: '2026-06-06T00:00:00Z'
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+tvars:
+- name: cheap_model
+  type: enum[str]
+  domain:
+  - a
+  - b
+- name: strong_model
+  type: enum[str]
+  domain:
+  - c
+  - d
+- name: k_samples
+  type: int
+  domain:
+    range:
+    - 1
+    - 9
+- name: temp
+  type: float
+  domain:
+    range:
+    - 0.0
+    - 1.0
+    resolution: 0.1
+cvars: []
+constraints:
+  structural: []
+objectives:
+- name: quality
+  direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+composites:
+- name: voter
+  kind: ensemble
+  arms:
+  - stage: s
+  cardinality: temp
+  aggregate:
+    kind: majority_vote

@@ -1,0 +1,54 @@
+# Expected (RESOLUTION-TIME, R9): invalid_cardinality_value when k resolves < 1.
+# This module is STATICALLY well-formed (k's domain includes 0); R9 fires at
+# resolution, surfaced exactly as R1-R8 by the resolver / model-checking suite
+# (tests/model_checking R9_INVALID_CARDINALITY_VALUE), NOT by the static lints.
+# Static expectation here: NO errors. §3.2 item 7 / §3.11.
+tvl:
+  module: corp.validation.p7
+environment:
+  snapshot_id: '2026-06-06T00:00:00Z'
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+tvars:
+- name: cheap_model
+  type: enum[str]
+  domain:
+  - a
+  - b
+- name: strong_model
+  type: enum[str]
+  domain:
+  - c
+  - d
+- name: k_samples
+  type: int
+  domain:
+    range:
+    - 1
+    - 9
+- name: k_zero
+  type: int
+  domain:
+    set:
+    - 0
+    - 1
+    - 2
+cvars: []
+constraints:
+  structural: []
+objectives:
+- name: quality
+  direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+composites:
+- name: voter
+  kind: ensemble
+  arms:
+  - stage: s
+  cardinality: k_zero
+  aggregate:
+    kind: majority_vote

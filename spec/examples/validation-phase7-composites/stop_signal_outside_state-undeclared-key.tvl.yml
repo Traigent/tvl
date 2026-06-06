@@ -1,0 +1,63 @@
+# Expected: ERROR stop_signal_outside_state — stop.signal.inputs ⊄ state_keys.
+# §3.2 item 8.
+tvl:
+  module: corp.validation.p7
+environment:
+  snapshot_id: '2026-06-06T00:00:00Z'
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+tvars:
+- name: cheap_model
+  type: enum[str]
+  domain:
+  - a
+  - b
+- name: strong_model
+  type: enum[str]
+  domain:
+  - c
+  - d
+- name: k_samples
+  type: int
+  domain:
+    range:
+    - 1
+    - 9
+cvars:
+- name: stop.theta
+  type: float
+  calibration:
+    source: pool
+    signal: q
+    depends_on: []
+constraints:
+  structural: []
+objectives:
+- name: quality
+  direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+  require_calibration:
+    enabled: true
+    hash_covered_context:
+    - signal_inputs
+    signal_inputs:
+    - critique
+composites:
+- name: looper
+  kind: loop
+  body:
+    stage: s
+  state_keys:
+  - draft
+  stop:
+    kind: signal_accept
+    threshold: stop.theta
+    signal:
+      signal: q
+      inputs:
+      - critique
+  max_iters: 3
