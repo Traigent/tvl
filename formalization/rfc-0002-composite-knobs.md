@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT v5** — under cross-model review; owner acceptance pending |
+| **Status** | **DRAFT v6** — under cross-model review; owner acceptance pending |
 | **Target language version** | TVL 1.2 (conservative extension of 1.1) |
 | **Tracking** | `FR-TVL-COMPOSITE-KNOBS-V1` · ChangeSession `cs_aef1b9d2edfa5200` |
 | **Builds on** | RFC 0001 (ACCEPTED): one-Knob model, cvars, certificates, policies, strict promotion |
@@ -47,7 +47,8 @@ and fail-closed governance; procedural, plural naming where adoption lives.
 - the certificate coverage fold extending RFC 0001 §3.6 strict promotion
   (§3.6);
 - the pattern-catalog contract and the v1 catalog (§3.7);
-- the `Loop → NCascade` bounded-unroll **compilation relation** (§3.8);
+- the `Loop → K-chain` bounded-unroll **semantic compilation relation**
+  (`signal_accept` loops only; §3.8);
 - a `composites:` surface block as a conservative grammar extension (§3.9);
 - subsumption of `policies.strategy: cascade` by exact expansion mapping (§4).
 
@@ -59,7 +60,12 @@ and fail-closed governance; procedural, plural naming where adoption lives.
   trigger);
 - CVAR→CVAR dependencies (`depends_on` still names TVARs only — the RFC 0001
   deferral stands; composite structure compiles to leaf-TVAR coverage
-  obligations, §3.5);
+  obligations, §3.5). **Revisit trigger:** because this deferral leaves
+  nested-certificate freshness per-member and NOT cross-level (an outer
+  certificate is not bound to inner CVAR values — §3.6 scope, §6
+  assumption 8), the CVAR→CVAR mechanism is the work item that would let an
+  inner recalibration stale an outer certificate; revisit when cross-level
+  value-dependency freshness is required;
 - in-loop CVAR re-fitting and CVAR optimizers (RFC 0001 deferrals stand);
 - learned routers / dispatch functions as calibrators (would extend the
   calibrator registry, not this algebra);
@@ -144,7 +150,8 @@ GateDecl  ::= ⟨ kind : margin_below | signal_below,   (* v1 registry *)
                 threshold : Ident,               (* MUST resolve to a CVAR of TVL
                                                     type int or float (kind- AND
                                                     type-checked; §3.2 item 6) *)
-                signal? : SignalUse ⟩            (* REQUIRED iff kind=signal_below *)
+                signal? : SignalUse ⟩            (* REQUIRED iff kind=signal_below
+                                                    (`missing_gate_signal`) *)
 
 AcceptDecl ::= ⟨ kind : stat_at_least,           (* v1 registry — acceptance
                                                     direction is ≥, deliberately
@@ -163,7 +170,8 @@ StopDecl  ::= ⟨ kind : signal_accept | external_accept | exhausted,
                 threshold? : Ident,              (* REQUIRED iff kind=signal_accept:
                                                     MUST resolve to a CVAR of TVL
                                                     type int or float *)
-                signal? : SignalUse,             (* REQUIRED iff kind=signal_accept;
+                signal? : SignalUse,             (* REQUIRED iff kind=signal_accept
+                                                    (`missing_stop_signal`);
                                                     inputs MUST ⊆ state_keys *)
                 predicate? : Ident ⟩             (* REQUIRED iff kind=external_accept:
                                                     OPAQUE runtime predicate id,
@@ -211,9 +219,31 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
    (`composite_cycle`); composition depth is therefore finite. Nesting is
    the ONLY composition mechanism — DAG-shaped configurations are the
    **closure of nesting**; there is no fourth "DAG kind".
-5. `placement: pre` requires EVERY gate to be `signal_below` with a declared
-   signal (`pre_gate_requires_signal`); `margin_below` is valid only with
-   `placement: post` (it consumes the executed arm's vote statistics).
+5. **Gate kind / placement / arm typing** (strict placement symmetry).
+   The two gate kinds are placement-exclusive and one carries an arm-typing
+   obligation:
+   - `margin_below` is **POST-only** — it consumes the just-executed arm's
+     vote statistics. Its gated arm (the arm `i` whose margin gate `g_i`
+     reads in a post-cascade) MUST be **margin-bearing**: either a `stage`
+     arm (RFC 0001 vote semantics produce its vote statistics) or an
+     `ensemble` arm whose `aggregate.kind = majority_vote` (the committee's
+     vote statistics). Gating any other arm kind — a `loop` arm, a nested
+     **pre**-cascade composite, a `judge_max` ensemble (it yields a score,
+     not a vote margin), or a nested **post**-cascade composite — with
+     `margin_below` rejects statically (`gate_arm_incompatible`).
+   - `signal_below` is **PRE-only** — it scores the input before any arm
+     runs and routes (§ execution semantics). It requires a declared
+     `signal` field; a `signal_below` gate missing its `signal` rejects
+     (`missing_gate_signal`).
+   - A `margin_below` gate under `placement: pre`, or a `signal_below` gate
+     under `placement: post`, rejects (`gate_kind_placement_mismatch` —
+     covers BOTH directions of kind/placement misuse, subsuming the former
+     pre-with-margin case).
+
+   *Future extension (deferred):* post-cascade gates keyed on an output
+   signal (a `signal_below`-style post gate scoring the executed arm's
+   output rather than its vote margin) are out of scope for TVL 1.2 — the
+   v1 post gate is `margin_below` only.
 6. Gate/accept/stop thresholds resolve to CVARs (kind-checked, reusing
    RFC 0001's gate rule — `missing_ref` family); `stage(·)` duplicates
    within one composite are rejected (`duplicate_stage`).
@@ -246,7 +276,8 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
    the execution comparisons (`margin < θ`, `σ ≥ θ`, `stat ≥ θ`) are over
    finite numbers; a non-finite resolved value fails the item's evaluation
    per the existing exception rules (never a silent comparison).
-11. **Signal/threshold calibration binding** (cross-model round 4): every
+11. **Signal/threshold calibration binding** (cross-model round 4;
+   **COMPOSITE-SCOPED**, cross-model fresh pass): every **composite-bound**
    thresholded construct determines a signal id —
 
    ```
@@ -257,16 +288,47 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
    ```
 
    where the canonical vote-statistic ids live in the SAME registry
-   namespace as named signals. The threshold CVAR `θ` of every such
-   construct MUST declare `calibration.signal = sig(construct)`: a missing
-   `calibration.signal` on `θ` rejects (`missing_calibration_signal`); a
-   differing one rejects (`signal_mismatch`). Rationale: certificate
-   freshness binds `H_c(σ)` for the signal used DURING CALIBRATION — a
-   threshold calibrated against signal A gating signal B would be
-   **vacuously fresh**. This rule is static (both sides are declared
-   identifiers) and is distinct from `missing_composite_parent`: parent
-   coverage binds tuned-TVAR freshness; this rule binds the measured
-   signal semantics of the threshold itself.
+   namespace as named signals. **The lint fires at the composite USE SITE**:
+   it is the `composites:` construct that references `θ` (as a gate, accept,
+   or stop threshold) which obliges `θ` to declare
+   `calibration.signal = sig(construct)`. It NEVER fires on a `cvars` or
+   `policies` block in isolation — a CVAR whose `calibration.signal` is
+   absent or differs is well-formed on its own (RFC 0001 leaves
+   `calibration.signal` OPTIONAL), and a legacy `policies:` cascade keeps
+   RFC 0001 semantics untouched. Only when a composite USES `θ` as a
+   threshold does the binding become an obligation of that composite: a
+   missing `calibration.signal` on a composite-referenced `θ` rejects
+   (`missing_calibration_signal`); a differing one rejects
+   (`signal_mismatch`). Rationale: certificate freshness binds `H_c(σ)` for
+   the signal used DURING CALIBRATION — a threshold calibrated against
+   signal A gating signal B would be **vacuously fresh**. This rule is
+   static (both sides are declared identifiers) and is distinct from
+   `missing_composite_parent`: parent coverage binds tuned-TVAR freshness;
+   this rule binds the measured signal semantics of the threshold itself.
+   Because the obligation lives on the composite use site, it is one of the
+   two intended composite-only ratchets over RFC 0001 (the other being the
+   empty-`tuned_params` parent-coverage ratchet, §4); a TVL 1.1 module
+   declares no composites, so the lint never fires on it (P1 preserved, §4).
+
+   **Use-site signal inputs are freshness-bound** (cross-model fresh pass):
+   a `SignalUse.inputs` list changes the runtime scoring semantics of the
+   signal (it selects which keys/features the scoring function reads), so a
+   recalibration that held inputs fixed must be invalidated when the
+   composite changes them. TVL 1.2 adds a NEW optional freshness-context
+   **extension** key, `signal_inputs`, to the RFC 0001 §3.5 `ctx_ext`
+   registry (conservative: an optional extension key; `ctx_core` is
+   untouched, so all TVL 1.1 freshness behavior is unchanged). The rule,
+   composite-use-site-scoped exactly like the signal-id binding above: when
+   a composite-bound threshold's governing `SignalUse` has `inputs ≠ []`,
+   the threshold CVAR `θ`'s
+   `promotion_policy.require_calibration.hash_covered_context` MUST include
+   `signal_inputs`, AND the value covered under `signal_inputs` MUST equal
+   the use-site ordered input list; either failure rejects
+   (`unbound_signal_inputs`). This is static — both the use-site `inputs`
+   list and the covered context value are declared identifiers. When
+   `inputs = []` the signal reads no use-site-selected keys and no coverage
+   of `signal_inputs` is required. Isolated `cvars`/`policies` are
+   unaffected (the obligation is the composite's, not the CVAR's).
 
 **Execution semantics.**
 
@@ -280,7 +342,7 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
   are evaluated LEFT TO RIGHT, first match wins:
 
   ```
-  route(x) = arm_j  where  j = min{ i < m : σ_i(x) ≥ θ_i } ∪ {m}
+  route(x) = arm_j  where  j = min({ i < m : σ_i(x) ≥ θ_i } ∪ {m})
   ```
 
   Gate `i` asks "is arm `i` adequate for x?" — adequate ⟺
@@ -323,6 +385,73 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
   evaluation (no partial-iteration output), feeding the fail-closed law
   under strict modes.
 
+### 3.2.1 The result algebra (closed, total, deterministic)
+
+The per-construct sentences above each handle three outcomes — a produced
+output, an honest non-acceptance, and an evaluation failure. This subsection
+names that codomain once and gives the propagation rules through nesting, so
+the per-construct sentences are instances of one algebra rather than ad-hoc
+prose. Every arm and every composite evaluates to:
+
+```
+ArmResult ::= output(o, vote_stats?)    (* a produced output; vote_stats present
+                                           iff the producer is margin-bearing —
+                                           a stage or a majority_vote ensemble *)
+            | no_accept                 (* ran, but no result met the construct's
+                                           acceptance condition — an HONEST
+                                           no-output outcome, NOT an error *)
+            | error                     (* evaluation failed — exception, judge
+                                           contract violation with no survivor,
+                                           non-finite threshold comparison, etc. *)
+```
+
+The three kinds are disjoint and exhaustive: every evaluation lands in exactly
+one. Propagation is **total and deterministic** — defined for every kind in
+every construct:
+
+- **`error` is absorbing.** An `error` from any arm/body/gate/judge/stop fails
+  the enclosing item's evaluation in every construct, propagating outward to the
+  root (where, under strict modes, it feeds the RFC 0001 §3.6 fail-closed law).
+  This unifies the per-construct exception sentences above (post-cascade stage
+  exception, pre-cascade signal exception, all-judge-excluded, loop body/stop
+  exception, non-finite threshold) — those sentences are retained for locality
+  but are each an instance of this single rule.
+- **`no_accept` propagation** (per construct):
+  - *post-cascade*: a `no_accept` from arm `i` escalates to arm `i+1` when
+    `i < m`; if the last arm (`i = m`) yields `no_accept`, the cascade yields
+    `no_accept`.
+  - *pre-cascade (dispatch)*: the routed arm's result is the cascade's result;
+    if the single routed arm yields `no_accept`, the cascade yields `no_accept`
+    (routing selects the arm; it does not re-route on non-acceptance).
+  - *loop*: a `no_accept` body result completes the iteration unaccepted and the
+    loop **continues** to the next iteration; a loop that reaches `max_iters`
+    without acceptance (no `signal_accept` fired), or whose final body result is
+    `no_accept` (the `exhausted` case), yields `no_accept`.
+  - *ensemble (committee `majority_vote`)*: a committee arm yielding `no_accept`
+    is a candidate **excluded** from the vote; if ALL candidates are excluded by
+    `no_accept`, the ensemble yields `no_accept` — DISTINCT from the
+    all-excluded-**by-error** case (judge contract violations), which is an
+    `error` and FAILS.
+  - *ensemble (aggregate accept)*: when an `accept` decl is present, an
+    aggregate that runs but fails `stat ≥ θ` yields `no_accept`.
+- **`output` propagation.** An arm/body producing `output(o, vote_stats?)`
+  contributes `o` (and its `vote_stats` where margin-bearing) as the construct's
+  selected output per the construct's selection rule (escalation stop, route,
+  vote/judge winner, accepted loop state).
+
+**Root-level `no_accept`.** A `no_accept` that reaches the composite root is an
+honest no-output evaluation. Under strict modes it feeds the RFC 0001 §3.6
+fail-closed law exactly as the other no-certified-selection verdicts do (no
+winner-by-objective fallback). Under non-strict modes it surfaces as an honest
+no-output evaluation result; how operational scoring treats a no-output item
+(skip, penalty, abstain) is **runtime-defined** and outside this RFC.
+
+**Vote abstention is not a result kind.** Abstention stays INTERNAL to voting:
+an empty/abstain-only vote yields `margin = 0` (RFC 0001's rule, carried over),
+which the gate/accept inequality then consumes — it never escapes the voting
+step as an `ArmResult`. The only result kinds are `output`, `no_accept`, and
+`error`.
+
 ### 3.3 Calibratable surface
 
 Each constructor *defines* which members admit calibration and with what
@@ -339,13 +468,19 @@ The §3.2 item-11 binding rule makes these target-property shapes
 well-posed: the certificate's `H_c(σ)` covers the very signal the gate
 evaluates at runtime, never a different one.
 
-The **claim scope** paragraph of RFC 0001 §3.5 (2026-06-06 clarification)
-applies verbatim: each certificate is a per-variable, procedural claim about
-the conditional, component-level property the variable controls under the
-documented assumptions. **A composite's end-to-end metrics remain
-observations** under the promotion judgment; nothing in this RFC creates a
-config-level guarantee, and user-facing copy MUST NOT present a composite as
-one.
+The **Claim scope** paragraph added to RFC 0001 §3.5 (the 2026-06-06
+post-acceptance owner wording-audit clarification, recorded as the
+`post-acceptance` row of RFC 0001's §10 review log; no semantic rule changed)
+applies verbatim here: each certificate is a per-variable, procedural claim —
+the declared calibration procedure ran over the declared evidence pool under
+the hashed freshness context, and, where the `TargetProperty` carries a
+statistical bound, that bound's subject is the conditional, component-level
+property the variable controls — valid only under the documented assumptions.
+A "certified selection" is the **conjunction** of the §3.6 promotion win on
+observed metrics AND per-CVAR certificate coverage; neither subsumes the
+other. **A composite's end-to-end metrics remain observations** under the
+promotion judgment; nothing in this RFC creates a config-level guarantee, and
+user-facing copy MUST NOT present a composite as one.
 
 ### 3.4 Cost models and compositionality
 
@@ -381,7 +516,22 @@ parameterizing that stage (the author's knowledge; possibly empty). Define:
 ```
 leafT(stage(s, ps))     = ps
 leafT(composite(x))     = ⋃_{a ∈ arms/body/judge(x)} leafT(a)
+                          ∪ ({cardinality(x)} ∩ N_T)    (* iff x is an Ensemble in
+                                                           sampling form whose
+                                                           cardinality is bound Tuned;
+                                                           ∅ otherwise — folds in
+                                                           recursively through nesting *)
 ```
+
+The `({cardinality} ∩ N_T)` term makes a composite's leaf set include its
+ensemble's tuned sample count: a sampling-form ensemble whose `cardinality`
+is a TVAR is parameterized by that TVAR exactly as a stage is parameterized
+by its `tuned_params`, so swapping `k` must read stale through the same
+parent-coverage cascade. The intersection with `N_T` keeps the codomain
+TVAR-only (C6): a Calibrated or absent cardinality contributes nothing to
+`leafT` (it is instead a member of `Cal`, §3.6). Because `leafT(composite(x))`
+recurses over `arms/body/judge(x)`, nested ensembles' tuned cardinalities
+fold up to every enclosing threshold's obligation.
 
 The compilation then emits **coverage OBLIGATIONS over the EXISTING
 `depends_on` mechanism** (never automatic edge insertion, never a new
@@ -395,7 +545,9 @@ required_parents(θ_i in Cascade_pre)   = leafT(a_i)            (the arm the gat
                                                                  CVAR's own calibration
                                                                  context as in RFC 0001)
 required_parents(θ in Ensemble.accept) = ⋃_j leafT(a_j) ∪ leafT(judge if present)
-                                          ∪ ({cardinality} ∩ N_T)
+                                          ∪ ({cardinality} ∩ N_T)   (* this ensemble's
+                                                                       own k; nested arms'
+                                                                       k flow in via leafT *)
 required_parents(θ in Loop.stop)       = leafT(body)
 ```
 
@@ -437,6 +589,18 @@ fold is **fail-closed** (claim C3): any uncertified or stale member ⇒ no
 certified selection — never a partial pass, never a silent skip of a nested
 level.
 
+**Scope of the fold (honest, per-member).** The fold is exact **per-member**
+coverage: it guarantees that *each member CVAR* carries its own valid, fresh
+certificate (its own §3.5 freshness context, including its own `t|π` parent
+values). It does NOT establish a cross-level value-dependency: an OUTER
+certificate is not bound to the *values* of INNER CVARs. Concretely, a nested
+composite's inner threshold may be re-calibrated to a new value while the
+outer construct's certificate stays fresh — because RFC 0001's freshness core
+hashes tuned parents (`t|π`), not the resolved values of sibling/child CVARs,
+and CVAR→CVAR dependencies remain deferred (§2). This limitation is named as
+§6 assumption 8, with a recommended conservative practice (re-issue outer
+certificates when any member of the subtree's `Cal` set is re-calibrated).
+
 ### 3.7 The pattern catalog contract
 
 ```
@@ -463,6 +627,14 @@ pattern param must never appear in serialized provenance/metadata) is part
 of the admission contract. Adding a pattern is an SDK release, not a
 language or schema change.
 
+**Surface vs. expansion-output.** The full closed `Provenance` object above
+is **expansion-output metadata produced by `expand` (SDK-internal)** — it is
+NEVER surface syntax. The only provenance the `composites:` surface accepts
+is the flat `pattern: <name>` **sugar key**, which maps to `Provenance.pattern`
+on the emitted root node; the surface author never writes
+`pattern_version`/`param_hash`/`node_path` (those are stamped by the
+expander). The surface accepts ONLY the sugar key.
+
 **Admission contract** — a pattern enters the catalog only with ALL of:
 
 1. an expansion into the sealed algebra (no pattern-private node kinds);
@@ -483,19 +655,40 @@ language or schema change.
 | `n_cascade` | `Cascade(arms=[stage(a₁)..stage(a_m)], gates=[θ₁..θ_{m−1}], post)` | ordered escalation |
 | `self_consistency` | `Ensemble(arms=[stage(a)], cardinality=k, majority_vote, accept: stat_at_least(vote_margin, θ)?)` | k tuned or calibrated |
 | `best_of_n` | `Ensemble(arms=[stage(a)], cardinality=k, judge_max(stage(judge)))` | judge output contract §3.2 |
-| `self_debug` | `Loop(body=stage(a), state_keys=[attempt, critique], stop=external_accept(tests), max_iters=K)` | "2-step knob" at K=1 |
-| `self_refine` | `Loop(body=stage(a), state_keys=[draft], stop=signal_accept(σ, θ), max_iters=K)` | calibrated stop |
+| `self_debug` | `Loop(body=stage(a), state_keys=[attempt, critique], stop=external_accept(tests), max_iters=K)` | "2-step knob" at K=1; `external_accept` stop ⇒ **NO unroll** (§3.8) |
+| `self_refine` | `Loop(body=stage(a), state_keys=[draft], stop=signal_accept(σ, θ), max_iters=K)` | calibrated `signal_accept` stop ⇒ unroll-eligible (§3.8) |
 
 The catalog is curated in-repo; growth follows the admission contract, never
 ad-hoc (the documented failure mode of open chain taxonomies).
 
-### 3.8 Loop → NCascade: a compilation relation
+### 3.8 Loop → K-chain: a semantic compilation (not a surface map)
 
-For a bounded loop, define the unrolling
-`Unroll(Loop(b, S, stop, K)) = Cascade_post(arms=[b₍₁₎..b₍K₎], gates=[¬stop₍₁₎..¬stop₍K−1₎])`
+`Unroll` is a **semantic compilation into an internal K-chain execution
+form** (an SDK intermediate representation), NOT a syntactic rewrite into the
+surface algebra (cross-model fresh pass). It is deliberately NOT a map into a
+surface `Cascade_post`: the v1 gate registry has only `margin_below` and
+`signal_below`, and **neither is a state-predicate gate** — there is no
+surface gate kind whose decision is `¬stop = σ(state) < θ` over the loop's
+threaded state. Writing `Unroll` as a surface `Cascade_post` with
+`¬stop` gates would therefore require a gate kind that does not exist; the
+compilation target is instead the internal K-chain, whose escalation
+predicate the SDK IR carries directly.
+
+The unroll offer exists **only for `signal_accept` loops**. For such a loop
+the chain of length `K` is:
+
+```
+KChain(Loop(b, S, signal_accept(σ, θ), K))
+   = ⟨ stages = [b₍₁₎ .. b₍K₎],
+       escalate after stage i  ⟺  ¬stop₍ᵢ₎  =  σ(state₍ᵢ₎) < θ ⟩
+```
+
 where `b₍ᵢ₎` is the body specialized to iteration `i`'s threaded state over
-the declared `state_keys`, and each gate escalates exactly when the stop
-rule does NOT accept.
+the declared `state_keys`, and the chain escalates to stage `i+1` exactly
+when the `signal_accept` stop has NOT fired (`σ(state₍ᵢ₎) < θ`, the
+acceptance-direction complement). `external_accept` loops (opaque runtime
+predicate — no declared state predicate to chain) and `exhausted` loops (no
+acceptance predicate at all) offer **no unroll**.
 
 This is a **compilation relation, not semantic equality** (design review,
 codex): it is meaning-preserving **only under all of**:
@@ -503,22 +696,24 @@ codex): it is meaning-preserving **only under all of**:
 1. the body's state flows exclusively through the declared `state_keys`
    (`state_keys = []` ⟺ pure body) — no ambient mutation;
 2. the stop rule is a deterministic function of the declared state
-   (structurally enforced for `signal_accept` by
-   `stop_signal_outside_state`; asserted-by-contract for
-   `external_accept`);
+   (structurally enforced for `signal_accept` by `stop_signal_outside_state`
+   — the only stop kind that offers unroll, so condition 2 is structural
+   here, not contract-asserted);
 3. iterations are bounded by `max_iters` (always true in this algebra —
    `max_iters` is required);
 4. telemetry and side effects are observationally accounted:
-   `iterations_used` maps to "index of the selected arm", `stop_reason`
-   maps to the final gate decision, and per-iteration effects are declared
-   effects of the corresponding arm.
+   `iterations_used` maps to "index of the selected chain stage",
+   `stop_reason` maps to the final escalation decision, and per-iteration
+   effects are declared effects of the corresponding chain stage.
 
-Implementations MAY offer the unrolled compilation (e.g. `unroll=K` on loop
-patterns). Verification is split by mechanism (claim C5): the model checker
-verifies output/selection preservation under conditions 1–3 at small
-scopes; the telemetry/effect accounting of condition 4 is verified by the
-golden expansion fixtures and SDK property tests for every pattern that
-offers `unroll`. Outside the conditions no equivalence is claimed.
+Implementations MAY offer the unrolled compilation (e.g. `unroll=K` on
+`signal_accept` loop patterns). Verification is split by mechanism (claim
+C5): the model checker compares the **execution traces** of the `Loop` and of
+its `KChain` under conditions 1–3 at small scopes (output/selection
+preservation); the telemetry/effect accounting of condition 4 is verified by
+the golden expansion fixtures and SDK property tests for every pattern that
+offers `unroll`. Outside the conditions, and for non-`signal_accept` loops,
+no equivalence is claimed.
 
 ### 3.9 Surface syntax (draft normative for the validators packet)
 
@@ -558,7 +753,7 @@ composites:
     gates:
       - kind: margin_below
         threshold: router.margin_threshold     # CVAR of type float
-    pattern: binary_cascade  # provenance annotation (closed shape §3.7)
+    pattern: binary_cascade  # the ONLY surface provenance key (sugar → Provenance.pattern, §3.7)
 
   - name: coder
     kind: loop
@@ -568,6 +763,12 @@ composites:
     max_iters: 3
     pattern: self_debug
 ```
+
+The surface `pattern:` field is a flat **sugar key** mapping to
+`Provenance.pattern` (§3.7); the full closed `Provenance` object is
+expansion-output metadata stamped by the expander (SDK-internal) and is never
+surface syntax — the surface accepts ONLY the sugar key, never
+`pattern_version`/`param_hash`/`node_path`.
 
 Closed shapes with exact diagnostics throughout (RFC 0001 grammar
 discipline); the EBNF and `tvl.schema.json` deltas land in the validators
@@ -589,23 +790,51 @@ enums, finite numbers only — nothing content-typed; P8 discipline):
 ### 3.11 Error-code surface (exact diagnostics)
 
 New codes introduced by this RFC (each with a happy + rejecting conformance
-fixture in the validators packet):
+fixture in the validators packet). The list and the well-formedness /
+execution rules above are in **1:1 correspondence** — every code below is
+emitted by exactly the cited rule, and every rule that rejects cites exactly
+one of these codes (or the reused RFC 0001 `missing_ref` family):
 
-`unknown_composite_kind` · `composite_binds_value` ·
-`composite_shadows_name` · `duplicate_composite` · `empty_arms` ·
-`ambiguous_arm` · `missing_composite_ref` · `composite_cycle` ·
-`pre_gate_requires_signal` · `cardinality_arity_mismatch` ·
-`invalid_cardinality_type` · `invalid_cardinality_value` (R9) ·
-`missing_judge` · `unknown_aggregate_kind` · `unknown_stop_kind` ·
-`missing_stop_threshold` · `missing_stop_predicate` ·
-`stop_signal_outside_state` · `invalid_max_iters` ·
-`missing_composite_parent` · `invalid_tuned_param` ·
-`invalid_threshold_type` · `invalid_arm_shape` · `invalid_signal_use` ·
-`signal_mismatch` · `missing_calibration_signal` ·
-`duplicate_stage` (extended scope) — plus the RFC 0001 `missing_ref`
-family reused unchanged for every CVAR/threshold reference, and rejection
-**R9** (`invalid_cardinality_value`) extending the §3.4 acceptance algebra
-as `Accept₁.₂` (§3.2 item 7).
+| Code | Emitted by |
+|---|---|
+| `unknown_composite_kind` | item 1 — `kind` outside the closed registry |
+| `composite_binds_value` | §3.1 — a value bound on a composite |
+| `composite_shadows_name` | §3.1 — `N_X` name shadows another class |
+| `duplicate_composite` | §3.1 — duplicate name within `N_X` |
+| `empty_arms` | item 2 — `arms` empty for any constructor |
+| `ambiguous_arm` | item 3 — bare arm id collides with a composite name |
+| `missing_composite_ref` | item 3 — `composite(x)` resolves to no `N_X` member |
+| `composite_cycle` | item 4 — the `N_X` reference graph is cyclic |
+| `gate_arm_incompatible` | item 5 — `margin_below` gating a non-margin-bearing arm |
+| `gate_kind_placement_mismatch` | item 5 — `margin_below` in `pre`, or `signal_below` in `post` (both directions; subsumes the former `pre_gate_requires_signal`) |
+| `missing_gate_signal` | item 5 / `GateDecl` — `signal_below` gate missing its `signal` |
+| `duplicate_stage` (extended scope) | item 6 — duplicate `stage(·)` within one composite |
+| `cardinality_arity_mismatch` | item 7 — `cardinality` present iff `|arms| = 1` violated |
+| `invalid_cardinality_type` | item 7 — `cardinality` ref not int-typed |
+| `invalid_cardinality_value` (R9) | item 7 — resolution-time `k < 1` (extends the §3.4 acceptance algebra as `Accept₁.₂`) |
+| `stop_signal_outside_state` | item 8 / `StopDecl` — `stop.signal.inputs ⊄ state_keys` |
+| `missing_stop_signal` | `StopDecl` — `signal_accept` stop missing its `signal` |
+| `missing_stop_threshold` | `StopDecl` — `signal_accept` stop missing its `threshold` |
+| `missing_stop_predicate` | `StopDecl` — `external_accept` stop missing its `predicate` |
+| `unknown_stop_kind` | `StopDecl` — `stop.kind` outside the closed registry |
+| `invalid_max_iters` | item 8 — `max_iters < 1` |
+| `missing_judge` | `AggregateDecl` — `judge_max` aggregate missing its `judge` |
+| `unknown_aggregate_kind` | `AggregateDecl` — `aggregate.kind` outside the closed registry |
+| `invalid_tuned_param` | item 9 — a `tuned_params` entry not resolving to a TVAR |
+| `invalid_threshold_type` | item 10 — a gate/accept/stop threshold CVAR not int/float |
+| `missing_calibration_signal` | item 11 — composite-referenced `θ` missing `calibration.signal` |
+| `signal_mismatch` | item 11 — composite-referenced `θ`'s `calibration.signal ≠ sig(construct)` |
+| `unbound_signal_inputs` | item 11 — use-site `SignalUse.inputs ≠ []` not covered by `signal_inputs`, or covered value ≠ the use-site list |
+| `missing_composite_parent` | §3.5 — `required_parents(θ) ⊄ depends_on(θ)` |
+| `invalid_arm_shape` | §3.9 — unknown keys in an `ArmSurface` object form |
+| `invalid_signal_use` | §3.2 / §3.9 — malformed `SignalUse` object (missing `signal`, unknown keys, non-list `inputs`) |
+
+Plus the RFC 0001 `missing_ref` family, reused unchanged for every
+CVAR/threshold namespace reference (gate/accept/stop thresholds, item 6), and
+rejection **R9** (`invalid_cardinality_value`) extending the §3.4 acceptance
+algebra as `Accept₁.₂` (§3.2 item 7). The former `pre_gate_requires_signal`
+code is RETIRED into `gate_kind_placement_mismatch`, which now covers both
+directions of gate-kind/placement misuse (cross-model fresh pass).
 
 ## 4. Compatibility and migration (P1 argument)
 
@@ -625,14 +854,35 @@ PolicyDecl⟨name, "policy", "cascade", stages = s₁..s_m,
               placement = post, parameters?, scope?⟩
 ```
 
-`stages` map to stage-tagged arms with empty `tuned_params` (the policy form
-never declared parentage — the obligation lint §3.5 is vacuous on migrated
-forms until authors declare per-arm `tuned_params`, an explicit and intended
-ratchet); `parameters?` and `scope?` carry over verbatim with identical
-semantics and the identical outside-P8 categorization. StageRef opacity, the
-gate→CVAR rule, and execution semantics are unchanged (§3.2 incorporates
-RFC 0001 §3.8 by reference). `policies` with `strategy: cascade` remains
-VALID in TVL 1.2 (no deprecation this increment); the
+**Subsumption is exact on EXECUTION SEMANTICS, with two intended composite
+ratchets on the lint surface** (cross-model fresh pass — the `≡` above is the
+execution-semantics identity, not a lint identity). The mapping is exact on
+StageRef opacity, the gate→CVAR rule, and execution semantics, which are
+unchanged (§3.2 incorporates RFC 0001 §3.8 by reference). The composite form
+ADDITIONALLY enforces two static lints that the RFC 0001 `policies:` form does
+NOT — both deliberate, explicit ratchets, fired only at the composite use
+site:
+
+- **`stages` → empty `tuned_params`** (§3.5): the policy form never declared
+  parentage, so the obligation lint is vacuous on migrated forms until authors
+  declare per-arm `tuned_params`.
+- **signal/threshold binding** (§3.2 item 11): a gate threshold CVAR used by a
+  composite must declare `calibration.signal = sig(construct)` (and, when its
+  `SignalUse.inputs ≠ []`, cover `signal_inputs`). RFC 0001 leaves
+  `calibration.signal` OPTIONAL, so a legacy `policies:` cascade is unaffected;
+  only the composite use site adds this obligation.
+
+`parameters?` and `scope?` carry over verbatim with identical semantics and
+the identical outside-P8 categorization.
+
+**P1 is preserved.** Because a TVL 1.1 module declares no `composites:` block,
+neither ratchet can fire on it — both lints are use-site obligations of a
+`composites:` construct, of which a 1.1 module has none. A valid TVL 1.1
+cascade `policies:` block whose threshold CVAR omits `calibration.signal` (or
+covers no `signal_inputs`) therefore remains valid under TVL 1.2 with RFC 0001
+semantics untouched; the ratchets are an opt-in cost of MOVING to the composite
+form, not a retroactive invalidation. `policies` with `strategy: cascade`
+remains VALID in TVL 1.2 (no deprecation this increment); the
 `binary_cascade`/`n_cascade` patterns are its forward form, and a future
 increment may add a migration lint. The SDK's shipped `CascadePolicy` is
 the execution target for cascade composites; the binary `Router` (unmerged)
@@ -645,10 +895,10 @@ API.
 |---|---|---|
 | **C1** Constructor disjointness | every composite node has exactly one kind from the closed registry; cross-kind/unknown fields reject | model checking (kind partition); lints with exact diagnostics (§3.11) |
 | **C2** Nesting well-formedness | the `N_X` reference graph is acyclic; expansion terminates; depth finite; arm resolution unambiguous (tag-driven + `ambiguous_arm`) | model checking (acyclicity + a MUST-BE-SAT cyclic counterexample); `composite_cycle`/`ambiguous_arm` lints |
-| **C3** Coverage-fold soundness | `Cal` over all roots collects EXACTLY the calibratable members of the whole expansion (no over-, no under-collection, judge and nested levels included); strict selection fails closed on any gap | model checking (fold vs. ground-truth member walk + a MUST-BE-SAT uncertified-gate violation); red-first SDK tests |
-| **C4** Cost compositionality | the cost forms close over nesting: substituting an arm's cost form yields the composite's, for all five forms (§3.4) | model checking at small scopes (structural induction skeleton); SDK property tests |
-| **C5** Loop→NCascade compilation | under §3.8 conditions 1–3, `Unroll` preserves the selected output at small scopes (model-checked); condition 4's telemetry accounting holds for every catalog pattern offering `unroll` (golden fixtures + SDK property tests) | split by mechanism as stated |
-| **C6** Dependency-compilation soundness | `required_parents` obligations land in `N_T` only and are checkable statically; no rule of this RFC can emit or require a non-TVAR `depends_on` entry; `missing_ref` remains the single entry-validity authority | model checking (codomain check + MUST-BE-SAT violation transition); `missing_composite_parent` lint tests |
+| **C3** Coverage-fold soundness (PER-MEMBER) | `Cal` over all roots collects EXACTLY the calibratable members (the CVARs) of the whole expansion (no over-, no under-collection, judge and nested levels included); strict selection requires a valid fresh certificate for EACH such member and fails closed on any gap. **Scope:** this is exact PER-MEMBER coverage — each member CVAR's own freshness — and is explicitly NOT a cross-level value-dependency guarantee: an outer certificate is not bound to inner CVAR values (a nested composite's inner threshold may recalibrate while the outer certificate stays fresh; §6 assumption 8, riding the §2 CVAR→CVAR deferral) | model checking (fold vs. ground-truth member walk + a MUST-BE-SAT uncertified-gate violation); red-first SDK tests |
+| **C4** Cost compositionality | the cost forms close over nesting: substituting an arm's cost form yields the composite's, for all five forms (§3.4) | model checking at small scopes (structural induction of FORM closure only); operational estimate quality is OUT OF SCOPE (§6 assumption 3); cross-implementation compatibility of `c(agg)` and the cost forms pinned by SHARED golden cost fixtures (the cross-SDK fixture convention) |
+| **C5** Loop→K-chain compilation (`signal_accept` only) | for `signal_accept` loops, under §3.8 conditions 1–3, `Unroll` into the internal K-chain preserves the selected output / execution trace at small scopes (model-checked, trace comparison Loop vs. K-chain); condition 4's telemetry accounting holds for every catalog pattern offering `unroll` (golden fixtures + SDK property tests); `external_accept`/`exhausted` loops offer no unroll and claim nothing | split by mechanism as stated |
+| **C6** Dependency-compilation soundness (TVAR-ONLY obligations) | `required_parents` obligations land in `N_T` only and are checkable statically; no rule of this RFC can emit or require a non-TVAR `depends_on` entry; `missing_ref` remains the single entry-validity authority. **Scope:** the obligations bind tuned-TVAR freshness only; they do NOT establish CVAR→CVAR (cross-level value-dependency) freshness, which stays deferred (§2; §6 assumption 8) | model checking (codomain check + MUST-BE-SAT violation transition); `missing_composite_parent` lint tests |
 
 Model-checking discipline: every UNSAT assertion is paired with a
 deliberately-broken transition that MUST be SAT (vacuity teeth — program
@@ -682,6 +932,20 @@ The claims above hold under, and only under:
    fail-closed), not prevented.
 7. **Pattern determinism** — `expand` is a pure function of validated
    params; catalog entries violating this are rejected at admission.
+8. **Nested-certificate freshness is per-member, not cross-level**
+   (cross-model fresh pass) — the §3.6 coverage fold and the §3.5
+   parent-coverage obligations bind *each member CVAR's own* freshness; they
+   do NOT make an OUTER certificate depend on the *values* of INNER CVARs.
+   An inner threshold can be re-calibrated to a new value while an outer
+   construct's certificate remains fresh, because RFC 0001's freshness core
+   hashes tuned parents (`t|π`), not sibling/child CVAR values, and
+   **CVAR→CVAR dependencies remain deferred** (§2). This is the direct
+   consequence of that deferral; closing it is the work of the deferred
+   CVAR→CVAR dependency mechanism. *Recommended conservative practice
+   (non-normative):* implementations **SHOULD** re-issue an outer construct's
+   certificate whenever any member of that subtree's `Cal` set (§3.6) is
+   re-calibrated, so that an outer "fresh" verdict never outlives an inner
+   recalibration in practice.
 
 ## 7. Field categorization (P8 alignment)
 
@@ -723,11 +987,16 @@ increment (§2).
 2. Model-checking packet green for C1–C6, including every paired MUST-BE-SAT
    vacuity check, on a re-run executed by the integrating agent.
 3. The §3.9 surface syntax validated against the §4 subsumption mapping (the
-   policy form and its composite form lint identically on the shared
-   examples), with explicit degenerate fixtures: `m=1` cascade, `k=1`
-   sampling ensemble, committee ensemble, `max_iters=1` loop, empty-arms
-   rejection, tagged-nesting under an ensemble judge, and an
-   `ambiguous_arm` rejection.
+   policy form and its composite form have **identical execution semantics**
+   and lint identically on the shared examples **except** for the two intended
+   composite-only ratchets — the empty-`tuned_params` parent-coverage
+   obligation (§3.5) and the signal/threshold binding (§3.2 item 11, incl.
+   `signal_inputs` coverage) — which fire only on the composite form, never on
+   the legacy `policies:` form), with explicit degenerate fixtures: `m=1`
+   cascade, `k=1` sampling ensemble, committee ensemble, `max_iters=1` loop,
+   empty-arms rejection, tagged-nesting under an ensemble judge, an
+   `ambiguous_arm` rejection, and a `gate_arm_incompatible` /
+   `gate_kind_placement_mismatch` rejection pair.
 4. Owner acceptance recorded in this header and §10 (human-only gate).
 5. No semantic change to any RFC 0001 construct: the RFC 0001 conformance
    fixtures pass unchanged.
@@ -743,6 +1012,8 @@ increment (§2).
 | 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 3 findings (1 model choice + 2 wording residue); rounds 1–2 dispositions confirmed closed (incl. judge-arm coverage via ArmSurface and §3.11 completeness) | All addressed in Draft v4: (1) the signal model is CHOSEN explicitly — `SignalUse.signal` is a named Ident into the SAME registry namespace as RFC 0001's module-facing `calibration.signal` (one signal model across the language; the closed SignalSpec shape enters only through H_c(σ)); SignalSurface grammar added to §3.9 and `invalid_signal_use` to §3.11; (2) stale `arm_params` wording in §4 corrected to per-arm `tuned_params`; (3) §7 terminology fixed (signal ids + opaque input-feature ids; sources reserved for evidence pools). |
 
 | 4 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 1 blocking (round-3 deltas confirmed closed): the signal/threshold calibration binding was not normative | Addressed in Draft v5: §3.2 item 11 — every thresholded construct determines a signal id (explicit `SignalUse.signal` for `signal_below`/`signal_accept`; canonical stat ids `vote_margin`/`vote_agreement` for `margin_below`/`stat_at_least`); `θ.calibration.signal` MUST equal it; static lints `signal_mismatch` + `missing_calibration_signal`; rationale recorded (a threshold calibrated against signal A gating signal B is vacuously fresh); §3.3 notes the rule makes the target-property shapes well-posed. |
+
+| 5 | codex (gpt-5.5, xhigh, read-only, FRESH unanchored) — 2026-06-06 | **REJECT** — 8 blocking + 4 non-blocking | All addressed in Draft v6. Blocking: (FB1) §3.2 item-11 signal binding broke P1 (RFC 0001 leaves `calibration.signal` OPTIONAL) → rule re-scoped to COMPOSITES ONLY, fires at the composite USE SITE, never on `cvars`/`policies`; §4 subsumption narrowed to exact-on-execution-semantics + two intended composite-only ratchets (empty-`tuned_params`, signal binding); §4 P1-preserved sentence added (1.1 modules declare no composites); §9 criterion 3 "lint identically" carved out for the two ratchets. (FB2) use-site `SignalUse.inputs` not freshness-bound → `signal_inputs` added to the RFC 0001 §3.5 `ctx_ext` extension registry (conservative); item-11 rule requires `hash_covered_context ⊇ {signal_inputs}` AND covered value = use-site list when `inputs ≠ []`, else `unbound_signal_inputs`. (FB3) nested-certificate freshness honestly scoped → C3/C6 reworded to per-member coverage / TVAR-only obligations, explicitly NOT cross-level value-dependency freshness; §6 assumption 8 added (riding the §2 CVAR→CVAR deferral) with non-normative SHOULD to re-issue outer certificates on inner recalibration; §2 deferral bullet gains a revisit trigger; §3.6 fold scope note added. (FB4) `leafT` extended so a sampling ensemble's tuned `cardinality` (`{cardinality} ∩ N_T`) is in its leaf set, recursively through nesting. (FB5) post-cascade gate typing with strict placement symmetry — `margin_below` POST-only + gated arm must be margin-bearing (stage / `majority_vote` ensemble) else `gate_arm_incompatible`; `signal_below` PRE-only; `gate_kind_placement_mismatch` covers both misuse directions (retiring `pre_gate_requires_signal`); `missing_gate_signal` for signal-less `signal_below`; future output-signal post-gate noted deferred. (FB6) §3.2.1 closed result algebra `ArmResult ::= output(o, vote_stats?) | no_accept | error` with total/deterministic propagation rules unifying the per-construct exception/no-accept sentences; root no_accept → §3.6 fail-closed under strict / honest no-output (runtime-defined scoring) under non-strict; vote abstention stays internal. (FB7) §3.8 + C5 rewritten — `Unroll` is a SEMANTIC compilation into an internal K-chain IR (no surface state-predicate gate exists), `signal_accept` loops only; `external_accept`/`exhausted` offer no unroll; catalog table made honest (`self_debug` external_accept ⇒ no unroll). (FB8) §3.7/§3.9 — surface `pattern:` is sugar → `Provenance.pattern`; the full closed `Provenance` object is expansion-output (SDK-internal), never surface syntax. Non-blocking: (NB9) §3.3 cross-ref now cites the RFC 0001 §3.5 *Claim scope* paragraph accurately (2026-06-06 post-acceptance owner wording-audit clarification, §10 `post-acceptance` row); (NB10) pre-cascade route fixed to `j = min({ i < m : σ_i(x) ≥ θ_i } ∪ {m})`; (NB11) §3.11 restated as a 1:1 code↔rule table incl. `missing_gate_signal`, `missing_stop_signal`, `unbound_signal_inputs`, `gate_arm_incompatible`, `gate_kind_placement_mismatch`; (NB12) C4 verification narrowed — structural induction validates FORM closure only, operational estimate quality out of scope (assumption 3), cross-impl `c(agg)`/cost forms pinned by SHARED golden cost fixtures. |
 
 Design pre-review (before Draft v1): Option E architecture ACCEPTed by
 codex (gpt-5.5 xhigh — 4 hard constraints + terminology edits, all
