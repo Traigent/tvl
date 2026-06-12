@@ -1,8 +1,53 @@
+import { createServer } from "http";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import os from "os";
+import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import type { NextFunction, Request, Response } from "express";
-import { createRateLimitMiddleware } from "./index";
+import { createApp, createRateLimitMiddleware } from "./index";
 
 describe("website server rate limiting", () => {
+  it("rate-limits the SPA fallback route before serving index.html", async () => {
+    const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
+    writeFileSync(
+      path.join(staticPath, "index.html"),
+      "<!doctype html><title>TVL</title>"
+    );
+
+    const app = createApp({
+      staticPath,
+      rateLimitWindowMs: 60_000,
+      rateLimitMaxRequests: 1,
+    });
+    const server = createServer(app);
+
+    await new Promise<void>(resolve => {
+      server.listen(0, resolve);
+    });
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("failed to bind test server");
+    }
+
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const first = await fetch(`${baseUrl}/missing-route`);
+      const second = await fetch(`${baseUrl}/missing-route`);
+
+      expect(first.status).toBe(200);
+      expect(await first.text()).toContain("TVL");
+      expect(second.status).toBe(429);
+      expect(await second.text()).toBe("Too many requests");
+    } finally {
+      await new Promise<void>(resolve => {
+        server.close(() => resolve());
+      });
+      rmSync(staticPath, { recursive: true, force: true });
+    }
+  });
+
   it("returns 429 after the configured request budget is exceeded", async () => {
     const middleware = createRateLimitMiddleware({
       windowMs: 60_000,

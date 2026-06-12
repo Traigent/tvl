@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
+const RATE_LIMIT_APPLIED_LOCALS_KEY = "__tvlRateLimitApplied";
 
 type RateLimitBucket = {
   count: number;
@@ -26,6 +27,16 @@ export function createRateLimitMiddleware(options?: {
   const buckets = new Map<string, RateLimitBucket>();
 
   return (req: Request, res: Response, next: NextFunction) => {
+    res.locals ??= {};
+    const locals = res.locals as Record<string, boolean>;
+
+    if (locals[RATE_LIMIT_APPLIED_LOCALS_KEY]) {
+      next();
+      return;
+    }
+
+    locals[RATE_LIMIT_APPLIED_LOCALS_KEY] = true;
+
     const now = Date.now();
     const forwardedAddress = req.headers["x-forwarded-for"]
       ?.toString()
@@ -85,17 +96,16 @@ export function createApp(options?: {
   const app = express();
   const staticPath = options?.staticPath ?? resolveStaticPath();
   const trustProxy = options?.trustProxy ?? process.env.TRUST_PROXY === "true";
+  const rateLimit = createRateLimitMiddleware({
+    windowMs: options?.rateLimitWindowMs,
+    maxRequests: options?.rateLimitMaxRequests,
+    trustProxy,
+  });
 
   if (trustProxy) {
     app.set("trust proxy", true);
   }
-  app.use(
-    createRateLimitMiddleware({
-      windowMs: options?.rateLimitWindowMs,
-      maxRequests: options?.rateLimitMaxRequests,
-      trustProxy,
-    })
-  );
+  app.use(rateLimit);
 
   app.use(
     express.static(staticPath, {
@@ -108,7 +118,7 @@ export function createApp(options?: {
   );
 
   // Handle client-side routing - serve index.html for all routes
-  app.get("*", (_req, res) => {
+  app.get("*", rateLimit, (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
