@@ -1,84 +1,31 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import type { NextFunction, Request, Response } from "express";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
-const RATE_LIMIT_APPLIED_LOCALS_KEY = "__tvlRateLimitApplied";
-
-type RateLimitBucket = {
-  count: number;
-  resetAt: number;
-};
 
 export function createRateLimitMiddleware(options?: {
   windowMs?: number;
   maxRequests?: number;
   trustProxy?: boolean;
 }) {
-  const windowMs = options?.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
-  const maxRequests = options?.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
-  const trustProxy = options?.trustProxy ?? false;
-  const buckets = new Map<string, RateLimitBucket>();
-
-  return (req: Request, res: Response, next: NextFunction) => {
-    res.locals ??= {};
-    const locals = res.locals as Record<string, boolean>;
-
-    if (locals[RATE_LIMIT_APPLIED_LOCALS_KEY]) {
-      next();
-      return;
-    }
-
-    locals[RATE_LIMIT_APPLIED_LOCALS_KEY] = true;
-
-    const now = Date.now();
-    const forwardedAddress = req.headers["x-forwarded-for"]
-      ?.toString()
-      .split(",")[0]
-      ?.trim();
-    const clientAddress =
-      (trustProxy ? forwardedAddress : undefined) ||
-      req.ip ||
-      req.socket.remoteAddress ||
-      "unknown";
-    const current = buckets.get(clientAddress);
-
-    if (!current || current.resetAt <= now) {
-      buckets.set(clientAddress, { count: 1, resetAt: now + windowMs });
-      res.setHeader("X-RateLimit-Limit", maxRequests.toString());
-      res.setHeader(
-        "X-RateLimit-Remaining",
-        Math.max(maxRequests - 1, 0).toString()
-      );
-      next();
-      return;
-    }
-
-    current.count += 1;
-    res.setHeader("X-RateLimit-Limit", maxRequests.toString());
-    res.setHeader(
-      "X-RateLimit-Remaining",
-      Math.max(maxRequests - current.count, 0).toString()
-    );
-
-    if (current.count > maxRequests) {
-      const retryAfterSeconds = Math.max(
-        Math.ceil((current.resetAt - now) / 1000),
-        1
-      );
-      res.setHeader("Retry-After", retryAfterSeconds.toString());
-      res.status(429).type("text/plain").send("Too many requests");
-      return;
-    }
-
-    next();
-  };
+  return rateLimit({
+    windowMs: options?.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS,
+    limit: options?.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+    legacyHeaders: false,
+    standardHeaders: "draft-7",
+    message: "Too many requests",
+    validate: {
+      trustProxy: options?.trustProxy !== true,
+      xForwardedForHeader: options?.trustProxy === true,
+    },
+  });
 }
 
 export function resolveStaticPath() {
@@ -105,7 +52,6 @@ export function createApp(options?: {
   if (trustProxy) {
     app.set("trust proxy", true);
   }
-  app.use(rateLimit);
 
   app.use(
     express.static(staticPath, {
