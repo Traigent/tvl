@@ -1,8 +1,8 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import type { NextFunction, Request, Response } from "express";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,64 +10,22 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
 
-type RateLimitBucket = {
-  count: number;
-  resetAt: number;
-};
-
 export function createRateLimitMiddleware(options?: {
   windowMs?: number;
   maxRequests?: number;
   trustProxy?: boolean;
 }) {
-  const windowMs = options?.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
-  const maxRequests = options?.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
-  const trustProxy = options?.trustProxy ?? false;
-  const buckets = new Map<string, RateLimitBucket>();
-
-  return (req: Request, res: Response, next: NextFunction) => {
-    const now = Date.now();
-    const forwardedAddress = req.headers["x-forwarded-for"]
-      ?.toString()
-      .split(",")[0]
-      ?.trim();
-    const clientAddress =
-      (trustProxy ? forwardedAddress : undefined) ||
-      req.ip ||
-      req.socket.remoteAddress ||
-      "unknown";
-    const current = buckets.get(clientAddress);
-
-    if (!current || current.resetAt <= now) {
-      buckets.set(clientAddress, { count: 1, resetAt: now + windowMs });
-      res.setHeader("X-RateLimit-Limit", maxRequests.toString());
-      res.setHeader(
-        "X-RateLimit-Remaining",
-        Math.max(maxRequests - 1, 0).toString()
-      );
-      next();
-      return;
-    }
-
-    current.count += 1;
-    res.setHeader("X-RateLimit-Limit", maxRequests.toString());
-    res.setHeader(
-      "X-RateLimit-Remaining",
-      Math.max(maxRequests - current.count, 0).toString()
-    );
-
-    if (current.count > maxRequests) {
-      const retryAfterSeconds = Math.max(
-        Math.ceil((current.resetAt - now) / 1000),
-        1
-      );
-      res.setHeader("Retry-After", retryAfterSeconds.toString());
-      res.status(429).type("text/plain").send("Too many requests");
-      return;
-    }
-
-    next();
-  };
+  return rateLimit({
+    windowMs: options?.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS,
+    limit: options?.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+    legacyHeaders: false,
+    standardHeaders: "draft-7",
+    message: "Too many requests",
+    validate: {
+      trustProxy: options?.trustProxy !== true,
+      xForwardedForHeader: options?.trustProxy === true,
+    },
+  });
 }
 
 export function resolveStaticPath() {
@@ -85,17 +43,15 @@ export function createApp(options?: {
   const app = express();
   const staticPath = options?.staticPath ?? resolveStaticPath();
   const trustProxy = options?.trustProxy ?? process.env.TRUST_PROXY === "true";
+  const rateLimit = createRateLimitMiddleware({
+    windowMs: options?.rateLimitWindowMs,
+    maxRequests: options?.rateLimitMaxRequests,
+    trustProxy,
+  });
 
   if (trustProxy) {
     app.set("trust proxy", true);
   }
-  app.use(
-    createRateLimitMiddleware({
-      windowMs: options?.rateLimitWindowMs,
-      maxRequests: options?.rateLimitMaxRequests,
-      trustProxy,
-    })
-  );
 
   app.use(
     express.static(staticPath, {
@@ -108,7 +64,7 @@ export function createApp(options?: {
   );
 
   // Handle client-side routing - serve index.html for all routes
-  app.get("*", (_req, res) => {
+  app.get("*", rateLimit, (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
