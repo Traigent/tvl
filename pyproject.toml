@@ -7,7 +7,7 @@ name = "tvl-spec"
 version = "1.0.0"
 description = "TVL (Tuned Variables Language) spec, tools, and SDK"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Traigent Team", email = "open-source@traigent.com" }]
 urls = { Homepage = "https://tvl-lang.org", Repository = "https://github.com/Traigent/tvl" }

@@ -28,7 +28,8 @@ class Domain:
             raise ValueError(f"{self.path}: expected bool, got {value!r}")
 
         if self.kind == "enum":
-            assert self.values is not None
+            if self.values is None:
+                raise ValueError(f"{self.path}: enum domain is missing values")
             if value not in self.values:
                 raise ValueError(f"{self.path}: value {value!r} not in enum {self.values}")
             return self.values.index(value)
@@ -56,7 +57,8 @@ class Domain:
         if self.kind == "bool":
             return bool(raw)
         if self.kind == "enum":
-            assert self.values is not None
+            if self.values is None:
+                raise ValueError(f"{self.path}: enum domain is missing values")
             return self.values[raw]
         if self.kind == "int":
             return raw

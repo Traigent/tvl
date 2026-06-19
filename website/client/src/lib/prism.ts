@@ -59,3 +59,8 @@ export function highlightCode(code: string, language: string): string {
   return Prism.highlight(code, grammar, resolved);
 }
 
+export function tokenizeCode(code: string, language: string) {
+  const resolved = resolvePrismLanguage(language);
+  const grammar = Prism.languages[resolved] ?? Prism.languages[FALLBACK_LANGUAGE];
+  return Prism.tokenize(code, grammar);
+}
