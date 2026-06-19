@@ -1,5 +1,6 @@
 import express from "express";
 import { rateLimit } from "express-rate-limit";
+import helmet from "helmet";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -52,6 +53,8 @@ export function createApp(options?: {
   if (trustProxy) {
     app.set("trust proxy", true);
   }
+
+  app.use(helmet());
 
   app.use(
     express.static(staticPath, {
