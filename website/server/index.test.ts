@@ -13,7 +13,7 @@ async function withTestServer(
   const server = createServer(app);
 
   await new Promise<void>(resolve => {
-    server.listen(0, resolve);
+    server.listen(0, "127.0.0.1", resolve);
   });
 
   const address = server.address();
@@ -86,6 +86,30 @@ describe("website server rate limiting", () => {
           expect(second.status).toBe(429);
         }
       );
+    } finally {
+      rmSync(staticPath, { recursive: true, force: true });
+    }
+  });
+
+  it("emits hardened security headers on the SPA fallback route", async () => {
+    const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
+    writeFileSync(
+      path.join(staticPath, "index.html"),
+      "<!doctype html><title>TVL</title>"
+    );
+
+    try {
+      await withTestServer({ staticPath }, async baseUrl => {
+        const response = await fetch(`${baseUrl}/docs/getting-started`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
+        expect(response.headers.get("strict-transport-security")).toBe(
+          "max-age=31536000; includeSubDomains; preload"
+        );
+        expect(response.headers.get("x-frame-options")).toBe("DENY");
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      });
     } finally {
       rmSync(staticPath, { recursive: true, force: true });
     }

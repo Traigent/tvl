@@ -272,6 +272,8 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
     },
   ];
 
+  const allowedExamplePaths = new Set(examples.map(example => example.path));
+
   const exampleGuidance: Partial<
     Record<string, { bestFor: string; lookFor: string; runNext: string }>
   > = {
@@ -411,6 +413,10 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
   };
 
   const loadFileContent = async (path: string) => {
+    if (!allowedExamplePaths.has(path)) {
+      return "Unsupported example path";
+    }
+
     if (fileContents[path]) return fileContents[path];
 
     try {

@@ -9,6 +9,25 @@ const __dirname = path.dirname(__filename);
 
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
+const SECURITY_HEADERS = {
+  "Content-Security-Policy":
+    "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Origin-Agent-Cluster": "?1",
+  "Permissions-Policy":
+    "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
+
+function applySecurityHeaders(res: express.Response) {
+  for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+    res.setHeader(header, value);
+  }
+}
 
 export function createRateLimitMiddleware(options?: {
   windowMs?: number;
@@ -34,6 +53,18 @@ export function resolveStaticPath() {
     : path.resolve(__dirname, "..", "dist", "public");
 }
 
+function resolveIndexPath(staticPath: string) {
+  const root = path.resolve(staticPath);
+  const indexPath = path.resolve(root, "index.html");
+  const relative = path.relative(root, indexPath);
+
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`resolved index.html escaped static root: ${staticPath}`);
+  }
+
+  return indexPath;
+}
+
 export function createApp(options?: {
   staticPath?: string;
   rateLimitWindowMs?: number;
@@ -41,7 +72,8 @@ export function createApp(options?: {
   trustProxy?: boolean;
 }) {
   const app = express();
-  const staticPath = options?.staticPath ?? resolveStaticPath();
+  const staticPath = path.resolve(options?.staticPath ?? resolveStaticPath());
+  const indexPath = resolveIndexPath(staticPath);
   const trustProxy = options?.trustProxy ?? process.env.TRUST_PROXY === "true";
   const rateLimit = createRateLimitMiddleware({
     windowMs: options?.rateLimitWindowMs,
@@ -49,13 +81,21 @@ export function createApp(options?: {
     trustProxy,
   });
 
+  app.disable("x-powered-by");
+
   if (trustProxy) {
     app.set("trust proxy", true);
   }
 
+  app.use((_req, res, next) => {
+    applySecurityHeaders(res);
+    next();
+  });
+
   app.use(
     express.static(staticPath, {
       setHeaders: (res, filePath) => {
+        applySecurityHeaders(res);
         if (filePath.endsWith(".ebnf")) {
           res.type("text/plain; charset=utf-8");
         }
@@ -65,7 +105,7 @@ export function createApp(options?: {
 
   // Handle client-side routing - serve index.html for all routes
   app.get("*", rateLimit, (_req, res) => {
-    res.sendFile(path.join(staticPath, "index.html"));
+    res.sendFile(indexPath);
   });
 
   return app;
