@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 let diagnosticCollection: vscode.DiagnosticCollection;
 
@@ -60,7 +60,7 @@ async function validateDocument(document: vscode.TextDocument): Promise<void> {
     const cliPath = config.get<string>('cli.path', 'tvl-validate');
 
     try {
-        const { stdout } = await execAsync(`${cliPath} "${document.fileName}" --format json`);
+        const { stdout } = await runTvlCli(cliPath, document.fileName);
         const result = JSON.parse(stdout);
 
         const diagnostics: vscode.Diagnostic[] = [];
@@ -132,7 +132,7 @@ async function lintDocument(document: vscode.TextDocument): Promise<void> {
     const cliPath = config.get<string>('cli.path', 'tvl-validate').replace('validate', 'lint');
 
     try {
-        const { stdout } = await execAsync(`${cliPath} "${document.fileName}" --format json`);
+        const { stdout } = await runTvlCli(cliPath, document.fileName);
         const result = JSON.parse(stdout);
 
         const diagnostics: vscode.Diagnostic[] = [];
@@ -163,6 +163,14 @@ async function lintDocument(document: vscode.TextDocument): Promise<void> {
     } catch (error: any) {
         vscode.window.showErrorMessage(`TVL lint failed: ${error.message || error}`);
     }
+}
+
+export function buildTvlCliArguments(documentPath: string): string[] {
+    return [documentPath, '--format', 'json'];
+}
+
+async function runTvlCli(cliPath: string, documentPath: string): Promise<{ stdout: string }> {
+    return execFileAsync(cliPath, buildTvlCliArguments(documentPath));
 }
 
 function getSeverity(severity: string): vscode.DiagnosticSeverity {
