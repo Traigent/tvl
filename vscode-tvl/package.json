@@ -35,6 +35,11 @@
     "theme": "dark"
   },
   "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
   "contributes": {
     "languages": [
       {
@@ -77,6 +82,7 @@
         "tvl.cli.path": {
           "type": "string",
           "default": "tvl-validate",
+          "scope": "machine",
           "description": "Path to tvl-validate CLI tool"
         }
       }
@@ -96,6 +102,7 @@
     "sync:shared": "python3 ../../scripts/sync_vscode_tvl_assets.py",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
+    "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
     "publish": "vsce publish"
