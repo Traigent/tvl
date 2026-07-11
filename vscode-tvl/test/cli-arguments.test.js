@@ -19,3 +19,15 @@ test("uses execFile with the document path as a discrete argument", () => {
     );
     assert.doesNotMatch(extensionSource, /execAsync\(/);
 });
+
+const manifest = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+);
+
+test("restricts CLI configuration to trusted machine scope", () => {
+    assert.equal(
+        manifest.contributes.configuration.properties["tvl.cli.path"].scope,
+        "machine",
+    );
+    assert.equal(manifest.capabilities.untrustedWorkspaces.supported, false);
+});

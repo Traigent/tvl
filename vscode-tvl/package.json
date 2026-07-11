@@ -35,6 +35,11 @@
     "theme": "dark"
   },
   "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
   "contributes": {
     "languages": [
       {
@@ -77,6 +82,7 @@
         "tvl.cli.path": {
           "type": "string",
           "default": "tvl-validate",
+          "scope": "machine",
           "description": "Path to tvl-validate CLI tool"
         }
       }
