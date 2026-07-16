@@ -37,8 +37,22 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        doc: Dict[str, Any] = load_yaml_safely(args.file)
-        issues = lint(doc if isinstance(doc, dict) else {}, precision=args.precision)
+        doc = load_yaml_safely(args.file)
+        if isinstance(doc, dict):
+            issues = lint(doc, precision=args.precision)
+        else:
+            # A top-level YAML sequence, bare scalar, or empty file is not a TVL
+            # module. Fail closed with an explicit issue instead of substituting
+            # an empty mapping (which silently linted clean), staying consistent
+            # with the sibling tvl-validate that rejects the same input.
+            issues = [
+                {
+                    "code": "invalid_document",
+                    "message": "TVL module must be a mapping at the top level",
+                    "path": [],
+                    "severity": "error",
+                }
+            ]
 
         out = {
             "ok": len(issues) == 0,
