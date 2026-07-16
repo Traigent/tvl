@@ -14,7 +14,7 @@ from .model import Domain, extract_domains, flatten_assignments
 
 _OR_SPLIT = re.compile(r"\s+or\s+", re.IGNORECASE)
 _AND_SPLIT = re.compile(r"\s+and\s+", re.IGNORECASE)
-_LITERAL_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*(<=|>=|!=|=|<|>)\s*(.+?)\s*$")
+_LITERAL_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*(<=|>=|!=|==|=|<|>)\s*(.+?)\s*$")
 
 _TRUE_COUNTER = 0
 
@@ -210,18 +210,24 @@ def evaluate_assignment(compiled: CompiledConstraints, assignments: Dict[str, An
         antecedent = constraint.antecedent or [[]]
         consequent = constraint.consequent or [[]]
 
-        satisfied = False
-        for cond in antecedent:
-            cond_true = all(atom_true(atom) for atom in cond)
-            if not cond_true:
-                satisfied = True
-                break
-
+        # The antecedent is a DNF (OR of conjunctions); it holds iff ANY
+        # disjunct holds. It is vacuously true only when EVERY disjunct is
+        # false. Short-circuiting on the first false disjunct (the previous
+        # behaviour) declared the whole constraint satisfied as soon as one
+        # disjunct was false — a fail-open that mirrored neither the intended
+        # semantics nor the SAT encoder, which encodes (d1 ∨ d2) → C as
+        # (d1 → C) ∧ (d2 → C).
+        antecedent_true = any(
+            all(atom_true(atom) for atom in cond) for cond in antecedent
+        )
+        if not antecedent_true:
+            # antecedent false → constraint vacuously satisfied
+            satisfied = True
+        else:
             # antecedent holds → consequent must hold
-            conseq_ok = any(all(atom_true(atom) for atom in conj) for conj in consequent)
-            if conseq_ok:
-                satisfied = True
-                break
+            satisfied = any(
+                all(atom_true(atom) for atom in conj) for conj in consequent
+            )
 
         if not satisfied:
             constraint_issues.append({"code": "constraint_failed", "constraint_index": idx, "raw": constraint.raw})
@@ -334,9 +340,16 @@ def _atom_literal(
                     model.Add(var <= min(allowed) - 1).OnlyEnforceIf(lit.Not())
                 return lit
 
-        # Unsupported comparison on symbolic enum; fall back to conservative true.
-        model.Add(lit == 1)
-        return lit
+        # Ordering comparison (<, <=, >, >=) on a symbolic (non-numeric) enum
+        # has no defined order, so it cannot be encoded soundly. Forcing the
+        # literal true (the previous behaviour) made the atom a tautology and
+        # the whole clause fail open, letting violating configs pass. Reject it
+        # instead — matching the fail-closed `raise` for unsupported operators
+        # on ordered domains below.
+        raise ValueError(
+            f"Unsupported ordering operator {atom.op!r} on symbolic enum "
+            f"'{atom.path}' (enum values are not ordered)"
+        )
 
     encoded = domain.encode(atom.value)
     lit = model.NewBoolVar(f"lit_{atom.path.replace('.', '_')}_{atom.op}_{atom.value}")
