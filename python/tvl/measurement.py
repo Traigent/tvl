@@ -3,18 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import yaml
-
 from .configuration import validate_configuration
 from .errors import ParseError, SchemaError
 from .promotion import SCIPY_AVAILABLE, evaluate_chance_constraint
 from .schema import measurement_validator
+from .yaml_safe import safe_load
 
 
 def load_measurement(path: Path | str) -> Dict[str, Any]:
     p = Path(path)
     try:
-        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        data = safe_load(p.read_text(encoding="utf-8"))
     except Exception as e:  # noqa: BLE001
         raise ParseError(str(e))
 

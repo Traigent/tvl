@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
-import yaml
 
 from .errors import ParseError, SchemaError
 from .schema import validator
+from .yaml_safe import safe_load
 
 
 def load(path: Path | str) -> Dict[str, Any]:
@@ -17,7 +17,7 @@ def load(path: Path | str) -> Dict[str, Any]:
     """
     p = Path(path)
     try:
-        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        data = safe_load(p.read_text(encoding="utf-8"))
     except Exception as e:  # noqa: BLE001
         raise ParseError(str(e))
 
