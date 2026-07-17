@@ -181,7 +181,15 @@ def _parse_derived_expression(
                 return ".".join(reversed(parts)), False
         return None, False
 
-    def walk_expr(node):
+    # Depth guard: a deeply-nested / long chained expression (e.g. thousands of
+    # `x+x+...+x` terms) would otherwise recurse until the Python stack is
+    # exhausted, raising an uncaught RecursionError. Bail to the graceful
+    # "unparseable" path (return None) well before the real recursion limit.
+    max_depth = 400
+
+    def walk_expr(node, depth=0):
+        if depth > max_depth:
+            return None
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
             return [(float(node.value), None)], []
         elif isinstance(node, (ast.Name, ast.Attribute)):
@@ -191,15 +199,15 @@ def _parse_derived_expression(
             return [(1.0, name)], [name] if legacy else []
         elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             sign = -1.0 if isinstance(node.op, ast.USub) else 1.0
-            child = walk_expr(node.operand)
+            child = walk_expr(node.operand, depth + 1)
             if child is None:
                 return None
             child_terms, legacy_symbols = child
             return [(sign * c, s) for c, s in child_terms], legacy_symbols
         elif isinstance(node, ast.BinOp):
             if isinstance(node.op, (ast.Add, ast.Sub)):
-                left = walk_expr(node.left)
-                right = walk_expr(node.right)
+                left = walk_expr(node.left, depth + 1)
+                right = walk_expr(node.right, depth + 1)
                 if left is None or right is None:
                     return None
                 left_terms, left_legacy = left
@@ -242,7 +250,12 @@ def _parse_derived_expression(
     else:
         return None, None, None, []
 
-    walked = walk_expr(tree.body.left)
+    try:
+        walked = walk_expr(tree.body.left)
+    except RecursionError:
+        # Defense in depth: the depth guard above should prevent this, but never
+        # let stack exhaustion escape as an uncaught crash of the CLI check.
+        return None, None, None, []
     if walked is None:
         return None, None, None, []
     terms_raw, legacy_symbols = walked

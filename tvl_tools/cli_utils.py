@@ -6,6 +6,8 @@ from typing import Any, Callable, Dict, Optional
 
 import yaml
 
+from tvl.yaml_safe import safe_load
+
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     """Add standard arguments to the CLI parser."""
@@ -34,7 +36,7 @@ def load_yaml_safely(path: Path) -> Any:
     """Load YAML file with friendly error handling."""
     try:
         with path.open("r", encoding="utf-8") as handle:
-            return yaml.safe_load(handle)
+            return safe_load(handle)
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"File not found: {path}") from exc
     except yaml.YAMLError as exc:

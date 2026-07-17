@@ -5,6 +5,7 @@ import json
 import hashlib
 import math
 import re
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from tvl.loader import load
+from tvl.structural_parser import StructuralParseError
 from tvl.structural_sat import check_structural
 
 
@@ -200,7 +202,37 @@ def main() -> None:
 
     module = _load_module(module_path)
     start_time = time.perf_counter()
-    result = check_structural(module)
+    try:
+        result = check_structural(module)
+    except StructuralParseError as exc:
+        # A well-shaped structural entry whose expression string is malformed (a
+        # user typo) or over-complex (deep nesting / DNF blowup). Mirror the
+        # graceful degradation the lint sibling already provides: emit a
+        # structured diagnostic and exit 2, never a raw traceback.
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        if temp_file is not None:
+            try:
+                temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if args.json:
+            payload = {
+                "schemaVersion": "1.0",
+                "kind": "PhaseResult",
+                "phase": "structural",
+                "ok": False,
+                "status": "error",
+                "error": f"invalid structural constraint: {exc}",
+                "assignment": None,
+                "unsat_core": None,
+                "repair_candidates": [],
+                "timestamp": _current_timestamp(),
+                "durationMs": duration_ms,
+            }
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"Error: invalid structural constraint: {exc}", file=sys.stderr)
+        raise SystemExit(2)
     duration_ms = int((time.perf_counter() - start_time) * 1000)
     if temp_file is not None:
         try:
