@@ -52,7 +52,9 @@ def validate_configuration(module: Dict[str, Any], config: Dict[str, Any]) -> Di
 
     evaluation = evaluate_assignment(compiled, assignments)
     domain_issues = evaluation["domains"] + unknown + module_mismatch
-    constraint_issues = evaluation["constraints"]
+    # Surface unparseable constraints (unsupported/illegal construct) so validation
+    # fails closed instead of silently ignoring the dropped constraint (#49/#51).
+    constraint_issues = evaluation["constraints"] + compiled.parse_issues
 
     ok = not domain_issues and not constraint_issues
     return {

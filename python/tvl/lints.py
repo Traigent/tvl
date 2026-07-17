@@ -1799,8 +1799,14 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
             raise ValueError("bool not allowed")
         if isinstance(value, (int, float)) and float(value).is_integer():
             return int(value)
-        if isinstance(value, str) and value.isdigit():
-            return int(value)
+        if isinstance(value, str):
+            # str.isdigit() is False for signed integers ('-5'), wrongly rejecting
+            # negative int-domain values while the float branch accepts them
+            # (issue #50). int() parses the sign and rejects fractional strings.
+            try:
+                return int(value)
+            except ValueError:
+                raise ValueError("not an int") from None
         raise ValueError("not an int")
     if kind == "float":
         if isinstance(value, bool):

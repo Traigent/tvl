@@ -177,7 +177,10 @@ def _tokenize(text: str) -> List[_Token]:
         if ch.isalpha() or ch == "_":
             start = pos
             pos += 1
-            while pos < length and (text[pos].isalnum() or text[pos] in "_.-"):
+            # Normative Ident forbids hyphens (tvl.ebnf:252, tvl.schema.json:243);
+            # only alphanumerics, '_' and dotted-path '.' continue an identifier
+            # (issue #51 — drop the previously-allowed mid-ident hyphen).
+            while pos < length and (text[pos].isalnum() or text[pos] in "_."):
                 pos += 1
             ident = text[start:pos]
             lowered = ident.lower()
