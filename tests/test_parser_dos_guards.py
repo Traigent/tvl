@@ -122,6 +122,23 @@ def test_structural_normal_expression_still_parses() -> None:
     assert len(dnf.clauses) == 2
 
 
+def test_structural_flat_and_chain_raises_parse_error() -> None:
+    # A flat `a and b and c and ...` chain never deepens the parser's nesting
+    # guard (conjunction() builds it via a `while` loop, not recursion), but
+    # it still produces a left-deep AST that `_to_nnf`/`_to_dnf` would walk
+    # *recursively* — thousands of terms would exhaust the stack there
+    # without the total-unit bound. Graceful rejection, no RecursionError.
+    text = " and ".join(f"x{i} == 1" for i in range(4000))
+    with pytest.raises(StructuralParseError):
+        parse_expression(text)
+
+
+def test_structural_flat_or_chain_raises_parse_error() -> None:
+    text = " or ".join(f"x{i} == 1" for i in range(4000))
+    with pytest.raises(StructuralParseError):
+        parse_expression(text)
+
+
 # --------------------------------------------------------------------------- #
 # #47 — tvl-check-structural CLI: malformed expression => exit 2 + JSON
 # --------------------------------------------------------------------------- #

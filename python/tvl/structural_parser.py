@@ -10,6 +10,20 @@ from typing import Iterable, List, Sequence
 # normal StructuralParseError. Real constraints nest only a few levels deep.
 MAX_PARSE_DEPTH = 200
 
+# Cap the total number of atoms/nesting-units in a single structural
+# constraint, not just its nesting depth. `disjunction()`/`conjunction()`
+# build a flat `and`/`or` chain via a `while` loop (no parser recursion), so a
+# long LINEAR chain (e.g. `a and b and c and ...` thousands of terms) never
+# trips MAX_PARSE_DEPTH — but it still produces a left-deep AST tuple, and
+# `_to_nnf`/`_to_dnf` walk that AST *recursively*, so an unbounded chain still
+# exhausts the stack post-parse. `unary()` is called exactly once per atom
+# *and* once per NOT/paren nesting level, so counting total `unary()` calls
+# bounds AST size regardless of whether growth comes from depth or breadth.
+# Chosen well under the observed ~1000-term crash point (matches
+# sys.getrecursionlimit()) for the same safety-margin reasons as
+# MAX_PARSE_DEPTH.
+MAX_PARSE_UNITS = 300
+
 # Cap the number of DNF clauses. ``and``-of-``or``s expands as a Cartesian
 # product (2^N from linear input), so bound the running clause count and raise
 # before materializing an exponential blowup.
@@ -213,6 +227,10 @@ class _Parser:
         self.tokens = list(tokens)
         self.index = 0
         self.depth = 0
+        # Total unary() calls across the whole parse. Unlike `depth`, this is
+        # never decremented — it's a running total, not a current-nesting
+        # counter. See MAX_PARSE_UNITS.
+        self.units = 0
 
     def current(self) -> _Token:
         return self.tokens[self.index]
@@ -263,9 +281,17 @@ class _Parser:
         # Every level of `not` chaining and every parenthesised group recurses
         # through unary(); guard here to bound total nesting depth.
         self.depth += 1
+        # Every atom *and* every NOT/paren level passes through unary() once,
+        # so this also bounds flat `and`/`or` chains that never deepen
+        # `self.depth` (see MAX_PARSE_UNITS above).
+        self.units += 1
         if self.depth > MAX_PARSE_DEPTH:
             raise StructuralParseError(
                 f"Structural constraint nesting too deep (>{MAX_PARSE_DEPTH})"
+            )
+        if self.units > MAX_PARSE_UNITS:
+            raise StructuralParseError(
+                f"Structural constraint too large (>{MAX_PARSE_UNITS} terms/nesting units)"
             )
         try:
             if self.accept("NOT"):
