@@ -702,6 +702,123 @@ class PromotionGateTests(unittest.TestCase):
         self.assertEqual("Promote", decision)
         self.assertEqual("welch", evidence["per_objective"]["quality"]["test_type"])
 
+    # --- Regression: zero-variance standard error must not manufacture a Promote (#59) ---
+
+    def test_zero_variance_samples_not_promoted(self) -> None:
+        """Degenerate (zero-variance) samples must not yield a superiority Promote.
+
+        Both arms have zero observed variance; the standard error is unestimable.
+        The gate must fail closed (never Promote) rather than substitute a tiny SE
+        that fabricates a near-infinite t-statistic.
+        """
+        incumbent = {"objective_values": {"quality": {"samples": [0.5, 0.5]}}}
+        candidate = {"objective_values": {"quality": {"samples": [0.9, 0.9]}}}
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.0}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        # Fails closed (Reject here, matching the n<2 degenerate path) - never Promote.
+        self.assertNotEqual("Promote", decision)
+        self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
+        self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_noninf"])
+
+    def test_zero_variance_aggregated_stats_not_promoted(self) -> None:
+        """Aggregated stats with std=0 (even at large n) must not Promote (#59)."""
+        incumbent = {"objective_values": {"quality": {"mean": 0.5, "std": 0.0, "n": 50}}}
+        candidate = {"objective_values": {"quality": {"mean": 0.9, "std": 0.0, "n": 50}}}
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.0}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        self.assertNotEqual("Promote", decision)
+        self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
+
+    def test_zero_variance_paired_samples_not_promoted(self) -> None:
+        """Paired differences with zero variance must not Promote (#59, :397).
+
+        The paired difference variance is only "roundoff zero" (~1e-33), so a
+        plain ``variance > 0`` guard would miss it; the degeneracy check must
+        still treat it as unestimable.
+        """
+        incumbent = {"objective_values": {"quality": {"samples": [0.5, 0.5, 0.5]}}}
+        candidate = {
+            "objective_values": {"quality": {"samples": [0.9, 0.9, 0.9], "paired": True}}
+        }
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.0}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        self.assertNotEqual("Promote", decision)
+        self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
+
+    def test_real_variance_still_promotes(self) -> None:
+        """Genuine (non-degenerate) variance path is unchanged: clear win Promotes."""
+        incumbent = {"objective_values": {"quality": {"samples": [0.80, 0.82, 0.81, 0.79, 0.80]}}}
+        candidate = {"objective_values": {"quality": {"samples": [0.92, 0.91, 0.93, 0.90, 0.92]}}}
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.02}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        decision, _ = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        self.assertEqual("Promote", decision)
+
+    # --- Regression: low-power banded objective must be NoDecision, not Reject (#58) ---
+
+    def test_low_power_banded_is_no_decision(self) -> None:
+        """On-target banded metric measured with few samples -> NoDecision, not Reject.
+
+        Spec promotion-gate-io.md section 6 "TOST fail (power)" row:
+        Mean=100, band=[95,105], n=5, sigma=5 -> NoDecision.
+        """
+        incumbent = {"objective_values": {}}
+        candidate = {"objective_values": {"length": {"mean": 100.0, "std": 8.0, "n": 5}}}
+        policy = {"alpha": 0.05, "min_effect": {}, "adjust": "none"}
+        objectives = [{"name": "length", "band": {"target": [95, 105], "alpha": 0.05}}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        self.assertEqual("NoDecision", decision)
+        self.assertEqual("inconclusive", evidence["per_objective"]["length"]["verdict"])
+
+    def test_out_of_band_still_rejects(self) -> None:
+        """A genuinely out-of-band point estimate still hard-Rejects (#58).
+
+        Spec section 6 "TOST fail (OOB)" row: Mean=110, band=[95,105] -> Reject.
+        """
+        incumbent = {"objective_values": {}}
+        candidate = {"objective_values": {"length": {"mean": 110.0, "std": 2.0, "n": 50}}}
+        policy = {"alpha": 0.05, "min_effect": {}, "adjust": "none"}
+        objectives = [{"name": "length", "band": {"target": [95, 105], "alpha": 0.05}}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        self.assertEqual("Reject", decision)
+        self.assertEqual("out_of_band", evidence["per_objective"]["length"]["verdict"])
+
+    def test_low_power_band_does_not_block_via_false_reject_with_superior_std_obj(self) -> None:
+        """A superior standard objective alongside a low-power band -> NoDecision.
+
+        The inconclusive band must neither Reject nor be ignored to allow Promote;
+        it downgrades the overall decision to NoDecision.
+        """
+        incumbent = {
+            "objective_values": {
+                "quality": {"samples": [0.80, 0.82, 0.81, 0.79, 0.80, 0.81, 0.80, 0.79]},
+            },
+        }
+        candidate = {
+            "objective_values": {
+                "quality": {"samples": [0.92, 0.91, 0.93, 0.90, 0.92, 0.91, 0.90, 0.92]},
+                "length": {"mean": 100.0, "std": 8.0, "n": 5},
+            },
+        }
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.02}, "adjust": "none"}
+        objectives = [
+            {"name": "quality", "direction": "maximize"},
+            {"name": "length", "band": {"target": [95, 105], "alpha": 0.05}},
+        ]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        self.assertEqual("NoDecision", decision)
+        self.assertEqual("inconclusive", evidence["per_objective"]["length"]["verdict"])
+
 
 if __name__ == "__main__":
     unittest.main()
