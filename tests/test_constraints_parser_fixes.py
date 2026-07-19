@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 
 from tvl.constraints import (
+    Atom,
     ConstraintParseError,
     compile_constraints,
     evaluate_assignment,
@@ -27,6 +28,7 @@ from tvl.constraints import (
 )
 from tvl.configuration import validate_configuration
 from tvl.lints import _coerce_numeric
+from tvl.structural_parser import parse_expression as parse_structural_expression
 
 
 # --------------------------------------------------------------------------- #
@@ -73,6 +75,14 @@ def test_interval_atom_rejected():
     with pytest.raises(ConstraintParseError) as exc:
         parse_expression("lo <= x <= hi")
     assert exc.value.code == "unsupported_interval"
+
+
+def test_quoted_value_containing_arrow_is_not_an_inline_implication():
+    """A quoted string value containing '=>' (e.g. mode = "a=>b") must parse as
+    a plain literal atom, not be mistaken for an inline implication by a naive
+    substring check on the raw (unparsed-for-quotes) text."""
+    dnf = parse_expression('mode = "a=>b"')
+    assert dnf == [[Atom(path="mode", op="==", value="a=>b")]]
 
 
 def test_expr_implication_consequent_is_enforced():
@@ -189,3 +199,16 @@ def test_all_declared_references_pass_clean():
     assert result["ok"] is True
     assert result["domains"] == []
     assert result["constraints"] == []
+
+
+# --------------------------------------------------------------------------- #
+# #51 follow-up — structural_parser must still lex hyphenated bareword VALUES
+# (e.g. ``model = gpt-4o``) after the mid-ident-hyphen fix for LHS identifiers.
+# --------------------------------------------------------------------------- #
+
+def test_structural_parser_accepts_hyphenated_bareword_value():
+    dnf = parse_structural_expression("model = gpt-4o")
+    literal = dnf.clauses[0][0]
+    assert literal.ident == "model"
+    assert literal.operator == "=="
+    assert literal.values == ("gpt-4o",)

@@ -173,7 +173,10 @@ def _parse_literal(text: str) -> Atom:
     # Fail closed on valid-grammar constructs the regex parser cannot represent
     # as a single flat Atom (issue #49). The structural_parser tokenizer handles
     # these; here we reject them with a diagnostic rather than mis-parse/swallow.
-    if "=>" in text:
+    # Use the quote/depth-aware splitter (not a naive substring test) so a
+    # quoted value containing '=>' (e.g. mode = "a=>b") isn't mistaken for an
+    # inline implication.
+    if _split_top_level_implication(text) is not None:
         raise ConstraintParseError(
             f"Inline implication '=>' is not supported in this position: {text!r}; "
             "use a when/then constraint or a top-level expr.",

@@ -178,9 +178,18 @@ def _tokenize(text: str) -> List[_Token]:
             start = pos
             pos += 1
             # Normative Ident forbids hyphens (tvl.ebnf:252, tvl.schema.json:243);
-            # only alphanumerics, '_' and dotted-path '.' continue an identifier
-            # (issue #51 — drop the previously-allowed mid-ident hyphen).
-            while pos < length and (text[pos].isalnum() or text[pos] in "_."):
+            # alphanumerics, '_' and dotted-path '.' continue an identifier
+            # (issue #51 — drop the previously-allowed mid-ident hyphen). A '-'
+            # is still allowed to continue when directly followed by an
+            # alphanumeric, so unquoted hyphenated barewords (e.g. gpt-4o)
+            # keep lexing as one IDENT/value instead of splitting into
+            # IDENT/NUMBER/IDENT — a trailing/standalone '-' still ends the
+            # identifier and is rejected as before.
+            while pos < length and (
+                text[pos].isalnum()
+                or text[pos] in "_."
+                or (text[pos] == "-" and pos + 1 < length and text[pos + 1].isalnum())
+            ):
                 pos += 1
             ident = text[start:pos]
             lowered = ident.lower()
