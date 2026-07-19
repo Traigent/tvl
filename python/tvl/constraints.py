@@ -110,7 +110,7 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
 
     compiled: List[StructuralConstraint] = []
     parse_issues: List[Dict[str, Any]] = []
-    for entry in structural:
+    for idx, entry in enumerate(structural):
         if not isinstance(entry, dict):
             continue
         when_expr = entry.get("when")
@@ -126,6 +126,17 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
                 split = _split_top_level_implication(expr_expr) if isinstance(expr_expr, str) else None
                 if split is not None:
                     ante_str, cons_str = split
+                    if not ante_str.strip() or not cons_str.strip():
+                        # Grammar-invalid: '=>' requires a non-empty antecedent and
+                        # consequent (tvl.ebnf:216). Without this, a truncated
+                        # 'x = 1 =>' silently compiled to a vacuous-true or
+                        # unconditional constraint instead of being rejected —
+                        # the exact fail-open class this PR closes (#49/#51).
+                        raise ConstraintParseError(
+                            f"Malformed implication (empty antecedent/consequent): {expr_expr!r}",
+                            code="malformed_implication",
+                            text=expr_expr,
+                        )
                     antecedent = parse_expression(ante_str)
                     consequent = parse_expression(cons_str)
                     compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
@@ -133,7 +144,12 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
                     consequent = parse_expression(expr_expr)
                     compiled.append(StructuralConstraint(antecedent=[[]], consequent=consequent, raw=entry))
         except ConstraintParseError as err:
-            parse_issues.append({"code": err.code, "message": str(err), "raw": entry})
+            parse_issues.append({
+                "code": err.code,
+                "message": str(err),
+                "raw": entry,
+                "constraint_index": idx,
+            })
 
     return CompiledConstraints(domains=domains, constraints=compiled, parse_issues=parse_issues)
 
@@ -151,7 +167,17 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
 
     text = expr.strip()
     if not text:
-        return [[]]
+        # Grammar-invalid: 'formula' requires at least one atom (tvl.ebnf).
+        # Silently mapping an empty/whitespace formula to [[]] (vacuous truth)
+        # would void a schema-valid 'when'/'then'/'expr': "" with no diagnostic —
+        # the same silent-void class this PR closes for #49/#51. The only
+        # callers of this function are compile_constraints (this module) and
+        # its own list recursion above; neither relies on empty-string->[[]].
+        raise ConstraintParseError(
+            "Empty or whitespace-only formula is not a valid constraint expression",
+            code="empty_formula",
+            text=expr,
+        )
 
     disjuncts: List[List[Atom]] = []
     for disj in _OR_SPLIT.split(text):

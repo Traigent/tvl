@@ -48,6 +48,11 @@ _CTX_EXT_KEYS = {
     "signal_inputs",
 }
 _CVAR_TYPE_RE = re.compile(r"^(bool|int|float|enum\[(str|int|float)\])$")
+# Normative integer literal grammar (spec/grammar/tvl.ebnf:258): -?[0-9]+.
+# int() is deliberately NOT used to validate here — it also accepts
+# underscore-grouped ('1_000') and surrounding-whitespace (' 5 ') forms that
+# strict grammar-conformant consumers (e.g. tvl-check-structural) reject.
+_INT_LITERAL_RE = re.compile(r"^-?[0-9]+$")
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
 _NON_LINEAR_TOKENS_STRUCTURAL = {"*", "/", "^"}
 _NON_LINEAR_TOKENS_DERIVED = {"/", "^"}
@@ -1802,11 +1807,12 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
         if isinstance(value, str):
             # str.isdigit() is False for signed integers ('-5'), wrongly rejecting
             # negative int-domain values while the float branch accepts them
-            # (issue #50). int() parses the sign and rejects fractional strings.
-            try:
-                return int(value)
-            except ValueError:
-                raise ValueError("not an int") from None
+            # (issue #50). Validate against the normative -?[0-9]+ grammar
+            # (not bare int(), which also admits '1_000' and ' 5 ') before
+            # parsing the sign.
+            if not _INT_LITERAL_RE.fullmatch(value):
+                raise ValueError("not an int")
+            return int(value)
         raise ValueError("not an int")
     if kind == "float":
         if isinstance(value, bool):
