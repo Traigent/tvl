@@ -751,6 +751,34 @@ class PromotionGateTests(unittest.TestCase):
         self.assertNotEqual("Promote", decision)
         self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
 
+    def test_high_offset_paired_variance_not_over_classified_degenerate(self) -> None:
+        """Genuine small variance at a high arm offset must not be treated as unestimable.
+
+        Paired arms sit at mean ~1e9 with differences [9.9, 10.0, 10.1] -> a
+        real (non-degenerate) diff variance of ~0.01. The degeneracy tolerance
+        is scaled by arm magnitude (correct, since cancellation roundoff scales
+        with it too), but too loose a coefficient over-classifies this as
+        unestimable and forces NoDecision on a clearly estimable effect (:384).
+        """
+        incumbent = {"objective_values": {"quality": {"samples": [1e9, 1e9, 1e9]}}}
+        candidate = {
+            "objective_values": {
+                "quality": {
+                    "samples": [1e9 + 9.9, 1e9 + 10.0, 1e9 + 10.1],
+                    "paired": True,
+                }
+            }
+        }
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.0}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+        # A degenerate/unestimable classification pins both p-values to 1.0
+        # and the test_type stays "paired" but with p_value_super == 1.0; the
+        # real signal here must survive to produce a genuine test statistic.
+        self.assertNotEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
+        self.assertIsNotNone(evidence["per_objective"]["quality"]["t_statistic"])
+
     def test_real_variance_still_promotes(self) -> None:
         """Genuine (non-degenerate) variance path is unchanged: clear win Promotes."""
         incumbent = {"objective_values": {"quality": {"samples": [0.80, 0.82, 0.81, 0.79, 0.80]}}}

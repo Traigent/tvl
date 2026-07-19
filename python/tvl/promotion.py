@@ -381,7 +381,18 @@ def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> Objecti
 
 # Relative tolerance below which an observed variance is treated as unestimable
 # (a degenerate/zero-variance sample rather than genuine measurement spread).
-_VARIANCE_REL_TOL = 1e-9
+#
+# The tolerance is squared and scaled by the arm mean (see `tol` below) because
+# cancellation roundoff in a sum/difference of samples scales with the samples'
+# own magnitude, ~ (scale * 2**-52)**2 for float64. Scaling by arm magnitude is
+# therefore correct; only the coefficient must be tight enough to not swallow
+# genuine small-variance signal at high offsets. At 1e-12: an O(1)-scale
+# rounded-identical sample (variance ~1e-33) and a 1e9-scale roundoff sample
+# (variance ~4e-14, i.e. (1e9 * 2**-52)**2) are both still caught with orders
+# of margin, while genuine small variance riding on a large offset (e.g. 0.01
+# at scale 1e9 -> tol = (1e-12 * 1e9)**2 = 1e-6) is preserved rather than
+# misclassified as degenerate.
+_VARIANCE_REL_TOL = 1e-12
 
 
 def _variance_is_degenerate(variance: float, scale: float) -> bool:
