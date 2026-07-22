@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Iterable, List, Sequence
 
 # Cap the recursive-descent nesting depth (parentheses / chained `not`). Each
@@ -28,6 +29,12 @@ MAX_PARSE_UNITS = 300
 # product (2^N from linear input), so bound the running clause count and raise
 # before materializing an exponential blowup.
 MAX_DNF_CLAUSES = 10000
+
+# Identifiers on the left-hand side of a structural predicate follow the
+# normative dotted-path grammar.  The tokenizer deliberately accepts a wider
+# bareword token so values such as ``gpt-4o`` remain usable unquoted; enforce
+# the stricter grammar only where a token denotes an identifier.
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 class StructuralParseError(ValueError):
@@ -328,12 +335,14 @@ class _Parser:
         left = self.expect("NUMBER").value
         op1 = self._expect_interval_op()
         ident = self.expect("IDENT").value
+        self._validate_identifier(ident)
         op2 = self._expect_interval_op()
         right = self.expect("NUMBER").value
         return ("interval", ident, op1, op2, left, right)
 
     def comparison_or_membership(self):
         ident = self.expect("IDENT").value
+        self._validate_identifier(ident)
         if self.accept("IN"):
             values = self.set_literal()
             return ("membership", ident, values)
@@ -343,6 +352,14 @@ class _Parser:
             value = self.value_token()
             return ("comparison", ident, op, value)
         raise StructuralParseError(f"Expected comparison operator after identifier '{ident}'")
+
+    @staticmethod
+    def _validate_identifier(ident: str) -> None:
+        if not _IDENT_RE.fullmatch(ident):
+            raise StructuralParseError(
+                f"Illegal identifier {ident!r}; identifiers must match "
+                "[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*."
+            )
 
     def set_literal(self) -> List[tuple[str, str]]:
         values: List[tuple[str, str]] = []

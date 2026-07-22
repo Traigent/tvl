@@ -328,6 +328,20 @@ def test_structural_parser_accepts_hyphenated_bareword_value():
     assert literal.values == ("gpt-4o",)
 
 
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "foo-bar = 5",
+        "foo-bar in {gpt-4o}",
+        "0 <= foo-bar <= 10",
+    ],
+)
+def test_structural_parser_rejects_hyphenated_lhs_identifier(expr):
+    """Bareword values may contain hyphens, but identifier positions may not."""
+    with pytest.raises(ValueError, match="Illegal identifier 'foo-bar'"):
+        parse_structural_expression(expr)
+
+
 # --------------------------------------------------------------------------- #
 # PR #53 capstone follow-up — tvl-config-validate text-mode diagnostics must
 # print the parse-issue code+message (not "[constraint #None] {dict}"), and
