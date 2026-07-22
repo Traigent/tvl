@@ -168,6 +168,11 @@ def text_renderer(data: Dict[str, Any]) -> None:
         else:
             # Print the composed YAML to stdout
             print(yaml.dump(data["composed"], default_flow_style=False, sort_keys=False))
+    elif data.get("validation") and not data["validation"]["ok"]:
+        # Validation failure: surface the issues on stderr
+        print("Validation failed:", file=sys.stderr)
+        for issue in data["validation"]["issues"]:
+            print(f"  {issue}", file=sys.stderr)
     else:
         print(f"Error: {data.get('error')}", file=sys.stderr)
 
@@ -204,29 +209,29 @@ def main() -> None:
             "composed": composed,
         }
 
+        # Optionally validate the composed module (independent of output target)
+        if args.validate:
+            from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
+            from tvl.lints import lint_module
+
+            schema = _load_schema(Path(__file__))
+            issues = _schema_issues(composed, schema)
+            if not issues:
+                issues = lint_module(composed)
+
+            result["validation"] = {
+                "ok": len(issues) == 0,
+                "issues": issues,
+            }
+
+            if issues:
+                result["ok"] = False
+
         # Write to output file if specified
         if args.output:
             with args.output.open("w", encoding="utf-8") as handle:
                 yaml.dump(composed, handle, default_flow_style=False, sort_keys=False)
             result["output_file"] = str(args.output)
-
-            # Optionally validate the output
-            if args.validate:
-                from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
-                from tvl.lints import lint_module
-
-                schema = _load_schema(Path(__file__))
-                issues = _schema_issues(composed, schema)
-                if not issues:
-                    issues = lint_module(composed)
-
-                result["validation"] = {
-                    "ok": len(issues) == 0,
-                    "issues": issues,
-                }
-
-                if issues:
-                    result["ok"] = False
 
         print_output(result, get_format(args), text_renderer)
 

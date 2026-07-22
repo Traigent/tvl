@@ -153,7 +153,7 @@ def main() -> None:
             diag.update(event)
             print(json.dumps(diag, indent=2))
         else:
-            print(json.dumps(diag, indent=2))
+            print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(5)
 
 
