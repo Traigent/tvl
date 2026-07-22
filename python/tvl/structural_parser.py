@@ -3,6 +3,32 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
+# Cap the recursive-descent nesting depth (parentheses / chained `not`). Each
+# nesting level passes through ``unary()`` exactly once, and each level costs a
+# handful of Python stack frames, so this bound keeps us safely under the
+# interpreter recursion limit and turns a stack-exhausting RecursionError into a
+# normal StructuralParseError. Real constraints nest only a few levels deep.
+MAX_PARSE_DEPTH = 200
+
+# Cap the total number of atoms/nesting-units in a single structural
+# constraint, not just its nesting depth. `disjunction()`/`conjunction()`
+# build a flat `and`/`or` chain via a `while` loop (no parser recursion), so a
+# long LINEAR chain (e.g. `a and b and c and ...` thousands of terms) never
+# trips MAX_PARSE_DEPTH — but it still produces a left-deep AST tuple, and
+# `_to_nnf`/`_to_dnf` walk that AST *recursively*, so an unbounded chain still
+# exhausts the stack post-parse. `unary()` is called exactly once per atom
+# *and* once per NOT/paren nesting level, so counting total `unary()` calls
+# bounds AST size regardless of whether growth comes from depth or breadth.
+# Chosen well under the observed ~1000-term crash point (matches
+# sys.getrecursionlimit()) for the same safety-margin reasons as
+# MAX_PARSE_DEPTH.
+MAX_PARSE_UNITS = 300
+
+# Cap the number of DNF clauses. ``and``-of-``or``s expands as a Cartesian
+# product (2^N from linear input), so bound the running clause count and raise
+# before materializing an exponential blowup.
+MAX_DNF_CLAUSES = 10000
+
 
 class StructuralParseError(ValueError):
     """Raised when a structural constraint cannot be parsed."""
@@ -212,6 +238,11 @@ class _Parser:
     def __init__(self, tokens: Iterable[_Token]) -> None:
         self.tokens = list(tokens)
         self.index = 0
+        self.depth = 0
+        # Total unary() calls across the whole parse. Unlike `depth`, this is
+        # never decremented — it's a running total, not a current-nesting
+        # counter. See MAX_PARSE_UNITS.
+        self.units = 0
 
     def current(self) -> _Token:
         return self.tokens[self.index]
@@ -259,13 +290,31 @@ class _Parser:
         return expr
 
     def unary(self):
-        if self.accept("NOT"):
-            return ("not", self.unary())
-        if self.accept("LPAREN"):
-            expr = self.implication()
-            self.expect("RPAREN")
-            return expr
-        return self.atom()
+        # Every level of `not` chaining and every parenthesised group recurses
+        # through unary(); guard here to bound total nesting depth.
+        self.depth += 1
+        # Every atom *and* every NOT/paren level passes through unary() once,
+        # so this also bounds flat `and`/`or` chains that never deepen
+        # `self.depth` (see MAX_PARSE_UNITS above).
+        self.units += 1
+        if self.depth > MAX_PARSE_DEPTH:
+            raise StructuralParseError(
+                f"Structural constraint nesting too deep (>{MAX_PARSE_DEPTH})"
+            )
+        if self.units > MAX_PARSE_UNITS:
+            raise StructuralParseError(
+                f"Structural constraint too large (>{MAX_PARSE_UNITS} terms/nesting units)"
+            )
+        try:
+            if self.accept("NOT"):
+                return ("not", self.unary())
+            if self.accept("LPAREN"):
+                expr = self.implication()
+                self.expect("RPAREN")
+                return expr
+            return self.atom()
+        finally:
+            self.depth -= 1
 
     def atom(self):
         tok = self.current()
@@ -376,13 +425,26 @@ def _to_dnf(node):
         if op == "and":
             left = _to_dnf(node[1])
             right = _to_dnf(node[2])
+            # Check the product size before materializing it: `and`-of-`or`s
+            # expands as a Cartesian product and grows 2^N from linear input.
+            if len(left) * len(right) > MAX_DNF_CLAUSES:
+                raise StructuralParseError(
+                    "Structural constraint too complex: DNF expansion exceeds "
+                    f"{MAX_DNF_CLAUSES} clauses"
+                )
             product: List[List[tuple]] = []
             for l in left:
                 for r in right:
                     product.append(l + r)
             return product
         if op == "or":
-            return _to_dnf(node[1]) + _to_dnf(node[2])
+            combined = _to_dnf(node[1]) + _to_dnf(node[2])
+            if len(combined) > MAX_DNF_CLAUSES:
+                raise StructuralParseError(
+                    "Structural constraint too complex: DNF expansion exceeds "
+                    f"{MAX_DNF_CLAUSES} clauses"
+                )
+            return combined
         if op == "not_atom":
             return [[node]]
     return [[node]]

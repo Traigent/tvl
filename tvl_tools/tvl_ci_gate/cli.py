@@ -4,16 +4,15 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import yaml
-
 from tvl.loader import load
 from tvl.measurement import load_measurement, prepare_measurement_bundle
 from tvl.promotion import epsilon_pareto_gate
+from tvl.yaml_safe import safe_load
 
 
 def load_yaml(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return safe_load(f)
 
 
 def _load_module_and_inputs(

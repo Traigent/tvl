@@ -162,10 +162,6 @@ def _parse_derived_expression(
     import re
     # Replace single `=` with `==` to support EBNF `lin_arith_expr` syntax in Python AST
     expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
-    try:
-        tree = ast.parse(expression, mode='eval')
-    except SyntaxError:
-        return None, None, None, []
 
     def symbol_name(node: ast.AST) -> Tuple[Optional[str], bool]:
         if isinstance(node, ast.Name):
@@ -181,7 +177,15 @@ def _parse_derived_expression(
                 return ".".join(reversed(parts)), False
         return None, False
 
-    def walk_expr(node):
+    # Depth guard: a deeply-nested / long chained expression (e.g. thousands of
+    # `x+x+...+x` terms) would otherwise recurse until the Python stack is
+    # exhausted, raising an uncaught RecursionError. Bail to the graceful
+    # "unparseable" path (return None) well before the real recursion limit.
+    max_depth = 400
+
+    def walk_expr(node, depth=0):
+        if depth > max_depth:
+            return None
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
             return [(float(node.value), None)], []
         elif isinstance(node, (ast.Name, ast.Attribute)):
@@ -191,15 +195,15 @@ def _parse_derived_expression(
             return [(1.0, name)], [name] if legacy else []
         elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             sign = -1.0 if isinstance(node.op, ast.USub) else 1.0
-            child = walk_expr(node.operand)
+            child = walk_expr(node.operand, depth + 1)
             if child is None:
                 return None
             child_terms, legacy_symbols = child
             return [(sign * c, s) for c, s in child_terms], legacy_symbols
         elif isinstance(node, ast.BinOp):
             if isinstance(node.op, (ast.Add, ast.Sub)):
-                left = walk_expr(node.left)
-                right = walk_expr(node.right)
+                left = walk_expr(node.left, depth + 1)
+                right = walk_expr(node.right, depth + 1)
                 if left is None or right is None:
                     return None
                 left_terms, left_legacy = left
@@ -226,23 +230,37 @@ def _parse_derived_expression(
                         return [(-float(node.left.operand.value), name)], [name] if legacy else []
         return None
 
-    if not isinstance(tree.body, ast.Compare) or len(tree.body.ops) != 1:
-        return None, None, None, []
-    op_node = tree.body.ops[0]
-    op_map = {ast.LtE: '<=', ast.GtE: '>=', ast.Lt: '<', ast.Gt: '>', ast.Eq: '=='}
-    if type(op_node) not in op_map:
-        return None, None, None, []
-    op = op_map[type(op_node)]
+    # Guard the parse itself as well as the walk below: a sufficiently deep /
+    # long chained expression can blow the stack inside ast.parse() before
+    # walk_expr ever runs, not just inside walk_expr's own recursion. One try
+    # spanning both keeps a single graceful "unparseable" exit for either
+    # failure mode.
+    try:
+        tree = ast.parse(expression, mode='eval')
 
-    comp = tree.body.comparators[0]
-    if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub) and isinstance(comp.operand, ast.Constant):
-        val = -float(comp.operand.value)
-    elif isinstance(comp, ast.Constant) and isinstance(comp.value, (int, float)):
-        val = float(comp.value)
-    else:
-        return None, None, None, []
+        if not isinstance(tree.body, ast.Compare) or len(tree.body.ops) != 1:
+            return None, None, None, []
+        op_node = tree.body.ops[0]
+        op_map = {ast.LtE: '<=', ast.GtE: '>=', ast.Lt: '<', ast.Gt: '>', ast.Eq: '=='}
+        if type(op_node) not in op_map:
+            return None, None, None, []
+        op = op_map[type(op_node)]
 
-    walked = walk_expr(tree.body.left)
+        comp = tree.body.comparators[0]
+        if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub) and isinstance(comp.operand, ast.Constant):
+            val = -float(comp.operand.value)
+        elif isinstance(comp, ast.Constant) and isinstance(comp.value, (int, float)):
+            val = float(comp.value)
+        else:
+            return None, None, None, []
+
+        walked = walk_expr(tree.body.left)
+    except SyntaxError:
+        return None, None, None, []
+    except RecursionError:
+        # Defense in depth: the depth guard above should prevent this, but never
+        # let stack exhaustion escape as an uncaught crash of the CLI check.
+        return None, None, None, []
     if walked is None:
         return None, None, None, []
     terms_raw, legacy_symbols = walked

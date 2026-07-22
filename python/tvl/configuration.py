@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
-import yaml
 
 from .constraints import compile_constraints, evaluate_assignment
 from .errors import ParseError, SchemaError
 from .model import flatten_assignments
 from .schema import configuration_validator
+from .yaml_safe import safe_load
 
 
 def load_configuration(path: Path | str) -> Dict[str, Any]:
     p = Path(path)
     try:
-        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        data = safe_load(p.read_text(encoding="utf-8"))
     except Exception as e:  # noqa: BLE001
         raise ParseError(str(e))
 

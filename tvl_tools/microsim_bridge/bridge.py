@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 import json
 
-import yaml
+from tvl.yaml_safe import safe_load
 
 
 @dataclass
@@ -177,7 +177,7 @@ def _adjust_presets(
 
 def _load_spec(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        return safe_load(handle)
 
 
 def build_presets(path: Path) -> dict[str, Any]:
