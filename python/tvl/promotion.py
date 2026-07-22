@@ -97,6 +97,7 @@ class PromotionEvidence:
     all_noninferior: bool = False
     any_superior: bool = False
     all_bands_pass: bool = True
+    any_band_out_of_band: bool = False
     all_chance_pass: bool = True
     adjustment_method: str = "none"
     fdr_controlled_at: Optional[float] = None
@@ -115,6 +116,7 @@ class PromotionEvidence:
                 "all_noninferior": self.all_noninferior,
                 "any_superior": self.any_superior,
                 "all_bands_pass": self.all_bands_pass,
+                "any_band_out_of_band": self.any_band_out_of_band,
                 "all_chance_pass": self.all_chance_pass,
                 "adjustment_method": self.adjustment_method,
                 "fdr_controlled_at": self.fdr_controlled_at,
@@ -218,8 +220,14 @@ def epsilon_pareto_gate(
             # Banded objective - use TOST
             result = _test_banded_objective(spec, cand_objectives.get(spec.name, {}), alpha)
             evidence.per_objective[spec.name] = result
+            # A band contributes to Promote only when it is proven in-band.
+            # A genuine out-of-band point estimate is a hard Reject; an
+            # under-powered/inconclusive band is neither Promote nor Reject
+            # (spec 5.3 / test matrix "TOST fail (power)" -> NoDecision).
             if result.verdict != "in_band":
                 evidence.all_bands_pass = False
+            if result.verdict == "out_of_band":
+                evidence.any_band_out_of_band = True
         else:
             # Standard objective - use t-tests
             result = _test_objective(
@@ -371,6 +379,69 @@ def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> Objecti
     )
 
 
+# Bound numerical zero by the input representation, rather than by an arbitrary
+# relative tolerance.  A paired difference can inherit cancellation/input
+# rounding on the order of one ULP of either arm.  We allow 32 ULPs: this small
+# conservative factor covers both input rounding and the subsequent mean and
+# sample-variance arithmetic, while avoiding a scale-proportional floor that
+# can erase genuine variation after a common translation.
+_VARIANCE_ERROR_BOUND_ULPS = 32
+
+
+def _variance_is_degenerate(variance: float, input_scale: float) -> bool:
+    """True when an observed variance is effectively zero (SE unestimable).
+
+    Both exact-zero variance and floating-point "roundoff zero" must be caught.
+    Identical-but-rounded values (e.g. the sample variance of paired differences
+    like 0.9 - 0.5 repeated) produce a variance on the order of 1e-33 rather than
+    exactly 0.0; a plain ``variance > 0`` guard would miss it and still fabricate
+    a near-infinite test statistic.  For paired samples, ``input_scale`` is the
+    largest arm value, so the bound is on the rounding/cancellation error in the
+    paired differences, not on their mean.  ``math.ulp`` keeps this threshold at
+    float64 representation resolution instead of imposing a coarse relative
+    variance floor.
+    """
+    if variance <= 0:
+        return True
+    error_bound = _VARIANCE_ERROR_BOUND_ULPS * math.ulp(abs(input_scale))
+    return variance <= error_bound ** 2
+
+
+def _unestimable_result(
+    spec: ObjectiveSpec,
+    test_type: str,
+    n_inc: int,
+    n_cand: int,
+    mean_inc: float,
+    mean_cand: float,
+) -> ObjectiveResult:
+    """Objective result when the standard error is unestimable (total variance == 0).
+
+    When both arms have zero observed variance, the SE is genuinely
+    unestimable. Substituting a tiny floor (e.g. 1e-10) would manufacture a
+    near-infinite test statistic and a spuriously significant superiority
+    verdict from an underpowered/degenerate sample. Per spec §7.3, we instead
+    report both p-values as 1.0 so the objective cannot pass non-inferiority or
+    superiority and the gate fails closed (never a false Promote).
+    """
+    return ObjectiveResult(
+        name=spec.name,
+        test_type=test_type,
+        n_incumbent=n_inc,
+        n_candidate=n_cand,
+        mean_incumbent=mean_inc,
+        mean_candidate=mean_cand,
+        delta=mean_cand - mean_inc,
+        std_pooled=0.0,
+        t_statistic=None,
+        df=None,
+        p_value_noninf=1.0,
+        p_value_super=1.0,
+        epsilon=spec.epsilon,
+        verdict="inconclusive",
+    )
+
+
 def _test_from_samples(
     spec: ObjectiveSpec,
     inc_samples: List[float],
@@ -394,7 +465,14 @@ def _test_from_samples(
         diffs = [c - i for c, i in zip(cand_samples, inc_samples)]
         mean_diff = sum(diffs) / len(diffs)
         var_diff = sum((d - mean_diff) ** 2 for d in diffs) / (len(diffs) - 1)
-        std_diff = math.sqrt(var_diff) if var_diff > 0 else 1e-10
+        input_scale = max(abs(x) for x in [*inc_samples, *cand_samples])
+        if _variance_is_degenerate(var_diff, input_scale):
+            # Zero variance in the paired differences -> SE unestimable.
+            # Do not floor to 1e-10 (which would fabricate significance).
+            return _unestimable_result(
+                spec, "paired", n_inc, n_cand, mean_inc, mean_cand
+            )
+        std_diff = math.sqrt(var_diff)
         se = std_diff / math.sqrt(len(diffs))
         df = len(diffs) - 1
 
@@ -427,7 +505,12 @@ def _test_from_samples(
     var_inc = sum((x - mean_inc) ** 2 for x in inc_samples) / (n_inc - 1) if n_inc > 1 else 0
     var_cand = sum((x - mean_cand) ** 2 for x in cand_samples) / (n_cand - 1) if n_cand > 1 else 0
 
-    se = math.sqrt(var_inc / n_inc + var_cand / n_cand) if var_inc + var_cand > 0 else 1e-10
+    if _variance_is_degenerate(var_inc + var_cand, max(abs(mean_inc), abs(mean_cand))):
+        # Total variance zero -> SE unestimable. Do not floor to 1e-10, which
+        # would manufacture a near-infinite t-statistic and a false Promote.
+        return _unestimable_result(spec, "welch", n_inc, n_cand, mean_inc, mean_cand)
+
+    se = math.sqrt(var_inc / n_inc + var_cand / n_cand)
 
     # Welch-Satterthwaite degrees of freedom
     if var_inc > 0 or var_cand > 0:
@@ -502,7 +585,11 @@ def _test_from_stats(
 
     var_inc = std_inc ** 2
     var_cand = std_cand ** 2
-    se = math.sqrt(var_inc / n_inc + var_cand / n_cand) if var_inc + var_cand > 0 else 1e-10
+    if _variance_is_degenerate(var_inc + var_cand, max(abs(mean_inc), abs(mean_cand))):
+        # Both reported stds are zero -> SE unestimable. Do not floor to 1e-10,
+        # which would manufacture a false Promote from a degenerate sample.
+        return _unestimable_result(spec, "welch", n_inc, n_cand, mean_inc, mean_cand)
+    se = math.sqrt(var_inc / n_inc + var_cand / n_cand)
 
     # Welch-Satterthwaite df
     if var_inc > 0 or var_cand > 0:
@@ -592,10 +679,19 @@ def _test_banded_objective(
     ci_lower = mean - t_crit * se
     ci_upper = mean + t_crit * se
 
-    # Pass if max(p1, p2) < alpha, equivalently if CI ⊂ [L, U]
+    # Pass if max(p1, p2) < alpha, equivalently if the (1 - 2α) CI ⊂ [L, U].
+    #
+    # NOTE: the in_band p-value test is *exactly* equivalent to "CI ⊂ [L, U]"
+    # (t_crit uses 1 - band_alpha, i.e. the 1 - 2α interval), so a CI-based
+    # classification of the failing case would make the "inconclusive" branch
+    # unreachable and would hard-Reject an under-powered but on-target band.
+    # Reserve "out_of_band" for a genuinely out-of-band *point estimate*
+    # (mean outside [L, U]); an on-target mean whose CI merely spills past the
+    # band edge is low-power evidence -> "inconclusive" -> NoDecision
+    # (spec promotion-gate-io.md §5.3 and the §6 "TOST fail (power)" row).
     if max(p1, p2) < band_alpha:
         verdict = "in_band"
-    elif ci_lower < band_lower or ci_upper > band_upper:
+    elif mean < band_lower or mean > band_upper:
         verdict = "out_of_band"
     else:
         verdict = "inconclusive"
@@ -779,20 +875,32 @@ def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
         ]
         return ("Reject", f"Chance constraints failed: {', '.join(failing)}")
 
-    if not evidence.all_bands_pass:
+    # Only a genuinely out-of-band point estimate is a hard Reject. An
+    # under-powered / inconclusive band does not Reject; it merely fails to
+    # satisfy the Promote requirement (spec §5.3, "TOST fail (power)").
+    if evidence.any_band_out_of_band:
         failing = [
             name for name, r in evidence.per_objective.items()
-            if isinstance(r, BandedResult) and r.verdict != "in_band"
+            if isinstance(r, BandedResult) and r.verdict == "out_of_band"
         ]
         return ("Reject", f"Banded objectives failed TOST: {', '.join(failing)}")
 
-    # Check for promotion (need at least one superior)
-    if evidence.any_superior:
+    # Check for promotion (need at least one superior AND all bands proven in-band)
+    if evidence.all_bands_pass and evidence.any_superior:
         superior = [
             name for name, r in evidence.per_objective.items()
             if isinstance(r, ObjectiveResult) and r.verdict == "superior"
         ]
         return ("Promote", f"All non-inferiority tests pass; superior on: {', '.join(superior)}")
 
-    # All pass but no superiority demonstrated
+    # All pass but no superiority demonstrated, or a band is inconclusive (low power).
+    if not evidence.all_bands_pass:
+        inconclusive = [
+            name for name, r in evidence.per_objective.items()
+            if isinstance(r, BandedResult) and r.verdict != "in_band"
+        ]
+        return (
+            "NoDecision",
+            f"Banded objectives inconclusive (insufficient power): {', '.join(inconclusive)}",
+        )
     return ("NoDecision", "All objectives non-inferior but no superiority demonstrated")
