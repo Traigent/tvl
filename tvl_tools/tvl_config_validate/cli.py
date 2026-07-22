@@ -47,14 +47,24 @@ def _normalize_failures(report: Dict[str, Any]) -> List[Dict[str, Any]]:
             }
         )
     for issue in report.get("constraints", []):
+        # Parse-rejection issues (compile_constraints) carry their own
+        # diagnostic "message" (e.g. unsupported_negation, empty_formula);
+        # only an actual evaluated constraint_failed lacks one and gets the
+        # generic "violated" wording. Mislabeling a parse rejection as
+        # "Structural constraint violated" hides the real reason (#49/#51).
+        is_parse_rejection = "message" in issue
         failures.append(
             {
                 "phase": "structural",
                 "code": issue.get("code"),
                 "clauseId": issue.get("constraint_index"),
                 "raw": issue.get("raw"),
-                "message": "Structural constraint violated",
-                "remediation": ["Adjust assignments or relax clause"],
+                "message": issue.get("message") if is_parse_rejection else "Structural constraint violated",
+                "remediation": (
+                    ["Fix the constraint expression to match the TVL grammar"]
+                    if is_parse_rejection
+                    else ["Adjust assignments or relax clause"]
+                ),
             }
         )
     return failures
@@ -120,7 +130,9 @@ def main() -> None:
                     print(f"[domain] {issue['path']}: {issue['message']}")
                 for issue in report["constraints"]:
                     idx = issue.get("constraint_index")
-                    print(f"[constraint #{idx}] {issue.get('raw')}")
+                    code = issue.get("code")
+                    message = issue.get("message", "Structural constraint violated")
+                    print(f"[constraint #{idx}] {code}: {message}")
         if not report["ok"]:
             raise SystemExit(5)
     except TVLError as exc:

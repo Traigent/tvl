@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 try:  # pragma: no cover - optional dependency
@@ -14,9 +14,35 @@ from .model import Domain, extract_domains, flatten_assignments
 
 _OR_SPLIT = re.compile(r"\s+or\s+", re.IGNORECASE)
 _AND_SPLIT = re.compile(r"\s+and\s+", re.IGNORECASE)
-_LITERAL_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*(<=|>=|!=|=|<|>)\s*(.+?)\s*$")
+
+# Normative TVAR identifier per spec/grammar/tvl.ebnf:252 and
+# spec/grammar/tvl.schema.json:243 — must start with a letter/underscore and
+# may only contain [A-Za-z0-9_], dotted-path separated. NO leading digit/'.'/'-'
+# and NO mid-ident hyphen (issue #51). Group 1 of _LITERAL_RE is tightened to
+# this pattern so config-validate agrees with structural_parser and the grammar.
+_IDENT_PATTERN = r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+_IDENT_RE = re.compile(rf"^{_IDENT_PATTERN}$")
+_LITERAL_RE = re.compile(rf"^\s*({_IDENT_PATTERN})\s*(<=|>=|!=|=|<|>)\s*(.+?)\s*$")
+# Permissive lexer retained only to produce a precise "illegal identifier"
+# diagnostic when the strict pattern rejects an atom that the old regex accepted.
+_PERMISSIVE_LITERAL_RE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*(<=|>=|!=|=|<|>)\s*(.+?)\s*$")
+_COMPARISON_OP_RE = re.compile(r"(<=|>=|!=|=|<|>)")
 
 _TRUE_COUNTER = 0
+
+
+class ConstraintParseError(ValueError):
+    """A constraint literal/expression could not be parsed (fail-closed).
+
+    Carries a machine-readable ``code`` so ``compile_constraints`` can surface it
+    as a validation issue instead of crashing the CLI or silently swallowing the
+    unenforced constraint (issues #49/#51).
+    """
+
+    def __init__(self, message: str, code: str = "constraint_parse_error", text: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.text = text
 
 
 @dataclass
@@ -37,6 +63,43 @@ class StructuralConstraint:
 class CompiledConstraints:
     domains: Dict[str, Domain]
     constraints: List[StructuralConstraint]
+    # Constraints that could not be parsed (unsupported/illegal construct). Kept
+    # as issues so callers fail *closed* — an unparseable constraint must not be
+    # silently dropped (which would be fail-open, issues #49/#51).
+    parse_issues: List[Dict[str, Any]] = field(default_factory=list)
+
+
+def _split_top_level_implication(text: str) -> Optional[tuple[str, str]]:
+    """Split ``A => B`` on the first top-level ``=>`` (paren-balanced, outside
+    quotes). Returns ``None`` when there is no top-level implication.
+
+    This lets an ``expr`` form carry the ``=>`` sugar (tvl.ebnf:216) and have its
+    consequent actually enforced, instead of the whole ``=>`` clause being
+    swallowed into a single atom's value (issue #49)."""
+    depth = 0
+    quote: Optional[str] = None
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if quote is not None:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif depth == 0 and text.startswith("=>", i):
+            return text[:i], text[i + 2:]
+        i += 1
+    return None
 
 
 def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
@@ -46,22 +109,49 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
     structural = constraints_section.get("structural") or []
 
     compiled: List[StructuralConstraint] = []
-    for entry in structural:
+    parse_issues: List[Dict[str, Any]] = []
+    for idx, entry in enumerate(structural):
         if not isinstance(entry, dict):
             continue
         when_expr = entry.get("when")
         then_expr = entry.get("then")
         expr_expr = entry.get("expr")
 
-        if when_expr is not None or then_expr is not None:
-            antecedent = parse_expression(when_expr)
-            consequent = parse_expression(then_expr)
-            compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
-        elif expr_expr is not None:
-            consequent = parse_expression(expr_expr)
-            compiled.append(StructuralConstraint(antecedent=[[]], consequent=consequent, raw=entry))
+        try:
+            if when_expr is not None or then_expr is not None:
+                antecedent = parse_expression(when_expr)
+                consequent = parse_expression(then_expr)
+                compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
+            elif expr_expr is not None:
+                split = _split_top_level_implication(expr_expr) if isinstance(expr_expr, str) else None
+                if split is not None:
+                    ante_str, cons_str = split
+                    if not ante_str.strip() or not cons_str.strip():
+                        # Grammar-invalid: '=>' requires a non-empty antecedent and
+                        # consequent (tvl.ebnf:216). Without this, a truncated
+                        # 'x = 1 =>' silently compiled to a vacuous-true or
+                        # unconditional constraint instead of being rejected —
+                        # the exact fail-open class this PR closes (#49/#51).
+                        raise ConstraintParseError(
+                            f"Malformed implication (empty antecedent/consequent): {expr_expr!r}",
+                            code="malformed_implication",
+                            text=expr_expr,
+                        )
+                    antecedent = parse_expression(ante_str)
+                    consequent = parse_expression(cons_str)
+                    compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
+                else:
+                    consequent = parse_expression(expr_expr)
+                    compiled.append(StructuralConstraint(antecedent=[[]], consequent=consequent, raw=entry))
+        except ConstraintParseError as err:
+            parse_issues.append({
+                "code": err.code,
+                "message": str(err),
+                "raw": entry,
+                "constraint_index": idx,
+            })
 
-    return CompiledConstraints(domains=domains, constraints=compiled)
+    return CompiledConstraints(domains=domains, constraints=compiled, parse_issues=parse_issues)
 
 
 def parse_expression(expr: Any) -> List[List[Atom]]:
@@ -77,7 +167,17 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
 
     text = expr.strip()
     if not text:
-        return [[]]
+        # Grammar-invalid: 'formula' requires at least one atom (tvl.ebnf).
+        # Silently mapping an empty/whitespace formula to [[]] (vacuous truth)
+        # would void a schema-valid 'when'/'then'/'expr': "" with no diagnostic —
+        # the same silent-void class this PR closes for #49/#51. The only
+        # callers of this function are compile_constraints (this module) and
+        # its own list recursion above; neither relies on empty-string->[[]].
+        raise ConstraintParseError(
+            "Empty or whitespace-only formula is not a valid constraint expression",
+            code="empty_formula",
+            text=expr,
+        )
 
     disjuncts: List[List[Atom]] = []
     for disj in _OR_SPLIT.split(text):
@@ -96,11 +196,52 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
 
 
 def _parse_literal(text: str) -> Atom:
+    # Fail closed on valid-grammar constructs the regex parser cannot represent
+    # as a single flat Atom (issue #49). The structural_parser tokenizer handles
+    # these; here we reject them with a diagnostic rather than mis-parse/swallow.
+    # Use the quote/depth-aware splitter (not a naive substring test) so a
+    # quoted value containing '=>' (e.g. mode = "a=>b") isn't mistaken for an
+    # inline implication.
+    if _split_top_level_implication(text) is not None:
+        raise ConstraintParseError(
+            f"Inline implication '=>' is not supported in this position: {text!r}; "
+            "use a when/then constraint or a top-level expr.",
+            code="unsupported_implication",
+            text=text,
+        )
+    stripped = text.lstrip()
+    if stripped.lower() == "not" or stripped[:4].lower() == "not ":
+        raise ConstraintParseError(
+            f"Negation ('not') is not supported by config-validate: {text!r}",
+            code="unsupported_negation",
+            text=text,
+        )
+
     match = _LITERAL_RE.match(text)
     if not match:
-        raise ValueError(f"Could not parse constraint literal: {text!r}")
+        # Distinguish an illegal identifier (accepted by the old permissive regex,
+        # forbidden by the normative grammar — issue #51) from generic garbage.
+        permissive = _PERMISSIVE_LITERAL_RE.match(text)
+        if permissive is not None:
+            raise ConstraintParseError(
+                f"Illegal identifier {permissive.group(1)!r} in constraint literal "
+                f"{text!r}; identifiers must match {_IDENT_PATTERN}.",
+                code="illegal_ident",
+                text=text,
+            )
+        raise ConstraintParseError(f"Could not parse constraint literal: {text!r}", text=text)
+
     path, op, value_raw = match.groups()
-    value = _parse_value(value_raw.strip())
+    value_raw = value_raw.strip()
+    # A residual comparison operator in an unquoted value means a compound/interval
+    # atom (e.g. ``a <= t <= b``) the flat Atom model cannot represent (issue #49).
+    if value_raw[:1] not in {'"', "'"} and _COMPARISON_OP_RE.search(value_raw):
+        raise ConstraintParseError(
+            f"Unsupported compound/interval atom: {text!r}",
+            code="unsupported_interval",
+            text=text,
+        )
+    value = _parse_value(value_raw)
     canonical_op = "==" if op == "=" else op
     return Atom(path=path, op=canonical_op, value=value)
 
@@ -186,6 +327,31 @@ def evaluate_assignment(compiled: CompiledConstraints, assignments: Dict[str, An
         value = flat[path]
         if not domain.contains(value):
             domain_issues.append({"code": "domain_violation", "path": path, "message": f"Value {value!r} outside domain"})
+
+    # Fail closed on constraint atoms that reference an illegal (#51) or
+    # undeclared (#52) TVAR path. Without this, atom_true silently returns False
+    # for such a path, voiding the guard with no diagnostic (fail-open); the SAT
+    # sibling (_atom_literal) already raises "Unknown TVAR in constraint".
+    seen_paths: set[str] = set()
+    for constraint in compiled.constraints:
+        for clause_dnf in (constraint.antecedent, constraint.consequent):
+            for conj in clause_dnf:
+                for atom in conj:
+                    if atom.path in seen_paths:
+                        continue
+                    seen_paths.add(atom.path)
+                    if not _IDENT_RE.match(atom.path):
+                        domain_issues.append({
+                            "code": "illegal_ident",
+                            "path": atom.path,
+                            "message": f"Constraint references illegal identifier {atom.path!r}",
+                        })
+                    elif atom.path not in compiled.domains:
+                        domain_issues.append({
+                            "code": "unknown_reference",
+                            "path": atom.path,
+                            "message": f"Constraint references undeclared TVAR '{atom.path}'",
+                        })
 
     def atom_true(atom: Atom) -> bool:
         value = flat.get(atom.path)
