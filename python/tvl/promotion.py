@@ -379,36 +379,32 @@ def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> Objecti
     )
 
 
-# Relative tolerance below which an observed variance is treated as unestimable
-# (a degenerate/zero-variance sample rather than genuine measurement spread).
-#
-# The tolerance is squared and scaled by the arm mean (see `tol` below) because
-# cancellation roundoff in a sum/difference of samples scales with the samples'
-# own magnitude, ~ (scale * 2**-52)**2 for float64. Scaling by arm magnitude is
-# therefore correct; only the coefficient must be tight enough to not swallow
-# genuine small-variance signal at high offsets. At 1e-12: an O(1)-scale
-# rounded-identical sample (variance ~1e-33) and a 1e9-scale roundoff sample
-# (variance ~4e-14, i.e. (1e9 * 2**-52)**2) are both still caught with orders
-# of margin, while genuine small variance riding on a large offset (e.g. 0.01
-# at scale 1e9 -> tol = (1e-12 * 1e9)**2 = 1e-6) is preserved rather than
-# misclassified as degenerate.
-_VARIANCE_REL_TOL = 1e-12
+# Bound numerical zero by the input representation, rather than by an arbitrary
+# relative tolerance.  A paired difference can inherit cancellation/input
+# rounding on the order of one ULP of either arm.  We allow 32 ULPs: this small
+# conservative factor covers both input rounding and the subsequent mean and
+# sample-variance arithmetic, while avoiding a scale-proportional floor that
+# can erase genuine variation after a common translation.
+_VARIANCE_ERROR_BOUND_ULPS = 32
 
 
-def _variance_is_degenerate(variance: float, scale: float) -> bool:
+def _variance_is_degenerate(variance: float, input_scale: float) -> bool:
     """True when an observed variance is effectively zero (SE unestimable).
 
     Both exact-zero variance and floating-point "roundoff zero" must be caught.
     Identical-but-rounded values (e.g. the sample variance of paired differences
     like 0.9 - 0.5 repeated) produce a variance on the order of 1e-33 rather than
     exactly 0.0; a plain ``variance > 0`` guard would miss it and still fabricate
-    a near-infinite test statistic. We compare against a scale-relative tolerance
-    so genuine (even small) measurement spread is preserved.
+    a near-infinite test statistic.  For paired samples, ``input_scale`` is the
+    largest arm value, so the bound is on the rounding/cancellation error in the
+    paired differences, not on their mean.  ``math.ulp`` keeps this threshold at
+    float64 representation resolution instead of imposing a coarse relative
+    variance floor.
     """
     if variance <= 0:
         return True
-    tol = (_VARIANCE_REL_TOL * max(1.0, abs(scale))) ** 2
-    return variance <= tol
+    error_bound = _VARIANCE_ERROR_BOUND_ULPS * math.ulp(abs(input_scale))
+    return variance <= error_bound ** 2
 
 
 def _unestimable_result(
@@ -469,7 +465,8 @@ def _test_from_samples(
         diffs = [c - i for c, i in zip(cand_samples, inc_samples)]
         mean_diff = sum(diffs) / len(diffs)
         var_diff = sum((d - mean_diff) ** 2 for d in diffs) / (len(diffs) - 1)
-        if _variance_is_degenerate(var_diff, max(abs(mean_diff), abs(mean_cand), abs(mean_inc))):
+        input_scale = max(abs(x) for x in [*inc_samples, *cand_samples])
+        if _variance_is_degenerate(var_diff, input_scale):
             # Zero variance in the paired differences -> SE unestimable.
             # Do not floor to 1e-10 (which would fabricate significance).
             return _unestimable_result(

@@ -751,20 +751,18 @@ class PromotionGateTests(unittest.TestCase):
         self.assertNotEqual("Promote", decision)
         self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
 
-    def test_high_offset_paired_variance_not_over_classified_degenerate(self) -> None:
-        """Genuine small variance at a high arm offset must not be treated as unestimable.
+    def test_high_offset_paired_variance_is_estimable(self) -> None:
+        """The reported 1e12-offset regression remains an estimable paired test.
 
-        Paired arms sit at mean ~1e9 with differences [9.9, 10.0, 10.1] -> a
-        real (non-degenerate) diff variance of ~0.01. The degeneracy tolerance
-        is scaled by arm magnitude (correct, since cancellation roundoff scales
-        with it too), but too loose a coefficient over-classifies this as
-        unestimable and forces NoDecision on a clearly estimable effect (:384).
+        The paired differences [9.9, 10.0, 10.1] have real variance near 0.01.
+        A common +1e12 offset must not turn that signal into a numerical-zero
+        variance classification.
         """
-        incumbent = {"objective_values": {"quality": {"samples": [1e9, 1e9, 1e9]}}}
+        incumbent = {"objective_values": {"quality": {"samples": [1e12, 1e12, 1e12]}}}
         candidate = {
             "objective_values": {
                 "quality": {
-                    "samples": [1e9 + 9.9, 1e9 + 10.0, 1e9 + 10.1],
+                    "samples": [1e12 + 9.9, 1e12 + 10.0, 1e12 + 10.1],
                     "paired": True,
                 }
             }
@@ -778,6 +776,52 @@ class PromotionGateTests(unittest.TestCase):
         # real signal here must survive to produce a genuine test statistic.
         self.assertNotEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
         self.assertIsNotNone(evidence["per_objective"]["quality"]["t_statistic"])
+
+    def test_paired_samples_are_translation_invariant(self) -> None:
+        """A common offset must not change the paired promotion verdict class."""
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.0}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        base_incumbent = {"objective_values": {"quality": {"samples": [0.0, 0.0, 0.0]}}}
+        base_candidate = {
+            "objective_values": {
+                "quality": {"samples": [9.9, 10.0, 10.1], "paired": True}
+            }
+        }
+        shifted_incumbent = {"objective_values": {"quality": {"samples": [1e12, 1e12, 1e12]}}}
+        shifted_candidate = {
+            "objective_values": {
+                "quality": {
+                    "samples": [1e12 + 9.9, 1e12 + 10.0, 1e12 + 10.1],
+                    "paired": True,
+                }
+            }
+        }
+
+        base_decision, _ = epsilon_pareto_gate(base_incumbent, base_candidate, policy, objectives)
+        shifted_decision, _ = epsilon_pareto_gate(
+            shifted_incumbent, shifted_candidate, policy, objectives
+        )
+
+        self.assertEqual(base_decision, shifted_decision)
+        self.assertEqual("Promote", shifted_decision)
+
+    def test_high_offset_identical_paired_samples_stay_degenerate(self) -> None:
+        """Identical high-offset arms safely fail closed instead of promoting."""
+        incumbent = {"objective_values": {"quality": {"samples": [1e12, 1e12, 1e12]}}}
+        candidate = {
+            "objective_values": {
+                "quality": {"samples": [1e12, 1e12, 1e12], "paired": True}
+            }
+        }
+        policy = {"alpha": 0.05, "min_effect": {"quality": 0.0}, "adjust": "none"}
+        objectives = [{"name": "quality", "direction": "maximize"}]
+
+        decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
+
+        self.assertNotEqual("Promote", decision)
+        self.assertIsNone(evidence["per_objective"]["quality"]["t_statistic"])
+        self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
 
     def test_real_variance_still_promotes(self) -> None:
         """Genuine (non-degenerate) variance path is unchanged: clear win Promotes."""
