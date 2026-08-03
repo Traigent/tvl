@@ -487,7 +487,7 @@ An overlay narrows a base module; it may never widen it. The composer enforces:
 | `exploration.budgets` | may decrease, never increase |
 | `promotion_policy.chance_constraints` | a named constraint may not be dropped; `threshold` may only **decrease**; `confidence` may only **increase** |
 | `objectives` | may not be dropped; `direction` may not flip |
-| `constraints.structural` / `constraints.derived` | clauses may not be dropped unless waived |
+| `constraints.structural` / `constraints.derived` | clauses may not be dropped unless waived, or replaced by a strictly tighter bound on the same symbol |
 
 `threshold` bounds a violation rate, so raising it permits more violations; lowering
 `confidence` makes a weaker claim. Both are widenings even though the numbers move in
@@ -497,6 +497,17 @@ Note that `overrides` **replaces** a list rather than merging into it (`tvars` i
 exception, merged by name). Every inherited clause you intend to keep must be restated in
 the overlay — the retention rules above are what stop an accidental omission from silently
 becoming a weakening.
+
+### Tightening a bound is not dropping it
+
+A derived clause replaced by a **strictly tighter bound on the same symbol** counts as
+retained, not removed — `env.context.eval_samples >= 3000` becoming `>= 5990` is exactly what
+a stricter profile should do, and restating the looser clause alongside it would be nonsense.
+
+Direction matters and is handled: a lower bound (`>=`, `>`) tightens as the number **rises**,
+an upper bound (`<=`, `<`) tightens as it **falls**. Only the simple
+`<symbol> <op> <number>` shape is recognised; anything richer falls back to requiring exact
+retention or a waiver, which is the safe default.
 
 ### Waiving an inherited clause
 

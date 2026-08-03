@@ -8,6 +8,7 @@ Usage:
 import argparse
 import copy
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -101,6 +102,45 @@ def _clause_key(clause: Any) -> str:
             return f"{norm(clause.get('when'))} => {norm(clause.get('then'))}"
         return norm(json.dumps(clause, sort_keys=True))
     return norm(clause)
+
+
+_BOUND_RE = re.compile(r"^\s*(?P<lhs>.+?)\s*(?P<op>>=|<=|>|<)\s*(?P<num>-?\d+(?:\.\d+)?)\s*$")
+
+
+def _as_bound(clause: Any) -> Optional[tuple]:
+    """Parse a simple ``<lhs> <op> <number>`` clause into ``(lhs, op, value)``.
+
+    Derived clauses are linear checks over ``env.context.*`` symbols, and the common
+    case is a single bound (``require: env.context.safety_eval_samples >= 3000``). Only
+    this simple shape is recognised; anything richer returns None and falls back to
+    exact-retention, which is the safe default.
+    """
+    text = clause.get("require") if isinstance(clause, dict) else clause
+    if not isinstance(text, str):
+        return None
+    m = _BOUND_RE.match(text)
+    if not m:
+        return None
+    return (" ".join(m.group("lhs").split()), m.group("op"), float(m.group("num")))
+
+
+def _tightens(base_bound: tuple, comp_bound: tuple) -> bool:
+    """Whether comp_bound is at least as strict as base_bound on the same symbol.
+
+    A lower bound (``>=``/``>``) tightens as the number RISES; an upper bound
+    (``<=``/``<``) tightens as it FALLS. Mixed operator families are not comparable.
+    """
+    b_lhs, b_op, b_val = base_bound
+    c_lhs, c_op, c_val = comp_bound
+    if b_lhs != c_lhs:
+        return False
+    lower = {">=", ">"}
+    upper = {"<=", "<"}
+    if b_op in lower and c_op in lower:
+        return c_val >= b_val
+    if b_op in upper and c_op in upper:
+        return c_val <= b_val
+    return False
 
 
 def _validate_safety_narrowing(
@@ -204,17 +244,26 @@ def _validate_safety_narrowing(
     # --- constraint clauses -------------------------------------------------
     for kind in ("structural", "derived"):
         base_clauses = ((base.get("constraints") or {}).get(kind)) or []
-        comp_keys = {
-            _clause_key(c) for c in (((composed.get("constraints") or {}).get(kind)) or [])
-        }
+        comp_clauses = ((composed.get("constraints") or {}).get(kind)) or []
+        comp_keys = {_clause_key(c) for c in comp_clauses}
+        comp_bounds = [b for b in (_as_bound(c) for c in comp_clauses) if b]
+
         for clause in base_clauses:
             key = _clause_key(clause)
             if key in comp_keys or key in waived:
                 continue
+            # A clause REPLACED by a strictly tighter bound on the same symbol has been
+            # hardened, not dropped: `env.context.n >= 3000` -> `>= 5990` is exactly what
+            # a stricter profile should do, and demanding the looser clause be restated
+            # alongside it would be nonsense.
+            base_bound = _as_bound(clause)
+            if base_bound and any(_tightens(base_bound, cb) for cb in comp_bounds):
+                continue
             errors.append(
                 f"constraints.{kind}: clause {key!r} was dropped by the overlay. "
                 "If the narrowed domains make it vacuous, declare it under "
-                "_tvl_overlay.waives with a reason; otherwise restate it."
+                "_tvl_overlay.waives with a reason; otherwise restate it "
+                "(or replace it with a strictly tighter bound on the same symbol)."
             )
 
     unused = sorted(set(waived) - {_clause_key(c) for c in _all_base_clauses(base)})

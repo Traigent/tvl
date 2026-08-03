@@ -482,3 +482,77 @@ def test_clause_identity_ignores_whitespace(tmp_path: Path) -> None:
 
     composed = compose(tmp_path / "reformat.overlay.yml")
     assert len(composed["constraints"]["structural"]) == 2
+
+
+def test_derived_clause_replaced_by_a_tighter_bound_is_not_a_drop(tmp_path: Path) -> None:
+    """Hardening a bound must not read as removing the clause.
+
+    Found by dogfooding: a healthcare profile replaced `safety_eval_samples >= 3000`
+    with `>= 5990`, which is precisely what a stricter profile should do. Demanding the
+    looser clause be restated alongside the tighter one would be nonsense.
+    """
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["constraints"]["derived"] = [{"require": "env.context.eval_samples >= 3000"}]
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "tighter.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.eval_samples >= 5990"}]}},
+    )
+
+    composed = compose(tmp_path / "tighter.overlay.yml")
+    assert composed["constraints"]["derived"][0]["require"].endswith("5990")
+
+
+def test_derived_clause_replaced_by_a_looser_bound_is_rejected(tmp_path: Path) -> None:
+    """The mirror image: relaxing a bound is a weakening and must fail."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["constraints"]["derived"] = [{"require": "env.context.eval_samples >= 3000"}]
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "looser.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.eval_samples >= 500"}]}},
+    )
+
+    with pytest.raises(ValueError, match="was dropped by the overlay"):
+        compose(tmp_path / "looser.overlay.yml")
+
+
+def test_upper_bound_tightens_downward(tmp_path: Path) -> None:
+    """`<=` tightens as the number FALLS - the opposite direction from `>=`."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["constraints"]["derived"] = [{"require": "env.context.timeout_ms <= 30000"}]
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "tighter.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.timeout_ms <= 5000"}]}},
+    )
+    assert compose(tmp_path / "tighter.overlay.yml")
+
+    _overlay(
+        tmp_path / "looser.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.timeout_ms <= 60000"}]}},
+    )
+    with pytest.raises(ValueError, match="was dropped by the overlay"):
+        compose(tmp_path / "looser.overlay.yml")
+
+
+def test_bound_comparison_requires_the_same_symbol(tmp_path: Path) -> None:
+    """A tighter bound on a DIFFERENT symbol does not excuse dropping this one."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["constraints"]["derived"] = [{"require": "env.context.eval_samples >= 3000"}]
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "other.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.other_symbol >= 999999"}]}},
+    )
+
+    with pytest.raises(ValueError, match="eval_samples >= 3000.*was dropped"):
+        compose(tmp_path / "other.overlay.yml")
