@@ -14,14 +14,34 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
+from tvl_tools.cli_utils import (
+    add_common_args,
+    get_format,
+    handle_error,
+    load_yaml_safely,
+    print_output,
+)
+
+_MAX_OVERLAY_CHAIN_DEPTH = 64
 
 
-def _resolve_base_path(overlay_path: Path, base_ref: str) -> Path:
-    """Resolve the base file path relative to the overlay file."""
-    if Path(base_ref).is_absolute():
-        return Path(base_ref)
-    return overlay_path.parent / base_ref
+def _resolve_base_path(overlay_path: Path, base_ref: str, overlay_root: Path) -> Path:
+    """Resolve a relative base path without leaving the initial overlay root."""
+    if not isinstance(base_ref, str):
+        raise TypeError("Overlay 'extends' must be a relative path string")
+
+    reference_path = Path(base_ref)
+    if reference_path.is_absolute():
+        raise ValueError("Overlay 'extends' must be a relative path")
+
+    base_path = (overlay_path.parent / reference_path).resolve()
+    try:
+        base_path.relative_to(overlay_root)
+    except ValueError as exc:
+        raise ValueError(
+            "Overlay 'extends' path must stay within the overlay root"
+        ) from exc
+    return base_path
 
 
 def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,7 +50,9 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
-        elif key in result and isinstance(result[key], list) and isinstance(value, list):
+        elif (
+            key in result and isinstance(result[key], list) and isinstance(value, list)
+        ):
             # Only TVAR lists are merged by name. Other lists, such as enum domains
             # or numeric ranges, should be replaced by the overlay value.
             if key == "tvars":
@@ -55,7 +77,9 @@ def _merge_tvar_lists(base_tvars: List[Dict], override_tvars: List[Dict]) -> Lis
             result[idx] = _deep_merge(result[idx], override_tvar)
         else:
             # This is an error - can't add new TVARs in overlay
-            raise ValueError(f"Cannot add new TVAR '{name}' in overlay. Overlays can only narrow existing TVARs.")
+            raise ValueError(
+                f"Cannot add new TVAR '{name}' in overlay. Overlays can only narrow existing TVARs."
+            )
 
     return result
 
@@ -91,9 +115,13 @@ def _validate_narrowing(base: Dict[str, Any], composed: Dict[str, Any]) -> List[
                 base_range = base_domain["range"]
                 composed_range = composed_domain["range"]
                 if composed_range[0] < base_range[0]:
-                    errors.append(f"TVAR '{name}': cannot widen range minimum from {base_range[0]} to {composed_range[0]}")
+                    errors.append(
+                        f"TVAR '{name}': cannot widen range minimum from {base_range[0]} to {composed_range[0]}"
+                    )
                 if composed_range[1] > base_range[1]:
-                    errors.append(f"TVAR '{name}': cannot widen range maximum from {base_range[1]} to {composed_range[1]}")
+                    errors.append(
+                        f"TVAR '{name}': cannot widen range maximum from {base_range[1]} to {composed_range[1]}"
+                    )
 
     # Check budgets (can only decrease)
     base_budgets = base.get("exploration", {}).get("budgets", {})
@@ -102,21 +130,37 @@ def _validate_narrowing(base: Dict[str, Any], composed: Dict[str, Any]) -> List[
     for key in ["max_trials", "max_spend_usd", "max_wallclock_s"]:
         if key in base_budgets and key in composed_budgets:
             if composed_budgets[key] > base_budgets[key]:
-                errors.append(f"Budget '{key}': cannot increase from {base_budgets[key]} to {composed_budgets[key]}")
+                errors.append(
+                    f"Budget '{key}': cannot increase from {base_budgets[key]} to {composed_budgets[key]}"
+                )
 
     return errors
 
 
-def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, Any]:
-    """Compose an overlay file into a valid TVL 1.0 module.
+def _format_cycle_path(path: Path, overlay_root: Path) -> str:
+    """Render a canonical overlay path relative to the composition root."""
+    return path.relative_to(overlay_root).as_posix()
 
-    Args:
-        overlay_path: Path to the overlay YAML file
-        validate_narrowing: If True, validate that overlay only narrows base
 
-    Returns:
-        Composed TVL 1.0 module as a dict
-    """
+def _compose(
+    overlay_path: Path,
+    validate_narrowing: bool,
+    overlay_root: Path,
+    resolution_chain: list[Path],
+) -> dict[str, Any]:
+    """Compose an overlay while enforcing its path and recursion boundaries."""
+    if overlay_path in resolution_chain:
+        cycle_start = resolution_chain.index(overlay_path)
+        cycle = resolution_chain[cycle_start:] + [overlay_path]
+        rendered_cycle = " -> ".join(
+            _format_cycle_path(path, overlay_root) for path in cycle
+        )
+        raise ValueError(f"Overlay extends cycle detected: {rendered_cycle}")
+    if len(resolution_chain) >= _MAX_OVERLAY_CHAIN_DEPTH:
+        raise ValueError(
+            f"Overlay extends chain exceeds maximum depth of {_MAX_OVERLAY_CHAIN_DEPTH}"
+        )
+
     overlay = load_yaml_safely(overlay_path)
 
     if not isinstance(overlay, dict):
@@ -132,7 +176,7 @@ def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, An
         raise ValueError("Overlay must specify 'extends' in _tvl_overlay")
 
     # Load base module
-    base_path = _resolve_base_path(overlay_path, extends)
+    base_path = _resolve_base_path(overlay_path, extends, overlay_root)
     base = load_yaml_safely(base_path)
 
     if not isinstance(base, dict):
@@ -140,7 +184,12 @@ def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, An
 
     # Recursively resolve if base is also an overlay
     if "_tvl_overlay" in base:
-        base = compose(base_path, validate_narrowing=False)
+        base = _compose(
+            base_path,
+            validate_narrowing=False,
+            overlay_root=overlay_root,
+            resolution_chain=resolution_chain + [overlay_path],
+        )
 
     # Get overrides
     overrides = overlay.get("overrides", {})
@@ -160,6 +209,21 @@ def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, An
     return composed
 
 
+def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, Any]:
+    """Compose an overlay file into a valid TVL 1.0 module.
+
+    The initial overlay's directory is the composition root. Every ``extends``
+    reference must resolve inside it, including references in nested overlays.
+    """
+    resolved_overlay_path = overlay_path.resolve()
+    return _compose(
+        resolved_overlay_path,
+        validate_narrowing=validate_narrowing,
+        overlay_root=resolved_overlay_path.parent,
+        resolution_chain=[],
+    )
+
+
 def text_renderer(data: Dict[str, Any]) -> None:
     """Render compose result as text."""
     if data.get("ok"):
@@ -167,7 +231,9 @@ def text_renderer(data: Dict[str, Any]) -> None:
             print(f"Composed: {data['output_file']}")
         else:
             # Print the composed YAML to stdout
-            print(yaml.dump(data["composed"], default_flow_style=False, sort_keys=False))
+            print(
+                yaml.dump(data["composed"], default_flow_style=False, sort_keys=False)
+            )
     elif data.get("validation") and not data["validation"]["ok"]:
         # Validation failure: surface the issues on stderr
         print("Validation failed:", file=sys.stderr)
@@ -183,7 +249,8 @@ def main() -> None:
     )
     parser.add_argument("file", type=Path, help="Path to overlay YAML file")
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         type=Path,
         help="Output file path (default: stdout)",
     )
@@ -211,8 +278,9 @@ def main() -> None:
 
         # Optionally validate the composed module (independent of output target)
         if args.validate:
-            from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
             from tvl.lints import lint_module
+
+            from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
 
             schema = _load_schema(Path(__file__))
             issues = _schema_issues(composed, schema)
