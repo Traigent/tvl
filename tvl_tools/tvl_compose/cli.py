@@ -93,7 +93,32 @@ def _clause_key(clause: Any) -> str:
     clause; anything else is compared by its sorted repr as a last resort.
     """
     def norm(text: Any) -> str:
-        return " ".join(str(text).split())
+        """Collapse whitespace OUTSIDE quoted literals only.
+
+        Collapsing inside a literal makes `x = "hipaa  strict"` and `x = "hipaa strict"`
+        collide, which would let an overlay satisfy retention with a decoy clause while
+        silently dropping the real guard.
+        """
+        s = str(text)
+        out, buf, quote = [], [], None
+        for ch in s:
+            if quote:
+                buf.append(ch)
+                if ch == quote:
+                    out.append("".join(buf))
+                    buf, quote = [], None
+            elif ch in ("'", '"'):
+                out.append(" ".join("".join(buf).split()) if buf else "")
+                buf, quote = [ch], ch
+            else:
+                buf.append(ch)
+        if quote:  # unterminated quote: fall back to the raw remainder
+            out.append("".join(buf))
+        elif buf:
+            out.append(" ".join("".join(buf).split()))
+        joined = "".join(out)
+        # Normalise the seams left by segment-wise collapsing.
+        return " ".join(joined.split(" ")).strip()
 
     if isinstance(clause, dict):
         if "expr" in clause:
@@ -136,10 +161,17 @@ def _tightens(base_bound: tuple, comp_bound: tuple) -> bool:
         return False
     lower = {">=", ">"}
     upper = {"<=", "<"}
+    # Strictness matters at EQUAL values: `x > 3000` admits fewer values than
+    # `x >= 3000`, so replacing `>` with `>=` at the same number is a WIDENING even
+    # though the number did not move. `>` may replace `>=`, never the reverse.
     if b_op in lower and c_op in lower:
-        return c_val >= b_val
+        if c_val > b_val:
+            return True
+        return c_val == b_val and (b_op == c_op or c_op == ">")
     if b_op in upper and c_op in upper:
-        return c_val <= b_val
+        if c_val < b_val:
+            return True
+        return c_val == b_val and (b_op == c_op or c_op == "<")
     return False
 
 
@@ -240,6 +272,22 @@ def _validate_safety_narrowing(
                 f"objective '{name}': cannot change direction from "
                 f"'{bo['direction']}' to '{co['direction']}'"
             )
+        # A banded objective's target interval is a gate input (promotion.py reads it), so
+        # widening the band loosens the gate exactly as raising a threshold would.
+        b_band = (bo.get("band") or {}).get("target")
+        c_band = (co.get("band") or {}).get("target")
+        if (
+            isinstance(b_band, list)
+            and isinstance(c_band, list)
+            and len(b_band) == 2
+            and len(c_band) == 2
+        ):
+            if c_band[0] < b_band[0] or c_band[1] > b_band[1]:
+                errors.append(
+                    f"objective '{name}': cannot widen band from {b_band} to {c_band}"
+                )
+        elif b_band is not None and c_band is None:
+            errors.append(f"objective '{name}': cannot remove its band")
 
     # --- constraint clauses -------------------------------------------------
     for kind in ("structural", "derived"):
@@ -380,11 +428,17 @@ def _compose(
     if not isinstance(base, dict):
         raise TypeError(f"Base module {base_path} must be a YAML mapping")
 
-    # Recursively resolve if base is also an overlay
+    # Recursively resolve if base is also an overlay.
+    #
+    # EVERY EDGE OF THE CHAIN IS VALIDATED, not just the outermost one. Resolving an
+    # intermediate overlay with validation off lets a chain launder any weakening:
+    # `final -> weaken -> base` would check `final` against the ALREADY-WEAKENED `weaken`,
+    # which trivially passes, so one extra pass-through file defeated every rule below.
+    # Confirmed as a working bypass before this was changed.
     if "_tvl_overlay" in base:
         base = _compose(
             base_path,
-            validate_narrowing=False,
+            validate_narrowing=validate_narrowing,
             overlay_root=overlay_root,
             resolution_chain=resolution_chain + [overlay_path],
         )

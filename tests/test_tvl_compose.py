@@ -556,3 +556,135 @@ def test_bound_comparison_requires_the_same_symbol(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="eval_samples >= 3000.*was dropped"):
         compose(tmp_path / "other.overlay.yml")
+
+
+# ---------------------------------------------------------------------------
+# Bypasses found by adversarial review of the first cut (see PR #72 discussion).
+# Each of these composed cleanly before the follow-up fix.
+# ---------------------------------------------------------------------------
+
+
+def test_a_pass_through_overlay_cannot_launder_a_weakening(tmp_path: Path) -> None:
+    """The whole chain is validated, not just its last edge.
+
+    Resolving intermediate overlays with validation disabled meant `final -> weaken -> base`
+    checked `final` against the ALREADY-WEAKENED `weaken`, which trivially passes. One extra
+    empty file defeated every other rule in this module.
+    """
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "weaken.overlay.yml",
+        {
+            "constraints": {"structural": []},
+            "promotion_policy": {
+                "chance_constraints": [
+                    {"name": "toxic_rate_slo", "threshold": 0.50, "confidence": 0.50}
+                ]
+            },
+        },
+    )
+    _write_yaml(
+        tmp_path / "final.overlay.yml",
+        {"_tvl_overlay": {"extends": "weaken.overlay.yml"}, "overrides": {}},
+    )
+
+    # The direct overlay is rejected...
+    with pytest.raises(ValueError):
+        compose(tmp_path / "weaken.overlay.yml")
+    # ...and so is the pass-through wrapping it.
+    with pytest.raises(ValueError, match="cannot raise threshold"):
+        compose(tmp_path / "final.overlay.yml")
+
+
+def test_a_valid_chain_still_composes(tmp_path: Path) -> None:
+    """Chain validation must not break legitimate multi-level overlays."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "mid.overlay.yml",
+        {
+            "promotion_policy": {
+                "chance_constraints": [
+                    {"name": "toxic_rate_slo", "threshold": 0.005, "confidence": 0.95}
+                ]
+            }
+        },
+    )
+    _write_yaml(
+        tmp_path / "leaf.overlay.yml",
+        {
+            "_tvl_overlay": {"extends": "mid.overlay.yml"},
+            "overrides": {
+                "promotion_policy": {
+                    "chance_constraints": [
+                        {"name": "toxic_rate_slo", "threshold": 0.001, "confidence": 0.99}
+                    ]
+                }
+            },
+        },
+    )
+
+    composed = compose(tmp_path / "leaf.overlay.yml")
+    assert composed["promotion_policy"]["chance_constraints"][0]["threshold"] == 0.001
+
+
+def test_ge_does_not_tighten_gt_at_the_same_value(tmp_path: Path) -> None:
+    """`x >= 3000` admits 3000; `x > 3000` does not. Same number, strictly wider."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["constraints"]["derived"] = [{"require": "env.context.eval_samples > 3000"}]
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "loosen.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.eval_samples >= 3000"}]}},
+    )
+    with pytest.raises(ValueError, match="was dropped by the overlay"):
+        compose(tmp_path / "loosen.overlay.yml")
+
+    # The reverse direction IS a tightening and must still be accepted.
+    _overlay(
+        tmp_path / "tighten.overlay.yml",
+        {"constraints": {"derived": [{"require": "env.context.eval_samples > 3000"}]}},
+    )
+    assert compose(tmp_path / "tighten.overlay.yml")
+
+
+def test_clause_identity_preserves_whitespace_inside_quoted_literals(tmp_path: Path) -> None:
+    """A decoy differing only inside a string literal must not satisfy retention."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["constraints"]["structural"] = [{"expr": 'profile = "hipaa  strict"'}]
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "decoy.overlay.yml",
+        {"constraints": {"structural": [{"expr": 'profile = "hipaa strict"'}]}},
+    )
+
+    with pytest.raises(ValueError, match="was dropped by the overlay"):
+        compose(tmp_path / "decoy.overlay.yml")
+
+
+def test_compose_rejects_widening_an_objective_band(tmp_path: Path) -> None:
+    """A band is a gate input, so widening it loosens the gate."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["objectives"][0]["band"] = {"target": [95, 105], "test": "TOST", "alpha": 0.05}
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "widen.overlay.yml",
+        {
+            "objectives": [
+                {
+                    "name": "quality",
+                    "direction": "maximize",
+                    "band": {"target": [0, 1000000], "test": "TOST", "alpha": 0.05},
+                },
+                {"name": "toxic_rate", "direction": "minimize"},
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot widen band"):
+        compose(tmp_path / "widen.overlay.yml")

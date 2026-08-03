@@ -486,12 +486,31 @@ An overlay narrows a base module; it may never widen it. The composer enforces:
 | TVARs | may not be added |
 | `exploration.budgets` | may decrease, never increase |
 | `promotion_policy.chance_constraints` | a named constraint may not be dropped; `threshold` may only **decrease**; `confidence` may only **increase** |
-| `objectives` | may not be dropped; `direction` may not flip |
+| `objectives` | may not be dropped; `direction` may not flip; a `band.target` may not be widened or removed |
 | `constraints.structural` / `constraints.derived` | clauses may not be dropped unless waived, or replaced by a strictly tighter bound on the same symbol |
 
 `threshold` bounds a violation rate, so raising it permits more violations; lowering
 `confidence` makes a weaker claim. Both are widenings even though the numbers move in
 opposite directions.
+
+Every edge of an overlay **chain** is validated, not just the outermost one — otherwise a
+single pass-through overlay (`final` extends `weaken` extends `base`) would check `final`
+against the already-weakened `weaken` and launder the whole change.
+
+#### What this does NOT cover
+
+The table above is the enforced set, not a guarantee that an overlay cannot loosen anything.
+These remain unchecked and can still be changed freely, so review them by hand:
+
+*   `promotion_policy.alpha`, `adjust`, and `min_effect`
+*   `evaluation_set.dataset` and `seed` — an overlay may point at an easier evaluation set
+*   `environment.bindings` and `environment.context` (beyond the derived-clause rules)
+*   `objectives[].metric_ref`
+
+`min_effect` is excluded deliberately: whether raising it tightens depends on the objective's
+direction and which side of the comparison it lands on, so a rule here would reject valid
+overlays as often as it caught bad ones. The others are unbounded by nature and would need a
+policy decision about what "tighter" even means.
 
 Note that `overrides` **replaces** a list rather than merging into it (`tvars` is the one
 exception, merged by name). Every inherited clause you intend to keep must be restated in
