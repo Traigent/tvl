@@ -179,6 +179,15 @@ def _tightens(base_bound: tuple, comp_bound: tuple) -> bool:
     return False
 
 
+# Tolerance for comparing band intervals. The two legal target forms are not
+# bit-identical after arithmetic: `{center: 0.3, tol: 0.2}` normalises to a low bound of
+# 0.09999999999999998, which is strictly below an equivalent `[0.1, 0.5]` and would be
+# reported as a widening. That is a false POSITIVE -- it blocks a legitimate overlay rather
+# than admitting a bad one -- so a small absolute tolerance is the right trade here. It is
+# far tighter than any meaningful band width.
+_BAND_EPS = 1e-9
+
+
 def _band_interval(band: Any) -> Optional[tuple]:
     """Normalise a band target to ``(low, high)``, or None if not comparable.
 
@@ -331,7 +340,7 @@ def _validate_safety_narrowing(
                         f"composed={(c_band or {}).get('target')!r}); "
                         "cannot verify it was not widened"
                     )
-                elif c_iv[0] < b_iv[0] or c_iv[1] > b_iv[1]:
+                elif c_iv[0] < b_iv[0] - _BAND_EPS or c_iv[1] > b_iv[1] + _BAND_EPS:
                     errors.append(
                         f"objective '{name}': cannot widen band from "
                         f"[{b_iv[0]}, {b_iv[1]}] to [{c_iv[0]}, {c_iv[1]}]"

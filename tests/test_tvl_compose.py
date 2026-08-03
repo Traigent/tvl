@@ -812,3 +812,57 @@ def test_clause_key_handles_escaped_quotes(tmp_path: Path) -> None:
     c = _clause_key({"expr": 'note = "say \\"  now"'})
     assert a == b, "whitespace outside quotes should still normalise"
     assert a != c, "whitespace inside the literal must remain significant"
+
+
+def test_equivalent_bands_in_different_forms_are_not_a_widening(tmp_path: Path) -> None:
+    """`[0.1, 0.5]` and `{center: 0.3, tol: 0.2}` are the same interval.
+
+    Float arithmetic makes `0.3 - 0.2` = 0.09999999999999998, strictly below 0.1, so a
+    naive comparison reports a widening and blocks a legitimate overlay.
+    """
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["objectives"][0] = {
+        "name": "quality",
+        "band": {"target": [0.1, 0.5], "test": "TOST", "alpha": 0.05},
+    }
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "equiv.overlay.yml",
+        {
+            "objectives": [
+                {
+                    "name": "quality",
+                    "band": {
+                        "target": {"center": 0.3, "tol": 0.2},
+                        "test": "TOST",
+                        "alpha": 0.05,
+                    },
+                },
+                {"name": "toxic_rate", "direction": "minimize"},
+            ]
+        },
+    )
+
+    assert compose(tmp_path / "equiv.overlay.yml")
+
+    # The tolerance must not swallow a real widening.
+    _overlay(
+        tmp_path / "wider.overlay.yml",
+        {
+            "objectives": [
+                {
+                    "name": "quality",
+                    "band": {
+                        "target": {"center": 0.3, "tol": 0.25},
+                        "test": "TOST",
+                        "alpha": 0.05,
+                    },
+                },
+                {"name": "toxic_rate", "direction": "minimize"},
+            ]
+        },
+    )
+    with pytest.raises(ValueError, match="cannot widen band"):
+        compose(tmp_path / "wider.overlay.yml")
