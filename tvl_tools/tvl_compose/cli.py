@@ -100,11 +100,15 @@ def _clause_key(clause: Any) -> str:
         silently dropping the real guard.
         """
         s = str(text)
-        out, buf, quote = [], [], None
+        out, buf, quote, escaped = [], [], None, False
         for ch in s:
             if quote:
                 buf.append(ch)
-                if ch == quote:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == quote:
                     out.append("".join(buf))
                     buf, quote = [], None
             elif ch in ("'", '"'):
@@ -173,6 +177,28 @@ def _tightens(base_bound: tuple, comp_bound: tuple) -> bool:
             return True
         return c_val == b_val and (b_op == c_op or c_op == "<")
     return False
+
+
+def _band_interval(band: Any) -> Optional[tuple]:
+    """Normalise a band target to ``(low, high)``, or None if not comparable.
+
+    The schema permits both ``target: [low, high]`` and ``target: {center, tol}``, and
+    promotion reads both. Comparing only the list form silently let the dict form widen.
+    """
+    if not isinstance(band, dict):
+        return None
+    target = band.get("target")
+    if (
+        isinstance(target, list)
+        and len(target) == 2
+        and all(isinstance(v, (int, float)) for v in target)
+    ):
+        return (float(target[0]), float(target[1]))
+    if isinstance(target, dict):
+        center, tol = target.get("center"), target.get("tol")
+        if isinstance(center, (int, float)) and isinstance(tol, (int, float)):
+            return (float(center) - float(tol), float(center) + float(tol))
+    return None
 
 
 def _validate_safety_narrowing(
@@ -272,22 +298,54 @@ def _validate_safety_narrowing(
                 f"objective '{name}': cannot change direction from "
                 f"'{bo['direction']}' to '{co['direction']}'"
             )
-        # A banded objective's target interval is a gate input (promotion.py reads it), so
-        # widening the band loosens the gate exactly as raising a threshold would.
-        b_band = (bo.get("band") or {}).get("target")
-        c_band = (co.get("band") or {}).get("target")
-        if (
-            isinstance(b_band, list)
-            and isinstance(c_band, list)
-            and len(b_band) == 2
-            and len(c_band) == 2
-        ):
-            if c_band[0] < b_band[0] or c_band[1] > b_band[1]:
+        # KIND INVARIANCE. A standard directional objective and a banded one are different
+        # gates. Swapping a directional objective for a banded one of the same name keeps
+        # the name-retention check happy while silently deleting the non-inferiority test,
+        # and the direction check never fires because the replacement has no `direction`.
+        b_band, c_band = bo.get("band"), co.get("band")
+        if bo.get("direction") and not b_band:
+            if c_band:
                 errors.append(
-                    f"objective '{name}': cannot widen band from {b_band} to {c_band}"
+                    f"objective '{name}': cannot convert a directional objective into a "
+                    "banded one (that removes the non-inferiority test)"
                 )
-        elif b_band is not None and c_band is None:
-            errors.append(f"objective '{name}': cannot remove its band")
+            elif not co.get("direction"):
+                errors.append(
+                    f"objective '{name}': cannot drop 'direction' from a directional objective"
+                )
+
+        # A band's target interval is a gate input (promotion.py reads it), so widening it
+        # loosens the gate exactly as raising a threshold would. Both the [low, high] and
+        # {center, tol} forms are legal per the schema, so both are normalised before
+        # comparison -- comparing only list/list let the dict form through untouched.
+        if b_band is not None:
+            if c_band is None:
+                errors.append(f"objective '{name}': cannot remove its band")
+            else:
+                b_iv, c_iv = _band_interval(b_band), _band_interval(c_band)
+                if b_iv is None or c_iv is None:
+                    # Fail closed: an uncomparable band cannot be shown not to widen.
+                    errors.append(
+                        f"objective '{name}': band target is missing or not comparable "
+                        f"(base={(b_band or {}).get('target')!r}, "
+                        f"composed={(c_band or {}).get('target')!r}); "
+                        "cannot verify it was not widened"
+                    )
+                elif c_iv[0] < b_iv[0] or c_iv[1] > b_iv[1]:
+                    errors.append(
+                        f"objective '{name}': cannot widen band from "
+                        f"[{b_iv[0]}, {b_iv[1]}] to [{c_iv[0]}, {c_iv[1]}]"
+                    )
+                b_alpha, c_alpha = b_band.get("alpha"), c_band.get("alpha")
+                if (
+                    isinstance(b_alpha, (int, float))
+                    and isinstance(c_alpha, (int, float))
+                    and c_alpha > b_alpha
+                ):
+                    errors.append(
+                        f"objective '{name}': cannot raise band alpha from {b_alpha} to "
+                        f"{c_alpha} (a larger alpha makes the equivalence test easier to pass)"
+                    )
 
     # --- constraint clauses -------------------------------------------------
     for kind in ("structural", "derived"):

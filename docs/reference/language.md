@@ -486,7 +486,7 @@ An overlay narrows a base module; it may never widen it. The composer enforces:
 | TVARs | may not be added |
 | `exploration.budgets` | may decrease, never increase |
 | `promotion_policy.chance_constraints` | a named constraint may not be dropped; `threshold` may only **decrease**; `confidence` may only **increase** |
-| `objectives` | may not be dropped; `direction` may not flip; a `band.target` may not be widened or removed |
+| `objectives` | may not be dropped; kind may not change (directional <-> banded); `direction` may not flip; a `band.target` may not be widened or removed (both `[low, high]` and `{center, tol}` forms); `band.alpha` may not be raised |
 | `constraints.structural` / `constraints.derived` | clauses may not be dropped unless waived, or replaced by a strictly tighter bound on the same symbol |
 
 `threshold` bounds a violation rate, so raising it permits more violations; lowering
@@ -505,7 +505,7 @@ These remain unchecked and can still be changed freely, so review them by hand:
 *   `promotion_policy.alpha`, `adjust`, and `min_effect`
 *   `evaluation_set.dataset` and `seed` — an overlay may point at an easier evaluation set
 *   `environment.bindings` and `environment.context` (beyond the derived-clause rules)
-*   `objectives[].metric_ref`
+*   `objectives[].metric_ref` and `band.test`
 
 `min_effect` is excluded deliberately: whether raising it tightens depends on the objective's
 direction and which side of the comparison it lands on, so a rule here would reject valid

@@ -688,3 +688,127 @@ def test_compose_rejects_widening_an_objective_band(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="cannot widen band"):
         compose(tmp_path / "widen.overlay.yml")
+
+
+# --- second adversarial pass: band forms and objective kind -----------------
+
+
+def test_compose_rejects_widening_a_center_tol_band(tmp_path: Path) -> None:
+    """The schema allows `target: {center, tol}` as well as `[low, high]`.
+
+    Comparing only the list form let the dict form widen untouched: tol 5 -> 500 is a
+    100x wider equivalence region on the same objective.
+    """
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["objectives"][0] = {
+        "name": "quality",
+        "band": {"target": {"center": 100, "tol": 5}, "test": "TOST", "alpha": 0.05},
+    }
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "widen.overlay.yml",
+        {
+            "objectives": [
+                {
+                    "name": "quality",
+                    "band": {
+                        "target": {"center": 100, "tol": 500},
+                        "test": "TOST",
+                        "alpha": 0.05,
+                    },
+                },
+                {"name": "toxic_rate", "direction": "minimize"},
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot widen band"):
+        compose(tmp_path / "widen.overlay.yml")
+
+
+def test_compose_rejects_raising_band_alpha(tmp_path: Path) -> None:
+    """A larger alpha makes the equivalence test easier to pass."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["objectives"][0] = {
+        "name": "quality",
+        "band": {"target": [95, 105], "test": "TOST", "alpha": 0.05},
+    }
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "alpha.overlay.yml",
+        {
+            "objectives": [
+                {
+                    "name": "quality",
+                    "band": {"target": [95, 105], "test": "TOST", "alpha": 0.99},
+                },
+                {"name": "toxic_rate", "direction": "minimize"},
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot raise band alpha"):
+        compose(tmp_path / "alpha.overlay.yml")
+
+
+def test_compose_rejects_converting_a_directional_objective_to_banded(tmp_path: Path) -> None:
+    """Same name, different gate.
+
+    Name-retention passes and the direction check never fires (the replacement has no
+    `direction`), so the non-inferiority test was silently deleted.
+    """
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "convert.overlay.yml",
+        {
+            "objectives": [
+                {"name": "quality", "direction": "maximize"},
+                {
+                    "name": "toxic_rate",
+                    "band": {"target": [0, 1], "test": "TOST", "alpha": 0.99},
+                },
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot convert a directional objective"):
+        compose(tmp_path / "convert.overlay.yml")
+
+
+def test_compose_fails_closed_on_an_uncomparable_band(tmp_path: Path) -> None:
+    """If the band cannot be normalised, it cannot be shown not to widen - so reject."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    base = yaml.safe_load((tmp_path / "base.tvl.yml").read_text())
+    base["objectives"][0] = {
+        "name": "quality",
+        "band": {"target": [95, 105], "test": "TOST", "alpha": 0.05},
+    }
+    _write_yaml(tmp_path / "base.tvl.yml", base)
+
+    _overlay(
+        tmp_path / "junk.overlay.yml",
+        {
+            "objectives": [
+                {"name": "quality", "band": {"test": "TOST", "alpha": 0.05}},
+                {"name": "toxic_rate", "direction": "minimize"},
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="not comparable"):
+        compose(tmp_path / "junk.overlay.yml")
+
+
+def test_clause_key_handles_escaped_quotes(tmp_path: Path) -> None:
+    """An escaped quote must not terminate the literal early."""
+    from tvl_tools.tvl_compose.cli import _clause_key
+
+    a = _clause_key({"expr": 'note = "say \\" now"'})
+    b = _clause_key({"expr": 'note   =   "say \\" now"'})
+    c = _clause_key({"expr": 'note = "say \\"  now"'})
+    assert a == b, "whitespace outside quotes should still normalise"
+    assert a != c, "whitespace inside the literal must remain significant"
