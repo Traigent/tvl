@@ -253,3 +253,232 @@ def test_compose_rejects_overlay_cycles_deterministically(
         ValueError, match=f"Overlay extends cycle detected: {expected_cycle}"
     ):
         compose(first_overlay)
+
+
+# ---------------------------------------------------------------------------
+# Safety monotonicity (issue #70)
+#
+# The narrowing check historically covered TVAR domains and exploration budgets only,
+# so an overlay could delete every structural guardrail and gut every chance constraint
+# and still compose with exit 0.
+# ---------------------------------------------------------------------------
+
+
+def _safety_base(path: Path) -> None:
+    _write_yaml(
+        path,
+        {
+            "tvl": {"module": "demo.safety"},
+            "environment": {"snapshot_id": "2026-01-01T00:00:00Z"},
+            "evaluation_set": {"dataset": "s3://datasets/demo.jsonl"},
+            "tvars": [
+                {
+                    "name": "temperature",
+                    "type": "float",
+                    "domain": {"range": [0.0, 1.0], "resolution": 0.05},
+                },
+                {"name": "pii_redaction", "type": "bool", "domain": [True, False]},
+            ],
+            "constraints": {
+                "structural": [
+                    {"expr": "pii_redaction = true"},
+                    {"when": "temperature > 0.7", "then": "pii_redaction = true"},
+                ],
+                "derived": [],
+            },
+            "objectives": [
+                {"name": "quality", "direction": "maximize"},
+                {"name": "toxic_rate", "direction": "minimize"},
+            ],
+            "promotion_policy": {
+                "dominance": "epsilon_pareto",
+                "alpha": 0.05,
+                "min_effect": {"quality": 0.01, "toxic_rate": 0.001},
+                "chance_constraints": [
+                    {"name": "toxic_rate_slo", "threshold": 0.01, "confidence": 0.95}
+                ],
+            },
+        },
+    )
+
+
+def _overlay(path: Path, overrides: dict, meta_extra: dict | None = None) -> None:
+    meta = {"extends": "base.tvl.yml"}
+    meta.update(meta_extra or {})
+    _write_yaml(path, {"_tvl_overlay": meta, "overrides": overrides})
+
+
+def test_compose_rejects_raising_a_chance_constraint_threshold(tmp_path: Path) -> None:
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "weaken.overlay.yml",
+        {
+            "promotion_policy": {
+                "chance_constraints": [
+                    {"name": "toxic_rate_slo", "threshold": 0.50, "confidence": 0.95}
+                ]
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot raise threshold from 0.01 to 0.5"):
+        compose(tmp_path / "weaken.overlay.yml")
+
+
+def test_compose_rejects_lowering_confidence(tmp_path: Path) -> None:
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "weaken.overlay.yml",
+        {
+            "promotion_policy": {
+                "chance_constraints": [
+                    {"name": "toxic_rate_slo", "threshold": 0.01, "confidence": 0.50}
+                ]
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot lower confidence from 0.95 to 0.5"):
+        compose(tmp_path / "weaken.overlay.yml")
+
+
+def test_compose_rejects_dropping_a_chance_constraint(tmp_path: Path) -> None:
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(tmp_path / "drop.overlay.yml", {"promotion_policy": {"chance_constraints": []}})
+
+    with pytest.raises(ValueError, match="chance_constraint 'toxic_rate_slo': removed"):
+        compose(tmp_path / "drop.overlay.yml")
+
+
+def test_compose_allows_tightening(tmp_path: Path) -> None:
+    """The check must not block legitimate hardening - only weakening."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "tighten.overlay.yml",
+        {
+            "tvars": [
+                {"name": "temperature", "domain": {"range": [0.0, 0.9], "resolution": 0.05}}
+            ],
+            "promotion_policy": {
+                "chance_constraints": [
+                    {"name": "toxic_rate_slo", "threshold": 0.001, "confidence": 0.99}
+                ]
+            },
+        },
+    )
+
+    composed = compose(tmp_path / "tighten.overlay.yml")
+    cc = composed["promotion_policy"]["chance_constraints"][0]
+    assert cc["threshold"] == 0.001
+    assert cc["confidence"] == 0.99
+
+
+def test_compose_rejects_dropping_a_structural_clause(tmp_path: Path) -> None:
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(tmp_path / "strip.overlay.yml", {"constraints": {"structural": []}})
+
+    with pytest.raises(ValueError, match="pii_redaction = true.*was dropped"):
+        compose(tmp_path / "strip.overlay.yml")
+
+
+def test_compose_rejects_dropping_an_objective(tmp_path: Path) -> None:
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "drop-obj.overlay.yml",
+        {"objectives": [{"name": "quality", "direction": "maximize"}]},
+    )
+
+    with pytest.raises(ValueError, match="objective 'toxic_rate': removed"):
+        compose(tmp_path / "drop-obj.overlay.yml")
+
+
+def test_compose_rejects_flipping_objective_direction(tmp_path: Path) -> None:
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "flip.overlay.yml",
+        {
+            "objectives": [
+                {"name": "quality", "direction": "maximize"},
+                {"name": "toxic_rate", "direction": "maximize"},
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="cannot change direction"):
+        compose(tmp_path / "flip.overlay.yml")
+
+
+def test_waiver_permits_a_clause_the_narrowing_made_vacuous(tmp_path: Path) -> None:
+    """The motivating case for waivers.
+
+    Narrowing temperature to [0.0, 0.3] makes an inherited `temperature > 0.7` guard
+    vacuous, and keeping it is a hard lint error on the composed module. Without the
+    waiver mechanism this checker would reject a legitimate overlay.
+    """
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "narrow.overlay.yml",
+        {
+            "tvars": [
+                {"name": "temperature", "domain": {"range": [0.0, 0.3], "resolution": 0.05}}
+            ],
+            "constraints": {"structural": [{"expr": "pii_redaction = true"}]},
+        },
+        meta_extra={
+            "waives": [
+                {
+                    "clause": "temperature > 0.7 => pii_redaction = true",
+                    "reason": "vacuous: temperature narrowed to [0.0, 0.3]",
+                }
+            ]
+        },
+    )
+
+    composed = compose(tmp_path / "narrow.overlay.yml")
+    assert composed["tvars"][0]["domain"]["range"] == [0.0, 0.3]
+    assert len(composed["constraints"]["structural"]) == 1
+
+
+def test_waiver_without_a_reason_is_rejected(tmp_path: Path) -> None:
+    """A waiver's whole purpose is to make a removal declared, so a reason is mandatory."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "bad-waiver.overlay.yml",
+        {"constraints": {"structural": [{"expr": "pii_redaction = true"}]}},
+        meta_extra={"waives": [{"clause": "temperature > 0.7 => pii_redaction = true"}]},
+    )
+
+    with pytest.raises(ValueError, match="is missing 'reason'"):
+        compose(tmp_path / "bad-waiver.overlay.yml")
+
+
+def test_stale_waiver_is_rejected(tmp_path: Path) -> None:
+    """A waiver that matches nothing is a sign the clause text drifted - fail loudly."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "stale.overlay.yml",
+        {},
+        meta_extra={"waives": [{"clause": "no_such_clause = true", "reason": "typo"}]},
+    )
+
+    with pytest.raises(ValueError, match="does not match any clause in the base module"):
+        compose(tmp_path / "stale.overlay.yml")
+
+
+def test_clause_identity_ignores_whitespace(tmp_path: Path) -> None:
+    """Reformatting a restated clause must not read as dropping it."""
+    _safety_base(tmp_path / "base.tvl.yml")
+    _overlay(
+        tmp_path / "reformat.overlay.yml",
+        {
+            "constraints": {
+                "structural": [
+                    {"expr": "pii_redaction   =    true"},
+                    {"when": "temperature  > 0.7", "then": "pii_redaction = true"},
+                ]
+            }
+        },
+    )
+
+    composed = compose(tmp_path / "reformat.overlay.yml")
+    assert len(composed["constraints"]["structural"]) == 2

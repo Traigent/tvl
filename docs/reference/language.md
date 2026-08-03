@@ -469,10 +469,65 @@ tvl-check-operational path/to/module.yml --json
 Artifact validation and composition:
 
 ```bash
-tvl-compose base.tvl.yml staging.overlay.yml > merged.tvl.yml
+tvl-compose staging.overlay.yml -o merged.tvl.yml
 tvl-config-validate module.tvl.yml config.yml
 tvl-measure-validate module.tvl.yml config.yml measurements.yml
 ```
+
+`tvl-compose` takes **one** overlay file, which names its base via `_tvl_overlay.extends`.
+
+### Overlays may only tighten
+
+An overlay narrows a base module; it may never widen it. The composer enforces:
+
+| Element | Rule |
+|---|---|
+| TVAR domains | enum values may be removed, never added; numeric ranges may shrink, never grow |
+| TVARs | may not be added |
+| `exploration.budgets` | may decrease, never increase |
+| `promotion_policy.chance_constraints` | a named constraint may not be dropped; `threshold` may only **decrease**; `confidence` may only **increase** |
+| `objectives` | may not be dropped; `direction` may not flip |
+| `constraints.structural` / `constraints.derived` | clauses may not be dropped unless waived |
+
+`threshold` bounds a violation rate, so raising it permits more violations; lowering
+`confidence` makes a weaker claim. Both are widenings even though the numbers move in
+opposite directions.
+
+Note that `overrides` **replaces** a list rather than merging into it (`tvars` is the one
+exception, merged by name). Every inherited clause you intend to keep must be restated in
+the overlay — the retention rules above are what stop an accidental omission from silently
+becoming a weakening.
+
+### Waiving an inherited clause
+
+Narrowing a TVAR can make an inherited clause **vacuous**, and keeping it is then a hard
+lint error. For example, narrowing `temperature` to `[0.0, 0.3]` makes an inherited
+`when: temperature > 0.7` guard unsatisfiable, and `tvl-validate` rejects the composed
+module with `constraint_value_out_of_domain`. The clause has to go — so removal needs to be
+expressible without also permitting silent weakening.
+
+Declare it:
+
+```yaml
+_tvl_overlay:
+  extends: base.tvl.yml
+  waives:
+    - clause: "temperature > 0.7 => pii_redaction = true"
+      reason: "vacuous: temperature narrowed to [0.0, 0.3]"
+```
+
+Clause syntax for a waiver: `expr` clauses are written verbatim; `when`/`then` clauses are
+written `<when> => <then>`. Whitespace is normalised, so reformatting a clause does not
+break the match.
+
+`reason` is mandatory, and a waiver that matches no clause in the base is an error rather
+than a no-op — a stale waiver usually means the clause text drifted, which would otherwise
+silently re-open the hole it was covering.
+
+A waiver records that **a human decided to drop the clause and why**. It deliberately does
+*not* prove the clause is vacuous; verifying that would need the structural SAT solver, and
+a waiver that quietly accepted a non-vacuous clause would be worse than having no mechanism
+at all. The value is that a declared removal is distinguishable from a silent one in review.
 
 Interpretation:
 

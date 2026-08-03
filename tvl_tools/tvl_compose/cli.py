@@ -84,6 +84,155 @@ def _merge_tvar_lists(base_tvars: List[Dict], override_tvars: List[Dict]) -> Lis
     return result
 
 
+def _clause_key(clause: Any) -> str:
+    """Canonical identity for a structural constraint clause.
+
+    Clauses are either ``{expr: ...}`` or ``{when: ..., then: ...}``. Whitespace is
+    collapsed so a reformatted-but-identical clause is still recognised as the same
+    clause; anything else is compared by its sorted repr as a last resort.
+    """
+    def norm(text: Any) -> str:
+        return " ".join(str(text).split())
+
+    if isinstance(clause, dict):
+        if "expr" in clause:
+            return norm(clause["expr"])
+        if "when" in clause or "then" in clause:
+            return f"{norm(clause.get('when'))} => {norm(clause.get('then'))}"
+        return norm(json.dumps(clause, sort_keys=True))
+    return norm(clause)
+
+
+def _validate_safety_narrowing(
+    base: Dict[str, Any],
+    composed: Dict[str, Any],
+    waives: Optional[List[Any]] = None,
+) -> List[str]:
+    """Validate that an overlay does not weaken the base's safety posture.
+
+    TVAR domains and exploration budgets are covered by ``_validate_narrowing``. This
+    covers the parts that actually express safety, which an overlay could previously
+    delete outright:
+
+    * ``promotion_policy.chance_constraints`` - may be tightened, never loosened, and a
+      named constraint may not disappear. ``threshold`` is an upper bound on a violation
+      rate, so it may only DECREASE; ``confidence`` may only INCREASE.
+    * ``objectives`` - may not be dropped, and ``direction`` may not flip.
+    * ``constraints.structural`` and ``constraints.derived`` - clauses may not be dropped
+      unless explicitly waived (see below).
+
+    Waivers exist because a legitimate narrowing can FORCE the removal of an inherited
+    clause: narrowing ``temperature`` to ``[0.0, 0.3]`` makes an inherited
+    ``when: temperature > 0.7`` guard a hard lint error, so the clause must go. Without a
+    waiver mechanism this checker would reject valid overlays. A waiver does not assert
+    the clause is harmless - it records that a human decided to drop it and why, which is
+    the difference between a declared removal and a silent one. It is deliberately NOT a
+    proof of vacuity; verifying that would require the structural SAT solver, and a
+    waiver that silently passed a non-vacuous clause would be worse than none.
+
+    Args:
+        base: The base module, before overrides were applied.
+        composed: The merged module.
+        waives: ``_tvl_overlay.waives`` entries, each ``{clause: str, reason: str}``.
+
+    Returns:
+        A list of human-readable errors; empty when the overlay only tightens.
+    """
+    errors: List[str] = []
+
+    waived: Dict[str, str] = {}
+    for entry in waives or []:
+        if isinstance(entry, dict):
+            clause, reason = entry.get("clause"), entry.get("reason")
+        else:
+            clause, reason = entry, None
+        if not clause:
+            errors.append("waives entry is missing 'clause'")
+            continue
+        if not reason:
+            errors.append(
+                f"waives entry for {_clause_key(clause)!r} is missing 'reason'. "
+                "A waiver must say why the clause was dropped."
+            )
+            continue
+        waived[_clause_key(clause)] = reason
+
+    # --- chance constraints -------------------------------------------------
+    def by_name(policy: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        items = (policy or {}).get("chance_constraints") or []
+        return {c.get("name"): c for c in items if isinstance(c, dict) and c.get("name")}
+
+    base_cc = by_name(base.get("promotion_policy") or {})
+    comp_cc = by_name(composed.get("promotion_policy") or {})
+
+    for name, bc in base_cc.items():
+        cc = comp_cc.get(name)
+        if cc is None:
+            errors.append(
+                f"chance_constraint '{name}': removed in overlay (not allowed). "
+                "Overlays may tighten a safety constraint, never drop it."
+            )
+            continue
+        b_thr, c_thr = bc.get("threshold"), cc.get("threshold")
+        if isinstance(b_thr, (int, float)) and isinstance(c_thr, (int, float)) and c_thr > b_thr:
+            errors.append(
+                f"chance_constraint '{name}': cannot raise threshold from {b_thr} to {c_thr} "
+                "(threshold bounds a violation rate; raising it permits more violations)"
+            )
+        b_conf, c_conf = bc.get("confidence"), cc.get("confidence")
+        if isinstance(b_conf, (int, float)) and isinstance(c_conf, (int, float)) and c_conf < b_conf:
+            errors.append(
+                f"chance_constraint '{name}': cannot lower confidence from {b_conf} to {c_conf} "
+                "(lower confidence is a weaker claim)"
+            )
+
+    # --- objectives ---------------------------------------------------------
+    base_obj = {o.get("name"): o for o in (base.get("objectives") or []) if isinstance(o, dict)}
+    comp_obj = {o.get("name"): o for o in (composed.get("objectives") or []) if isinstance(o, dict)}
+
+    for name, bo in base_obj.items():
+        co = comp_obj.get(name)
+        if co is None:
+            errors.append(f"objective '{name}': removed in overlay (not allowed)")
+            continue
+        if bo.get("direction") and co.get("direction") and bo["direction"] != co["direction"]:
+            errors.append(
+                f"objective '{name}': cannot change direction from "
+                f"'{bo['direction']}' to '{co['direction']}'"
+            )
+
+    # --- constraint clauses -------------------------------------------------
+    for kind in ("structural", "derived"):
+        base_clauses = ((base.get("constraints") or {}).get(kind)) or []
+        comp_keys = {
+            _clause_key(c) for c in (((composed.get("constraints") or {}).get(kind)) or [])
+        }
+        for clause in base_clauses:
+            key = _clause_key(clause)
+            if key in comp_keys or key in waived:
+                continue
+            errors.append(
+                f"constraints.{kind}: clause {key!r} was dropped by the overlay. "
+                "If the narrowed domains make it vacuous, declare it under "
+                "_tvl_overlay.waives with a reason; otherwise restate it."
+            )
+
+    unused = sorted(set(waived) - {_clause_key(c) for c in _all_base_clauses(base)})
+    for key in unused:
+        errors.append(
+            f"waives entry {key!r} does not match any clause in the base module "
+            "(stale waiver, or the clause text drifted)"
+        )
+
+    return errors
+
+
+def _all_base_clauses(base: Dict[str, Any]) -> List[Any]:
+    """Every structural and derived clause declared by the base module."""
+    constraints = base.get("constraints") or {}
+    return list(constraints.get("structural") or []) + list(constraints.get("derived") or [])
+
+
 def _validate_narrowing(base: Dict[str, Any], composed: Dict[str, Any]) -> List[str]:
     """Validate that the composed spec only narrows (doesn't widen) the base."""
     errors = []
@@ -203,6 +352,7 @@ def _compose(
     # Validate narrowing if requested
     if validate_narrowing:
         errors = _validate_narrowing(base, composed)
+        errors += _validate_safety_narrowing(base, composed, overlay_meta.get("waives"))
         if errors:
             raise ValueError("Overlay validation failed:\n  " + "\n  ".join(errors))
 
