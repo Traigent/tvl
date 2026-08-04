@@ -460,6 +460,28 @@ def _test_from_samples(
     sigma = 1 if spec.direction == "maximize" else -1
     epsilon = spec.epsilon
 
+    # A single sample provides no variance estimate, so no t-test is defined.
+    # Mirror the aggregated-stats sibling (`_test_from_stats`) and degrade to an
+    # 'inconclusive' verdict instead of dividing by (n - 1) == 0 further down
+    # (Welch-Satterthwaite df), which raised ZeroDivisionError.
+    if n_inc < 2 or n_cand < 2:
+        return ObjectiveResult(
+            name=spec.name,
+            test_type="welch",
+            n_incumbent=n_inc,
+            n_candidate=n_cand,
+            mean_incumbent=mean_inc,
+            mean_candidate=mean_cand,
+            delta=delta,
+            std_pooled=None,
+            t_statistic=None,
+            df=None,
+            p_value_noninf=1.0,
+            p_value_super=1.0,
+            epsilon=epsilon,
+            verdict="inconclusive",
+        )
+
     if paired and n_inc == n_cand and n_inc > 1:
         # Paired t-test
         diffs = [c - i for c, i in zip(cand_samples, inc_samples)]

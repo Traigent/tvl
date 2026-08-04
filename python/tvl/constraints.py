@@ -416,6 +416,39 @@ def _create_variable(model: cp_model.CpModel, domain: Domain) -> cp_model.IntVar
     raise ValueError(f"Unsupported domain type {domain.kind}")
 
 
+def _reify_index_membership(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    allowed: Sequence[int],
+    num_values: int,
+    lit: cp_model.BoolVar,
+) -> None:
+    """Constrain ``lit`` to be true iff ``var`` takes one of the ``allowed`` indices.
+
+    Unlike the previous ``var <= max(allowed)`` encoding, this makes no
+    assumption that the enum's index order matches its value order — it reifies
+    membership over the exact set of satisfying indices, so it is correct for
+    unsorted numeric enums (e.g. legacy dict-form tvars, which are not sorted).
+    """
+    allowed_set = sorted({idx for idx in allowed if 0 <= idx < num_values})
+    if not allowed_set:
+        model.Add(lit == 0)
+        return
+    if len(allowed_set) == num_values:
+        model.Add(lit == 1)
+        return
+    member_lits = []
+    for idx in allowed_set:
+        member = model.NewBoolVar(f"{var.Name()}_eq_{idx}")
+        model.Add(var == idx).OnlyEnforceIf(member)
+        model.Add(var != idx).OnlyEnforceIf(member.Not())
+        member_lits.append(member)
+    # lit <=> OR(member_lits)
+    model.AddBoolOr(member_lits).OnlyEnforceIf(lit)
+    for member in member_lits:
+        model.AddImplication(member, lit)
+
+
 def _atom_literal(
     model: cp_model.CpModel,
     var_map: Dict[str, cp_model.IntVar],
@@ -465,40 +498,23 @@ def _atom_literal(
                 model.Add(var == encoded).OnlyEnforceIf(lit.Not())
             return lit
 
-        if is_numeric_enum:
+        if is_numeric_enum and atom.op in ("<", "<=", ">", ">="):
             threshold = float(atom.value)
+            # Compare enum VALUES against the threshold, not enum indices: the
+            # index order is not guaranteed to match value order (legacy
+            # dict-form tvars are stored verbatim; only list-form sorts), so we
+            # collect the exact set of value-satisfying indices and reify
+            # membership over it rather than assuming a contiguous index range.
             if atom.op == "<":
                 allowed = [idx for idx, val in enumerate(values) if val < threshold]
-                if not allowed:
-                    model.Add(lit == 0)
-                else:
-                    model.Add(var <= max(allowed)).OnlyEnforceIf(lit)
-                    model.Add(var >= max(allowed) + 1).OnlyEnforceIf(lit.Not())
-                return lit
-            if atom.op == "<=":
+            elif atom.op == "<=":
                 allowed = [idx for idx, val in enumerate(values) if val <= threshold]
-                if not allowed:
-                    model.Add(lit == 0)
-                else:
-                    model.Add(var <= max(allowed)).OnlyEnforceIf(lit)
-                    model.Add(var >= max(allowed) + 1).OnlyEnforceIf(lit.Not())
-                return lit
-            if atom.op == ">":
+            elif atom.op == ">":
                 allowed = [idx for idx, val in enumerate(values) if val > threshold]
-                if not allowed:
-                    model.Add(lit == 0)
-                else:
-                    model.Add(var >= min(allowed)).OnlyEnforceIf(lit)
-                    model.Add(var <= min(allowed) - 1).OnlyEnforceIf(lit.Not())
-                return lit
-            if atom.op == ">=":
+            else:  # ">="
                 allowed = [idx for idx, val in enumerate(values) if val >= threshold]
-                if not allowed:
-                    model.Add(lit == 0)
-                else:
-                    model.Add(var >= min(allowed)).OnlyEnforceIf(lit)
-                    model.Add(var <= min(allowed) - 1).OnlyEnforceIf(lit.Not())
-                return lit
+            _reify_index_membership(model, var, allowed, len(values), lit)
+            return lit
 
         # Unsupported comparison on symbolic enum; fall back to conservative true.
         model.Add(lit == 1)
