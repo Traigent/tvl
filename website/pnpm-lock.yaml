@@ -10,6 +10,7 @@ overrides:
   qs: 6.15.2
   uuid: 11.1.1
   body-parser: 1.20.6
+  ip-address: 10.3.1
 
 importers:
 
@@ -2635,8 +2636,8 @@ packages:
     resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
     engines: {node: '>=12'}
 
-  ip-address@10.2.0:
-    resolution: {integrity: sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA==}
+  ip-address@10.3.1:
+    resolution: {integrity: sha512-1e9d3kb97NHJTIJDZW9rKqW2h6+dFa50Dy0fpPSMQp2ADje5gvKsXmdiK6dwY5t76TaTt5+P5N1Y/LoToIxP6g==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -5893,7 +5894,7 @@ snapshots:
   express-rate-limit@8.5.2(express@4.22.1):
     dependencies:
       express: 4.22.1
-      ip-address: 10.2.0
+      ip-address: 10.3.1
 
   express@4.22.1:
     dependencies:
@@ -6220,7 +6221,7 @@ snapshots:
 
   internmap@2.0.3: {}
 
-  ip-address@10.2.0: {}
+  ip-address@10.3.1: {}
 
   ipaddr.js@1.9.1: {}
 
