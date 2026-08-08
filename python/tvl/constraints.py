@@ -22,11 +22,18 @@ _AND_SPLIT = re.compile(r"\s+and\s+", re.IGNORECASE)
 # this pattern so config-validate agrees with structural_parser and the grammar.
 _IDENT_PATTERN = r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
 _IDENT_RE = re.compile(rf"^{_IDENT_PATTERN}$")
-_LITERAL_RE = re.compile(rf"^\s*({_IDENT_PATTERN})\s*(<=|>=|!=|=|<|>)\s*(.+?)\s*$")
+# Operator alternation lists '==' before '=' so 'a == 1' matches the two-char
+# equality operator instead of the parser matching a bare '=' and leaving a
+# residual '= 1' in the value (issue #37). Group 1 stays _IDENT_PATTERN — the
+# #51 hardening — this only widens the *operator* set, never the identifier
+# set; a hyphenated/illegal identifier is rejected before the operator is
+# even considered (see test_hardened_identifier_regex_* in
+# tests/test_constraints_fail_open_regression.py).
+_LITERAL_RE = re.compile(rf"^\s*({_IDENT_PATTERN})\s*(<=|>=|!=|==|=|<|>)\s*(.+?)\s*$")
 # Permissive lexer retained only to produce a precise "illegal identifier"
 # diagnostic when the strict pattern rejects an atom that the old regex accepted.
-_PERMISSIVE_LITERAL_RE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*(<=|>=|!=|=|<|>)\s*(.+?)\s*$")
-_COMPARISON_OP_RE = re.compile(r"(<=|>=|!=|=|<|>)")
+_PERMISSIVE_LITERAL_RE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*(<=|>=|!=|==|=|<|>)\s*(.+?)\s*$")
+_COMPARISON_OP_RE = re.compile(r"(<=|>=|!=|==|=|<|>)")
 
 _TRUE_COUNTER = 0
 
@@ -376,18 +383,24 @@ def evaluate_assignment(compiled: CompiledConstraints, assignments: Dict[str, An
         antecedent = constraint.antecedent or [[]]
         consequent = constraint.consequent or [[]]
 
-        satisfied = False
-        for cond in antecedent:
-            cond_true = all(atom_true(atom) for atom in cond)
-            if not cond_true:
-                satisfied = True
-                break
-
+        # The antecedent is a DNF (OR of conjunctions); it holds iff ANY
+        # disjunct holds. It is vacuously true only when EVERY disjunct is
+        # false. Short-circuiting on the first false disjunct (the previous
+        # behaviour) declared the whole constraint satisfied as soon as one
+        # disjunct was false — a fail-open that mirrored neither the intended
+        # semantics nor the SAT encoder, which encodes (d1 ∨ d2) → C as
+        # (d1 → C) ∧ (d2 → C) (issue #38).
+        antecedent_true = any(
+            all(atom_true(atom) for atom in cond) for cond in antecedent
+        )
+        if not antecedent_true:
+            # antecedent false → constraint vacuously satisfied
+            satisfied = True
+        else:
             # antecedent holds → consequent must hold
-            conseq_ok = any(all(atom_true(atom) for atom in conj) for conj in consequent)
-            if conseq_ok:
-                satisfied = True
-                break
+            satisfied = any(
+                all(atom_true(atom) for atom in conj) for conj in consequent
+            )
 
         if not satisfied:
             constraint_issues.append({"code": "constraint_failed", "constraint_index": idx, "raw": constraint.raw})
@@ -516,9 +529,16 @@ def _atom_literal(
             _reify_index_membership(model, var, allowed, len(values), lit)
             return lit
 
-        # Unsupported comparison on symbolic enum; fall back to conservative true.
-        model.Add(lit == 1)
-        return lit
+        # Ordering comparison (<, <=, >, >=) on a symbolic (non-numeric) enum
+        # has no defined order, so it cannot be encoded soundly. Forcing the
+        # literal true (the previous behaviour) made the atom a tautology and
+        # the whole clause fail open, letting violating configs pass. Reject it
+        # instead — matching the fail-closed `raise` for unsupported operators
+        # on ordered domains below (issue #40).
+        raise ValueError(
+            f"Unsupported ordering operator {atom.op!r} on symbolic enum "
+            f"'{atom.path}' (enum values are not ordered)"
+        )
 
     encoded = domain.encode(atom.value)
     lit = model.NewBoolVar(f"lit_{atom.path.replace('.', '_')}_{atom.op}_{atom.value}")
