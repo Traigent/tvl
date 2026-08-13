@@ -69,7 +69,11 @@ def main() -> None:
             "config": str(args.config),
             "measurement": str(args.measurement),
         }
-        print(json.dumps(diag if args.json else diag, indent=2))
+        if args.json:
+            print(json.dumps(diag, indent=2))
+        else:
+            print("Validation failed.")
+            print(f"Error: {exc}")
         raise SystemExit(2)
 
 

@@ -5,6 +5,7 @@ import json
 import hashlib
 import math
 import re
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from tvl.errors import TVLError
 from tvl.loader import load
 from tvl.structural_sat import check_structural
 
@@ -198,7 +200,31 @@ def main() -> None:
             temp_file = _write_temp_file(patched_text, suffix=args.file.suffix)
             module_path = temp_file
 
-    module = _load_module(module_path)
+    try:
+        module = _load_module(module_path)
+    except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
+        error_msg = str(exc)
+        if args.json:
+            error_payload = {
+                "schemaVersion": "1.0",
+                "kind": "PhaseResult",
+                "phase": "structural",
+                "ok": False,
+                "status": "error",
+                "error": error_msg,
+                "timestamp": _current_timestamp(),
+                "durationMs": 0,
+            }
+            print(json.dumps(error_payload, indent=2))
+        else:
+            print(f"Error loading module: {error_msg}", file=sys.stderr)
+        if temp_file is not None:
+            try:
+                temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise SystemExit(2)
+
     start_time = time.perf_counter()
     result = check_structural(module)
     duration_ms = int((time.perf_counter() - start_time) * 1000)

@@ -119,7 +119,7 @@ def main() -> None:
         )
 
         result = {
-            "ok": True,
+            "ok": decision == "Promote",
             "decision": decision,
             "warnings": warnings,
             "evidence": evidence,
@@ -136,6 +136,11 @@ def main() -> None:
                     print(f"- [{warning.get('code', 'warning')}] {warning.get('message', '')}")
             print("== Evidence Summary ==")
             print(json.dumps(evidence.get("summary", {}), indent=2))
+
+        if decision == "Promote":
+            raise SystemExit(0)
+        else:
+            raise SystemExit(2)
 
     except SystemExit:
         raise
