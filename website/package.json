@@ -52,7 +52,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
     "mermaid": "^11.15.0",
-    "nanoid": "^5.1.5",
+    "nanoid": "^5.1.16",
     "next-themes": "^0.4.6",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
