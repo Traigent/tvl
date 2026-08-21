@@ -67,3 +67,6 @@ packages = [
   "tvl_tools.microsim_bridge",
 ]
 package-dir = { tvl = "python/tvl", tvl_book_plugins = "python/tvl_book_plugins", tvl_tools = "tvl_tools" }
+
+[tool.setuptools.package-data]
+tvl = ["spec/grammar/*.json", "py.typed"]

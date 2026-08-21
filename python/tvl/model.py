@@ -116,13 +116,13 @@ def extract_domains(tvars: Dict[str, Any]) -> Dict[str, Domain]:
         return domains
 
     if isinstance(tvars, list):
-        for decl in tvars:
+        for idx, decl in enumerate(tvars):
             if not isinstance(decl, dict):
-                continue
+                raise ValueError(f"tvars[{idx}]: expected dict, got {type(decl).__name__}")
             name = decl.get("name")
             dtype = (decl.get("type") or "").lower()
             if not isinstance(name, str):
-                continue
+                raise ValueError(f"tvars[{idx}]: missing or non-string 'name' field (got {type(name).__name__ if name is not None else 'None'})")
             domain_spec = decl.get("domain")
             domains[name] = _domain_from_decl(name, dtype, domain_spec)
         return domains
