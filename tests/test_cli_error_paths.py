@@ -17,10 +17,56 @@ import yaml
 
 from tvl_tools.tvl_compose import cli as compose_cli
 from tvl_tools.tvl_config_validate import cli as config_validate_cli
+from tvl_tools.tvl_ci_gate import cli as ci_gate_cli
 
 
 def _write_yaml(path: Path, data: dict) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+def test_ci_gate_fails_closed_when_strict_calibration_evidence_is_unsupported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    module_path = (
+        Path(__file__).resolve().parents[1]
+        / "spec"
+        / "examples"
+        / "validation-phase6-cvars"
+        / "cvar-policies-happy.tvl.yml"
+    )
+    incumbent_path = tmp_path / "incumbent.yml"
+    candidate_path = tmp_path / "candidate.yml"
+    for path, mean in ((incumbent_path, 0.80), (candidate_path, 0.90)):
+        _write_yaml(
+            path,
+            {
+                "module_id": "corp.validation.cvars_happy",
+                "objective_values": {
+                    "quality": {"mean": mean, "std": 0.04, "n": 100},
+                },
+            },
+        )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "tvl-ci-gate",
+            str(module_path),
+            str(incumbent_path),
+            str(candidate_path),
+            "--json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        ci_gate_cli.main()
+
+    assert excinfo.value.code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert "calibration_evidence_unsupported" in {
+        issue["code"] for issue in payload["readiness_issues"]
+    }
 
 
 def test_compose_validate_without_output_fails_on_invalid_spec(

@@ -90,6 +90,21 @@
       "description": "Ordered list of TVAR declarations (Γ) including `name`, `type`, and `domain` entries.",
       "items": { "$ref": "#/$defs/TVarDecl" }
     },
+    "cvars": {
+      "type": "array",
+      "description": "TVL 1.1 (RFC 0001): ordered list of calibrated-variable declarations — governed but NOT searched; absent from Γ, the configuration space, and structural SAT.",
+      "items": { "$ref": "#/$defs/CVarDecl" }
+    },
+    "policies": {
+      "type": "array",
+      "description": "TVL 1.1 (RFC 0001): named operational policy declarations (first strategy: cascade). Operational layer — never enters Γ, F^str, or the dominance relation.",
+      "items": { "$ref": "#/$defs/PolicyDecl" }
+    },
+    "composites": {
+      "type": "array",
+      "description": "TVL 1.2 (RFC 0002): the sealed composite-knob algebra — named bundles of member knobs and gate declarations under a declared control-flow shape (cascade | ensemble | loop). A composite is a namespace/expansion/provenance unit, NOT a binding kind: it never enters Γ, the configuration space, or the dominance relation (§3.1). Conservative extension — a module with no composites block parses byte-identically to TVL 1.1 (§4).",
+      "items": { "$ref": "#/$defs/Composite" }
+    },
     "constraints": {
       "type": "object",
       "description": "Constraint sets split between structural (TVAR formulas) and derived (linear constraints over numeric `env.context.*` symbols) clauses.",
@@ -206,13 +221,38 @@
             "enum": ["min", "max", "min_abs_deviation", "custom"],
             "description": "Tie-breaking strategy for the corresponding objective."
           }
+        },
+        "require_calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "description": "TVL 1.1 (RFC 0001 §3.5/§3.6): strict evidence mode — certificate freshness is validated against the hash-covered calibration context. The mandatory ctx_core is implicit and immutable; hash_covered_context selects EXTENSION keys only.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "hash_covered_context": {
+              "type": "array",
+              "description": "Optional extension keys added to the always-hashed ctx_core. TVL 1.2 (RFC 0002 §3.2 item 11) adds 'signal_inputs' — the use-site SignalUse.inputs that select which keys the scoring function reads (conservative: an optional extension key; ctx_core is untouched).",
+              "items": {
+                "enum": ["stage_versions", "model_versions", "budget_assumptions", "cost_assumptions", "signal_inputs"]
+              }
+            },
+            "signal_inputs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+              },
+              "description": "TVL 1.2 (RFC 0002 §3.2 item 11): the ordered value covered under the 'signal_inputs' freshness-context key — the input-key list the calibration held fixed. A composite-bound threshold whose governing SignalUse has non-empty inputs requires this to be present (in hash_covered_context) AND equal to the use-site ordered input list (unbound_signal_inputs)."
+            }
+          }
         }
       }
     },
     "exploration": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "description": "Exploration plan describing how the tuner explores the search space (strategy, sampling, budgets) as in Listing 5.",
+      "deprecated": true,
+      "description": "Legacy, non-semantic implementation hints for a runtime. Retained for compatibility; portable TVL requirement specifications should place search strategy, sampling, scheduling, and budgets in a separate implementation profile or run plan.",
       "properties": {
         "strategy": {
           "type": "object",
@@ -297,7 +337,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Unique TVAR identifier; dotted names allowed for nested structures (§III.A)."
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique TVAR identifier; dotted names allowed for nested structures (§III.A). Pattern is the single normative Ident grammar (RFC 0001 §3.7(2)) — previously unpatterned, which let TVAR names bypass the shared-namespace lexical rule the 1.1 declarations enforce."
         },
         "type": {
           "type": "string",
@@ -307,6 +348,256 @@
         "domain": {
           "$ref": "#/$defs/DomainSpec",
           "description": "Domain specification applicable to the declared type; specialised via the environment (§III.A, Appendix X)."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "Scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.1 (RFC 0001 §3.7(6)): optional ownership metadata (node/agent/workflow). Informational — metadata layer (§1.5.3).",
+      "properties": {
+        "node": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "agent": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "workflow": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "CVarDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "calibration"],
+      "description": "TVL 1.1 (RFC 0001 §3.3): calibrated-variable declaration. The optional domain is a VALIDITY domain (closed interval for float ranges; no resolution required) — never a search domain.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique name in the shared tvars ∪ cvars ∪ policies namespace."
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(bool|int|float|enum\\[(str|int|float)\\])$",
+          "description": "Declared CVAR type (primitive or enum; tuple/callable deferred)."
+        },
+        "domain": {
+          "$ref": "#/$defs/DomainSpec",
+          "description": "OPTIONAL validity domain — membership check on the calibrated output."
+        },
+        "calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "signal": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "calibrator": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "depends_on": {
+              "type": "array",
+              "description": "Tuned parents π ⊆ N_T — a freshness relation, NOT a constraint.",
+              "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+            }
+          }
+        },
+        "governance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "require_calibration": { "type": "boolean" }
+          }
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "GateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "threshold"],
+      "description": "TVL 1.1 (RFC 0001 §3.8): cascade gate. threshold is a namespace reference that MUST resolve to a CVAR (kind-checked by the lints).",
+      "properties": {
+        "kind": { "const": "margin_below" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "PolicyDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "strategy", "stages"],
+      "description": "TVL 1.1 (RFC 0001 §3.8): named operational policy. stages are OPAQUE runtime stage identifiers (environment.bindings precedent), NOT namespace references.",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "kind": { "const": "policy" },
+        "strategy": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Strategy identifier. The schema checks SHAPE only; the v1 strategy REGISTRY (cascade) is enforced by the normative lints — intentional layering."
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Opaque runtime stage identifiers, normatively constrained to the TVL Ident grammar per RFC 0001 §3.8 (StageRef ::= Ident; a later relaxation would be non-breaking, a tightening would not).",
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GateDecl" }
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "Composite": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2/§3.9): a composite-knob declaration. The schema checks SHAPE only and is deliberately OPEN (additionalProperties:true): §3.11 makes the body-field discipline a NORMATIVE LINT (unknown_composite_field for unknown/cross-kind fields; composite_binds_value for a bound value), in 1:1 correspondence with the well-formedness rules. The kind REGISTRY (cascade|ensemble|loop), arm/gate/stop/aggregate registries, namespace references, threshold types, cardinality arity, acyclicity, and the signal/threshold calibration binding are likewise enforced by the lints — the same shape-vs-registry layering RFC 0001 uses for PolicyDecl.strategy, taken one step further so the closed-shape diagnostics are the lints' own (not generic schema_error).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique name in the shared tvars ∪ cvars ∪ policies ∪ composites namespace (N_X). Shadowing/duplication enforced by the lints."
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Constructor discriminator. The schema checks SHAPE only; the SEALED v1 registry (cascade | ensemble | loop) is enforced by the lints (unknown_composite_kind) so a fourth kind reports the normative diagnostic rather than a generic schema error."
+        },
+        "placement": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Cascade only; default post. SHAPE-checked here; the pre|post registry and the kind/placement gate symmetry are enforced by the lints."
+        },
+        "arms": {
+          "type": "array",
+          "description": "Cascade/ensemble arms. Non-emptiness (empty_arms) and arity (cascade_arity, cardinality_arity_mismatch) are enforced by the lints.",
+          "items": { "$ref": "#/$defs/ArmSurface" }
+        },
+        "gates": {
+          "type": "array",
+          "description": "Cascade gates. |gates| = |arms| − 1 (cascade_arity) enforced by the lints.",
+          "items": { "$ref": "#/$defs/CompositeGateDecl" }
+        },
+        "cardinality": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Ensemble sampling-form sample count: a namespace reference to a TVAR or CVAR of TVL type int. Required iff |arms| = 1, forbidden if |arms| > 1 (cardinality_arity_mismatch); int-typed (invalid_cardinality_type); k≥1 is resolution-time R9 (invalid_cardinality_value)."
+        },
+        "aggregate": {
+          "$ref": "#/$defs/AggregateDecl",
+          "description": "Ensemble aggregation declaration."
+        },
+        "body": {
+          "$ref": "#/$defs/ArmSurface",
+          "description": "Loop body — a single arm."
+        },
+        "state_keys": {
+          "type": "array",
+          "description": "Loop threaded-state keys (content-free identifiers; [] ⟺ pure body).",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+          }
+        },
+        "stop": {
+          "$ref": "#/$defs/StopDecl",
+          "description": "Loop stop declaration."
+        },
+        "max_iters": {
+          "type": "integer",
+          "description": "Loop iteration bound (totality). max_iters ≥ 1 enforced by the lints (invalid_max_iters)."
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "The ONLY surface provenance key (RFC 0002 §3.7/§3.9): a flat sugar key mapping to Provenance.pattern. The full closed Provenance object is expansion-output metadata (SDK-internal) — never surface syntax."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee, exactly as PolicyDecl.parameters (§3.2)."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "ArmSurface": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Bare identifier = a stage arm with empty tuned_params (back-compatible with policies.stages). A bare id colliding with a composite name is rejected by the lints (ambiguous_arm)."
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Object arm form: a stage arm {stage, tuned_params?} or a tagged nesting {composite}. The schema is OPEN (additionalProperties:true) and shape-permissive: §3.9 makes the closed-shape check a NORMATIVE LINT (invalid_arm_shape for unknown/ambiguous keys; missing_composite_ref for an unresolved nesting; invalid_tuned_param for non-TVAR tuned_params).",
+          "properties": {
+            "stage": { "type": "string" },
+            "composite": { "type": "string" },
+            "tuned_params": { "type": "array" }
+          }
+        }
+      ],
+      "description": "TVL 1.2 (RFC 0002 §3.9): the ONE arm surface form, used everywhere an Arm appears (cascade arms, loop body, ensemble arms and judge)."
+    },
+    "SignalSurface": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "TVL 1.2 (RFC 0002 §3.9): the SignalUse surface form (signal_below gates and signal_accept stops). signal names a registry signal exactly as calibration.signal does. The schema is OPEN: §3.2/§3.9 make the closed-shape check a NORMATIVE LINT — a malformed SignalUse (missing 'signal', unknown keys, non-list 'inputs') rejects invalid_signal_use, and stop inputs ⊄ state_keys rejects stop_signal_outside_state.",
+      "properties": {
+        "signal": { "type": "string" },
+        "inputs": {
+          "description": "Declared input keys the signal reads. For stops MUST ⊆ state_keys (stop_signal_outside_state); for pre-gates, opaque input-feature identifiers. A non-list value rejects invalid_signal_use (lint)."
+        }
+      }
+    },
+    "CompositeGateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "threshold"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): a composite cascade gate. The gate-kind registry (margin_below | signal_below — unknown_gate_kind, reused from RFC 0001), kind/placement symmetry, margin-bearing arm typing, signal requirement, and threshold-as-CVAR/int-or-float are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "signal": { "$ref": "#/$defs/SignalSurface" }
+      }
+    },
+    "AggregateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): ensemble aggregation. The aggregate-kind registry (majority_vote | judge_max — unknown_aggregate_kind), the judge requirement (missing_judge iff judge_max), and accept-threshold-as-CVAR are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "judge": {
+          "$ref": "#/$defs/ArmSurface",
+          "description": "REQUIRED iff kind=judge_max; stage- or composite-tagged (missing_judge)."
+        },
+        "accept": { "$ref": "#/$defs/AcceptDecl" }
+      }
+    },
+    "AcceptDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "stat", "threshold"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): optional ensemble acceptance (either aggregate kind). Acceptance direction is ≥ — deliberately DISTINCT from cascade escalation's <. kind=stat_at_least, stat ∈ {vote_margin, vote_agreement} (registries enforced by the lints); threshold MUST resolve to a CVAR.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "stat": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "StopDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): loop stop. The stop-kind registry (signal_accept | external_accept | exhausted — unknown_stop_kind), the per-kind required fields (missing_stop_threshold / missing_stop_signal iff signal_accept; missing_stop_predicate iff external_accept), the signal-input ⊆ state_keys rule (stop_signal_outside_state), and threshold-as-CVAR/int-or-float are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "signal": { "$ref": "#/$defs/SignalSurface" },
+        "predicate": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "REQUIRED iff kind=external_accept: OPAQUE runtime predicate id (StageRef-style — outside P8)."
         }
       }
     },

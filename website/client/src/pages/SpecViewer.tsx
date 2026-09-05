@@ -1,5 +1,6 @@
 import Layout from "@/components/Layout";
 import CodeIDE from "@/components/CodeIDE";
+import Seo from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Download, ArrowLeft, Copy, Check } from "lucide-react";
@@ -17,6 +18,13 @@ interface SpecConfig {
 }
 
 const specConfigs: Record<string, SpecConfig> = {
+  "agent-requirements": {
+    title: "AI Agent Requirements and Certification",
+    description: "The problem TVL solves, its agent design-space model, and the scope of a TVL-based conformance claim.",
+    filePath: "/docs/agent-requirements.md",
+    downloadPath: "/docs/agent-requirements.md",
+    language: "markdown",
+  },
   "json-schema": {
     title: "TVL JSON Schema",
     description: "Complete JSON Schema definition for TVL specifications, including configuration, measurement, and validation schemas.",
@@ -125,6 +133,11 @@ export default function SpecViewer() {
 
   return (
     <Layout>
+      <Seo
+        title={`${config.title} | TVL`}
+        description={config.description}
+        path={`/specification/${specType}`}
+      />
       <div className="container py-8">
         {/* Header */}
         <div className="mb-6">

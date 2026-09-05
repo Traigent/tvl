@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
+from fractions import Fraction
+from math import lcm
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
@@ -2922,20 +2924,28 @@ def _check_resolution_alignment(
     if abs(scaled_res - round(scaled_res)) <= 1e-9:
         return None
 
-    min_adequate_precision = _compute_minimum_precision(resolution)
+    exact_alignment_precision = _compute_exact_alignment_precision([resolution])
+    suggestion = (
+        f" Suggested exact-alignment precision: P={exact_alignment_precision}."
+        if exact_alignment_precision is not None
+        else " Use exact rational or index encoding because an aligned integer precision could not be established."
+    )
     return {
         "code": "inadequate_precision",
         "severity": "warning",
         "message": (
             f"TVAR '{name}' has resolution {resolution} which is not "
             f"aligned to precision P={precision}. SMT encoding "
-            f"soundness (Theorem 8.1) may not hold. "
-            f"Minimum adequate precision: {min_adequate_precision}."
+            f"soundness (Theorem 8.1) may not hold."
+            f"{suggestion}"
         ),
         "path": ["tvars", idx, "domain"],
         "formal_property": "Domain is not precision-aligned per Definition 8.5",
         "current_precision": precision,
-        "minimum_precision": min_adequate_precision,
+        # Retained for diagnostic-output compatibility; the value now means the
+        # least integer factor that exactly aligns the parsed decimal values.
+        "minimum_precision": exact_alignment_precision,
+        "suggested_precision": exact_alignment_precision,
     }
 
 
@@ -2962,9 +2972,12 @@ def _check_value_collisions(
     if collision is None:
         return None
 
-    sorted_values = sorted(set(values))
-    min_gap = min(b - a for a, b in zip(sorted_values, sorted_values[1:]))
-    min_adequate_precision = _compute_minimum_precision(min_gap)
+    exact_alignment_precision = _compute_exact_alignment_precision(values)
+    suggestion = (
+        f" Suggested exact-alignment precision: P={exact_alignment_precision}."
+        if exact_alignment_precision is not None
+        else " Use exact rational or index encoding because an aligned integer precision could not be established."
+    )
 
     return {
         "code": "inadequate_precision",
@@ -2973,13 +2986,16 @@ def _check_value_collisions(
             f"TVAR '{name}' has domain values that collide under "
             f"precision P={precision}. Values {collision[0]} and "
             f"{collision[1]} both map to {collision[2]}. "
-            f"SMT encoding soundness (Theorem 8.1) does not hold. "
-            f"Minimum adequate precision: {min_adequate_precision}."
+            f"SMT encoding soundness (Theorem 8.1) does not hold."
+            f"{suggestion}"
         ),
         "path": ["tvars", idx, "domain"],
         "formal_property": "Domain is not precision-aligned per Definition 8.5",
         "current_precision": precision,
-        "minimum_precision": min_adequate_precision,
+        # Retained for diagnostic-output compatibility; see the resolution
+        # diagnostic above.
+        "minimum_precision": exact_alignment_precision,
+        "suggested_precision": exact_alignment_precision,
         "collision_example": {
             "value1": collision[0],
             "value2": collision[1],
@@ -2988,16 +3004,19 @@ def _check_value_collisions(
     }
 
 
-def _compute_minimum_precision(min_gap: float) -> int:
-    """Compute minimum precision P such that all distinct values map to distinct integers.
+def _compute_exact_alignment_precision(values: Sequence[float]) -> Optional[int]:
+    """Return the least integer factor that aligns parsed decimal values exactly.
 
-    For a minimum gap of δ between values, we need P such that:
-        δ × P >= 1
-
-    Therefore: P >= ceil(1/δ)
+    The values arrive from YAML as Python numbers, so ``str(value)`` is used to
+    recover their shortest decimal representation. The least common multiple of
+    those exact decimal denominators aligns every value. A smallest-gap rule is
+    insufficient because separating adjacent values does not make them integers
+    after scaling.
     """
-    if min_gap <= 0:
-        return 1000000  # Very high precision as fallback
-
-    import math
-    return int(math.ceil(1.0 / min_gap))
+    precision = 1
+    try:
+        for value in values:
+            precision = lcm(precision, Fraction(str(value)).denominator)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return precision

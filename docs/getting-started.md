@@ -80,12 +80,6 @@ promotion_policy:
   min_effect:
     quality_score: 0.01
     latency_ms: 50
-
-exploration:
-  strategy:
-    type: random
-  budgets:
-    max_trials: 24
 ```
 
 This module already contains the minimum pieces most production-facing TVL specs need:

@@ -1,2 +1,2 @@
-module: ../../spec/examples/rag-support-bot.yml
-config: ../../spec/configurations/rag-support-bot.config.yml
+module: ../../../spec/examples/rag-support-bot.tvl.yml
+config: ../../../spec/configurations/rag-support-bot.config.yml

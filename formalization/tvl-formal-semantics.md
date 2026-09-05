@@ -4,13 +4,13 @@
 
 **Authors**: Traigent Research
 **Date**: January 2026
-**Status**: Draft Specification
+**Status**: Draft semantic reference. Sections 2–6 and 9 define the intended core semantics; Sections 7–8 are informative formal foundations and a reference encoding; Section 10 states conformance requirements.
 
 ---
 
 ## Abstract
 
-This document provides the formal mathematical foundations for the Tuned Variables Language (TVL). We define TVL's abstract syntax, semantic domains, type system, and denotational semantics. We state and prove (or sketch proofs for) the key metatheoretic properties: type soundness, constraint decidability, SMT encoding soundness, and promotion correctness. These foundations establish TVL as a rigorous specification language suitable for safety-critical AI agent configuration.
+This document defines the mathematical meaning of the Tuned Variables Language (TVL), a requirements specification language for AI agents. A TVL module describes an admissible agent design space, the desired properties of candidates in that space, and the evidence conditions for acceptance or promotion. We define the abstract syntax, semantic domains, type system, denotational semantics, feasibility predicates, and promotion relation. The document also gives an informative SMT encoding and explicitly bounds the claims supported by the current formalization.
 
 ---
 
@@ -18,11 +18,11 @@ This document provides the formal mathematical foundations for the Tuned Variabl
 
 ### 1.1 Specification Languages vs. Programming Languages
 
-TVL is a **domain-specific specification language** (DSL) for AI agent configuration optimization. Unlike programming languages, which describe *how* to compute results, specification languages describe *what* properties must hold.
+TVL is a **domain-specific requirements language** for AI agents. Unlike a programming language or build recipe, it does not describe the steps for constructing one agent. It defines a set of allowed agent configurations and the properties and evidence that make a candidate acceptable.
 
 | Property | Programming Language | Specification Language (TVL) |
 |----------|---------------------|------------------------------|
-| Primary purpose | Describe computation | Describe valid configurations |
+| Primary purpose | Describe computation | Describe admissible agents and required properties |
 | Execution model | Operational | Declarative (validated/checked) |
 | Expressiveness | Typically Turing-complete | Intentionally restricted |
 | Key property | Termination | Decidability |
@@ -35,8 +35,8 @@ For TVL to serve as a trustworthy specification language, we must establish:
 2. **Well-defined semantics**: Mathematical meaning for every construct
 3. **Type soundness**: Well-typed modules don't produce runtime type errors
 4. **Decidability**: All validation questions are decidable
-5. **Soundness**: If tooling accepts a module, stated properties hold
-6. **Completeness**: If properties hold, tooling can verify them
+5. **Soundness within scope**: If a conforming check accepts an input, the corresponding formal judgment holds under its stated preconditions
+6. **Completeness within scope**: If a judgment holds in the defined subset, a conforming decision procedure can establish it
 
 ### 1.3 Document Structure
 
@@ -45,9 +45,13 @@ For TVL to serve as a trustworthy specification language, we must establish:
 - **§4**: Type System — typing rules and judgments
 - **§5**: Denotational Semantics — meaning functions
 - **§6**: Feasibility Predicates — structural and operational constraints
-- **§7**: Metatheory — soundness, completeness, decidability theorems
-- **§8**: SMT Encoding — compilation to solver format
+- **§7**: Informative Metatheory — soundness, completeness, and decidability results under stated assumptions
+- **§8**: Informative SMT Encoding — one reference compilation to solver format
 - **§9**: Promotion Semantics — acceptability, dominance, and promotion correctness
+- **§10**: Conformance Requirements — behavior required of implementations
+- **§11**: Future Work — proposed extensions, not current requirements
+
+Sections 2–6 and 9 specify **what** TVL constructs mean. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, sample allocation, and candidate scheduling are outside this formal language contract.
 
 ### 1.4 Scope of Formal Guarantees
 
@@ -85,7 +89,7 @@ These fields have precise mathematical meaning and are subject to the theorems i
 | **Type System** | `tvars[].type` | Type τ in judgment Γ ⊢ x : τ |
 | **Type System** | `tvars[].domain` | Domain D in 𝒟⟦d⟧(E_τ) |
 | **Static Validity** | `constraints.structural` | Formula φ in F^str(c, Φ^str) |
-| **Static Validity** | `constraints.derived` | Budget predicates evaluated on E_τ |
+| **Static Validity** | `constraints.derived` | Environment-scoped operational preconditions evaluated on E_τ |
 | **Promotion** | `objectives[].name` | Component index in objective vector y |
 | **Operational Metadata** | `objectives[].metric_ref` | Declarative identifier for the evaluator metric contract |
 | **Promotion** | `objectives[].direction` | Direction sign σ(·) |
@@ -121,8 +125,8 @@ These fields are for identification and reproducibility, with no semantic conten
 | `environment.snapshot_id` | Timestamp labeling E_τ |
 | `environment.bindings` | Implementation-defined deployment identifiers |
 | `environment.components` | Deprecated alias for `environment.bindings` |
-| `evaluation_set.dataset` | Dataset URI for reproducibility |
-| `evaluation_set.seed` | RNG seed for determinism |
+| `evaluation_set.dataset` | Evidence-binding identifier for the evaluated task set |
+| `evaluation_set.seed` | Evidence-binding seed for repeatable evaluation |
 
 #### 1.5.4 Semantic Layer Architecture
 
@@ -137,7 +141,7 @@ Valid(c, M) ⟺ c ∈ Config(Δ, E_τ) ∧ F^str(c, Φ^str) ∧ F^op(E_τ, Φ^de
 ```
 
 - **Structural constraints** (`constraints.structural`): Boolean formulas over TVARs
-- **Budget constraints** (`constraints.derived`): Linear predicates over environment
+- **Operational preconditions** (`constraints.derived`): Linear predicates over environment
 
 These are checked *statically* — no evaluation of the configuration is required.
 
@@ -176,7 +180,7 @@ Only the dominance relation (`min_effect`, `alpha`, `adjust`) is comparative. Ch
 | Field Category | Examples | Reason |
 |----------------|----------|--------|
 | Exploration settings | `exploration.*` | Operational (algorithm choice, not meaning) |
-| Evaluation context | `evaluation_set.*` | Operational (where to run, not what to run) |
+| Evaluation context | `evaluation_set.*` | Binds evidence and claims; evaluation execution is outside the static semantics |
 | Tie-breaking | `promotion_policy.tie_breakers` | Heuristic (not part of dominance relation) |
 | Module metadata | `tvl.module`, `tvl_version` | Informational (no semantic content) |
 
@@ -871,13 +875,15 @@ Valid(c, M) ⟺ c ∈ Feasible(M)
 This is the Layer 1 predicate from §1.5.4. A configuration is valid iff:
 1. Each TVAR value is within its declared domain
 2. All structural constraints are satisfied
-3. All derived (budget) constraints are satisfied under the environment
+3. All declared operational preconditions are satisfied under the environment
 
 **Note**: Validity is determined *before* evaluation. It does not require running the configuration.
 
 ---
 
-## 7. Metatheory
+## 7. Informative Metatheory
+
+This section records formal results about the normative core under the stated assumptions. It does not define an optimizer, a search-efficiency guarantee, or additional surface-language requirements.
 
 ### 7.1 Decidability
 
@@ -916,7 +922,7 @@ Determining whether `Feasible(M) ≠ ∅` is decidable.
 
 **Phase 1**: Evaluate derived constraints against environment.
 - Compute `F^op(E_τ, M.Φ^der)` (polynomial time, Theorem 7.3)
-- If `F^op(E_τ, M.Φ^der) = false`, return INCONSISTENT (no configuration can satisfy budget constraints regardless of structural constraints)
+- If `F^op(E_τ, M.Φ^der) = false`, return INCONSISTENT (the pinned environment does not satisfy the module's operational preconditions)
 
 **Phase 2**: Check structural constraint satisfiability.
 - If Phase 1 passed, check `∃c ∈ Config(Δ, E_τ): F^str(c, M.Φ^str) = true`
@@ -927,7 +933,9 @@ Both phases are decidable, so consistency is decidable. □
 
 ---
 
-## 8. SMT Encoding
+## 8. Informative Reference SMT Encoding
+
+This section is non-normative. It demonstrates one implementation strategy for deciding structural feasibility. A conforming validator may use another solver or a direct decision procedure if it preserves the judgments defined in Sections 2–6. Internal solver representation is not part of the TVL interchange contract.
 
 We define the compilation from TVL constraints to SMT-LIB format.
 
@@ -1098,14 +1106,8 @@ For a precision-aligned domain D with precision P, the scaling function is bijec
 ∀v₁, v₂ ∈ D: v₁ < v₂ ⟺ scale(v₁) < scale(v₂)
 ```
 
-**Minimum Precision Calculation**.
-For a domain D with minimum gap `min_gap(D) = min{|v₁ - v₂| : v₁, v₂ ∈ D, v₁ ≠ v₂}`, the minimum adequate precision is:
-
-```
-P_min(D) = ⌈1 / min_gap(D)⌉
-```
-
-A domain defined with `resolution: r` has `min_gap(D) = r`, so `P_min = ⌈1/r⌉`.
+**Choosing an exact precision**.
+There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling needs a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is a power of ten at least as large as the maximum decimal scale after parsing the values exactly. The normative conformance requirement and required fallback behavior are stated in §10.4.
 
 ### 8.6 Formula Encoding
 
@@ -1242,10 +1244,12 @@ StatDominates(c, c', Y_c, Y_{c'}, M) ⟺
 
 For each standard objective `i` (non-banded), using normalized difference `δ_i`:
 
-1. **Non-inferiority test**: H₀: `δ_i < -ε[i]` (candidate is worse by more than ε)
+1. **Non-inferiority test**: H₀: `δ_i ≤ -ε[i]` (candidate is worse by at least ε)
    - If p-value < α, reject H₀ (evidence candidate is not worse)
 2. **Superiority test**: H₀: `δ_i ≤ ε[i]` (candidate is not better by more than ε)
    - If p-value < α, reject H₀ (evidence candidate is strictly better)
+3. **Inferiority test**: H₀: `δ_i ≥ -ε[i]` (candidate is within the allowed regression margin)
+   - If p-value < α, reject H₀ (evidence candidate regressed beyond the margin)
 
 **Statistical Test Specification**:
 - For continuous objectives with raw samples: Use **Welch's t-test** (unequal variance assumed)
@@ -1272,7 +1276,7 @@ Configuration passes the band constraint if the **(1 - 2α) confidence interval*
 **Important**: TOST uses (1 - 2α) CI, not (1 - α). For α = 0.05, this means a **90% CI** must lie within [L, U], not a 95% CI. This is because TOST performs two one-sided tests, each at level α.
 
 **Banded objectives are Layer 2 only**: Banded objectives are **excluded** from ε-Pareto dominance comparison (Layer 3). They function purely as acceptability filters:
-- A configuration failing a band constraint is rejected via `Acceptable(c, Y_c, M) = false`
+- A configuration with a point estimate outside the declared band is rejected; an on-target result with insufficient evidence for TOST is inconclusive
 - A configuration passing all band constraints is not "better" or "worse" on those objectives—it is simply acceptable
 - Dominance comparison (§9.4) applies only to `StandardObjectives(M)` (Definition 3.11)
 
@@ -1287,7 +1291,7 @@ An evaluation result `Y_c` for configuration `c` contains:
 ```
 Y_c = {
   objective_values: Objective → (μ̂, s, n),   (* mean, std dev, sample size *)
-  chance_outcomes:  ChanceConstraint → (k, n)  (* successes and trials *)
+  chance_outcomes:  ChanceConstraint → (k, n)  (* violations and trials *)
 }
 ```
 
@@ -1300,22 +1304,24 @@ Where:
 **Rationale**: Including sample size `n` (not just SE) enables proper degrees-of-freedom calculation for t-tests and allows detection of underpowered comparisons.
 
 **Definition 9.8 (Chance Constraint Satisfaction)**.
-For chance constraint `χ = (name, threshold θ, confidence γ)` and observed outcome `(k, n)`:
-
+For chance constraint `χ = (name, threshold θ, confidence γ)` and observed outcome `(k, n)`, let `CI_upper(k, n, γ)` be the one-sided Clopper-Pearson upper bound at confidence level γ:
 ```
-ChancePass(χ, k, n) ⟺ CI_lower(k, n, γ) ≥ θ
-```
-
-Where `CI_lower(k, n, γ)` is the Clopper-Pearson lower bound at confidence level γ:
-```
-CI_lower(k, n, γ) = Beta.ppf(1 - γ, k, n - k + 1)
+CI_upper(k, n, γ) = Beta.ppf(γ, k + 1, n - k)
 ```
 
-**Intuition**: We require γ-confidence that the true success rate exceeds threshold θ. This is a one-sided lower bound because we only care that the rate is *above* the threshold.
+and the satisfaction predicate is:
+
+```
+ChancePass(χ, k, n) ⟺ CI_upper(k, n, γ) ≤ θ
+```
+
+For `k = n`, the upper bound is 1 by convention.
+
+**Intuition**: `threshold` is the maximum allowed violation rate. The evidence must support, at confidence `γ`, that the true violation rate does not exceed that threshold.
 
 **Precondition**: n ≥ 1. If n = 0 (no trials), the chance constraint check is undefined; implementations MUST report an error.
 
-**Edge case (k = 0)**: When k = 0 (zero successes), `CI_lower(0, n, γ) = 0` for any γ < 1, so any threshold θ > 0 will fail. This is correct: zero observed successes provides no evidence the true rate exceeds any positive threshold.
+**Edge case (k = 0)**: Zero observed violations can pass only when the one-sided upper bound for `n` trials is at or below `θ`; zero observed violations alone is not sufficient.
 
 **Definition 9.9 (Band Objective Satisfaction)**.
 For banded objective `b = (name, target [L, U], α)` and observed statistics `(μ̂, s, n)`:
@@ -1324,10 +1330,17 @@ For banded objective `b = (name, target [L, U], α)` and observed statistics `(�
 BandPass(b, μ̂, s, n) ⟺ TOST_pass(μ̂, s, n, [L, U], α)
 ```
 
+For the reference three-way decision, define a hard band failure separately:
+```
+BandHardFail(b, μ̂) ⟺ μ̂ < L ∨ μ̂ > U
+```
+
+If `BandPass` is false while `BandHardFail` is also false, the band result is inconclusive rather than a demonstrated failure.
+
 **Note on direction**: Banded objectives do NOT use the `direction` field. The band [L, U] applies to the raw observed value μ̂, not a direction-normalized value. Banded objectives are *acceptability constraints*, not optimization targets—they define a range of acceptable values, not a direction of improvement.
 
 **Definition 9.10 (Behavioral Acceptability)**.
-Configuration `c` with evaluation result `Y_c` is **behaviorally acceptable** under module `M`:
+Configuration `c` with evaluation result `Y_c` has **established behavioral acceptability** under module `M`:
 
 ```
 Acceptable(c, Y_c, M) ⟺
@@ -1341,10 +1354,12 @@ Where `BandedObjectives(M)` is defined in Definition 3.11.
 
 1. **Acceptability is absolute, not comparative**: `Acceptable(c, Y_c, M)` depends only on `c`'s own evaluation, not on any incumbent.
 
-2. **Acceptability gates dominance**: A candidate failing any acceptability check is rejected *immediately*, regardless of objective performance:
+2. **Acceptability gates dominance**: A candidate with a failed chance constraint or a hard band failure is rejected, regardless of objective performance:
    ```
-   ¬Acceptable(c_cand, Y_cand, M) ⟹ Decision = Reject
+   ChanceFail(c_cand) ∨ BandHardFail(c_cand) ⟹ Decision = Reject
    ```
+
+   An on-target band whose TOST is inconclusive produces `NoDecision`; it is neither acceptable enough to promote nor a demonstrated hard failure.
 
 3. **Separate error budgets**: Chance constraint confidence `γ` is distinct from promotion policy `α`. This allows different risk tolerances for behavioral guarantees vs. objective comparison.
 
@@ -1374,7 +1389,7 @@ Promote(c_cand, c_inc, Y_cand, Y_inc, M) ⟺
 ```
 
 Where:
-- `Valid(c, M)` = structural feasibility ∧ budget constraint satisfaction (§6)
+- `Valid(c, M)` = domain membership ∧ structural feasibility ∧ operational preconditions (§6)
 - `Acceptable(c, Y_c, M)` = chance constraint ∧ band objective satisfaction (Definition 9.10)
 - `StatDominates` = statistical ε-Pareto dominance per §9.4
 
@@ -1382,60 +1397,34 @@ Where:
 ```
 if ¬Valid(c_cand, M):
     return Error("invalid configuration")
-if ¬Acceptable(c_cand, Y_cand, M):
+if any chance constraint fails or any BandHardFail holds:
     return Reject("acceptability check failed")
+if any adjusted inferiority test rejects its null:
+    return Reject("regression beyond the allowed margin demonstrated")
+if any band is not BandPass:
+    return NoDecision("band acceptability not established")
 if StatDominates(c_cand, c_inc, Y_cand, Y_inc, M):
     return Promote
-if StatDominates(c_inc, c_cand, Y_inc, Y_cand, M):
-    return Reject("incumbent dominates")
 return NoDecision("insufficient evidence")
 ```
 
 ### 9.8 Promotion Correctness
 
-**Theorem 9.1 (Promotion Error Guarantees)**.
-The promotion gate provides the following error control guarantees for per-objective non-inferiority tests:
+**Proposition 9.1 (Scope of Multiple-Testing Adjustment)**.
+In the current promotion contract, non-inferiority is an intersection-union test: every per-objective non-inferiority test is evaluated at `α`. The configured `adjust` method applies separately to the superiority family used for the union claim that at least one objective improved beyond `ε` and the inferiority family used for the union claim that at least one objective regressed beyond `ε`.
 
-**(a) With no adjustment (`adjust: "none"`):**
-- Each per-objective non-inferiority test has type-I error ≤ α
-- No family-wise error rate (FWER) control across objectives
-- P(false positive on objective i) ≤ α, for each i
+- `none` provides no family-level correction for either union family.
+- Bonferroni and Holm control family-wise error for each adjusted family under their standard conditions.
+- Benjamini-Hochberg controls false discovery rate under independence or positive regression dependency; it does not control family-wise error.
 
-**(b) With Bonferroni adjustment (`adjust: "bonferroni"`):**
-- Controls FWER: P(at least one false rejection) ≤ α
-- More conservative: individual tests use α/k threshold (k = number of standard objectives)
-- Guarantees: If all non-inferiority tests pass, P(ANY objective truly regressed > ε) ≤ α
-
-**(c) With Holm adjustment (`adjust: "holm"`):**
-- Controls FWER: P(at least one false rejection) ≤ α
-- Less conservative than Bonferroni (step-down procedure)
-- Tests sorted by p-value; threshold for i-th smallest is α/(k-i+1)
-
-**(d) With Benjamini-Hochberg adjustment (`adjust: "BH"`):**
-- Controls FDR: E[false rejections / total rejections] ≤ α
-- Less conservative than Bonferroni/Holm, more powerful
-- Guarantees: Expected proportion of objectives where we wrongly claim no-regression ≤ α
-- **Note**: FDR ≠ FWER. BH does NOT guarantee P(any false positive) ≤ α
-
-*Proof sketch*:
-- (a) Follows from individual test construction at level α
-- (b) Bonferroni inequality: P(∪ᵢ Aᵢ) ≤ Σᵢ P(Aᵢ) ≤ k · (α/k) = α
-- (c) Holm (1979): Step-down refinement of Bonferroni maintaining FWER
-- (d) BH procedure: Sort p-values, reject H₀₍ᵢ₎ for i ≤ max{j : p₍ⱼ₎ ≤ jα/k}. Under independence or PRDS, FDR ≤ α (Benjamini & Hochberg, 1995). □
-
-**Clarification on "False Promotion"**:
-- A *false promotion* occurs when promoting a candidate that truly regressed on ≥1 objective by more than ε
-- Bonferroni and Holm control P(false promotion) ≤ α
-- BH controls the expected *proportion* of incorrectly claimed no-regressions, not P(false promotion)
-
-**Recommendation**: For safety-critical applications where any regression is unacceptable, use `adjust: "bonferroni"` or `adjust: "holm"`. For exploratory optimization where some false positives are tolerable in exchange for power, use `adjust: "BH"`.
+These results do not by themselves bound every route to an erroneous promotion. Such a bound also depends on test validity, data generation, selection effects, evaluator reliability, chance and band checks, and whether the evidence was collected independently of candidate selection. A certificate MUST state the tests and assumptions actually used rather than generalize this proposition into a universal agent guarantee.
 
 **Lemma 9.2 (ε-Dominance Composition)**.
 *Weak* ε-Pareto dominance composes: if `c₁ ≽_ε c₂` and `c₂ ≽_ε c₃`, then `c₁ ≽_{2ε} c₃`.
 
 Where weak dominance `c ≽_ε c'` means: `∀i: σ(O[i].direction) · (y[i] - y'[i]) ≥ -ε[i]` (no strict improvement required).
 
-**Note on Theorem/Lemma Numbering**: Lemma 9.1 (Acceptability Independence) appears in §9.6. Theorem 9.1 (Promotion Error Guarantees) and Lemma 9.2 (ε-Dominance Composition) appear in §9.8.
+**Note on Proposition/Lemma Numbering**: Lemma 9.1 (Acceptability Independence) appears in §9.6. Proposition 9.1 (Scope of Multiple-Testing Adjustment) and Lemma 9.2 (ε-Dominance Composition) appear in §9.8.
 
 *Proof*:
 
@@ -1464,7 +1453,7 @@ Strict ε-dominance can disappear under composition even when weak ε-dominance 
 
 ---
 
-## 10. Implementation Requirements
+## 10. Conformance Requirements
 
 For a TVL implementation to be **conformant**, it must satisfy:
 
@@ -1487,20 +1476,22 @@ For a TVL implementation to be **conformant**, it must satisfy:
 3. Evaluate derived constraints against environment (Phase 1 of Theorem 7.4)
 4. Report `derived_env_undefined` if environment lookup fails
 
-### 10.4 SMT Backend Requirements
+### 10.4 Structural Decision Procedure Requirements
 
-1. Implement encoding per §8
-2. Use index-variable encoding for range domains (§8.3)
-3. Use direction-aware rounding for comparisons (§8.4)
-4. Use conformant SMT solver (Z3, CVC5, etc.)
-5. Correctly decode models to configurations
+1. Preserve the normative structural satisfaction judgments in Sections 5 and 6
+2. Decide satisfiability for the supported core subset
+3. Preserve exact finite-domain membership and comparison behavior. If an implementation uses integer scaling, it MUST choose a positive integer precision that aligns every finite domain value and every value reconstructed from a range; otherwise it MUST use exact rational or index encoding, or report that the reference encoding is unavailable.
+4. Report unsupported constructs rather than silently changing their meaning
+
+An implementation MAY use the informative SMT encoding in §8, another solver encoding, or a direct decision procedure.
 
 ### 10.5 Promotion Gate Requirements
 
 1. Implement ε-Pareto comparison per §9.3 with direction normalization (§9.4)
 2. Support statistical testing with direction-normalized differences (Definition 9.4)
-3. Apply multiple-testing adjustment when configured (bonferroni, holm, BH)
+3. Apply the configured multiple-testing adjustment separately to the superiority and inferiority p-value families as specified in §9.8
 4. Verify evaluation results include sample size for proper df calculation
+5. Distinguish demonstrated failure (`Reject`) from insufficient evidence (`NoDecision`)
 
 ---
 
@@ -1528,7 +1519,7 @@ Connecting TVL to verification frameworks:
 
 1. **Runtime monitoring**: Verify configurations satisfy constraints at deployment
 2. **Invariant checking**: Prove optimizer preserves feasibility
-3. **Regret bounds**: Formal guarantees on exploration efficiency
+3. **Optimizer profiles**: Separately specified, algorithm-specific guarantees on exploration efficiency
 
 ---
 
@@ -1575,9 +1566,9 @@ Connecting TVL to verification frameworks:
 | Formal Property Violated | Error Code |
 |-------------------------|------------|
 | `¬ChancePass(χ, k, n)` | `chance_constraint_failed` |
-| `¬BandPass(b, μ̂, s, n)` | `band_objective_failed` |
+| `BandHardFail(b, μ̂)` | `band_objective_failed` |
+| `¬BandPass(b, μ̂, s, n) ∧ ¬BandHardFail(b, μ̂)` | `band_objective_inconclusive` |
 | `¬StatDominates(c_cand, c_inc, ...)` | `insufficient_dominance` |
-| `¬Acceptable(c, Y_c, M)` | `acceptability_failed` |
 | `n = 0` in chance constraint | `zero_trials` |
 | `n < 2` in objective evaluation | `insufficient_samples` |
 

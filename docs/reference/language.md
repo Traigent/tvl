@@ -1,8 +1,8 @@
-# Language Reference
+# TVL Language Reference for AI Agent Requirements
 
 This page is a friendly guide to TVL.
 
-Instead of treating TVL as a bag of keywords, this reference teaches the language by following one concrete agent all
+TVL specifies the allowed design space and desired properties of an AI agent. It does not prescribe the build process or search algorithm used to produce a candidate. Instead of treating TVL as a bag of keywords, this reference teaches the language by following one concrete agent all
 the way through: a simple campus FAQ RAG system. As you read, the example gives each TVL block a job, so the later
 rules feel grounded instead of abstract.
 
@@ -116,6 +116,10 @@ teaching the core module shape first, not operational-precondition design.
 <summary>Open a quick map of the top-level TVL blocks</summary>
 
 A TVL module is usually organized as:
+
+*   **Agent requirements**: which design choices may vary and which combinations are admissible
+*   **Evaluation contract**: which evaluation set and metrics define observed properties
+*   **Acceptance contract**: which evidence is required before a candidate can be accepted or promoted
 
 *   `tvl`
 *   `environment`
@@ -423,9 +427,11 @@ Notes:
 *   Chance constraints are expressed as threshold + confidence pairs over named metrics.
 *   `metric_ref` is optional, but recommended for production-facing specs because it links each objective to the metric contract that computes it.
 
-## Exploration
+## Legacy Implementation Hints (`exploration`)
 
-`exploration` describes how a runtime searches the feasible space.
+`exploration` is retained for compatibility with existing modules. It contains non-semantic hints for a particular runtime about how to search the feasible space. It does not change which agent configurations are admissible or what evidence satisfies the requirements.
+
+Portable requirement specifications should keep optimizer settings in an implementation profile or run plan. A runtime may ignore this block unless its declared profile says otherwise.
 
 Common fields:
 
@@ -452,7 +458,7 @@ exploration:
     max_wallclock_s: 3600
 ```
 
-Budgets are validated by the CLI for shape and positivity; actual enforcement is performed by the runtime executing the search.
+The CLI validates these legacy fields for shape and positivity. Their operational meaning and enforcement belong to the runtime executing the search; they are not part of TVL conformance or certification semantics.
 
 ## CLI Workflow
 

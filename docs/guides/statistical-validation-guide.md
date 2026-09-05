@@ -1,364 +1,128 @@
-# Statistical Validation Guide
+# Agent Evaluation and Promotion Evidence
 
-This guide explains TVL's statistical framework for efficient multi-objective optimization. Understanding these principles helps you configure TVL for optimal sample efficiency while maintaining rigorous guarantees.
+This guide explains the evidence contract used to decide whether an AI agent candidate meets a TVL specification. It describes what the evidence and decision mean. It does not prescribe how an optimizer searches the declared agent design space.
 
-## Overview: Two-Phase Statistical Model
+## The separation TVL preserves
 
-TVL employs two distinct statistical regimes:
+Three activities are related but distinct:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  PHASE 1: EXPLORATION (Pareto Discovery)                        │
-│  ─────────────────────────────────────────                      │
-│  Goal: Find ε-Pareto front with probability ≥ 1-δ               │
-│  Method: Adaptive sampling (Successive Halving, MOBO)           │
-│  Sample size: Dynamic, based on uncertainty                     │
-│  Key insight: Drop unpromising configs EARLY                    │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  PHASE 2: PROMOTION (Validation)                                │
-│  ───────────────────────────────                                │
-│  Goal: Confirm selected config beats production baseline        │
-│  Method: Welch's t-test (pairwise comparison)                   │
-│  Sample size: Fixed, based on minimum detectable effect         │
-│  When: Only for FINAL promotion decision                        │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Activity | Question | TVL's role |
+| --- | --- | --- |
+| Candidate construction | How do we find or build a candidate? | Outside the language contract |
+| Evaluation | What happened when this candidate ran on the pinned evaluation set? | Names the evaluation context, metrics, and required observations |
+| Acceptance or promotion | Does the evidence satisfy the declared requirements? | Defines the decision rule and its inputs |
 
-**Key insight**: Most of your sample budget goes to exploration (Phase 1), which uses **adaptive sampling** that is far more efficient than exhaustive pairwise testing.
+Search algorithms, adaptive sampling, Bayesian optimization, successive halving, and scheduling are implementation choices. A tool may use any of them, or no optimizer at all, while consuming the same TVL module.
 
----
+## Evidence must be bound to the specification
 
-## Phase 1: PAC ε-Pareto Discovery
+A promotion decision is meaningful only when the evidence identifies the contract it evaluates. A measurement bundle should bind at least:
 
-### The Guarantee
+- the TVL module identifier and version or digest;
+- the candidate configuration or implementation binding;
+- the evaluation-set version or digest;
+- the environment snapshot;
+- the evaluator and metric versions;
+- observation counts and measured values; and
+- provenance needed to reproduce or audit the decision.
 
-With probability ≥ 1-δ, TVL returns a configuration set S where:
+The current command-line contract is documented in [Promotion Gate I/O](../../spec/promotion-gate-io.md). The reference CLI validates measured evidence separately from structural and operational checks.
 
-1. **Coverage**: Every point on the true Pareto front has some s ∈ S within ε
-2. **Quality**: Every s ∈ S is within ε of the true Pareto front
+## Desired properties in TVL
 
-This is a **PAC (Probably Approximately Correct)** guarantee.
+TVL distinguishes three kinds of requirement:
 
-### Sample Complexity Comparison
+1. **Directional objectives** express properties to maximize or minimize, such as task success, groundedness, cost, or latency.
+2. **Banded objectives** express an acceptable interval, such as a response length or tool-call count that should stay within a range.
+3. **Chance constraints** express an upper limit on the rate of an undesirable event, such as policy violations or latency-SLO breaches.
 
-For K configurations, d objectives, tolerance ε, confidence 1-δ:
+These fields specify what a candidate must demonstrate. The evaluator implementation determines how observations are produced and must be identified in the evidence.
 
-| Method | Sample Complexity | K=1000, d=3, ε=0.05 | Reduction |
-|--------|-------------------|---------------------|-----------|
-| **Naive (all pairs)** | O(K · d · log(K/δ) / ε²) | ~90,000 samples | Baseline |
-| **Successive Halving** | O(K · log(K) · d / ε²) | ~3,000 samples | **30×** |
-| **UCB-style** | O(K · d · log(1/δ) / ε²) | ~5,000 samples | 18× |
-| **Thompson Sampling** | O(d · log(K/δ) / ε²) | ~1,500 samples | **60×** |
+## Candidate versus incumbent
 
-### How Adaptive Sampling Works
+For a directional objective, TVL normalizes direction so that a positive difference always means the candidate is better:
 
-**Successive Halving** (default in TVL):
-
-```
-Round 1: Evaluate ALL K configs with n₁ samples each
-         Eliminate bottom 50%
-
-Round 2: Evaluate remaining K/2 configs with 2n₁ samples each
-         Eliminate bottom 50%
-
-Round 3: Evaluate remaining K/4 configs with 4n₁ samples each
-         ...continue until convergence
+```text
+normalized difference = direction sign × (candidate mean - incumbent mean)
 ```
 
-**Result**: Promising configs get MORE samples, dominated configs get FEWER.
+The promotion policy then asks two different questions:
 
-### Sample Size Formula
+- **Non-inferiority**: is there enough evidence that the candidate is not worse than the allowed regression margin?
+- **Superiority**: is there enough evidence that it improves at least one objective by more than the declared minimum effect?
 
-For (ε, δ)-PAC guarantee on the Pareto front:
+Failure to establish non-inferiority is not automatically evidence of inferiority. When the data are insufficient to establish either conclusion, the correct result is `NoDecision`.
 
-```
-n_total ≈ (σ² / ε²) · ln(K/δ) · d · f(η)
+## Decision meanings
 
-Where:
-  σ² = variance of metrics (estimated online)
-  ε  = Pareto tolerance (how close to true front)
-  K  = number of configurations in search space
-  d  = number of objectives
-  δ  = failure probability (e.g., 0.05 for 95% confidence)
-  f(η) ≈ log(log(K)) for successive halving with elimination rate η
-```
+The reference decision vocabulary is:
 
-**Worked Example**:
-```
-K = 1000 configs, d = 3 objectives, ε = 0.05, δ = 0.05, σ = 0.1
+| Decision | Meaning |
+| --- | --- |
+| `Promote` | The candidate passed every required acceptability check, established non-inferiority on all directional objectives, and established a required improvement. |
+| `Reject` | The evidence established a hard failure, such as a breached chance constraint, an observed point estimate outside a hard band, an invalid candidate, or demonstrated regression beyond the allowed margin. |
+| `NoDecision` | The available evidence was insufficient to justify either promotion or rejection. |
+| `Error` | The inputs were invalid, inconsistent, unbound, or could not support the declared checks. |
 
-Naive:    n = (0.1² / 0.05²) · ln(1000/0.05) · 3 · 1000
-        ≈ 4 · 10 · 3 · 1000 = 120,000 samples
+A production or certification workflow should preserve this distinction. Treating missing evidence as demonstrated failure misstates the result; treating it as success is unsafe.
 
-Successive Halving:
-          n = (0.1² / 0.05²) · ln(1000/0.05) · 3 · log(log(1000))
-        ≈ 4 · 10 · 3 · 2 = 240 samples per round
-          × ~12 rounds = ~3,000 total samples
+## Chance constraints
+
+TVL chance constraints are expressed as limits on a **violation rate**. For observed violations `k` in `n` trials and a declared threshold `θ`, the candidate passes only when the one-sided upper confidence bound on the true violation rate is at or below `θ`:
+
+```text
+ChancePass(k, n, θ, γ) iff CI_upper(k, n, γ) ≤ θ
 ```
 
----
+No trials means no decision can be computed. The confidence value belongs to this bound and is separate from the significance level used for comparative objectives.
 
-## Adaptive Sample Allocation
+## Multiple objectives
 
-### Per-Configuration Budget
+TVL's current promotion contract uses an intersection-union rule for non-inferiority: every directional objective must pass. The configured multiple-testing adjustment applies separately to the superiority family used to establish that at least one objective improved and the inferiority family used to establish that at least one objective regressed.
 
-| Config State | Samples/Round | Rationale |
-|--------------|---------------|-----------|
-| **Promising** (top 50%) | 2× baseline | Exploit: refine estimate |
-| **Uncertain** (middle) | 1× baseline | Explore: resolve uncertainty |
-| **Dominated** | 0 (eliminated) | Save budget for promising |
+The selected method changes the interpretation of the error control:
 
-### Exploration vs Exploitation
+- `bonferroni` and `holm` control family-wise error for the adjusted family under their standard assumptions.
+- `BH` controls false discovery rate under its stated dependence assumptions; it does not control the probability of any false discovery.
+- `none` applies no family-level correction.
 
-```yaml
-# TVL optimization settings
-optimization:
-  # How much budget for pure exploration (random configs)
-  exploration_budget: 0.2      # 20% explores new regions
+These statements concern the named statistical tests and their assumptions. They do not turn a TVL result into a universal guarantee about an agent.
 
-  # When to stop exploring a config
-  exploitation_threshold: 0.8  # Exploit when >80% confident it's good
+## Minimum effect is a requirement, not a sample-size formula
 
-  # Successive halving parameters
-  elimination_rate: 0.5        # Halve configs each round
-  min_samples_before_elimination: 5  # Don't eliminate too early
+`promotion_policy.min_effect` declares the smallest difference that counts as a meaningful improvement or allowable regression margin for each directional objective. It is part of the requirements contract.
 
-  # Convergence detection
-  plateau_window: 10           # Stop if no improvement for 10 rounds
-  plateau_epsilon: 0.01        # "No improvement" = <1% change
-```
+TVL does not calculate a universal minimum sample size from that value. Sample-size planning also depends on variance, power, dependence, evaluator behavior, and the chosen test. An evaluation implementation should record its design and assumptions as process evidence.
 
-### Early Stopping Criteria
+## PAC theory and TVL
 
-TVL stops exploration when:
+PAC multi-objective optimization is useful background for implementations that use a proven algorithm under matching assumptions. For example, ε-PAL provides guarantees for its particular Gaussian-process active-learning procedure and problem setting.
 
-1. **Hypervolume plateau**: Pareto front hasn't improved in `plateau_window` rounds
-2. **Budget exhausted**: Reached `max_samples` limit
-3. **Convergence**: All remaining configs have confidence intervals < ε
+The TVL core specification makes no blanket PAC claim. A tool that advertises an `(ε, δ)` guarantee must identify:
 
----
+1. the algorithm and theorem being invoked;
+2. the observation and model assumptions;
+3. the exact definition of approximation error;
+4. how TVL fields map to the theorem's parameters; and
+5. evidence that the implementation satisfies those conditions.
 
-## Phase 2: Promotion Validation
+Without those elements, `epsilon` and `confidence` values are requirements or configuration data, not proof that a Pareto set was discovered with a particular probability.
 
-**When**: Only after exploration identifies the best configuration(s).
+## Certification interpretation
 
-**Purpose**: Final statistical confirmation that the candidate beats production.
+A successful decision supports a bounded statement about the evaluated candidate and contract. A certificate should report:
 
-### When Promotion Testing Applies
+- what was specified;
+- what candidate was evaluated;
+- which evaluation set and evaluator produced the evidence;
+- which checks ran and their results;
+- which decision procedure was used; and
+- any assumptions, exclusions, or unresolved checks.
 
-| Scenario | Use Promotion Test? | Reason |
-|----------|---------------------|--------|
-| Deploying to production | **Yes** | Need high confidence |
-| Internal comparison | No | Exploration sufficient |
-| A/B testing in production | **Yes** | Statistical rigor required |
-| Hyperparameter tuning | No | Use exploration phase |
+This evidence chain lets an independent verifier reproduce the decision and prevents the claim from silently expanding beyond what was tested.
 
-### Promotion Test Requirements
+## References
 
-For the final promotion decision:
-
-```yaml
-promotion_policy:
-  confidence_level: 0.95      # α = 0.05
-  correction_method: holm     # For multiple objectives
-  min_samples: 50             # Per configuration (fixed)
-
-  # Minimum detectable effect
-  mde: 0.05                   # Detect 5% improvement
-```
-
-**Sample size for promotion** (Welch's t-test):
-
-```
-n ≈ 2 · (z_α + z_β)² · σ² / MDE²
-
-Where:
-  z_α = 1.96 for α = 0.05
-  z_β = 0.84 for 80% power
-  σ = pooled standard deviation
-  MDE = minimum detectable effect
-```
-
-**Example**: σ = 0.1, MDE = 0.05 → n ≈ 2 · (1.96 + 0.84)² · 0.01 / 0.0025 ≈ 63 per group
-
----
-
-## Theoretical Foundations
-
-### PAC-Learning Framework
-
-TVL's guarantees are based on **PAC (Probably Approximately Correct) learning**:
-
-**Definition** (ε-Pareto PAC):
-> An algorithm is (ε, δ)-PAC for Pareto front discovery if, with probability ≥ 1-δ, it returns a set S such that:
-> - ∀ s ∈ S: d(s, P*) ≤ ε (all returned points are near-optimal)
-> - ∀ p ∈ P*: ∃ s ∈ S with d(p, s) ≤ ε (all optimal points are represented)
->
-> where P* is the true Pareto front and d is the ε-dominance distance.
-
-### Key References
-
-1. **Successive Halving**: Jamieson & Talwalkar (2016), "Non-stochastic Best Arm Identification"
-2. **Hyperband**: Li et al. (2018), "Hyperband: A Novel Bandit-Based Approach"
-3. **ε-PAL**: Zuluaga et al. (2016), "ε-PAL: An Active Learning Approach to Multi-Objective Optimization"
-4. **EHVI**: Daulton et al. (2020), "Differentiable Expected Hypervolume Improvement"
-
-### Hoeffding-Style Bounds
-
-For a single objective with bounded rewards in [0, 1]:
-
-```
-P(|μ̂ - μ| > ε) ≤ 2·exp(-2nε²)
-```
-
-Setting the RHS = δ and solving for n:
-
-```
-n ≥ ln(2/δ) / (2ε²)
-```
-
-For multiple objectives, apply union bound over d objectives:
-
-```
-n ≥ ln(2d/δ) / (2ε²)
-```
-
----
-
-## Practical Configuration
-
-### Recommended Defaults
-
-```yaml
-# For most TVL optimization scenarios
-optimization:
-  algorithm: successive_halving
-
-  # PAC parameters
-  epsilon: 0.05              # 5% Pareto tolerance
-  delta: 0.05                # 95% confidence
-
-  # Efficiency settings
-  elimination_rate: 0.5      # Halve each round (standard)
-  min_rounds: 3              # At least 3 rounds before stopping
-  max_rounds: 20             # Upper bound
-
-  # Exploration
-  initial_samples: 5         # Per config in round 1
-  exploration_budget: 0.2    # 20% for pure exploration
-
-promotion_policy:
-  # Only for final deployment decision
-  test: welch_t
-  confidence_level: 0.95
-  min_samples: 50
-  correction_method: holm    # For multiple objectives
-```
-
-### Scenario-Specific Settings
-
-| Scenario | K (configs) | d (objectives) | ε | Estimated Samples |
-|----------|-------------|----------------|---|-------------------|
-| Quick prototype | 50 | 2 | 0.1 | ~500 |
-| Production tuning | 500 | 3 | 0.05 | ~2,000 |
-| Large-scale search | 5,000 | 4 | 0.05 | ~8,000 |
-| Fine-grained optimization | 100 | 3 | 0.02 | ~5,000 |
-
----
-
-## Worked Examples
-
-### Example 1: LLM Router Optimization
-
-```yaml
-# Scenario: Optimize model routing for accuracy vs cost
-tunables:
-  model: [gpt-4, gpt-3.5-turbo, claude-3-opus, claude-3-sonnet]
-  temperature: [0.0, 0.3, 0.7, 1.0]
-  max_tokens: [256, 512, 1024]
-
-# K = 4 × 4 × 3 = 48 configurations
-# d = 2 objectives (accuracy, cost)
-
-optimization:
-  epsilon: 0.05
-  delta: 0.05
-
-# Expected samples: ~400 total (not 48 × 50 = 2,400!)
-# Successive halving eliminates poor configs early
-```
-
-### Example 2: RAG Pipeline Tuning
-
-```yaml
-# Scenario: Optimize RAG for accuracy, latency, and cost
-tunables:
-  retriever_k: [3, 5, 10, 20]
-  chunk_size: [256, 512, 1024]
-  embedding_model: [ada-002, text-embedding-3-small, text-embedding-3-large]
-  reranker: [none, cohere, cross-encoder]
-
-# K = 4 × 3 × 3 × 3 = 108 configurations
-# d = 3 objectives
-
-optimization:
-  epsilon: 0.03          # Tighter tolerance
-  delta: 0.05
-  exploration_budget: 0.3  # More exploration for complex space
-
-# Expected samples: ~1,500 total
-```
-
-### Example 3: Final Promotion Decision
-
-```yaml
-# After exploration identifies best config
-# Now compare to production baseline
-
-promotion_policy:
-  baseline: production_v2.1
-  candidate: optimized_v2.2
-
-  test: welch_t
-  confidence_level: 0.95
-  min_samples: 100         # Higher for production decision
-  mde: 0.03                # Detect 3% improvement
-
-  objectives:
-    - name: accuracy
-      metric_ref: metrics.accuracy.v1
-      orientation: maximize
-      threshold: 0.85      # Must exceed 85%
-    - name: latency_p95
-      metric_ref: metrics.latency_p95.v1
-      orientation: minimize
-      threshold: 200       # Must be under 200ms
-    - name: cost_per_1k
-      metric_ref: metrics.cost_per_1k.v1
-      orientation: minimize
-      # No threshold, just compare
-
-# This is traditional hypothesis testing
-# Only run AFTER exploration phase completes
-```
-
----
-
-## Summary
-
-| Phase | Goal | Method | Sample Efficiency |
-|-------|------|--------|-------------------|
-| **Exploration** | Find ε-Pareto front | Successive Halving, MOBO | **30-60× more efficient** |
-| **Promotion** | Confirm vs baseline | Welch's t-test | Standard (n ≥ 50) |
-
-**Key takeaways**:
-
-1. **Don't use pairwise testing for exploration** - it's wasteful
-2. **Adaptive sampling** drops bad configs early, saving ~30× samples
-3. **PAC guarantees** provide rigorous (ε, δ) bounds on Pareto front quality
-4. **Reserve Welch's t-test** for final promotion decision only
-5. **Configure ε and δ** based on your quality requirements and budget
-
-For Traigent SDK integration, see the [Traigent Integration Guide](./traigent-tvl-integration.md).
+- Zuluaga, Krause, and Püschel, [ε-PAL: An Active Learning Approach to the Multi-Objective Optimization Problem](https://www.jmlr.org/papers/v17/15-047.html), JMLR 2016. This is an algorithm-specific result, not a guarantee supplied by TVL itself.
+- Cawley and Talbot, [On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation](https://jmlr.org/papers/v11/cawley10a.html), JMLR 2010. This motivates separating candidate selection from final evaluation.
+- The [Promotion Gate I/O specification](../../spec/promotion-gate-io.md) defines the current executable decision contract.

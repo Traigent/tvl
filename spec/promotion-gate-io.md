@@ -1,8 +1,8 @@
 # Promotion Gate I/O Specification
 
-**Version**: 1.0
-**Status**: Stable
-**Date**: January 2026
+**Version**: 1.1
+**Status**: Draft
+**Date**: September 2026
 
 This document specifies the input/output format for the TVL promotion gate, the statistical testing procedures, and the decision logic.
 
@@ -19,6 +19,8 @@ tvl-ci-gate <module> <incumbent-bundle> <candidate-bundle> --json
 ```
 
 The module is the source of `objectives` and `promotion_policy`.
+
+The current measurement-bundle format does not carry the calibration certificates required by `promotion_policy.require_calibration` or per-CVAR strict governance. `tvl-ci-gate` MUST report `calibration_evidence_unsupported` and MUST NOT return `Promote` for such a module until a versioned certificate input and verifier are part of this contract.
 
 ### 1.1 Objective Values
 
@@ -136,8 +138,10 @@ evidence:
       df: 17.8                     # Degrees of freedom (Welch-Satterthwaite)
       p_value_noninf: 0.0002       # H₀: candidate worse by > ε
       p_value_super: 0.021         # H₀: candidate not better by > ε
+      p_value_inferior: 0.9998     # H₀: candidate is within the allowed regression margin
       adjusted_p_noninf: null      # Non-inferiority is unadjusted (IUT)
       adjusted_p_super: 0.032      # After multiplicity adjustment (union component)
+      adjusted_p_inferior: 1.0     # After multiplicity adjustment (union component)
       epsilon: 10
       verdict: "superior"          # "superior" | "noninferior" | "inferior" | "inconclusive"
 
@@ -153,8 +157,10 @@ evidence:
       df: 97.2
       p_value_noninf: 0.0001
       p_value_super: 0.15          # Not significant for superiority
+      p_value_inferior: 0.9999     # No evidence of regression beyond ε
       adjusted_p_noninf: null
       adjusted_p_super: 0.1500
+      adjusted_p_inferior: 1.0
       epsilon: 0.02
       verdict: "noninferior"       # Passes non-inferiority but not superiority
 
@@ -187,6 +193,7 @@ evidence:
     all_noninferior: true          # All objectives pass non-inferiority
     any_superior: true             # At least one objective is superior
     all_bands_pass: true           # All banded objectives pass TOST
+    any_band_out_of_band: false    # No banded point estimate lies outside its declared band
     all_chance_pass: false         # Chance constraint failed (ci_upper > threshold)
     adjustment_method: "holm"
     fdr_controlled_at: null        # Set only when adjust="BH"
@@ -230,12 +237,14 @@ For each objective i with direction σᵢ (1 for maximize, -1 for minimize) and 
 **Test statistic** (Welch):
 
 ```
-t = (x̄_candidate - x̄_incumbent - (-σᵢ × εᵢ)) / SE_pooled
+t = (σᵢ × (x̄_candidate - x̄_incumbent) + εᵢ) / SE_pooled
 
 where SE_pooled = sqrt(s²_inc/n_inc + s²_cand/n_cand)
 ```
 
 **P-value**: One-sided, `p = P(T > t)` where T ~ t(df)
+
+Failure to reject this null is inconclusive. It does not establish that the candidate is inferior. A hard regression verdict uses the opposite one-sided test, `H₀: σᵢ × (μ_candidate - μ_incumbent) ≥ -εᵢ`, and rejects only when `p_value_inferior < α`.
 
 ### 3.3 Superiority Test
 
@@ -248,7 +257,7 @@ where SE_pooled = sqrt(s²_inc/n_inc + s²_cand/n_cand)
 **Test statistic**:
 
 ```
-t = (x̄_candidate - x̄_incumbent - (σᵢ × εᵢ)) / SE_pooled
+t = (σᵢ × (x̄_candidate - x̄_incumbent) - εᵢ) / SE_pooled
 ```
 
 **P-value**: One-sided, `p = P(T > t)`
@@ -304,7 +313,7 @@ ci_upper = beta.ppf(1 - alpha_tail, k + 1, n - k) if k < n else 1.0
 
 ### 4.1 Scope of Adjustment
 
-**Adjusted family**: Per-objective superiority p-values only (union component).
+**Adjusted families**: Per-objective superiority p-values and per-objective inferiority p-values. Each supports a union claim: at least one improvement, or at least one regression.
 
 **NOT included**:
 
@@ -314,7 +323,7 @@ ci_upper = beta.ppf(1 - alpha_tail, k + 1, n - k) if k < n else 1.0
 
 ### 4.2 Supported Methods
 
-Given k superiority p-values p₁, p₂, ..., pₖ:
+For each adjusted family of k p-values p₁, p₂, ..., pₖ:
 
 - `none`: no correction
 - `bonferroni`: adjusted pᵢ = min(1, k · pᵢ)
@@ -326,11 +335,15 @@ Given k superiority p-values p₁, p₂, ..., pₖ:
 For reporting, expose:
 
 - `adjusted_p_super`: adjusted superiority p-value
+- `adjusted_p_inferior`: adjusted inferiority p-value
 - `adjusted_p_noninf`: null (non-inferiority remains unadjusted)
 
 Decision logic uses:
 - non-inferiority: raw `p_value_noninf`
 - superiority: `adjusted_p_super` when adjustment is enabled, otherwise raw `p_value_super`
+- inferiority: `adjusted_p_inferior` when adjustment is enabled, otherwise raw `p_value_inferior`
+
+Adjusting the inferiority family cannot make a candidate promotable. It can only prevent a family-level regression claim from being made on unadjusted evidence, changing some otherwise-`Reject` outcomes to `NoDecision`.
 
 ---
 
@@ -349,13 +362,13 @@ Return `"Promote"` if ALL of the following are true:
 
 Return `"Reject"` if ANY of the following are true:
 
-1. Any non-inferiority test fails (candidate is significantly worse)
+1. Any inferiority test demonstrates regression beyond the allowed margin (adjusted `p_value_inferior < α` when adjustment is enabled)
 2. Any chance constraint fails
-3. Any banded objective fails TOST
+3. Any banded objective has a point estimate outside its declared band
 
 ### 5.3 NoDecision
 
-Return `"NoDecision"` otherwise (insufficient evidence to promote or reject).
+Return `"NoDecision"` otherwise, including when non-inferiority has not been established but inferiority has not been demonstrated.
 
 ---
 
@@ -370,7 +383,7 @@ Return `"NoDecision"` otherwise (insufficient evidence to promote or reject).
 | Superior on one | Better on obj1 by > ε, equal on others | Welch per obj | Promote |
 | BH correction | 10 objectives, 2 superiority p-values raw < 0.05 but adjusted > 0.05 | BH | NoDecision |
 | TOST pass | Mean = 100, band = [95, 105], n = 50, σ = 5 | TOST (90% CI) | Promote (if other tests pass) |
-| TOST fail (power) | Mean = 100, band = [95, 105], n = 5, σ = 5 | TOST (90% CI) | NoDecision |
+| TOST fail (power) | Mean = 100, band = [95, 105], n = 5, σ = 8 | TOST (90% CI) | NoDecision |
 | TOST fail (OOB) | Mean = 110, band = [95, 105] | TOST (90% CI) | Reject |
 | Chance pass | 0/120 violations, θ = 0.03, γ = 0.95 | Clopper-Pearson | (contributes to Promote) |
 | Chance fail | 8/100 violations, θ = 0.05, γ = 0.95 | Clopper-Pearson | Reject |

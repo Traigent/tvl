@@ -251,7 +251,8 @@
     "exploration": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "description": "Exploration plan describing how the tuner explores the search space (strategy, sampling, budgets) as in Listing 5.",
+      "deprecated": true,
+      "description": "Legacy, non-semantic implementation hints for a runtime. Retained for compatibility; portable TVL requirement specifications should place search strategy, sampling, scheduling, and budgets in a separate implementation profile or run plan.",
       "properties": {
         "strategy": {
           "type": "object",

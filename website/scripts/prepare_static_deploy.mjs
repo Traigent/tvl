@@ -11,11 +11,67 @@ const siteOrigin = "https://tvl-lang.org";
 
 const routeMeta = new Map([
   [
+    "/specification/agent-requirements",
+    {
+      title: "AI Agent Requirements and Certification with TVL",
+      description:
+        "Learn how TVL specifies AI agent design spaces, desired properties, evaluation contracts, and evidence as a foundation for scoped certification.",
+    },
+  ],
+  [
+    "/specification/language-reference",
+    {
+      title: "TVL Language Reference for AI Agent Requirements",
+      description:
+        "Reference for TVL modules, typed agent design variables, constraints, evaluation objectives, evidence, and promotion policy.",
+    },
+  ],
+  [
+    "/specification/verification-reference",
+    {
+      title: "TVL AI Agent Verification Semantics",
+      description:
+        "Understand structural validity, operational feasibility, measured acceptability, promotion decisions, and the limits of TVL verification claims.",
+    },
+  ],
+  [
+    "/specification/constraint-language",
+    {
+      title: "TVL Constraint Language for AI Agent Design Spaces",
+      description:
+        "Specify admissible AI agent configurations with typed structural constraints and explicit operational preconditions in TVL.",
+    },
+  ],
+  [
+    "/specification/schema-reference",
+    {
+      title: "TVL Schema Reference | AI Agent Specifications",
+      description:
+        "Detailed schema reference for machine-readable TVL AI agent requirement modules and their validation contracts.",
+    },
+  ],
+  [
+    "/specification/json-schema",
+    {
+      title: "TVL JSON Schema | AI Agent Requirements",
+      description:
+        "Machine-readable JSON Schema for validating TVL AI agent requirement and design-space specifications.",
+    },
+  ],
+  [
+    "/specification/ebnf-grammar",
+    {
+      title: "TVL EBNF Grammar | AI Agent Specification Language",
+      description:
+        "The formal EBNF grammar for TVL, a typed specification language for AI agent requirements and admissible design spaces.",
+    },
+  ],
+  [
     "/specification",
     {
-      title: "TVL Specification | Tuned Variables Language by Traigent",
+      title: "TVL AI Agent Requirements Specification | Traigent",
       description:
-        "Read the TVL specification, language reference, schemas, and verification model for governed tuning, validation, and promotion of AI agents.",
+        "Read the TVL language specification for AI agent design spaces, desired properties, evaluation evidence, verification, and a foundation for scoped certification.",
     },
   ],
   [
@@ -23,15 +79,15 @@ const routeMeta = new Map([
     {
       title: "TVL Examples | Tuned Variables Language by Traigent",
       description:
-        "Read small, concrete TVL examples that show structural rules, operational checks, release gates, overlays, and CI integration.",
+        "Read TVL AI agent specification examples for models, prompts, tools, retrieval, structural rules, evaluation objectives, and acceptance gates.",
     },
   ],
   [
     "/github",
     {
-      title: "Tuned Variables Language (TVL) GitHub Repository | Traigent",
+      title: "TVL AI Agent Specification Language on GitHub | Traigent",
       description:
-        "Official TVL GitHub repository by Traigent with the language spec, validators, CLI tools, VS Code extension, examples, and website source.",
+        "TVL on GitHub: an AI agent requirements specification language with schemas, validators, CLI tools, examples, formal semantics, and editor support.",
     },
   ],
   [
@@ -150,6 +206,7 @@ async function main() {
 
   const staticRoutes = new Set([
     "/specification",
+    "/specification/agent-requirements",
     "/specification/json-schema",
     "/specification/ebnf-grammar",
     "/specification/language-reference",

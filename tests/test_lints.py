@@ -215,6 +215,26 @@ class FormalVerificationScopeTests(unittest.TestCase):
         self.assertEqual("warning", precision_warnings[0]["severity"])
         self.assertIn("collide", precision_warnings[0]["message"])
         self.assertIn("minimum_precision", precision_warnings[0])
+        self.assertEqual(10000, precision_warnings[0]["minimum_precision"])
+        self.assertEqual(10000, precision_warnings[0]["suggested_precision"])
+
+    def test_precision_suggestion_aligns_values_instead_of_only_separating_them(self) -> None:
+        """The suggestion must align decimals exactly, not use ceil(1/min_gap)."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {
+                "name": "mixture",
+                "type": "float",
+                "domain": [0.1, 0.25],
+            },
+        ]
+
+        issues = lint_module(doc, precision=1)
+        precision_warnings = [i for i in issues if i["code"] == "inadequate_precision"]
+
+        self.assertEqual(1, len(precision_warnings))
+        self.assertEqual(20, precision_warnings[0]["minimum_precision"])
+        self.assertIn("P=20", precision_warnings[0]["message"])
 
     def test_adequate_precision_no_warning(self) -> None:
         """Float values that don't collide should produce no warning."""
@@ -247,6 +267,7 @@ class FormalVerificationScopeTests(unittest.TestCase):
         precision_warnings = [i for i in issues if i["code"] == "inadequate_precision"]
         self.assertEqual(1, len(precision_warnings))
         self.assertIn("resolution", precision_warnings[0]["message"])
+        self.assertEqual(10000, precision_warnings[0]["minimum_precision"])
 
     def test_high_precision_avoids_collision(self) -> None:
         """Higher precision factor prevents collisions."""

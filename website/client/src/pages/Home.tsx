@@ -16,6 +16,9 @@ const QUICK_HOOK_TVL = `tvl:
   module: corp.support.rag_agent
 tvl_version: "1.0"
 
+environment:
+  snapshot_id: "2026-09-05T00:00:00Z"
+
 evaluation_set:
   dataset: s3://datasets/support/eval.jsonl
 
@@ -33,7 +36,7 @@ tvars:
 
 constraints:
   structural:
-    - when: "tool_choice_policy = \\"no_tools\\""
+    - when: "tool_choice_policy = 'no_tools'"
       then: "retriever.k = 0"
 
 objectives:
@@ -53,7 +56,7 @@ promotion_policy:
 
 const TVL_CORE_POINTS = [
   {
-    title: "Objectives",
+    title: "Desired Properties",
     body:
       "What good means and how to measure it. Example: push `answer_accuracy` up while driving `latency_p95_ms` down.",
   },
@@ -63,9 +66,9 @@ const TVL_CORE_POINTS = [
       "The conversations, traces, or tasks you will test on. In TVL this lives under `evaluation_set`.",
   },
   {
-    title: "Tuned Variables and Domains",
+    title: "Agent Design Space",
     body:
-      "The knobs you are willing to let the optimizer change: model, `retriever.k`, tool policy, max iterations, or retry budget.",
+      "The allowed models, prompts, tools, retrieval, memory, routing, and orchestration choices. A human or any compatible optimizer may select them.",
   },
   {
     title: "Structural Rules",
@@ -73,9 +76,9 @@ const TVL_CORE_POINTS = [
       "Rules between design choices. Example: if the agent is in `no_tools` mode, then retrieval depth must be 0.",
   },
   {
-    title: "Rollout Gates",
+    title: "Acceptance and Certification Scope",
     body:
-      "What must be true before a new candidate ships. Example: the gain in accuracy must be real enough, and safety checks must still pass.",
+      "The evidence required before a candidate is accepted, promoted, or used in a scoped certification process.",
   },
 ];
 
@@ -83,8 +86,8 @@ export default function Home() {
   return (
     <Layout>
       <Seo
-        title="Tuned Variables Language (TVL) by Traigent"
-        description="Tuned Variables Language (TVL) by Traigent is the specification language, examples, validators, and tooling for governed tuning, validation, and promotion of AI agents."
+        title="TVL | AI Agent Requirements Specification Language"
+        description="TVL is a typed specification language for AI agent requirements, agent design spaces, evaluation evidence, verification, and a foundation for scoped certification."
         path="/"
       />
       {/* Hero Section */}
@@ -93,18 +96,18 @@ export default function Home() {
         <div className="container relative">
           <div className="max-w-4xl mx-auto text-center space-y-8">
             <div className="inline-block px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-4">
-              Specification Backbone for AI Pipelines
+              AI Agent Requirements and Verification
             </div>
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
               Tuned Variables Language (TVL)
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
               <strong className="text-foreground">
-                LLM applications are under-specified.
+                AI agents are under-specified.
               </strong>{" "}
-              TVL provides the specification framework needed for governed
-              adaptation in AI pipelines, enabling software engineers to build
-              reliable, maintainable, and adaptable AI systems.
+              TVL defines what an agent must achieve, which designs are
+              allowed, and what evidence is required before a candidate can be
+              accepted or used in a scoped certification process.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
               <Link href="/examples">
@@ -132,10 +135,8 @@ export default function Home() {
                 TVL in 2 Minutes
               </CardTitle>
               <CardDescription className="text-base md:text-lg text-foreground/80">
-                Existing prompt and agent specification languages are useful for
-                declaring ingredients like model, prompt, and tools. TVL starts
-                where that stops: it declares the optimization contract for an
-                agent.
+                TVL specifies an agent design space and its desired properties,
+                instead of prescribing how to build one particular agent.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -151,9 +152,9 @@ export default function Home() {
                 ))}
               </div>
               <p className="text-sm md:text-base text-foreground/80">
-                In other words: TVL does not just say what the agent is made of.
-                It says what the agent is trying to achieve, how you will test
-                it, what can change, and what rules must hold while it changes.
+                The same contract can be consumed by a human, optimizer,
+                evaluator, CI gate, or certification workflow without making
+                the search algorithm part of the language.
               </p>
               <CodeIDE
                 code={QUICK_HOOK_TVL}
@@ -194,10 +195,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Zap className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Governed Adaptation</CardTitle>
+                <CardTitle>Agent Requirements</CardTitle>
                 <CardDescription>
-                  Define and control how AI models adapt to changing
-                  requirements with precision and clarity.
+                  Declare the allowed agent choices, required relationships,
+                  desired measured properties, and acceptance conditions.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -220,10 +221,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Layers className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Pipeline Integration</CardTitle>
+                <CardTitle>Toward Evidence-Bound Certification</CardTitle>
                 <CardDescription>
-                  Use the same contract across authoring, validation,
-                  composition, and promotion tooling.
+                  Define the module, candidate, evaluation set, evaluator,
+                  evidence, and decision scope needed for a verifiable claim.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -240,7 +241,7 @@ export default function Home() {
                 The Gap TVL Fills
               </CardTitle>
               <CardDescription className="text-lg md:text-xl max-w-3xl mx-auto text-foreground/80">
-                Many agent specs tell you the ingredients of the agent: which
+                Agent code tells you the ingredients of one agent: which
                 model it uses, which prompt it starts from, or which tools are
                 connected. That is useful, but it does not define the real
                 engineering problem. Agent builders still need to say what the
@@ -250,9 +251,9 @@ export default function Home() {
                 <strong className="text-foreground">
                   TVL addresses that missing contract layer.
                 </strong>
-                It gives AI engineers one place to declare the governed search
-                surface and the evidence required before a better candidate is
-                allowed to ship.
+                It gives AI engineers one place to declare the admissible agent
+                space, desired properties, evaluation contract, and evidence
+                required before a candidate is accepted.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -295,7 +296,7 @@ export default function Home() {
                   <CardTitle>Examples</CardTitle>
                   <CardDescription>
                     Get started quickly with real-world examples and
-                    project-ready patterns for your AI pipelines.
+                    project-ready patterns for AI agent requirements.
                   </CardDescription>
                 </CardHeader>
               </Card>
@@ -343,9 +344,8 @@ export default function Home() {
               Ready to get started?
             </h2>
             <p className="text-lg text-muted-foreground">
-              Whether you're a software engineer building production AI systems
-              or a graduate student researching adaptive AI architectures, TVL
-              provides the tools you need.
+              Specify the agent you want, the designs you will allow, and the
+              evidence that a candidate must produce.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
               <Link href="/examples">

@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "TVL: A Typed Specification Language for Governed AI Configuration"
+title: "TVL: A Typed Specification Language for AI Agent Requirements"
 message: If you use TVL in your research, please cite this work.
 type: software
 authors:
@@ -11,12 +11,14 @@ license-url: https://www.apache.org/licenses/LICENSE-2.0
 repository-code: https://github.com/Traigent/tvl
 url: https://tvl-lang.org
 keywords:
-  - ai-configuration
+  - ai-agent-requirements
+  - agent-specification
+  - agent-evaluation
   - domain-specific-language
   - formal-methods
-  - llm-optimization
+  - verification
   - type-system
 abstract: >-
   TVL (Tuned Variables Language) is a typed specification language for
-  AI agent configuration with formal semantics, structural constraints,
-  multi-objective optimization, and statistically-rigorous promotion gates.
+  AI agent requirements, admissible design spaces, evaluation evidence,
+  structural constraints, and statistically defined acceptance gates.
