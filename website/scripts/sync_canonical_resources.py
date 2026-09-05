@@ -146,6 +146,7 @@ def extract_plain_paragraphs(body: str, *, limit: int | None = 3) -> list[str]:
 
 def iter_copy_pairs() -> list[tuple[Path, Path]]:
     docs = [
+        (REPO_ROOT / "docs" / "agent-requirements.md", PUBLIC_ROOT / "docs" / "agent-requirements.md"),
         (REPO_ROOT / "docs" / "reference" / "language.md", PUBLIC_ROOT / "docs" / "language.md"),
         (REPO_ROOT / "docs" / "reference" / "schema.md", PUBLIC_ROOT / "docs" / "schema.md"),
         (REPO_ROOT / "docs" / "reference" / "verification.md", PUBLIC_ROOT / "docs" / "verification.md"),

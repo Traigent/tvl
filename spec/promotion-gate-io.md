@@ -20,6 +20,8 @@ tvl-ci-gate <module> <incumbent-bundle> <candidate-bundle> --json
 
 The module is the source of `objectives` and `promotion_policy`.
 
+The current measurement-bundle format does not carry the calibration certificates required by `promotion_policy.require_calibration` or per-CVAR strict governance. `tvl-ci-gate` MUST report `calibration_evidence_unsupported` and MUST NOT return `Promote` for such a module until a versioned certificate input and verifier are part of this contract.
+
 ### 1.1 Objective Values
 
 Objective values can be provided in two forms:
@@ -136,8 +138,10 @@ evidence:
       df: 17.8                     # Degrees of freedom (Welch-Satterthwaite)
       p_value_noninf: 0.0002       # H₀: candidate worse by > ε
       p_value_super: 0.021         # H₀: candidate not better by > ε
+      p_value_inferior: 0.9998     # H₀: candidate is within the allowed regression margin
       adjusted_p_noninf: null      # Non-inferiority is unadjusted (IUT)
       adjusted_p_super: 0.032      # After multiplicity adjustment (union component)
+      adjusted_p_inferior: 1.0     # After multiplicity adjustment (union component)
       epsilon: 10
       verdict: "superior"          # "superior" | "noninferior" | "inferior" | "inconclusive"
 
@@ -230,12 +234,14 @@ For each objective i with direction σᵢ (1 for maximize, -1 for minimize) and 
 **Test statistic** (Welch):
 
 ```
-t = (x̄_candidate - x̄_incumbent - (-σᵢ × εᵢ)) / SE_pooled
+t = (σᵢ × (x̄_candidate - x̄_incumbent) + εᵢ) / SE_pooled
 
 where SE_pooled = sqrt(s²_inc/n_inc + s²_cand/n_cand)
 ```
 
 **P-value**: One-sided, `p = P(T > t)` where T ~ t(df)
+
+Failure to reject this null is inconclusive. It does not establish that the candidate is inferior. A hard regression verdict uses the opposite one-sided test, `H₀: σᵢ × (μ_candidate - μ_incumbent) ≥ -εᵢ`, and rejects only when `p_value_inferior < α`.
 
 ### 3.3 Superiority Test
 
@@ -248,7 +254,7 @@ where SE_pooled = sqrt(s²_inc/n_inc + s²_cand/n_cand)
 **Test statistic**:
 
 ```
-t = (x̄_candidate - x̄_incumbent - (σᵢ × εᵢ)) / SE_pooled
+t = (σᵢ × (x̄_candidate - x̄_incumbent) - εᵢ) / SE_pooled
 ```
 
 **P-value**: One-sided, `p = P(T > t)`
@@ -304,7 +310,7 @@ ci_upper = beta.ppf(1 - alpha_tail, k + 1, n - k) if k < n else 1.0
 
 ### 4.1 Scope of Adjustment
 
-**Adjusted family**: Per-objective superiority p-values only (union component).
+**Adjusted families**: Per-objective superiority p-values and per-objective inferiority p-values. Each supports a union claim: at least one improvement, or at least one regression.
 
 **NOT included**:
 
@@ -314,7 +320,7 @@ ci_upper = beta.ppf(1 - alpha_tail, k + 1, n - k) if k < n else 1.0
 
 ### 4.2 Supported Methods
 
-Given k superiority p-values p₁, p₂, ..., pₖ:
+For each adjusted family of k p-values p₁, p₂, ..., pₖ:
 
 - `none`: no correction
 - `bonferroni`: adjusted pᵢ = min(1, k · pᵢ)
@@ -326,11 +332,13 @@ Given k superiority p-values p₁, p₂, ..., pₖ:
 For reporting, expose:
 
 - `adjusted_p_super`: adjusted superiority p-value
+- `adjusted_p_inferior`: adjusted inferiority p-value
 - `adjusted_p_noninf`: null (non-inferiority remains unadjusted)
 
 Decision logic uses:
 - non-inferiority: raw `p_value_noninf`
 - superiority: `adjusted_p_super` when adjustment is enabled, otherwise raw `p_value_super`
+- inferiority: `adjusted_p_inferior` when adjustment is enabled, otherwise raw `p_value_inferior`
 
 ---
 
@@ -349,13 +357,13 @@ Return `"Promote"` if ALL of the following are true:
 
 Return `"Reject"` if ANY of the following are true:
 
-1. Any non-inferiority test fails (candidate is significantly worse)
+1. Any inferiority test demonstrates regression beyond the allowed margin (adjusted `p_value_inferior < α` when adjustment is enabled)
 2. Any chance constraint fails
-3. Any banded objective fails TOST
+3. Any banded objective has a point estimate outside its declared band
 
 ### 5.3 NoDecision
 
-Return `"NoDecision"` otherwise (insufficient evidence to promote or reject).
+Return `"NoDecision"` otherwise, including when non-inferiority has not been established but inferiority has not been demonstrated.
 
 ---
 

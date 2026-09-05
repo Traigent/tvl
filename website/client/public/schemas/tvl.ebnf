@@ -1,7 +1,7 @@
 (* TVL — Abstract syntax oriented EBNF *)
 (* Formal specification for Tuned Variables Language *)
 
-module        = header, environment, evaluation_set, tvars, constraints, objectives, promotion_policy, [exploration] ;
+module        = header, environment, evaluation_set, tvars, [ cvars ], constraints, objectives, promotion_policy, [ policies ], [ composites ], [exploration] ;
 
 header        = "tvl", ":", "{", "module", ":", ident, [",", "validation", ":", validation_opts], "}", [ "tvl_version", ":", string ] ;
 validation_opts = "{", [ "skip_budget_checks", ":", boolean ], [ ",", "skip_cost_estimation", ":", boolean ], "}" ;
@@ -18,7 +18,104 @@ evaluation_set = "evaluation_set", ":", "{", "dataset", ":", string, [ ",", "see
 (* TVL supports a closed set of types with product semantics for tuples *)
 
 tvars         = "tvars", ":", "[", { tvar_decl { "," } }, "]" ;
-tvar_decl     = "{", "name", ":", ident, ",", "type", ":", type, ",", "domain", ":", domain_spec, "}" ;
+tvar_decl     = "{", "name", ":", ident, ",", "type", ":", type, ",", "domain", ":", domain_spec, [ ",", scope_spec ], "}" ;
+
+(* TVL 1.1 (RFC 0001) — ownership scope metadata; any field combination *)
+scope_spec    = "scope", ":", "{", [ scope_field, { ",", scope_field } ], "}" ;
+scope_field   = ( "node" | "agent" | "workflow" ), ":", ident ;
+
+(* TVL 1.1 (RFC 0001 §3.3) — calibrated variables: governed, NOT searched.
+   The optional domain is a VALIDITY domain (closed interval for floats; no
+   resolution required), never a search domain. *)
+cvars         = "cvars", ":", "[", [ cvar_decl, { ",", cvar_decl } ], "]" ;
+cvar_decl     = "{", "name", ":", ident, ",", "type", ":", cvar_type,
+                [ ",", "domain", ":", domain_spec ],
+                ",", "calibration", ":", calibration_spec,
+                [ ",", "governance", ":", governance_spec ],
+                [ ",", scope_spec ], "}" ;
+calibration_spec = "{", "source", ":", ident, [ ",", "signal", ":", ident ],
+                [ ",", "calibrator", ":", ident ],
+                [ ",", "depends_on", ":", "[", [ ident, { ",", ident } ], "]" ], "}" ;
+governance_spec  = "{", "require_calibration", ":", boolean, "}" ;
+cvar_type     = base_type | enum_type ;   (* tuple/callable CVARs deferred (RFC 0001 §3.3) *)
+
+(* TVL 1.1 (RFC 0001 §3.8) — operational policies. stages are OPAQUE runtime
+   stage identifiers (environment.bindings precedent), NOT namespace refs;
+   gate thresholds ARE namespace refs and must resolve to a CVAR. *)
+policies      = "policies", ":", "[", [ policy_decl, { ",", policy_decl } ], "]" ;
+policy_decl   = "{", "name", ":", ident, ",", "kind", ":", "policy",
+                ",", "strategy", ":", ident,
+                ",", "stages", ":", "[", ident, { ",", ident }, "]",
+                [ ",", "gates", ":", "[", [ gate_decl, { ",", gate_decl } ], "]" ],
+                [ ",", "parameters", ":", object ],
+                [ ",", scope_spec ], "}" ;
+gate_decl     = "{", "kind", ":", "margin_below", ",", "threshold", ":", ident, "}" ;
+
+(* TVL 1.2 (RFC 0002 §3.2/§3.9) — the sealed composite-knob algebra. A
+   composite is a namespace/expansion/provenance unit, NOT a binding kind: it
+   never enters Γ, the configuration space, or the dominance relation (§3.1).
+   The grammar is the closed surface; the kind/gate/aggregate/stop REGISTRIES,
+   arm resolution, acyclicity, threshold typing, and the signal/threshold
+   calibration binding are enforced by the normative lints (the same
+   shape-vs-registry layering RFC 0001 uses for policy strategy). A bare arm
+   identifier is ALWAYS a stage (back-compatible with policies.stages); nesting
+   REQUIRES the tagged { composite: ... } form. Modules with no composites block
+   parse byte-identically to TVL 1.1 (§4). *)
+composites    = "composites", ":", "[", [ composite_decl, { ",", composite_decl } ], "]" ;
+composite_decl= "{", "name", ":", ident, ",", "kind", ":", composite_kind,
+                ( cascade_body | ensemble_body | loop_body ),  (* discriminated by kind *)
+                [ ",", "pattern", ":", ident ],         (* the ONLY surface provenance key (§3.7 sugar) *)
+                [ ",", "parameters", ":", object ],      (* opaque operational map — OUTSIDE P8 *)
+                [ ",", scope_spec ], "}" ;
+composite_kind= "cascade" | "ensemble" | "loop" ;       (* SEALED registry *)
+
+(* Cascade body — |arms| = m ≥ 1, |gates| = m − 1, placement default post *)
+cascade_body  = [ ",", "placement", ":", ( "pre" | "post" ) ],
+                ",", "arms", ":", "[", arm_surface, { ",", arm_surface }, "]",
+                [ ",", "gates", ":", "[", [ composite_gate, { ",", composite_gate } ], "]" ] ;
+
+(* Ensemble body — cardinality REQUIRED iff |arms| = 1, FORBIDDEN if |arms| > 1 *)
+ensemble_body = ",", "arms", ":", "[", arm_surface, { ",", arm_surface }, "]",
+                [ ",", "cardinality", ":", ident ],     (* TVAR/CVAR of TVL type int; k ≥ 1 (R9) *)
+                ",", "aggregate", ":", aggregate_decl ;
+
+(* Loop body — max_iters REQUIRED bound (totality) *)
+loop_body     = ",", "body", ":", arm_surface,
+                [ ",", "state_keys", ":", "[", [ ident, { ",", ident } ], "]" ],
+                ",", "stop", ":", stop_decl,
+                ",", "max_iters", ":", integer ;
+
+(* The ONE arm surface form (§3.9): bare = stage(tuned_params []); tagged forms
+   are stage with explicit tuned_params, or { composite: ident } nesting. *)
+arm_surface   = ident
+              | "{", "stage", ":", ident, [ ",", "tuned_params", ":", "[", [ ident, { ",", ident } ], "]" ], "}"
+              | "{", "composite", ":", ident, "}" ;
+
+(* The signal surface form (§3.9): everywhere a SignalUse appears *)
+signal_surface= "{", "signal", ":", ident, [ ",", "inputs", ":", "[", [ ident, { ",", ident } ], "]" ], "}" ;
+
+(* Composite cascade gate — margin_below (POST-only) | signal_below (PRE-only) *)
+composite_gate= "{", "kind", ":", gate_kind, ",", "threshold", ":", ident,
+                [ ",", "signal", ":", signal_surface ], "}" ;  (* signal REQUIRED iff signal_below *)
+gate_kind     = "margin_below" | "signal_below" ;       (* v1 registry *)
+
+(* Ensemble aggregate — majority_vote | judge_max; judge REQUIRED iff judge_max *)
+aggregate_decl= "{", "kind", ":", aggregate_kind,
+                [ ",", "judge", ":", arm_surface ],
+                [ ",", "accept", ":", accept_decl ], "}" ;
+aggregate_kind= "majority_vote" | "judge_max" ;         (* v1 registry *)
+
+(* Optional ensemble acceptance — direction ≥, DISTINCT from cascade < *)
+accept_decl   = "{", "kind", ":", "stat_at_least",
+                ",", "stat", ":", ( "vote_margin" | "vote_agreement" ),
+                ",", "threshold", ":", ident, "}" ;
+
+(* Loop stop — signal_accept (unroll-eligible) | external_accept | exhausted *)
+stop_decl     = "{", "kind", ":", stop_kind,
+                [ ",", "threshold", ":", ident ],       (* REQUIRED iff signal_accept *)
+                [ ",", "signal", ":", signal_surface ], (* REQUIRED iff signal_accept; inputs ⊆ state_keys *)
+                [ ",", "predicate", ":", ident ], "}" ; (* REQUIRED iff external_accept; opaque, outside P8 *)
+stop_kind     = "signal_accept" | "external_accept" | "exhausted" ;  (* v1 registry *)
 
 (* Type grammar - complete specification *)
 type          = base_type | compound_type ;
@@ -88,7 +185,18 @@ promotion_policy = "promotion_policy", ":", "{",
                    [ ",", "adjust", ":", ("none" | "bonferroni" | "holm" | "BH") ],
                    [ ",", "chance_constraints", ":", "[", { "{", "name", ":", ident, ",", "threshold", ":", number, ",", "confidence", ":", number, "}" { "," } }, "]" ],
                    [ ",", "tie_breakers", ":", "{", ident, ":", ("min" | "max" | "min_abs_deviation" | "custom"), { ",", ident, ":", ("min" | "max" | "min_abs_deviation" | "custom") }, "}" ],
+                   [ ",", require_calibration_spec ],
                    "}" ;
+
+(* TVL 1.1 (RFC 0001 §3.5) — strict evidence mode. The mandatory ctx_core is
+   implicit and immutable; hash_covered_context selects EXTENSION keys only. *)
+require_calibration_spec = "require_calibration", ":", "{",
+                   "enabled", ":", boolean,
+                   [ ",", "hash_covered_context", ":", "[", [ ctx_ext_key, { ",", ctx_ext_key } ], "]" ],
+                   [ ",", "signal_inputs", ":", "[", [ ident, { ",", ident } ], "]" ],  (* TVL 1.2: the ordered value covered under the signal_inputs key (§3.2 item 11) *)
+                   "}" ;
+ctx_ext_key   = "stage_versions" | "model_versions" | "budget_assumptions" | "cost_assumptions"
+              | "signal_inputs" ;   (* TVL 1.2 (RFC 0002 §3.2 item 11): use-site SignalUse.inputs freshness *)
 
 exploration   = "exploration", ":", "{",
                 "strategy", ":", "{", "type", ":", ("random" | "grid" | "tpe" | "cmaes" | "nsga2" | "custom"), { "," key, ":", value }, "}",
@@ -141,7 +249,11 @@ coefficient   = number ;
 env_ident     = ident ;                                  (* Must resolve to numeric env.context symbols, not TVARs *)
 
 (* ==================== TERMINALS ==================== *)
-ident         = ? identifier: [a-zA-Z_][a-zA-Z0-9_.]* ? ;
+ident         = ? identifier: [A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)* ? ;
+                                                         (* The single normative Ident grammar (RFC 0001 §3.7(2)):
+                                                            dot-separated segments, each starting with a letter or
+                                                            underscore — no leading/trailing/double dots. Matches
+                                                            tvl.schema.json's pattern exactly. *)
 number        = ? number literal: -?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)? ? ;
 integer       = ? integer literal: -?[0-9]+ ? ;
 string        = ? quoted string literal with backslash escapes ("..." or '...') ? ;

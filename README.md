@@ -1,33 +1,61 @@
-# Tuned Variables Language (TVL) by Traigent
+# TVL — an AI agent requirements specification language
 
-The official GitHub repository for TVL, Traigent’s typed specification language for governed tuning, validation, and promotion of AI agents and other adaptive systems.
-It includes the language spec, validators, CLI tools, editor support, examples, educational materials, and website source for `tvl-lang.org`.
+**Tuned Variables Language (TVL)** is a typed, machine-checkable language for specifying what an AI agent must achieve, what parts of its design may vary, and what evidence is required before a candidate may be accepted.
 
-## What Is Here
+AI agent requirements are often scattered across prompts, configuration files, evaluation scripts, dashboards, and release checklists. That makes it hard to answer basic questions: Which agent designs are allowed? Which properties are required? Which evaluation set and metrics define success? What evidence supports a release or certification claim?
 
-- `spec/` — normative grammar, schemas, examples, and promotion artifacts
-- `python/` — lightweight Python SDK and validation logic
-- `tvl_tools/` — CLI tools for parse, lint, validate, structural checks, operational checks, compose, config validation, measurement validation, and CI gates
-- `tests/` — core public validation and tooling tests
-- `conformance/` — small black-box compatibility cases
-- `vscode-tvl/` — TVL-only VS Code extension
-- `editor_shared/` — shared editor grammar and language configuration assets
-- `docs/` — reference docs and getting-started material
-- `tvl_book/` — canonical examples, website content, figures, and study materials
-- `website/` — React site that powers `tvl-lang.org`
-- `formalization/` — formal semantics notes
-- `proofs/` — Lean mechanization for selected TVL results
-- `demos/` — reproducible terminal demos
+TVL puts those requirements in one reviewable specification. It describes an **agent design space**, rather than prescribing the code or optimization algorithm used to build one agent.
 
-## Quick Start
+## The problem TVL solves
 
-Install the Python package and CLI tools from the repo root:
+A TVL module connects four things that otherwise drift apart:
+
+1. **Agent design space** — typed variables for allowed models, prompts, tools, retrieval, routing, memory, orchestration, and other agent choices.
+2. **Required properties** — structural rules, operating assumptions, objectives, acceptable ranges, and behavioral constraints.
+3. **Evaluation contract** — the evaluation set and metric identifiers used to produce comparable evidence.
+4. **Acceptance policy** — the evidence and statistical conditions required to accept or promote a candidate.
+
+This gives developers, evaluators, CI systems, and certification workflows a shared contract for AI agent verification.
+
+## What makes TVL different
+
+TVL specifies the set of acceptable agents. It does not specify the construction procedure for a particular agent.
+
+```text
+TVL module
+  ├── allowed agent choices
+  ├── relationships between those choices
+  ├── required measured properties
+  ├── pinned evaluation context
+  └── acceptance and promotion criteria
+          ↓
+    validators, optimizers, evaluators, CI gates, or certifiers
+```
+
+Any compatible tool may search the declared space. The TVL contract stays stable when the optimizer, model provider, agent framework, or implementation changes.
+
+## Verification and certification scope
+
+TVL can be the specification layer for a verifiable certificate. A defensible claim is scoped to:
+
+- a versioned TVL module;
+- a candidate configuration or implementation binding;
+- a pinned evaluation set and environment context;
+- named evaluator and metric definitions;
+- evidence produced by a governed process; and
+- the acceptance checks that actually ran.
+
+Passing a TVL gate means that the candidate met the declared requirements under that pinned contract and evidence. It does not by itself prove universal safety, correctness, or performance outside that scope. See [AI Agent Requirements and Certification](docs/agent-requirements.md).
+
+## Quick start
+
+Install the Python package and CLI tools from the repository root:
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
-Then validate one shipped example:
+Validate a shipped AI agent specification:
 
 ```bash
 tvl-validate spec/examples/rag-support-bot.tvl.yml
@@ -35,40 +63,37 @@ tvl-check-structural spec/examples/rag-support-bot.tvl.yml
 tvl-check-operational spec/examples/rag-support-bot.tvl.yml
 ```
 
-## Website
+## Repository map
 
-The public site lives under `website/`. Its canonical educational content is synced from:
+- `spec/` — normative grammar, schemas, examples, and promotion contracts
+- `docs/` — problem statement, language reference, verification model, and guides
+- `formalization/` — formal semantics, with normative and informative sections identified
+- `python/` and `tvl_tools/` — reference validators, SDK, and CLI tools
+- `tests/` and `conformance/` — executable validation and compatibility cases
+- `vscode-tvl/` and `editor_shared/` — editor support
+- `website/` — source for [tvl-lang.org](https://tvl-lang.org)
+- `proofs/` — Lean mechanization for selected results
 
-- `docs/`
-- `spec/`
-- `tvl_book/website_content/`
-- `tvl_book/examples/`
+## Start here
 
-To refresh website-owned generated content:
+1. [AI Agent Requirements and Certification](docs/agent-requirements.md)
+2. [Getting Started](docs/getting-started.md)
+3. [Language Reference](docs/reference/language.md)
+4. [Semantics and Verification Reference](docs/reference/verification.md)
+5. [Agent Evaluation and Promotion Evidence](docs/guides/statistical-validation-guide.md)
+6. [Complete examples](spec/examples/)
 
-```bash
-cd website
-python3 scripts/sync_canonical_resources.py
-```
+## Specification boundary
 
-## Using This Repository
-
-Start with:
-
-1. `spec/examples/` for complete TVL modules
-2. `docs/` for the language reference and walkthroughs
-3. `tvl_tools/` and `python/` for validation and automation
-4. `website/` if you are working on the public site
+TVL standardizes what a conforming module means and what a verifier must check. It does not standardize search algorithms, optimizer architecture, scheduling, sample allocation, or internal solver representation. Those mechanisms may be documented by individual implementations without becoming part of the language contract.
 
 ## License
 
 - Code, schemas, validators, CLI tools, editor support, tests, executable examples, and the website application are licensed under Apache-2.0 in [LICENSE](LICENSE), unless a subdirectory provides its own license file.
 - Authored documentation, website/book learning content, formalization notes, figures, and the specification PDF are licensed under CC-BY-4.0 as described in [LICENSE-content](LICENSE-content).
-- Generated website copies in `website/client/public/docs/` and `website/client/public/book-assets/` follow the same CC-BY-4.0 content license as their canonical sources.
 
 ## Links
 
 - Website: <https://tvl-lang.org>
-- Official TVL GitHub repository page: <https://tvl-lang.org/github>
-- Repository: <https://github.com/Traigent/tvl>
+- Documentation: <https://tvl-lang.org/specification>
 - Issues: <https://github.com/Traigent/tvl/issues>

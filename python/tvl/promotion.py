@@ -51,8 +51,10 @@ class ObjectiveResult:
     df: Optional[float]
     p_value_noninf: float
     p_value_super: float
+    p_value_inferior: float = 1.0
     adjusted_p_noninf: Optional[float] = None
     adjusted_p_super: Optional[float] = None
+    adjusted_p_inferior: Optional[float] = None
     epsilon: float = 0.0
     verdict: str = "inconclusive"  # "superior", "noninferior", "inferior", "inconclusive"
 
@@ -153,8 +155,10 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
         "df": r.df,
         "p_value_noninf": r.p_value_noninf,
         "p_value_super": r.p_value_super,
+        "p_value_inferior": r.p_value_inferior,
         "adjusted_p_noninf": r.adjusted_p_noninf,
         "adjusted_p_super": r.adjusted_p_super,
+        "adjusted_p_inferior": r.adjusted_p_inferior,
         "epsilon": r.epsilon,
         "verdict": r.verdict,
     }
@@ -192,7 +196,7 @@ def epsilon_pareto_gate(
     Returns:
         Tuple of (decision, evidence) where decision is one of:
         - "Promote": Candidate passes all non-inferiority tests and at least one superiority
-        - "Reject": Candidate fails non-inferiority on at least one objective
+        - "Reject": Evidence demonstrates regression beyond the allowed margin
         - "NoDecision": Insufficient evidence to promote or reject
     """
     require_scipy()
@@ -215,6 +219,7 @@ def epsilon_pareto_gate(
 
     # Test each standard objective
     super_pvalues: List[Tuple[str, float]] = []
+    inferior_pvalues: List[Tuple[str, float]] = []
     for spec in obj_specs:
         if spec.band is not None:
             # Banded objective - use TOST
@@ -237,25 +242,39 @@ def epsilon_pareto_gate(
             )
             evidence.per_objective[spec.name] = result
             super_pvalues.append((spec.name, result.p_value_super))
+            inferior_pvalues.append((spec.name, result.p_value_inferior))
 
-    # Apply multiplicity adjustment to superiority p-values (union component).
+    # Superiority (at least one improvement) and inferiority (at least one
+    # regression) are both union claims. Apply the configured adjustment to
+    # both families. Non-inferiority remains an intersection-union test.
     adjust_name = str(adjust).upper()
     if super_pvalues and adjust_name != "NONE":
         adjusted_super = _adjust_pvalues([p for _, p in super_pvalues], adjust_name)
+        adjusted_inferior = _adjust_pvalues([p for _, p in inferior_pvalues], adjust_name)
         if adjust_name == "BH":
             evidence.fdr_controlled_at = alpha
         for i, (name, _) in enumerate(super_pvalues):
             obj_result = evidence.per_objective.get(name)
             if isinstance(obj_result, ObjectiveResult):
                 obj_result.adjusted_p_super = adjusted_super[i]
+                obj_result.adjusted_p_inferior = adjusted_inferior[i]
 
-    # Determine verdicts: non-inferiority (IUT) is unadjusted; superiority uses adjusted p-values.
+    # Determine verdicts: non-inferiority (IUT) is unadjusted; the two union
+    # claims use adjusted p-values when adjustment is enabled.
     all_noninf = True
     any_superior = False
     for name, obj_result in evidence.per_objective.items():
         if isinstance(obj_result, ObjectiveResult):
-            if obj_result.p_value_noninf >= alpha:
+            p_inferior = (
+                obj_result.adjusted_p_inferior
+                if obj_result.adjusted_p_inferior is not None
+                else obj_result.p_value_inferior
+            )
+            if p_inferior < alpha:
                 obj_result.verdict = "inferior"
+                all_noninf = False
+            elif obj_result.p_value_noninf >= alpha:
+                obj_result.verdict = "inconclusive"
                 all_noninf = False
             else:
                 p_super = (
@@ -502,6 +521,7 @@ def _test_from_samples(
         # Test statistic: t = (sigma * mean_diff + epsilon) / se
         t_noninf = (sigma * mean_diff + epsilon) / se
         p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+        p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
         # Superiority: H0: sigma * delta <= epsilon
         t_super = (sigma * mean_diff - epsilon) / se
@@ -520,6 +540,7 @@ def _test_from_samples(
             df=df,
             p_value_noninf=max(1e-300, min(1.0, p_noninf)),
             p_value_super=max(1e-300, min(1.0, p_super)),
+            p_value_inferior=max(1e-300, min(1.0, p_inferior)),
             epsilon=epsilon,
         )
 
@@ -545,6 +566,7 @@ def _test_from_samples(
     # Non-inferiority test
     t_noninf = (sigma * delta + epsilon) / se
     p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
     # Superiority test
     t_super = (sigma * delta - epsilon) / se
@@ -565,6 +587,7 @@ def _test_from_samples(
         df=df,
         p_value_noninf=max(1e-300, min(1.0, p_noninf)),
         p_value_super=max(1e-300, min(1.0, p_super)),
+        p_value_inferior=max(1e-300, min(1.0, p_inferior)),
         epsilon=epsilon,
     )
 
@@ -623,6 +646,7 @@ def _test_from_stats(
 
     t_noninf = (sigma * delta + epsilon) / se
     p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
     t_super = (sigma * delta - epsilon) / se
     p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
@@ -640,6 +664,7 @@ def _test_from_stats(
         df=df,
         p_value_noninf=max(1e-300, min(1.0, p_noninf)),
         p_value_super=max(1e-300, min(1.0, p_super)),
+        p_value_inferior=max(1e-300, min(1.0, p_inferior)),
         epsilon=epsilon,
     )
 
@@ -882,14 +907,7 @@ def _adjust_pvalues(p_values: List[float], method: str) -> List[float]:
 
 def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
     """Make final promotion decision based on evidence."""
-    # Check for any failures
-    if not evidence.all_noninferior:
-        failing = [
-            name for name, r in evidence.per_objective.items()
-            if isinstance(r, ObjectiveResult) and r.verdict == "inferior"
-        ]
-        return ("Reject", f"Non-inferiority failed on: {', '.join(failing)}")
-
+    # Hard acceptability failures take precedence over inconclusive comparisons.
     if not evidence.all_chance_pass:
         failing = [
             name for name, r in evidence.chance_constraints.items()
@@ -906,6 +924,25 @@ def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
             if isinstance(r, BandedResult) and r.verdict == "out_of_band"
         ]
         return ("Reject", f"Banded objectives failed TOST: {', '.join(failing)}")
+
+    if not evidence.all_noninferior:
+        failing = [
+            name for name, r in evidence.per_objective.items()
+            if isinstance(r, ObjectiveResult) and r.verdict == "inferior"
+        ]
+        if failing:
+            return (
+                "Reject",
+                f"Regression beyond the allowed margin demonstrated on: {', '.join(failing)}",
+            )
+        inconclusive = [
+            name for name, r in evidence.per_objective.items()
+            if isinstance(r, ObjectiveResult) and r.verdict == "inconclusive"
+        ]
+        return (
+            "NoDecision",
+            f"Non-inferiority not established on: {', '.join(inconclusive)}",
+        )
 
     # Check for promotion (need at least one superior AND all bands proven in-band)
     if evidence.all_bands_pass and evidence.any_superior:

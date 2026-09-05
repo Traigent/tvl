@@ -1,4 +1,5 @@
 import Layout from "@/components/Layout";
+import Seo from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +29,11 @@ export default function Specification() {
 
   return (
     <Layout>
+      <Seo
+        title="TVL AI Agent Requirements Specification | Traigent"
+        description="Read the TVL language specification for AI agent design spaces, desired properties, evaluation evidence, verification, and scoped certification."
+        path="/specification"
+      />
       {/* Header Section */}
       <section className="py-16 bg-gradient-to-br from-primary/10 via-transparent to-primary/5">
         <div className="container">
@@ -53,8 +59,14 @@ export default function Specification() {
               implementing tooling or checking exact formats.
             </p>
             <div className="flex flex-wrap gap-4">
-              <Link href="/examples">
+              <Link href="/specification/agent-requirements">
                 <Button size="lg">
+                  <Target className="mr-2 h-5 w-5" />
+                  Why TVL for AI Agents
+                </Button>
+              </Link>
+              <Link href="/examples">
+                <Button size="lg" variant="outline">
                   <FileCode className="mr-2 h-5 w-5" />
                   Start With `hello_tvl.yml`
                 </Button>
@@ -115,8 +127,8 @@ export default function Specification() {
                   Declare Possibilities
                 </CardTitle>
                 <CardDescription className="text-sm leading-6">
-                  TVL focuses on the <strong>what</strong>, not one guessed realization. You describe the allowed search
-                  space over tuned variables, the objectives that rank candidates, and the constraints they must
+                  TVL focuses on the <strong>what</strong>. You describe the admissible agent design space over tuned
+                  variables, the objectives that rank candidates, and the constraints they must
                   satisfy.
                 </CardDescription>
               </CardHeader>

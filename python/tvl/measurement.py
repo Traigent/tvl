@@ -238,6 +238,34 @@ def _evaluate_chance(module: Dict[str, Any], measurement: Dict[str, Any]) -> Lis
 
 def _evaluate_promotion_readiness(module: Dict[str, Any], measurement: Dict[str, Any]) -> List[Dict[str, Any]]:
     issues: List[Dict[str, Any]] = []
+    strict_policy = ((module.get("promotion_policy") or {}).get("require_calibration") or {})
+    strict_cvar = any(
+        bool(((cvar.get("governance") or {}).get("require_calibration")))
+        for cvar in (module.get("cvars") or [])
+        if isinstance(cvar, dict)
+    )
+    if bool(strict_policy.get("enabled")) or strict_cvar:
+        issues.append(
+            {
+                "code": "calibration_evidence_unsupported",
+                "message": (
+                    "This module requires calibration certificates, but the current "
+                    "measurement bundle and tvl-ci-gate contract cannot validate them."
+                ),
+            }
+        )
+    expected_module_id = (module.get("tvl") or {}).get("module")
+    measured_module_id = measurement.get("module_id")
+    if measured_module_id and expected_module_id and measured_module_id != expected_module_id:
+        issues.append(
+            {
+                "code": "measurement_module_mismatch",
+                "message": (
+                    f"Measurement targets module {measured_module_id} but the gate uses "
+                    f"module {expected_module_id}."
+                ),
+            }
+        )
     objective_values = measurement.get("objective_values", {}) or {}
     chance_outcomes = measurement.get("chance_outcomes", {}) or {}
 

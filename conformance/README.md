@@ -9,4 +9,4 @@ This suite captures a minimal set of black-box cases that the loader and validat
 - `cases/configurations/valid.yml` — configuration valid for example module
 - `cases/measurements/valid.yml` — measurement bundle satisfying objectives
 
-`expected/results.json` contains placeholders until the SMT and statistical tests are implemented.
+`expected/results.json` records executable expected outcomes. `tests/test_conformance_suite.py` runs the structural, configuration, measurement, and promotion cases against the reference implementation.

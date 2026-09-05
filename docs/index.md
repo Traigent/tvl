@@ -1,6 +1,6 @@
-# TVL: The Tuned Variables Language
+# TVL: AI agent requirements as a verifiable specification
 
-## LLM applications are under-specified
+## AI agents are under-specified
 
 Teams still describe production AI systems with vague requests:
 
@@ -8,39 +8,41 @@ Teams still describe production AI systems with vague requests:
 > *"Improve accuracy."*  
 > *"Keep latency under control."*
 
-Those requirements usually get translated into scattered prompt edits, hidden model switches, and one-off runtime flags. TVL turns that into a single, typed, reviewable specification.
+Those requirements usually get translated into scattered prompt edits, hidden model switches, evaluation scripts, dashboards, and one-off runtime flags. TVL turns them into a single, typed, reviewable specification of the allowed agent designs and the properties a candidate must demonstrate.
+
+**Tuned Variables Language (TVL)** is an AI agent requirements specification language. It defines what may vary, what must hold, how desired properties are measured, and what evidence is required for acceptance or promotion. It specifies an agent design space rather than a recipe for building one particular agent.
 
 <div class="grid cards" markdown>
 
--   :material-tune-variant: **Declare tuned variables explicitly**
+-   :material-tune-variant: **Specify the agent design space**
 
-    Capture models, prompts, routing policies, retrieval parameters, tool choices, and safety knobs as typed TVARs instead of ad-hoc config.
+    Declare allowed models, prompts, routing policies, retrieval parameters, tool choices, memory, and orchestration as typed TVARs.
 
--   :material-shield-check: **Check feasibility before runtime**
+-   :material-shield-check: **State required properties**
 
-    Validate types, domains, and structural constraints early, and reject contradictory or unsupported configurations before they reach production.
+    Express structural rules, operational assumptions, measurable objectives, acceptable ranges, and behavioral constraints.
 
--   :material-chart-scatter-plot: **Gate promotion with evidence**
+-   :material-chart-scatter-plot: **Bind requirements to evidence**
 
-    Express objectives, effect sizes, multiple-testing policy, and chance constraints in one promotion contract.
+    Pin the evaluation set and metric definitions used to decide whether a candidate satisfies the contract.
 
--   :material-file-document-check: **Keep artifacts reproducible**
+-   :material-file-document-check: **Support verifiable certification**
 
-    Pin environment snapshots and evaluation sets so optimization, validation, and promotion decisions stay auditable.
+    Preserve the specification, candidate, evaluator, evidence, and governed decision as a scoped conformance claim.
 
 </div>
 
 ## What TVL makes explicit
 
-TVL is the contract boundary for governed adaptation in AI systems. A TVL module captures:
+TVL is the contract boundary for governed adaptation in AI agents. A TVL module captures:
 
-*   **Search space**: typed TVARs over primitive, enum, tuple, and callable domains
+*   **Agent design space**: typed TVARs over primitive, enum, tuple, and callable domains
 *   **Feasibility rules**: solver-friendly structural constraints over TVARs
 *   **Operational assumptions**: environment snapshots with pinned bindings and numeric context for operational checks
-*   **Optimization intent**: maximize/minimize objectives and banded targets
+*   **Desired properties**: maximize/minimize objectives and acceptable target bands
 *   **Metric contract**: optional `metric_ref` pointers that tell the evaluator which metric definition computes each objective
-*   **Promotion governance**: `epsilon_pareto`, `min_effect`, `adjust`, and `chance_constraints`
-*   **Search budget**: strategy, convergence hints, and bounded exploration
+*   **Acceptance governance**: `epsilon_pareto`, `min_effect`, `adjust`, and `chance_constraints`
+The public language contract defines what these requirements mean. Search algorithms, candidate scheduling, sample allocation, and internal solver representations remain implementation choices.
 
 ## A Valid TVL Example
 
@@ -106,16 +108,6 @@ promotion_policy:
     - name: latency_slo
       threshold: 0.05
       confidence: 0.95
-
-exploration:
-  strategy:
-    type: nsga2
-  convergence:
-    metric: hypervolume_improvement
-    window: 5
-    threshold: 0.01
-  budgets:
-    max_trials: 48
 ```
 
 TVL also supports:
@@ -129,15 +121,15 @@ When present, `metric_ref` is a stable declarative ID such as `metrics.latency_p
 
 Callable and registry-backed domains are supported by the current tooling, but they are linted as outside the formally verified subset.
 
-## What formal specifications enable
+## What a formal agent specification enables
 
 TVL is the specification layer. It defines **what** may vary, **what** must hold, and **what** counts as improvement. That enables a full tooling stack on top.
 
-### Automatic Optimization
+### Tool-independent candidate search
 
 <figure markdown>
   ![TVL Optimization Demo](assets/demos/optimization.svg){ loading=lazy }
-  <figcaption>Formal specs turn configuration drift into a bounded optimization problem.</figcaption>
+  <figcaption>Any compatible optimizer can search the same declared agent design space.</figcaption>
 </figure>
 
 ### Spec Validation
@@ -155,7 +147,7 @@ TVL is the specification layer. It defines **what** may vary, **what** must hold
 </figure>
 
 !!! note "TVL is the stable contract boundary"
-    TVL sits between authoring front-ends, validation tooling, optimizer/runtime layers, and promotion workflows. In current Traigent materials, that means TVL remains the auditable governance contract even when other front-ends or runtimes sit around it.
+    TVL sits between authoring front-ends, validation tooling, optimizer/runtime layers, evaluation systems, and certification workflows. The contract remains reviewable when any of those implementations changes.
 
 ## Get Started
 
@@ -189,6 +181,10 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 
     Write a first valid module and run the core CLI checks.
 
+-   :material-certificate: **[AI Agent Requirements and Certification](agent-requirements.md)**
+
+    Understand the problem TVL solves, its agent-space model, and the scope of a TVL-based conformance claim.
+
 -   :material-file-document: **[Language Reference](reference/language.md)**
 
     Review the current TVL surface, including types, constraints, objectives, and promotion policy.
@@ -197,9 +193,9 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 
     Follow the canonical examples for RAG bots, routers, tool-use agents, validation fixtures, and overlays.
 
--   :material-text-box-search: **[Papers and Specs](PAPERS_AND_SPECS.md)**
+-   :material-text-box-search: **[Specification PDF](tvl_specification.pdf)**
 
-    Browse the formal spec, arXiv manuscript, book artifacts, and supporting materials.
+    Download the current packaged TVL specification artifact.
 
 -   :material-github: **[Examples on GitHub](https://github.com/Traigent/tvl/tree/main/spec/examples)**
 

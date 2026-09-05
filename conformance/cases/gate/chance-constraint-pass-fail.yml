@@ -1,3 +1,32 @@
-# Synthetic gate inputs are represented externally; this file is a placeholder.
-note: see tvl/tools/tvl_ci_gate for CLI usage
+module:
+  tvl:
+    module: conformance.gate.chance
+  objectives:
+    - name: quality
+      direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+    adjust: none
+    chance_constraints:
+      - name: policy_violation
+        threshold: 0.05
+        confidence: 0.95
 
+incumbent:
+  objective_values:
+    quality: {mean: 0.80, std: 0.02, n: 100}
+
+passing_candidate:
+  objective_values:
+    quality: {mean: 0.90, std: 0.02, n: 100}
+  chance_outcomes:
+    policy_violation: {violations: 0, trials: 100}
+
+failing_candidate:
+  objective_values:
+    quality: {mean: 0.90, std: 0.02, n: 100}
+  chance_outcomes:
+    policy_violation: {violations: 8, trials: 100}

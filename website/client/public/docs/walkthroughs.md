@@ -104,7 +104,7 @@ tvl-check-operational <module> --json
 If you are working with composed overlays or runtime artifacts, extend the flow with:
 
 ```bash
-tvl-compose base.tvl.yml staging.overlay.yml > merged.tvl.yml
+tvl-compose staging.overlay.yml -o merged.tvl.yml
 tvl-config-validate merged.tvl.yml config.yml
 tvl-measure-validate merged.tvl.yml config.yml measurements.yml
 ```

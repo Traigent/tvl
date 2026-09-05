@@ -1,5 +1,7 @@
 # Semantics and Verification Reference
 
+TVL verification answers whether a candidate satisfies a declared AI agent requirements contract. A positive result is scoped to the module, candidate, evaluation set, evaluator, environment, and evidence used by the check; it is not a universal safety or correctness claim.
+
 This page explains the verifier model behind the TVL CLI and the SAT/UNSAT terminology that appears in the specification and example fixtures.
 
 For the full mathematical treatment, see `tvl/formalization/tvl-formal-semantics.md`. This page is the user-facing implementation guide.
