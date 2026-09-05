@@ -1107,7 +1107,7 @@ For a precision-aligned domain D with precision P, the scaling function is bijec
 ```
 
 **Choosing an exact precision**.
-There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling MUST instead choose a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is a power of ten at least as large as the maximum decimal scale after parsing the values exactly. If the implementation cannot establish alignment, it MUST use an exact rational or index encoding, or report that this reference encoding is unavailable.
+There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling needs a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is a power of ten at least as large as the maximum decimal scale after parsing the values exactly. The normative conformance requirement and required fallback behavior are stated in §10.4.
 
 ### 8.6 Formula Encoding
 
@@ -1399,10 +1399,10 @@ if ¬Valid(c_cand, M):
     return Error("invalid configuration")
 if any chance constraint fails or any BandHardFail holds:
     return Reject("acceptability check failed")
+if any adjusted inferiority test rejects its null:
+    return Reject("regression beyond the allowed margin demonstrated")
 if any band is not BandPass:
     return NoDecision("band acceptability not established")
-if any adjusted inferiority test passes:
-    return Reject("regression beyond the allowed margin demonstrated")
 if StatDominates(c_cand, c_inc, Y_cand, Y_inc, M):
     return Promote
 return NoDecision("insufficient evidence")
@@ -1478,9 +1478,9 @@ For a TVL implementation to be **conformant**, it must satisfy:
 
 ### 10.4 Structural Decision Procedure Requirements
 
-1. Preserve the structural satisfaction judgments in Sections 5–7
+1. Preserve the normative structural satisfaction judgments in Sections 5 and 6
 2. Decide satisfiability for the supported core subset
-3. Preserve exact finite-domain membership and comparison behavior
+3. Preserve exact finite-domain membership and comparison behavior. If an implementation uses integer scaling, it MUST choose a positive integer precision that aligns every finite domain value and every value reconstructed from a range; otherwise it MUST use exact rational or index encoding, or report that the reference encoding is unavailable.
 4. Report unsupported constructs rather than silently changing their meaning
 
 An implementation MAY use the informative SMT encoding in §8, another solver encoding, or a direct decision procedure.
@@ -1489,7 +1489,7 @@ An implementation MAY use the informative SMT encoding in §8, another solver en
 
 1. Implement ε-Pareto comparison per §9.3 with direction normalization (§9.4)
 2. Support statistical testing with direction-normalized differences (Definition 9.4)
-3. Apply the configured multiple-testing adjustment to superiority p-values as specified in §9.8
+3. Apply the configured multiple-testing adjustment separately to the superiority and inferiority p-value families as specified in §9.8
 4. Verify evaluation results include sample size for proper df calculation
 5. Distinguish demonstrated failure (`Reject`) from insufficient evidence (`NoDecision`)
 

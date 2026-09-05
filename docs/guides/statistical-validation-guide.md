@@ -60,7 +60,7 @@ The reference decision vocabulary is:
 | Decision | Meaning |
 | --- | --- |
 | `Promote` | The candidate passed every required acceptability check, established non-inferiority on all directional objectives, and established a required improvement. |
-| `Reject` | The evidence established a hard failure, such as a breached chance constraint, an out-of-band result, an invalid candidate, or demonstrated regression beyond the allowed margin. |
+| `Reject` | The evidence established a hard failure, such as a breached chance constraint, an observed point estimate outside a hard band, an invalid candidate, or demonstrated regression beyond the allowed margin. |
 | `NoDecision` | The available evidence was insufficient to justify either promotion or rejection. |
 | `Error` | The inputs were invalid, inconsistent, unbound, or could not support the declared checks. |
 

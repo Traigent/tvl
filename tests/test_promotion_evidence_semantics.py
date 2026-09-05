@@ -92,6 +92,87 @@ def test_inferiority_family_uses_configured_adjustment() -> None:
     assert decision == "NoDecision"
 
 
+@pytest.mark.skipif(not SCIPY_AVAILABLE, reason="scipy not available")
+def test_inferiority_family_uses_holm_adjustment() -> None:
+    module = {
+        "objectives": [
+            {"name": "quality", "direction": "maximize"},
+            {"name": "groundedness", "direction": "maximize"},
+        ],
+        "promotion_policy": {
+            "alpha": 0.05,
+            "min_effect": {"quality": 0.02, "groundedness": 0.02},
+            "adjust": "holm",
+        },
+    }
+    incumbent = {
+        "objective_values": {
+            "quality": {"mean": 0.80, "std": 0.10, "n": 100},
+            "groundedness": {"mean": 0.80, "std": 0.10, "n": 100},
+        }
+    }
+    candidate = {
+        "objective_values": {
+            "quality": {"mean": 0.755, "std": 0.10, "n": 100},
+            "groundedness": {"mean": 0.80, "std": 0.10, "n": 100},
+        }
+    }
+
+    decision, evidence = epsilon_pareto_gate(
+        incumbent,
+        candidate,
+        module["promotion_policy"],
+        module["objectives"],
+    )
+
+    results = evidence["per_objective"]
+    raw = [results[name]["p_value_inferior"] for name in ("quality", "groundedness")]
+    adjusted = [results[name]["adjusted_p_inferior"] for name in ("quality", "groundedness")]
+    smaller = min(range(2), key=raw.__getitem__)
+    larger = 1 - smaller
+    assert adjusted[smaller] == pytest.approx(min(1.0, 2 * raw[smaller]))
+    assert adjusted[larger] == pytest.approx(max(adjusted[smaller], raw[larger]))
+    assert evidence["summary"]["adjustment_method"] == "holm"
+    assert decision == "NoDecision"
+
+
+@pytest.mark.skipif(not SCIPY_AVAILABLE, reason="scipy not available")
+def test_demonstrated_inferiority_precedes_inconclusive_band() -> None:
+    module = {
+        "objectives": [
+            {"name": "quality", "direction": "maximize"},
+            {"name": "length", "band": {"target": [95, 105], "alpha": 0.05}},
+        ],
+        "promotion_policy": {
+            "alpha": 0.05,
+            "min_effect": {"quality": 0.02},
+            "adjust": "none",
+        },
+    }
+    incumbent = {
+        "objective_values": {
+            "quality": {"mean": 0.90, "std": 0.02, "n": 50},
+        }
+    }
+    candidate = {
+        "objective_values": {
+            "quality": {"mean": 0.70, "std": 0.02, "n": 50},
+            "length": {"mean": 100.0, "std": 8.0, "n": 5},
+        }
+    }
+
+    decision, evidence = epsilon_pareto_gate(
+        incumbent,
+        candidate,
+        module["promotion_policy"],
+        module["objectives"],
+    )
+
+    assert evidence["per_objective"]["quality"]["verdict"] == "inferior"
+    assert evidence["per_objective"]["length"]["verdict"] == "inconclusive"
+    assert decision == "Reject"
+
+
 def test_measurement_for_another_module_is_not_promotion_ready() -> None:
     measurement = {
         "module_id": "corp.other.agent",

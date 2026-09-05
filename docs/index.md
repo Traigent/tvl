@@ -26,7 +26,7 @@ Those requirements usually get translated into scattered prompt edits, hidden mo
 
     Pin the evaluation set and metric definitions used to decide whether a candidate satisfies the contract.
 
--   :material-file-document-check: **Support verifiable certification**
+-   :material-file-document-check: **Provide inputs for verifiable certification**
 
     Preserve the specification, candidate, evaluator, evidence, and governed decision as a scoped conformance claim.
 
@@ -125,11 +125,11 @@ Callable and registry-backed domains are supported by the current tooling, but t
 
 TVL is the specification layer. It defines **what** may vary, **what** must hold, and **what** counts as improvement. That enables a full tooling stack on top.
 
-### Tool-independent candidate search
+### Tool-independent candidate selection
 
 <figure markdown>
-  ![TVL Optimization Demo](assets/demos/optimization.svg){ loading=lazy }
-  <figcaption>Any compatible optimizer can search the same declared agent design space.</figcaption>
+  ![Example candidate-selection implementation](assets/demos/optimization.svg){ loading=lazy }
+  <figcaption>This is one possible implementation that consumes the declared agent design space; it is not part of the TVL language contract.</figcaption>
 </figure>
 
 ### Spec Validation
@@ -193,9 +193,9 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 
     Follow the canonical examples for RAG bots, routers, tool-use agents, validation fixtures, and overlays.
 
--   :material-text-box-search: **[Specification PDF](tvl_specification.pdf)**
+-   :material-text-box-search: **[Legacy TVL 1.0 PDF](tvl_specification.pdf)**
 
-    Download the current packaged TVL specification artifact.
+    Historical artifact that includes implementation-oriented material. The current documentation and formal semantics are canonical.
 
 -   :material-github: **[Examples on GitHub](https://github.com/Traigent/tvl/tree/main/spec/examples)**
 

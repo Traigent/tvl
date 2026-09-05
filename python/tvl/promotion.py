@@ -3,7 +3,7 @@
 This module implements ε-Pareto dominance testing with:
 - Non-inferiority tests (Welch's or paired t-test)
 - Superiority tests
-- Multiple-testing adjustment (Holm/Bonferroni/BH) on superiority tests
+- Multiple-testing adjustment (Holm/Bonferroni/BH) on superiority and inferiority families
 - TOST equivalence for banded objectives
 - Clopper-Pearson confidence intervals for chance constraints over violation rates
 """
@@ -923,7 +923,7 @@ def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
             name for name, r in evidence.per_objective.items()
             if isinstance(r, BandedResult) and r.verdict == "out_of_band"
         ]
-        return ("Reject", f"Banded objectives failed TOST: {', '.join(failing)}")
+        return ("Reject", f"Banded objectives outside declared band: {', '.join(failing)}")
 
     if not evidence.all_noninferior:
         failing = [

@@ -31,7 +31,7 @@ export default function Specification() {
     <Layout>
       <Seo
         title="TVL AI Agent Requirements Specification | Traigent"
-        description="Read the TVL language specification for AI agent design spaces, desired properties, evaluation evidence, verification, and scoped certification."
+        description="Read the TVL language specification for AI agent design spaces, desired properties, evaluation evidence, verification, and a foundation for scoped certification."
         path="/specification"
       />
       {/* Header Section */}

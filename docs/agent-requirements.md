@@ -12,9 +12,9 @@ TVL provides that missing contract.
 
 A TVL module describes a set of admissible agent configurations:
 
-\[
+$$
 \mathcal{A}_{M} = \{a \mid a \text{ is in the declared domains and satisfies the declared constraints}\}
-\]
+$$
 
 The module then states the properties to measure and the evidence needed to accept one member of that set. It does not prescribe a sequence of implementation steps and it does not require a particular search algorithm.
 
@@ -48,12 +48,16 @@ The certificate should identify immutable versions or hashes for those artifacts
 
 This is a scoped statement. It does not establish that the agent is safe in every context, correct for every input, or superior under conditions that were not evaluated. Broader claims require broader requirements and evidence.
 
+Evaluator reliability is part of that scope. A pinned evaluator definition makes the judgment reproducible; it does not prove that the evaluator is valid, unbiased, calibrated, or appropriate for every population. Those properties need their own requirements and evidence.
+
 TVL also separates two kinds of claims:
 
 1. **Process conformance** — the required artifacts were pinned, the declared checks ran, and the decision followed the specified policy.
 2. **Agent conformance** — the candidate met the declared behavioral and comparative requirements under that process.
 
 Both are needed for a verifiable certification system. The language defines the requirements; a certification implementation must preserve the evidence chain.
+
+At minimum, a governed-process record should identify the immutable versions or hashes of the TVL module, candidate binding, evaluation set, evaluator definitions, environment context, produced evidence, applied decision policy, and resulting decision. The certificate profile still needs to define the portable representation, integrity mechanism, issuer identity, and verification procedure for that record.
 
 ### Current implementation status
 

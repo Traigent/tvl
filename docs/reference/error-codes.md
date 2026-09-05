@@ -336,7 +336,7 @@ These warnings indicate that the module uses features outside the formally verif
 - **Example**: `domain: { range: [0.0001, 0.001], resolution: 0.0001 }` with precision P=1000
 - **Impact**: SMT encoding soundness (Theorem 8.1) does not hold; constraint checking may be incorrect.
 - **Formal Property**: Domain is not precision-aligned per Definition 8.5.
-- **Remediation**: Increase precision factor (--precision=N) or use coarser resolution.
+- **Remediation**: Choose a precision factor that exactly aligns every declared decimal value and range step; the diagnostic reports one exact-alignment factor when it can derive one. Otherwise use an exact rational or index encoding. A factor based only on the smallest gap between values is not sufficient.
 
 ---
 

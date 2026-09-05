@@ -717,7 +717,7 @@ class PromotionGateTests(unittest.TestCase):
         objectives = [{"name": "quality", "direction": "maximize"}]
 
         decision, evidence = epsilon_pareto_gate(incumbent, candidate, policy, objectives)
-        # Fails closed (Reject here, matching the n<2 degenerate path) - never Promote.
+        # Fails closed as NoDecision because neither superiority nor inferiority is estimable.
         self.assertNotEqual("Promote", decision)
         self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_super"])
         self.assertEqual(1.0, evidence["per_objective"]["quality"]["p_value_noninf"])
@@ -839,7 +839,7 @@ class PromotionGateTests(unittest.TestCase):
         """On-target banded metric measured with few samples -> NoDecision, not Reject.
 
         Spec promotion-gate-io.md section 6 "TOST fail (power)" row:
-        Mean=100, band=[95,105], n=5, sigma=5 -> NoDecision.
+        Mean=100, band=[95,105], n=5, sigma=8 -> NoDecision.
         """
         incumbent = {"objective_values": {}}
         candidate = {"objective_values": {"length": {"mean": 100.0, "std": 8.0, "n": 5}}}

@@ -2,6 +2,15 @@
 
 All notable changes to the TVL spec, schema, tools, and SDK will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Revised the promotion decision contract so failure to establish non-inferiority returns `NoDecision`; `Reject` now requires demonstrated inferiority, a failed chance constraint, or an observed point estimate outside a hard band.
+- Added `p_value_inferior`, `adjusted_p_inferior`, and `any_band_out_of_band` to promotion evidence.
+- Made unsupported strict-calibration evidence and measurement/module identity mismatches promotion-readiness failures.
+- Advanced the Promotion Gate I/O document to draft version 1.1 for review of these observable contract changes.
+
 ## [1.0.0] - 2026-02-01
 
 ### Added

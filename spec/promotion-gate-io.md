@@ -1,8 +1,8 @@
 # Promotion Gate I/O Specification
 
-**Version**: 1.0
-**Status**: Stable
-**Date**: January 2026
+**Version**: 1.1
+**Status**: Draft
+**Date**: September 2026
 
 This document specifies the input/output format for the TVL promotion gate, the statistical testing procedures, and the decision logic.
 
@@ -157,8 +157,10 @@ evidence:
       df: 97.2
       p_value_noninf: 0.0001
       p_value_super: 0.15          # Not significant for superiority
+      p_value_inferior: 0.9999     # No evidence of regression beyond ε
       adjusted_p_noninf: null
       adjusted_p_super: 0.1500
+      adjusted_p_inferior: 1.0
       epsilon: 0.02
       verdict: "noninferior"       # Passes non-inferiority but not superiority
 
@@ -191,6 +193,7 @@ evidence:
     all_noninferior: true          # All objectives pass non-inferiority
     any_superior: true             # At least one objective is superior
     all_bands_pass: true           # All banded objectives pass TOST
+    any_band_out_of_band: false    # No banded point estimate lies outside its declared band
     all_chance_pass: false         # Chance constraint failed (ci_upper > threshold)
     adjustment_method: "holm"
     fdr_controlled_at: null        # Set only when adjust="BH"
@@ -340,6 +343,8 @@ Decision logic uses:
 - superiority: `adjusted_p_super` when adjustment is enabled, otherwise raw `p_value_super`
 - inferiority: `adjusted_p_inferior` when adjustment is enabled, otherwise raw `p_value_inferior`
 
+Adjusting the inferiority family cannot make a candidate promotable. It can only prevent a family-level regression claim from being made on unadjusted evidence, changing some otherwise-`Reject` outcomes to `NoDecision`.
+
 ---
 
 ## 5. Decision Logic
@@ -378,7 +383,7 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 | Superior on one | Better on obj1 by > ε, equal on others | Welch per obj | Promote |
 | BH correction | 10 objectives, 2 superiority p-values raw < 0.05 but adjusted > 0.05 | BH | NoDecision |
 | TOST pass | Mean = 100, band = [95, 105], n = 50, σ = 5 | TOST (90% CI) | Promote (if other tests pass) |
-| TOST fail (power) | Mean = 100, band = [95, 105], n = 5, σ = 5 | TOST (90% CI) | NoDecision |
+| TOST fail (power) | Mean = 100, band = [95, 105], n = 5, σ = 8 | TOST (90% CI) | NoDecision |
 | TOST fail (OOB) | Mean = 110, band = [95, 105] | TOST (90% CI) | Reject |
 | Chance pass | 0/120 violations, θ = 0.03, γ = 0.95 | Clopper-Pearson | (contributes to Promote) |
 | Chance fail | 8/100 violations, θ = 0.05, γ = 0.95 | Clopper-Pearson | Reject |

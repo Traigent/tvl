@@ -14,8 +14,8 @@ export default function GitHubRepo() {
   return (
     <Layout>
       <Seo
-        title="Tuned Variables Language (TVL) GitHub Repository | Traigent"
-        description="Official TVL GitHub repository by Traigent with the language spec, validators, CLI tools, VS Code extension, examples, and website source."
+        title="TVL AI Agent Specification Language on GitHub | Traigent"
+        description="TVL on GitHub: an AI agent requirements specification language with schemas, validators, CLI tools, examples, formal semantics, and editor support."
         path="/github"
       />
 

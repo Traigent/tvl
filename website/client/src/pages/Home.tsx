@@ -76,9 +76,9 @@ const TVL_CORE_POINTS = [
       "Rules between design choices. Example: if the agent is in `no_tools` mode, then retrieval depth must be 0.",
   },
   {
-    title: "Acceptance and Certification",
+    title: "Acceptance and Certification Scope",
     body:
-      "The evidence required before a candidate is accepted, promoted, or included in a scoped conformance certificate.",
+      "The evidence required before a candidate is accepted, promoted, or used in a scoped certification process.",
   },
 ];
 
@@ -87,7 +87,7 @@ export default function Home() {
     <Layout>
       <Seo
         title="TVL | AI Agent Requirements Specification Language"
-        description="TVL is a typed specification language for AI agent requirements, agent design spaces, evaluation evidence, verification, promotion, and scoped certification."
+        description="TVL is a typed specification language for AI agent requirements, agent design spaces, evaluation evidence, verification, and a foundation for scoped certification."
         path="/"
       />
       {/* Hero Section */}
@@ -107,7 +107,7 @@ export default function Home() {
               </strong>{" "}
               TVL defines what an agent must achieve, which designs are
               allowed, and what evidence is required before a candidate can be
-              accepted or certified.
+              accepted or used in a scoped certification process.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
               <Link href="/examples">
@@ -221,10 +221,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Layers className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Evidence-Bound Certification</CardTitle>
+                <CardTitle>Toward Evidence-Bound Certification</CardTitle>
                 <CardDescription>
-                  Bind the module, candidate, evaluation set, evaluator,
-                  evidence, and decision into a scoped conformance claim.
+                  Define the module, candidate, evaluation set, evaluator,
+                  evidence, and decision scope needed for a verifiable claim.
                 </CardDescription>
               </CardHeader>
             </Card>

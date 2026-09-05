@@ -15,7 +15,7 @@ const routeMeta = new Map([
     {
       title: "AI Agent Requirements and Certification with TVL",
       description:
-        "Learn how TVL specifies AI agent design spaces, desired properties, evaluation contracts, and evidence for scoped conformance certification.",
+        "Learn how TVL specifies AI agent design spaces, desired properties, evaluation contracts, and evidence as a foundation for scoped certification.",
     },
   ],
   [
@@ -71,7 +71,7 @@ const routeMeta = new Map([
     {
       title: "TVL AI Agent Requirements Specification | Traigent",
       description:
-        "Read the TVL language specification for AI agent design spaces, desired properties, evaluation evidence, verification, and scoped certification.",
+        "Read the TVL language specification for AI agent design spaces, desired properties, evaluation evidence, verification, and a foundation for scoped certification.",
     },
   ],
   [
