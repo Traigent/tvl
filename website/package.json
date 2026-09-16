@@ -109,7 +109,9 @@
       "baseline-browser-mapping": "^2.11.0",
       "esbuild": "0.28.1",
       "@vitest/mocker": "^4.1.11",
-      "proxy-addr": "2.0.8"
+      "proxy-addr": "2.0.8",
+      "katex": "0.18.2",
+      "raw-body": "3.0.2"
     }
   }
 }
