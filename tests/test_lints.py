@@ -162,6 +162,54 @@ class LintModuleTests(unittest.TestCase):
         codes = _collect_codes(issues)
         self.assertFalse(codes)
 
+    def test_duplicate_enum_domain_value_is_flagged(self) -> None:
+        """Issue #24 (1/3): a repeated enum domain member must not silently
+        collapse into one arm with no diagnostic."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "model", "type": "enum[str]", "domain": ["gpt-4o", "gpt-4o", "llama3.1"]},
+        ]
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertIn("duplicate_domain_value", codes)
+
+    def test_duplicate_numeric_set_domain_value_is_flagged(self) -> None:
+        """Issue #24 (1/3), numeric 'set' form of the same duplicate-member gap."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "batch_size", "type": "int", "domain": {"set": [1, 2, 2, 4]}},
+        ]
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertIn("duplicate_domain_value", codes)
+
+    def test_no_duplicate_domain_value_when_unique(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "model", "type": "enum[str]", "domain": ["gpt-4o", "llama3.1"]},
+        ]
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertNotIn("duplicate_domain_value", codes)
+
+    def test_orphan_min_effect_key_is_flagged(self) -> None:
+        """Issue #24 (3/3): a min_effect key that names no declared objective
+        must not be silently accepted (a stale/renamed/typo'd entry)."""
+        doc = _base_module()
+        doc["objectives"] = [{"name": "quality", "direction": "maximize"}]
+        doc["promotion_policy"]["min_effect"] = {"quality": 0.01, "ghost_typo": 0.5}
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertIn("unknown_min_effect_objective", codes)
+
+    def test_min_effect_keys_matching_objectives_not_flagged(self) -> None:
+        doc = _base_module()
+        doc["objectives"] = [{"name": "quality", "direction": "maximize"}]
+        doc["promotion_policy"]["min_effect"] = {"quality": 0.01}
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertNotIn("unknown_min_effect_objective", codes)
+
 
 class FormalVerificationScopeTests(unittest.TestCase):
     """Tests for formal verification scope warnings (W6xxx)."""
