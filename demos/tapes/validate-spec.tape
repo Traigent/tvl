@@ -1,5 +1,7 @@
 # TVL Validate Spec Demo
 # Shows basic spec validation with tvl CLI
+# ILLUSTRATIVE ONLY: the `tvl`/`tvo` commands typed below run against demos/mock-cli/'s
+# simulated dispatcher, not the real installed tvl-spec package (see demos/README.md).
 
 Output output/validate-spec.gif
 Source tapes/_theme.tape

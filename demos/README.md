@@ -111,6 +111,8 @@ Show
 
 The `mock-cli/` directory contains simulated `tvl` and `tvo` commands that produce realistic output for demos without requiring the actual CLI.
 
+**Illustrative only:** the unified `tvl <subcommand>` and `tvo <subcommand>` dispatchers simulated here do not exist in the shipped `tvl-spec` package. The real package installs separate hyphenated binaries (`tvl-validate`, `tvl-check-structural`, `tvl-lint`, `tvl-ci-gate`, etc. — see the root `pyproject.toml`'s `[project.scripts]`); there is no bare `tvl` entry point and no `tvo` entry point at all. Commands typed into a recorded demo (e.g. `tvl validate spec.yml`) will not run against a real `pip install tvl-spec`.
+
 ```bash
 # Test the mock CLI
 ./mock-cli/tvl --help

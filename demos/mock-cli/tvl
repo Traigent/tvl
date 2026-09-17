@@ -1,6 +1,14 @@
 #!/bin/bash
 # Mock TVL CLI for demo recordings
 # This simulates tvl commands with realistic output
+#
+# ILLUSTRATIVE ONLY: this "tvl <subcommand>" dispatcher (validate,
+# check-sat, witness, info, explain) does not exist in the shipped
+# `tvl-spec` package. The real package installs separate hyphenated
+# binaries (tvl-validate, tvl-check-structural, tvl-lint, tvl-ci-gate,
+# etc. — see pyproject.toml's [project.scripts]); there is no bare `tvl`
+# entry point. Do not copy commands from this script's output expecting
+# them to work against a real `pip install tvl-spec`.
 
 set -e
 
@@ -84,7 +92,7 @@ case "$1" in
         echo -e "${CYAN}tvl${NC} ${BOLD}info${NC} $file"
         echo ""
         echo -e "${BOLD}Module:${NC} $(basename "$file" .tvl.yml)"
-        echo -e "${BOLD}Version:${NC} TVL 0.9"
+        echo -e "${BOLD}Version:${NC} TVL 1.0.0"
         echo ""
         echo -e "${BOLD}TVARs:${NC}"
         echo "  • model      enum[str]   ['gpt-4-turbo', 'claude-3-sonnet']"
