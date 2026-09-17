@@ -32,6 +32,8 @@ assert spec.loader is not None
 spec.loader.exec_module(module)
 
 check_structural = module.check_structural
+build_structural_model = module.build_structural_model
+StructuralParseError = module.StructuralParseError
 
 
 def _base_module() -> Dict[str, Any]:
@@ -471,6 +473,41 @@ class StructuralSatTests(unittest.TestCase):
         result = check_structural(doc)
         self.assertTrue(result.ok)
         self.assertEqual(result.assignment["cfg"], ("__registry_unresolved_0__", 1))
+
+
+class MalformedStructuralConstraintTests(unittest.TestCase):
+    """Issue #15: a malformed `constraints.structural[*]` entry must raise
+    instead of being silently dropped from the SAT model."""
+
+    def test_one_sided_when_without_then_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {"structural": [{"when": "max_calls >= 2"}]}
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+    def test_neither_shape_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {"structural": [{"cond": "max_calls >= 2"}]}
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+    def test_both_when_then_and_expr_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {
+            "structural": [{"when": "max_calls >= 2", "then": "max_calls <= 4", "expr": "max_calls != 3"}]
+        }
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+    def test_non_dict_entry_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {"structural": ["max_calls >= 2"]}
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
 
 
 if __name__ == "__main__":

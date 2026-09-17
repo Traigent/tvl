@@ -9,7 +9,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
 from .model import Domain, extract_domains
-from .structural_parser import DNF, Literal, clause_to_string, parse_expression
+from .structural_parser import DNF, Literal, StructuralParseError, clause_to_string, parse_expression
 
 
 @dataclass
@@ -76,19 +76,28 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
     structural_section = (module.get("constraints") or {}).get("structural") or []
     for idx, entry in enumerate(structural_section):
         if not isinstance(entry, dict):
-            continue
+            raise StructuralParseError(
+                f"Structural constraint at index {idx} must be an object, got {entry!r}"
+            )
         when_expr = entry.get("when")
         then_expr = entry.get("then")
         expr_expr = entry.get("expr")
-
-        if when_expr is not None or then_expr is not None:
-            if when_expr is None or then_expr is None:
-                continue
+        extra_keys = set(entry.keys()) - {"when", "then", "expr"}
+        has_when_then = when_expr is not None and then_expr is not None
+        has_expr = expr_expr is not None
+        # Mirror the grammar's oneOf({when,then} | {expr}) + additionalProperties:
+        # false (spec/grammar/tvl.schema.json, constraints.structural items): reject
+        # loudly instead of silently dropping the entry from the SAT model — the
+        # exact fail-open class this closes for tvl-check-structural (issue #15).
+        if extra_keys or has_when_then == has_expr:
+            raise StructuralParseError(
+                f"Structural constraint at index {idx} does not match the required "
+                f"{{when, then}} or {{expr}} shape (extra keys: {sorted(extra_keys)!r}): {entry!r}"
+            )
+        if has_when_then:
             expression_text = f"not ({when_expr}) or ({then_expr})"
-        elif expr_expr is not None:
-            expression_text = expr_expr
         else:
-            continue
+            expression_text = expr_expr
 
         dnf = parse_expression(expression_text)
         expanded = _expand_dnf(dnf, tvar_names)
