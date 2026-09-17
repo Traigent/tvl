@@ -91,6 +91,34 @@ describe("website server rate limiting", () => {
     }
   });
 
+  it("rate-limits static asset requests, not just the SPA fallback route", async () => {
+    const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
+    writeFileSync(
+      path.join(staticPath, "index.html"),
+      "<!doctype html><title>TVL</title>"
+    );
+    writeFileSync(path.join(staticPath, "app.js"), "console.log('tvl');");
+
+    try {
+      await withTestServer(
+        {
+          staticPath,
+          rateLimitWindowMs: 60_000,
+          rateLimitMaxRequests: 1,
+        },
+        async baseUrl => {
+          const first = await fetch(`${baseUrl}/app.js`);
+          const second = await fetch(`${baseUrl}/app.js`);
+
+          expect(first.status).toBe(200);
+          expect(second.status).toBe(429);
+        }
+      );
+    } finally {
+      rmSync(staticPath, { recursive: true, force: true });
+    }
+  });
+
   it("emits hardened security headers on the SPA fallback route", async () => {
     const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
     writeFileSync(

@@ -59,6 +59,10 @@ jobs:
         working-directory: website
         run: pnpm install --frozen-lockfile
 
+      - name: Run website test suite
+        working-directory: website
+        run: pnpm run test
+
       - name: Build website
         working-directory: website
         run: pnpm run build
