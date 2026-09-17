@@ -32,6 +32,8 @@ assert spec.loader is not None
 spec.loader.exec_module(module)
 
 check_structural = module.check_structural
+build_structural_model = module.build_structural_model
+StructuralParseError = module.StructuralParseError
 
 
 def _base_module() -> Dict[str, Any]:
@@ -471,6 +473,73 @@ class StructuralSatTests(unittest.TestCase):
         result = check_structural(doc)
         self.assertTrue(result.ok)
         self.assertEqual(result.assignment["cfg"], ("__registry_unresolved_0__", 1))
+
+
+class MalformedStructuralConstraintTests(unittest.TestCase):
+    """Issue #15: a malformed `constraints.structural[*]` entry must raise
+    instead of being silently dropped from the SAT model."""
+
+    def test_one_sided_when_without_then_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {"structural": [{"when": "max_calls >= 2"}]}
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+    def test_neither_shape_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {"structural": [{"cond": "max_calls >= 2"}]}
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+    def test_both_when_then_and_expr_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {
+            "structural": [{"when": "max_calls >= 2", "then": "max_calls <= 4", "expr": "max_calls != 3"}]
+        }
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+    def test_non_dict_entry_raises(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "max_calls", "type": "int", "domain": {"range": [0, 5]}}]
+        doc["constraints"] = {"structural": ["max_calls >= 2"]}
+        with self.assertRaises(StructuralParseError):
+            build_structural_model(doc)
+
+
+class PartialOverlapShapeTests(unittest.TestCase):
+    """Round-2 review (issue #15): a {when, expr} or {then, expr} entry (one
+    side of when/then plus expr, no unrecognised key) matches the grammar's
+    ``oneOf({when,then} | {expr})`` via the ``{expr}`` branch alone
+    (``required: [expr]``), so it is schema-valid and must be accepted — but
+    only ``expr`` may be enforced against the SAT model. Before this PR,
+    ``build_structural_model`` silently dropped the entry (neither branch
+    matched: ``when_expr is not None`` was true but ``then_expr`` was
+    missing, so the old code took a ``continue``), so the declared `expr`
+    was never enforced. This asserts the enforced behaviour, not just that
+    parsing doesn't raise.
+    """
+
+    def test_when_expr_shape_enforces_expr_not_when(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [0, 2]}}]
+        # `when` is satisfiable for every value in the domain; `expr` is not.
+        # If `expr` is enforced (post-fix), this must be UNSAT. If the entry
+        # is silently dropped (pre-fix), it is trivially SAT.
+        doc["constraints"] = {"structural": [{"when": "x >= 0", "expr": "x > 5"}]}
+        result = check_structural(doc)
+        self.assertFalse(result.ok)
+
+    def test_then_expr_shape_enforces_expr_not_then(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [0, 2]}}]
+        # `then` is satisfiable for every value in the domain; `expr` is not.
+        doc["constraints"] = {"structural": [{"then": "x >= 0", "expr": "x > 5"}]}
+        result = check_structural(doc)
+        self.assertFalse(result.ok)
 
 
 if __name__ == "__main__":
