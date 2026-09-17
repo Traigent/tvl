@@ -1,0 +1,42 @@
+name: Lean Proofs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "proofs/**"
+      - "spec/grammar/**"
+      - "formalization/**"
+      - ".github/workflows/lean-proofs.yml"
+  pull_request:
+    paths:
+      - "proofs/**"
+      - "spec/grammar/**"
+      - "formalization/**"
+      - ".github/workflows/lean-proofs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lake-build:
+    name: Lean Build (proofs/)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Re-verifies proofs/PROOF_SUMMARY.md's "Build completed successfully"
+      # claim on every change instead of leaving it a point-in-time claim.
+      # lean-action installs elan, fetches the Mathlib oleans cache, and runs
+      # `lake build`; it also caches proofs/.lake via actions/cache so repeat
+      # builds of an unchanged manifest are fast.
+      - name: Build Lean proofs
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
+        with:
+          lake-package-directory: proofs
+          build: "true"
+          test: "false"
+          lint: "false"
