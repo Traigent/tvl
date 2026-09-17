@@ -92,6 +92,12 @@ export function createApp(options?: {
     next();
   });
 
+  // Rate-limit every request (static assets included), not just the SPA
+  // fallback route below. This must run before express.static, otherwise
+  // static asset traffic — the majority of requests to a static site —
+  // is served with no rate limiting at all.
+  app.use(rateLimit);
+
   app.use(
     express.static(staticPath, {
       setHeaders: (res, filePath) => {
@@ -104,7 +110,7 @@ export function createApp(options?: {
   );
 
   // Handle client-side routing - serve index.html for all routes
-  app.get("*", rateLimit, (_req, res) => {
+  app.get("*", (_req, res) => {
     res.sendFile(indexPath);
   });
 
