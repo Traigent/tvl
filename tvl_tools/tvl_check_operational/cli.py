@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
 import yaml
 
+from tvl.errors import TVLError
 from tvl.loader import load
 from tvl.operational import check_operational
 
@@ -21,7 +23,28 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON diagnostics")
     args = parser.parse_args()
 
-    module = _load_module(args.file)
+    try:
+        module = _load_module(args.file)
+    except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
+        # A missing or malformed module file used to propagate as a raw
+        # traceback and exit 1, with no JSON emitted even under --json. Mirror
+        # the graceful degradation tvl-check-structural already provides:
+        # emit a structured diagnostic and exit 2 (issue #20).
+        error_msg = str(exc)
+        if args.json:
+            error_payload = {
+                "schemaVersion": "1.0",
+                "kind": "PhaseResult",
+                "phase": "operational",
+                "ok": False,
+                "status": "error",
+                "error": error_msg,
+            }
+            print(json.dumps(error_payload, indent=2))
+        else:
+            print(f"Error loading module: {error_msg}", file=sys.stderr)
+        raise SystemExit(2)
+
     result = check_operational(module)
 
     if args.json:
