@@ -634,8 +634,8 @@
         },
         "resolution": {
           "type": ["number", "integer"],
-          "minimum": 0,
-          "description": "Optional discretisation step for continuous ranges."
+          "exclusiveMinimum": 0,
+          "description": "Optional discretisation step for continuous ranges. A step of 0 enumerates no grid points, so it is rejected here the same way $defs/TupleRange's component resolution already is (issue #24)."
         }
       }
     },
