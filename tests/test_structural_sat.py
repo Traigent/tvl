@@ -510,5 +510,37 @@ class MalformedStructuralConstraintTests(unittest.TestCase):
             build_structural_model(doc)
 
 
+class PartialOverlapShapeTests(unittest.TestCase):
+    """Round-2 review (issue #15): a {when, expr} or {then, expr} entry (one
+    side of when/then plus expr, no unrecognised key) matches the grammar's
+    ``oneOf({when,then} | {expr})`` via the ``{expr}`` branch alone
+    (``required: [expr]``), so it is schema-valid and must be accepted — but
+    only ``expr`` may be enforced against the SAT model. Before this PR,
+    ``build_structural_model`` silently dropped the entry (neither branch
+    matched: ``when_expr is not None`` was true but ``then_expr`` was
+    missing, so the old code took a ``continue``), so the declared `expr`
+    was never enforced. This asserts the enforced behaviour, not just that
+    parsing doesn't raise.
+    """
+
+    def test_when_expr_shape_enforces_expr_not_when(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [0, 2]}}]
+        # `when` is satisfiable for every value in the domain; `expr` is not.
+        # If `expr` is enforced (post-fix), this must be UNSAT. If the entry
+        # is silently dropped (pre-fix), it is trivially SAT.
+        doc["constraints"] = {"structural": [{"when": "x >= 0", "expr": "x > 5"}]}
+        result = check_structural(doc)
+        self.assertFalse(result.ok)
+
+    def test_then_expr_shape_enforces_expr_not_then(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [0, 2]}}]
+        # `then` is satisfiable for every value in the domain; `expr` is not.
+        doc["constraints"] = {"structural": [{"then": "x >= 0", "expr": "x > 5"}]}
+        result = check_structural(doc)
+        self.assertFalse(result.ok)
+
+
 if __name__ == "__main__":
     unittest.main()
