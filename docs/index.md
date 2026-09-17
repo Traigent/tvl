@@ -119,7 +119,7 @@ TVL also supports:
 
 When present, `metric_ref` is a stable declarative ID such as `metrics.latency_p95_ms.v1`. The evaluation harness resolves that ID to the concrete metric implementation.
 
-Callable and registry-backed domains are supported by the current tooling, but they are linted as outside the formally verified subset.
+Callable and registry-backed domains are supported by the current tooling, but they are linted as outside the formally verified subset. So are `cvars`/`policies` and `composites` (RFC 0001/0002) — the Lean proof tree predates both RFCs and has not yet been extended to cover them; see `formalization/tvl-formal-semantics.md` §1.4.
 
 ## What a formal agent specification enables
 
