@@ -5,6 +5,9 @@ Covers:
   an invalid composed module) even when no `-o/--output` is given.
 - #56: `tvl-config-validate` must emit text (not raw JSON) on a TVLError in
   text mode, consistent with its success path and cli_utils.handle_error.
+- #20: `tvl-check-structural` and `tvl-check-operational` must exit 2 (not 1)
+  and emit a structured diagnostic (JSON under --json, text on stderr
+  otherwise) on a missing/malformed module file, never a raw traceback.
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ import yaml
 from tvl_tools.tvl_compose import cli as compose_cli
 from tvl_tools.tvl_config_validate import cli as config_validate_cli
 from tvl_tools.tvl_ci_gate import cli as ci_gate_cli
+from tvl_tools.tvl_check_structural import cli as check_structural_cli
+from tvl_tools.tvl_check_operational import cli as check_operational_cli
 
 
 def _write_yaml(path: Path, data: dict) -> None:
@@ -168,3 +173,51 @@ def test_config_validate_tvlerror_text_mode_is_not_raw_json(
     assert captured.err.startswith("Error:")
     with pytest.raises(json.JSONDecodeError):
         json.loads(captured.err.strip())
+
+
+@pytest.mark.parametrize(
+    "cli_module",
+    [check_structural_cli, check_operational_cli],
+    ids=["tvl-check-structural", "tvl-check-operational"],
+)
+def test_check_cli_missing_file_json_exits_2_with_structured_payload(
+    cli_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """#20: a missing module file exits 2 with a JSON error payload, never a
+    raw traceback / exit 1 (regression: tvl-check-operational had zero
+    exception handling around `load()`)."""
+    missing = tmp_path / "does_not_exist.tvl.yml"
+
+    monkeypatch.setattr("sys.argv", [cli_module.__name__, str(missing), "--json"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_module.main()
+
+    assert excinfo.value.code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert "No such file" in payload["error"] or "not exist" in payload["error"].lower()
+
+
+@pytest.mark.parametrize(
+    "cli_module",
+    [check_structural_cli, check_operational_cli],
+    ids=["tvl-check-structural", "tvl-check-operational"],
+)
+def test_check_cli_malformed_yaml_exits_2_no_traceback(
+    cli_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """#20: malformed YAML exits 2 with a text error on stderr, not a raw
+    traceback, when --json is not passed."""
+    malformed = tmp_path / "malformed.tvl.yml"
+    malformed.write_text("a: [1,2\n", encoding="utf-8")
+
+    monkeypatch.setattr("sys.argv", [cli_module.__name__, str(malformed)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_module.main()
+
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("Error")
+    assert "Traceback" not in captured.err
