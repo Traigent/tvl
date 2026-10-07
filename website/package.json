@@ -113,7 +113,8 @@
       "@vitest/mocker": "^4.1.11",
       "proxy-addr": "2.0.8",
       "source-map-js": "1.2.2",
-      "katex": "0.18.2"
+      "katex": "0.18.2",
+      "tinyexec": "1.1.2"
     }
   }
 }
