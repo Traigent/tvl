@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
+    "test": "vitest run --root . server/index.test.ts",
     "sync:canonical": "python3 scripts/sync_canonical_resources.py",
     "format": "prettier --write ."
   },
