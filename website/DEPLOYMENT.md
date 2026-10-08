@@ -8,6 +8,11 @@
 - Build output: `website/dist/public/`
 - Canonical content is synced from `tvl/**` during the build
 - The deploy workflow invalidates CloudFront after each publish
+- `website/server/index.ts` (the Express app, including its rate limiter) is
+  **not** part of this path — it is a local-dev/preview-only entry point
+  (`pnpm start` / `pnpm preview`). Any app-level rate limiting or abuse
+  protection for the live `tvl-lang.org` site must be configured at the
+  CloudFront/WAF layer, not in this server.
 
 ## Required GitHub Configuration
 
