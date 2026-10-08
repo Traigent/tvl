@@ -1,5 +1,11 @@
 #!/bin/bash
 # Mock TVO (TVL Optimizer) CLI for demo recordings
+#
+# ILLUSTRATIVE ONLY: this "tvo <subcommand>" binary does not exist in the
+# shipped `tvl-spec` package — there is no `tvo` entry point at all (see
+# pyproject.toml's [project.scripts]). Do not copy commands from this
+# script's output expecting them to work against a real
+# `pip install tvl-spec`.
 
 set -e
 

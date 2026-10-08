@@ -1,5 +1,7 @@
 # TVL Constraint Check Demo
 # Shows structural constraint validation and SAT checking
+# ILLUSTRATIVE ONLY: the `tvl`/`tvo` commands typed below run against demos/mock-cli/'s
+# simulated dispatcher, not the real installed tvl-spec package (see demos/README.md).
 
 Output output/constraint-check.gif
 Source tapes/_theme.tape
