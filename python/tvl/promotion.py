@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from .errors import ParseError
+
 # Statistical functions - we use math for basic operations,
 # but scipy is required for proper t-distribution and beta functions
 try:
@@ -329,17 +331,40 @@ def evaluate_chance_constraint(
     return _test_chance_constraint(name, outcome, threshold, confidence)
 
 
+_VALID_DIRECTIONS = {"maximize", "minimize"}
+
+
 def _parse_objectives(
     objectives: List[Dict[str, Any]],
     min_effects: Dict[str, float],
 ) -> List[ObjectiveSpec]:
-    """Parse objective specifications from module."""
+    """Parse objective specifications from module.
+
+    Fails closed on its own input: ``direction`` and ``name`` are the fields
+    that orient every non-inferiority / superiority test, so an absent or
+    out-of-enum ``direction`` (a typo, e.g. "maximise") is rejected rather
+    than silently defaulted to "maximize" — a silent default here can invert
+    the promotion verdict on paths that bypass schema validation (see
+    ``tvl-ci-gate --policy`` and the public ``epsilon_pareto_gate`` API).
+    """
     specs: List[ObjectiveSpec] = []
     for obj in objectives:
-        name = obj.get("name", "")
-        direction = obj.get("direction", "maximize")
-        epsilon = min_effects.get(name, 0.0)
+        name = obj.get("name")
+        if not name:
+            raise ParseError(
+                f"Objective is missing a non-empty 'name': {obj!r}"
+            )
         band = obj.get("band")
+        direction = obj.get("direction")
+        # Banded objectives (TOST equivalence) are tested via their band, not
+        # a maximize/minimize direction, so direction is only required here
+        # for the standard (non-banded) objective shape.
+        if band is None and direction not in _VALID_DIRECTIONS:
+            raise ParseError(
+                f"Objective '{name}' has invalid direction {direction!r}; "
+                f"expected one of {sorted(_VALID_DIRECTIONS)}"
+            )
+        epsilon = min_effects.get(name, 0.0)
         metric_ref = obj.get("metric_ref")
         specs.append(
             ObjectiveSpec(
