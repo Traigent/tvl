@@ -311,6 +311,8 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 These warnings indicate that the module uses features outside the formally verified TVL subset. The module may still be valid and functional, but the formal soundness guarantees (Theorem 8.1, etc.) do not apply.
 
+`cvars`, `policies` (RFC 0001), and `composites` (RFC 0002) are also outside the formally verified subset today: the Lean proof tree (`proofs/`) predates both RFCs and has not yet been extended to cover them. There is no lint warning for this gap yet (tracked as follow-up work); see `formalization/tvl-formal-semantics.md` §1.4 for the full disclosure.
+
 ### `unverifiable_registry_domain`
 - **Severity**: warning
 - **Code**: W6001

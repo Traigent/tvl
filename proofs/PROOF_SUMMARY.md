@@ -5,6 +5,14 @@
 **Mathlib**: Commit 6a596ab9
 **Build Status**: All modules compile successfully
 
+> **Coverage note (added after RFC 0001/0002):** this proof tree covers the
+> TVL core subset as it stood on 2026-02-01 — `tvars`, `constraints`,
+> `objectives`, and `promotion_policy`. **`cvars`/`policies` (RFC 0001,
+> 2026-06-05) and `composites` (RFC 0002, 2026-06-06) are not formalized
+> here**; nothing in `proofs/TVL/*.lean` models those constructs. See
+> `formalization/tvl-formal-semantics.md` §1.4 for the full disclosure (a
+> lint warning for this is tracked as follow-up work, not yet implemented).
+
 ---
 
 ## Overview
@@ -411,6 +419,9 @@ None in Lean source (`rg` over `tvl/proofs/TVL/*.lean` returns no `sorry` terms)
 - Formalize promotion correctness (Theorem 6.15)
 - Add Welch's t-test properties for statistical dominance
 - Mechanize sequential testing error bounds
+- Extend the formalization to cover `cvars`/`policies` (RFC 0001) and
+  `composites` (RFC 0002) — currently unformalized, see the coverage note
+  above and `formalization/tvl-formal-semantics.md` §1.4
 
 ---
 
