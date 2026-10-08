@@ -1946,7 +1946,42 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
 
     for idx, clause in enumerate(structural):
         if not isinstance(clause, dict):
+            issues.append(
+                {
+                    "code": "malformed_structural_constraint",
+                    "message": f"Structural constraint at index {idx} must be an object, got {clause!r}",
+                    "path": ["constraints", "structural", idx],
+                    "severity": "error",
+                }
+            )
             continue
+
+        when_expr = clause.get("when")
+        then_expr = clause.get("then")
+        expr_expr = clause.get("expr")
+        extra_keys = set(clause.keys()) - {"when", "then", "expr"}
+        has_when_then = when_expr is not None and then_expr is not None
+        has_expr = expr_expr is not None
+        # Mirror the schema's oneOf({when,then} | {expr}) + additionalProperties:
+        # false: reject a non-dict entry, an entry missing one side of when/then,
+        # an entry carrying both when/then AND expr, or an unrecognised key — the
+        # exact malformed shape the compilers now raise on (issue #15). Without
+        # this, tvl-lint (the one gateless first-class CLI) stayed clean on a
+        # module whose declared constraint is never enforced.
+        if extra_keys or has_when_then == has_expr:
+            issues.append(
+                {
+                    "code": "malformed_structural_constraint",
+                    "message": (
+                        f"Structural constraint at index {idx} does not match the required "
+                        f"{{when, then}} or {{expr}} shape (extra keys: {sorted(extra_keys)!r}): {clause!r}"
+                    ),
+                    "path": ["constraints", "structural", idx],
+                    "severity": "error",
+                }
+            )
+            continue
+
         for field in ("when", "then", "expr"):
             expr = clause.get(field)
             expr_path = ["constraints", "structural", idx, field]

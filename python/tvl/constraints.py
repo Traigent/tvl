@@ -118,18 +118,36 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
     compiled: List[StructuralConstraint] = []
     parse_issues: List[Dict[str, Any]] = []
     for idx, entry in enumerate(structural):
-        if not isinstance(entry, dict):
-            continue
-        when_expr = entry.get("when")
-        then_expr = entry.get("then")
-        expr_expr = entry.get("expr")
-
         try:
-            if when_expr is not None or then_expr is not None:
+            if not isinstance(entry, dict):
+                raise ConstraintParseError(
+                    f"Structural constraint at index {idx} must be an object, got {entry!r}",
+                    code="malformed_structural_constraint",
+                    text=repr(entry),
+                )
+            when_expr = entry.get("when")
+            then_expr = entry.get("then")
+            expr_expr = entry.get("expr")
+            extra_keys = set(entry.keys()) - {"when", "then", "expr"}
+            has_when_then = when_expr is not None and then_expr is not None
+            has_expr = expr_expr is not None
+            # Mirror the grammar's oneOf({when,then} | {expr}) + additionalProperties:
+            # false (spec/grammar/tvl.schema.json, constraints.structural items): an
+            # entry that is missing one side of when/then, carries both when/then AND
+            # expr, has neither shape, or has an unrecognised key must be rejected
+            # loudly instead of silently compiling to zero constraints (issue #15).
+            if extra_keys or has_when_then == has_expr:
+                raise ConstraintParseError(
+                    f"Structural constraint at index {idx} does not match the required "
+                    f"{{when, then}} or {{expr}} shape (extra keys: {sorted(extra_keys)!r}): {entry!r}",
+                    code="malformed_structural_constraint",
+                    text=repr(entry),
+                )
+            if has_when_then:
                 antecedent = parse_expression(when_expr)
                 consequent = parse_expression(then_expr)
                 compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
-            elif expr_expr is not None:
+            elif has_expr:
                 split = _split_top_level_implication(expr_expr) if isinstance(expr_expr, str) else None
                 if split is not None:
                     ante_str, cons_str = split
