@@ -165,18 +165,26 @@ def _tightens(base_bound: tuple, comp_bound: tuple) -> bool:
         return False
     lower = {">=", ">"}
     upper = {"<=", "<"}
-    # Strictness matters at EQUAL values: `x > 3000` admits fewer values than
-    # `x >= 3000`, so replacing `>` with `>=` at the same number is a WIDENING even
-    # though the number did not move. `>` may replace `>=`, never the reverse.
     if b_op in lower and c_op in lower:
-        if c_val > b_val:
-            return True
-        return c_val == b_val and (b_op == c_op or c_op == ">")
+        return _same_family_tightens(c_val > b_val, b_val, c_val, b_op, c_op, ">")
     if b_op in upper and c_op in upper:
-        if c_val < b_val:
-            return True
-        return c_val == b_val and (b_op == c_op or c_op == "<")
+        return _same_family_tightens(c_val < b_val, b_val, c_val, b_op, c_op, "<")
     return False
+
+
+def _same_family_tightens(
+    moved_stricter: bool, b_val: Any, c_val: Any, b_op: str, c_op: str, strict_op: str
+) -> bool:
+    """Tightening within one bound family, given whether the number moved stricter.
+
+    Strictness matters at EQUAL values: `x > 3000` admits fewer values than
+    `x >= 3000`, so replacing `>` with `>=` at the same number is a WIDENING even
+    though the number did not move. `>` may replace `>=`, never the reverse (and
+    likewise `<` may replace `<=`).
+    """
+    if moved_stricter:
+        return True
+    return c_val == b_val and (b_op == c_op or c_op == strict_op)
 
 
 # Tolerance for comparing band intervals. The two legal target forms are not
@@ -478,30 +486,52 @@ def _validate_narrowing(base: dict[str, Any], composed: dict[str, Any]) -> list[
         base_tvar = base_tvars[name]
         base_domain = base_tvar.get("domain")
         composed_domain = composed_tvar.get("domain")
+        errors.extend(_domain_widenings(name, base_domain, composed_domain))
 
-        # Check enum domains
-        if isinstance(base_domain, list) and isinstance(composed_domain, list):
-            base_set = set(str(v) for v in base_domain)
-            composed_set = set(str(v) for v in composed_domain)
-            added = composed_set - base_set
-            if added:
-                errors.append(f"TVAR '{name}': cannot add values {added} in overlay")
+    errors.extend(_budget_increases(base, composed))
+    return errors
 
-        # Check range domains
-        if isinstance(base_domain, dict) and isinstance(composed_domain, dict):
-            if "range" in base_domain and "range" in composed_domain:
-                base_range = base_domain["range"]
-                composed_range = composed_domain["range"]
-                if composed_range[0] < base_range[0]:
-                    errors.append(
-                        f"TVAR '{name}': cannot widen range minimum from {base_range[0]} to {composed_range[0]}"
-                    )
-                if composed_range[1] > base_range[1]:
-                    errors.append(
-                        f"TVAR '{name}': cannot widen range maximum from {base_range[1]} to {composed_range[1]}"
-                    )
 
-    # Check budgets (can only decrease)
+def _domain_widenings(name: Any, base_domain: Any, composed_domain: Any) -> list[str]:
+    """Errors for a TVAR whose overlay domain adds enum values or widens a range."""
+    errors = []
+
+    # Check enum domains
+    if isinstance(base_domain, list) and isinstance(composed_domain, list):
+        errors.extend(_enum_additions(name, base_domain, composed_domain))
+
+    # Check range domains
+    if isinstance(base_domain, dict) and isinstance(composed_domain, dict):
+        if "range" in base_domain and "range" in composed_domain:
+            errors.extend(_range_widenings(name, base_domain["range"], composed_domain["range"]))
+    return errors
+
+
+def _enum_additions(name: Any, base_domain: list[Any], composed_domain: list[Any]) -> list[str]:
+    base_set = set(str(v) for v in base_domain)
+    composed_set = set(str(v) for v in composed_domain)
+    added = composed_set - base_set
+    if added:
+        return [f"TVAR '{name}': cannot add values {added} in overlay"]
+    return []
+
+
+def _range_widenings(name: Any, base_range: Any, composed_range: Any) -> list[str]:
+    errors = []
+    if composed_range[0] < base_range[0]:
+        errors.append(
+            f"TVAR '{name}': cannot widen range minimum from {base_range[0]} to {composed_range[0]}"
+        )
+    if composed_range[1] > base_range[1]:
+        errors.append(
+            f"TVAR '{name}': cannot widen range maximum from {base_range[1]} to {composed_range[1]}"
+        )
+    return errors
+
+
+def _budget_increases(base: dict[str, Any], composed: dict[str, Any]) -> list[str]:
+    """Budgets can only decrease."""
+    errors = []
     base_budgets = base.get("exploration", {}).get("budgets", {})
     composed_budgets = composed.get("exploration", {}).get("budgets", {})
 
@@ -511,7 +541,6 @@ def _validate_narrowing(base: dict[str, Any], composed: dict[str, Any]) -> list[
                 errors.append(
                     f"Budget '{key}': cannot increase from {base_budgets[key]} to {composed_budgets[key]}"
                 )
-
     return errors
 
 
@@ -520,13 +549,10 @@ def _format_cycle_path(path: Path, overlay_root: Path) -> str:
     return path.relative_to(overlay_root).as_posix()
 
 
-def _compose(
-    overlay_path: Path,
-    validate_narrowing: bool,
-    overlay_root: Path,
-    resolution_chain: list[Path],
-) -> dict[str, Any]:
-    """Compose an overlay while enforcing its path and recursion boundaries."""
+def _check_resolution_chain(
+    overlay_path: Path, overlay_root: Path, resolution_chain: list[Path]
+) -> None:
+    """Reject an overlay that closes a cycle or exceeds the chain depth limit."""
     if overlay_path in resolution_chain:
         cycle_start = resolution_chain.index(overlay_path)
         cycle = resolution_chain[cycle_start:] + [overlay_path]
@@ -539,6 +565,9 @@ def _compose(
             f"Overlay extends chain exceeds maximum depth of {_MAX_OVERLAY_CHAIN_DEPTH}"
         )
 
+
+def _load_overlay(overlay_path: Path) -> tuple[dict[str, Any], Any, Any]:
+    """Load an overlay file; return ``(overlay, overlay_meta, extends)``."""
     overlay = load_yaml_safely(overlay_path)
 
     if not isinstance(overlay, dict):
@@ -552,6 +581,18 @@ def _compose(
     extends = overlay_meta.get("extends")
     if not extends:
         raise ValueError("Overlay must specify 'extends' in _tvl_overlay")
+    return overlay, overlay_meta, extends
+
+
+def _compose(
+    overlay_path: Path,
+    validate_narrowing: bool,
+    overlay_root: Path,
+    resolution_chain: list[Path],
+) -> dict[str, Any]:
+    """Compose an overlay while enforcing its path and recursion boundaries."""
+    _check_resolution_chain(overlay_path, overlay_root, resolution_chain)
+    overlay, overlay_meta, extends = _load_overlay(overlay_path)
 
     # Load base module
     base_path = _resolve_base_path(overlay_path, extends, overlay_root)
