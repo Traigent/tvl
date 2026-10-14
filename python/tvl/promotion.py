@@ -217,7 +217,28 @@ def epsilon_pareto_gate(
     evidence = PromotionEvidence()
     evidence.adjustment_method = adjust
 
-    # Test each standard objective
+    super_pvalues, inferior_pvalues = _test_all_objectives(
+        evidence, obj_specs, inc_objectives, cand_objectives, alpha
+    )
+    _apply_pvalue_adjustment(evidence, super_pvalues, inferior_pvalues, adjust, alpha)
+    _assign_objective_verdicts(evidence, alpha)
+    _test_all_chance_constraints(evidence, chance_constraints, cand_chance)
+
+    # Make decision
+    decision, reason = _make_decision(evidence)
+    evidence.decision_reason = reason
+
+    return (decision, evidence.to_dict())
+
+
+def _test_all_objectives(
+    evidence: PromotionEvidence,
+    obj_specs: List[ObjectiveSpec],
+    inc_objectives: Dict[str, Any],
+    cand_objectives: Dict[str, Any],
+    alpha: float,
+) -> Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]:
+    """Test each objective into ``evidence``; return the standard objectives' p-values."""
     super_pvalues: List[Tuple[str, float]] = []
     inferior_pvalues: List[Tuple[str, float]] = []
     for spec in obj_specs:
@@ -243,55 +264,80 @@ def epsilon_pareto_gate(
             evidence.per_objective[spec.name] = result
             super_pvalues.append((spec.name, result.p_value_super))
             inferior_pvalues.append((spec.name, result.p_value_inferior))
+    return super_pvalues, inferior_pvalues
 
-    # Superiority (at least one improvement) and inferiority (at least one
-    # regression) are both union claims. Apply the configured adjustment to
-    # both families. Non-inferiority remains an intersection-union test.
+
+def _apply_pvalue_adjustment(
+    evidence: PromotionEvidence,
+    super_pvalues: List[Tuple[str, float]],
+    inferior_pvalues: List[Tuple[str, float]],
+    adjust: Any,
+    alpha: float,
+) -> None:
+    """Record adjusted superiority/inferiority p-values on each standard objective.
+
+    Superiority (at least one improvement) and inferiority (at least one
+    regression) are both union claims. Apply the configured adjustment to
+    both families. Non-inferiority remains an intersection-union test.
+    """
     adjust_name = str(adjust).upper()
-    if super_pvalues and adjust_name != "NONE":
-        adjusted_super = _adjust_pvalues([p for _, p in super_pvalues], adjust_name)
-        adjusted_inferior = _adjust_pvalues([p for _, p in inferior_pvalues], adjust_name)
-        if adjust_name == "BH":
-            evidence.fdr_controlled_at = alpha
-        for i, (name, _) in enumerate(super_pvalues):
-            obj_result = evidence.per_objective.get(name)
-            if isinstance(obj_result, ObjectiveResult):
-                obj_result.adjusted_p_super = adjusted_super[i]
-                obj_result.adjusted_p_inferior = adjusted_inferior[i]
+    if not super_pvalues or adjust_name == "NONE":
+        return
+    adjusted_super = _adjust_pvalues([p for _, p in super_pvalues], adjust_name)
+    adjusted_inferior = _adjust_pvalues([p for _, p in inferior_pvalues], adjust_name)
+    if adjust_name == "BH":
+        evidence.fdr_controlled_at = alpha
+    for i, (name, _) in enumerate(super_pvalues):
+        obj_result = evidence.per_objective.get(name)
+        if isinstance(obj_result, ObjectiveResult):
+            obj_result.adjusted_p_super = adjusted_super[i]
+            obj_result.adjusted_p_inferior = adjusted_inferior[i]
 
-    # Determine verdicts: non-inferiority (IUT) is unadjusted; the two union
-    # claims use adjusted p-values when adjustment is enabled.
+
+def _objective_verdict(obj_result: ObjectiveResult, alpha: float) -> str:
+    """Non-inferiority (IUT) is unadjusted; the two union claims use adjusted
+    p-values when adjustment is enabled."""
+    p_inferior = (
+        obj_result.adjusted_p_inferior
+        if obj_result.adjusted_p_inferior is not None
+        else obj_result.p_value_inferior
+    )
+    if p_inferior < alpha:
+        return "inferior"
+    if obj_result.p_value_noninf >= alpha:
+        return "inconclusive"
+    p_super = (
+        obj_result.adjusted_p_super
+        if obj_result.adjusted_p_super is not None
+        else obj_result.p_value_super
+    )
+    if p_super < alpha:
+        return "superior"
+    return "noninferior"
+
+
+def _assign_objective_verdicts(evidence: PromotionEvidence, alpha: float) -> None:
     all_noninf = True
     any_superior = False
-    for name, obj_result in evidence.per_objective.items():
-        if isinstance(obj_result, ObjectiveResult):
-            p_inferior = (
-                obj_result.adjusted_p_inferior
-                if obj_result.adjusted_p_inferior is not None
-                else obj_result.p_value_inferior
-            )
-            if p_inferior < alpha:
-                obj_result.verdict = "inferior"
-                all_noninf = False
-            elif obj_result.p_value_noninf >= alpha:
-                obj_result.verdict = "inconclusive"
-                all_noninf = False
-            else:
-                p_super = (
-                    obj_result.adjusted_p_super
-                    if obj_result.adjusted_p_super is not None
-                    else obj_result.p_value_super
-                )
-                if p_super < alpha:
-                    obj_result.verdict = "superior"
-                    any_superior = True
-                else:
-                    obj_result.verdict = "noninferior"
+    for obj_result in evidence.per_objective.values():
+        if not isinstance(obj_result, ObjectiveResult):
+            continue
+        verdict = _objective_verdict(obj_result, alpha)
+        obj_result.verdict = verdict
+        if verdict in ("inferior", "inconclusive"):
+            all_noninf = False
+        elif verdict == "superior":
+            any_superior = True
 
     evidence.all_noninferior = all_noninf
     evidence.any_superior = any_superior
 
-    # Test chance constraints
+
+def _test_all_chance_constraints(
+    evidence: PromotionEvidence,
+    chance_constraints: List[Dict[str, Any]],
+    cand_chance: Dict[str, Any],
+) -> None:
     for constraint in chance_constraints:
         name = constraint.get("name", "")
         threshold = constraint.get("threshold", 0.0)
@@ -301,12 +347,6 @@ def epsilon_pareto_gate(
         evidence.chance_constraints[name] = result
         if result.verdict != "pass":
             evidence.all_chance_pass = False
-
-    # Make decision
-    decision, reason = _make_decision(evidence)
-    evidence.decision_reason = reason
-
-    return (decision, evidence.to_dict())
 
 
 def require_scipy() -> None:
@@ -502,49 +542,100 @@ def _test_from_samples(
         )
 
     if paired and n_inc == n_cand and n_inc > 1:
-        # Paired t-test
-        diffs = [c - i for c, i in zip(cand_samples, inc_samples)]
-        mean_diff = sum(diffs) / len(diffs)
-        var_diff = sum((d - mean_diff) ** 2 for d in diffs) / (len(diffs) - 1)
-        input_scale = max(abs(x) for x in [*inc_samples, *cand_samples])
-        if _variance_is_degenerate(var_diff, input_scale):
-            # Zero variance in the paired differences -> SE unestimable.
-            # Do not floor to 1e-10 (which would fabricate significance).
-            return _unestimable_result(
-                spec, "paired", n_inc, n_cand, mean_inc, mean_cand
-            )
-        std_diff = math.sqrt(var_diff)
-        se = std_diff / math.sqrt(len(diffs))
-        df = len(diffs) - 1
+        return _paired_samples_test(spec, inc_samples, cand_samples, mean_inc, mean_cand, sigma)
 
-        # Non-inferiority: H0: sigma * delta < -epsilon
-        # Test statistic: t = (sigma * mean_diff + epsilon) / se
-        t_noninf = (sigma * mean_diff + epsilon) / se
-        p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
-        p_inferior = scipy_stats.t.cdf(t_noninf, df)
+    return _welch_samples_test(spec, inc_samples, cand_samples, mean_inc, mean_cand, sigma)
 
-        # Superiority: H0: sigma * delta <= epsilon
-        t_super = (sigma * mean_diff - epsilon) / se
-        p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
 
-        return ObjectiveResult(
-            name=spec.name,
-            test_type="paired",
-            n_incumbent=n_inc,
-            n_candidate=n_cand,
-            mean_incumbent=mean_inc,
-            mean_candidate=mean_cand,
-            delta=delta,
-            std_pooled=std_diff,
-            t_statistic=t_noninf,
-            df=df,
-            p_value_noninf=max(1e-300, min(1.0, p_noninf)),
-            p_value_super=max(1e-300, min(1.0, p_super)),
-            p_value_inferior=max(1e-300, min(1.0, p_inferior)),
-            epsilon=epsilon,
+def _clip_p_value(p: float) -> float:
+    return max(1e-300, min(1.0, p))
+
+
+def _one_sided_t_tests(
+    signed_effect: float, epsilon: float, se: float, df: float
+) -> Tuple[float, float, float, float]:
+    """Return ``(t_noninf, p_noninf, p_inferior, p_super)`` for a signed effect.
+
+    Non-inferiority: H0: sigma * delta < -epsilon, t = (sigma * delta + epsilon) / se.
+    Superiority: H0: sigma * delta <= epsilon, t = (sigma * delta - epsilon) / se.
+    """
+    t_noninf = (signed_effect + epsilon) / se
+    p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_inferior = scipy_stats.t.cdf(t_noninf, df)
+
+    t_super = (signed_effect - epsilon) / se
+    p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
+    return t_noninf, p_noninf, p_inferior, p_super
+
+
+def _paired_samples_test(
+    spec: ObjectiveSpec,
+    inc_samples: List[float],
+    cand_samples: List[float],
+    mean_inc: float,
+    mean_cand: float,
+    sigma: int,
+) -> ObjectiveResult:
+    """Paired t-test over equal-length samples (n > 1)."""
+    n_inc = len(inc_samples)
+    n_cand = len(cand_samples)
+    diffs = [c - i for c, i in zip(cand_samples, inc_samples)]
+    mean_diff = sum(diffs) / len(diffs)
+    var_diff = sum((d - mean_diff) ** 2 for d in diffs) / (len(diffs) - 1)
+    input_scale = max(abs(x) for x in [*inc_samples, *cand_samples])
+    if _variance_is_degenerate(var_diff, input_scale):
+        # Zero variance in the paired differences -> SE unestimable.
+        # Do not floor to 1e-10 (which would fabricate significance).
+        return _unestimable_result(
+            spec, "paired", n_inc, n_cand, mean_inc, mean_cand
         )
+    std_diff = math.sqrt(var_diff)
+    se = std_diff / math.sqrt(len(diffs))
+    df = len(diffs) - 1
 
-    # Welch's t-test (default)
+    t_noninf, p_noninf, p_inferior, p_super = _one_sided_t_tests(
+        sigma * mean_diff, spec.epsilon, se, df
+    )
+
+    return ObjectiveResult(
+        name=spec.name,
+        test_type="paired",
+        n_incumbent=n_inc,
+        n_candidate=n_cand,
+        mean_incumbent=mean_inc,
+        mean_candidate=mean_cand,
+        delta=mean_cand - mean_inc,
+        std_pooled=std_diff,
+        t_statistic=t_noninf,
+        df=df,
+        p_value_noninf=_clip_p_value(p_noninf),
+        p_value_super=_clip_p_value(p_super),
+        p_value_inferior=_clip_p_value(p_inferior),
+        epsilon=spec.epsilon,
+    )
+
+
+def _welch_df(var_inc: float, var_cand: float, n_inc: int, n_cand: int) -> float:
+    """Welch-Satterthwaite degrees of freedom."""
+    if var_inc > 0 or var_cand > 0:
+        num = (var_inc / n_inc + var_cand / n_cand) ** 2
+        denom = (var_inc / n_inc) ** 2 / (n_inc - 1) + (var_cand / n_cand) ** 2 / (n_cand - 1)
+        return num / denom if denom > 0 else 1
+    return min(n_inc, n_cand) - 1
+
+
+def _welch_samples_test(
+    spec: ObjectiveSpec,
+    inc_samples: List[float],
+    cand_samples: List[float],
+    mean_inc: float,
+    mean_cand: float,
+    sigma: int,
+) -> ObjectiveResult:
+    """Welch's t-test (the default) over samples with n > 1 in each arm."""
+    n_inc = len(inc_samples)
+    n_cand = len(cand_samples)
+    delta = mean_cand - mean_inc
     var_inc = sum((x - mean_inc) ** 2 for x in inc_samples) / (n_inc - 1) if n_inc > 1 else 0
     var_cand = sum((x - mean_cand) ** 2 for x in cand_samples) / (n_cand - 1) if n_cand > 1 else 0
 
@@ -554,23 +645,10 @@ def _test_from_samples(
         return _unestimable_result(spec, "welch", n_inc, n_cand, mean_inc, mean_cand)
 
     se = math.sqrt(var_inc / n_inc + var_cand / n_cand)
-
-    # Welch-Satterthwaite degrees of freedom
-    if var_inc > 0 or var_cand > 0:
-        num = (var_inc / n_inc + var_cand / n_cand) ** 2
-        denom = (var_inc / n_inc) ** 2 / (n_inc - 1) + (var_cand / n_cand) ** 2 / (n_cand - 1)
-        df = num / denom if denom > 0 else 1
-    else:
-        df = min(n_inc, n_cand) - 1
-
-    # Non-inferiority test
-    t_noninf = (sigma * delta + epsilon) / se
-    p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
-    p_inferior = scipy_stats.t.cdf(t_noninf, df)
-
-    # Superiority test
-    t_super = (sigma * delta - epsilon) / se
-    p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
+    df = _welch_df(var_inc, var_cand, n_inc, n_cand)
+    t_noninf, p_noninf, p_inferior, p_super = _one_sided_t_tests(
+        sigma * delta, spec.epsilon, se, df
+    )
 
     std_pooled = math.sqrt((var_inc + var_cand) / 2) if var_inc + var_cand > 0 else 0
 
@@ -585,10 +663,10 @@ def _test_from_samples(
         std_pooled=std_pooled,
         t_statistic=t_noninf,
         df=df,
-        p_value_noninf=max(1e-300, min(1.0, p_noninf)),
-        p_value_super=max(1e-300, min(1.0, p_super)),
-        p_value_inferior=max(1e-300, min(1.0, p_inferior)),
-        epsilon=epsilon,
+        p_value_noninf=_clip_p_value(p_noninf),
+        p_value_super=_clip_p_value(p_super),
+        p_value_inferior=_clip_p_value(p_inferior),
+        epsilon=spec.epsilon,
     )
 
 
@@ -683,29 +761,12 @@ def _test_banded_objective(
     target = band.get("target")
     band_alpha = band.get("alpha", alpha)
 
-    # Parse band bounds
-    if isinstance(target, list) and len(target) == 2:
-        band_lower, band_upper = float(target[0]), float(target[1])
-    elif isinstance(target, dict):
-        center = target.get("center", 0)
-        tol = target.get("tol", 0)
-        band_lower = center - tol
-        band_upper = center + tol
-    else:
+    bounds = _band_target_bounds(target)
+    if bounds is None:
         return BandedResult(name=spec.name, verdict="inconclusive")
+    band_lower, band_upper = bounds
 
-    # Get candidate statistics
-    samples = cand_data.get("samples")
-    if samples is not None and len(samples) >= 2:
-        n = len(samples)
-        mean = sum(samples) / n
-        var = sum((x - mean) ** 2 for x in samples) / (n - 1)
-        std = math.sqrt(var)
-    else:
-        mean = cand_data.get("mean", 0.0)
-        std = cand_data.get("std", 0.0)
-        n = cand_data.get("n", 0)
-
+    mean, std, n = _band_candidate_stats(cand_data)
     if n < 2:
         return BandedResult(name=spec.name, verdict="inconclusive")
 
@@ -726,6 +787,45 @@ def _test_banded_objective(
     ci_lower = mean - t_crit * se
     ci_upper = mean + t_crit * se
 
+    return BandedResult(
+        name=spec.name,
+        test_type="tost",
+        n=n,
+        mean=mean,
+        std=std,
+        ci_lower=ci_lower,
+        ci_upper=ci_upper,
+        band_lower=band_lower,
+        band_upper=band_upper,
+        p_value_lower=_clip_p_value(p1),
+        p_value_upper=_clip_p_value(p2),
+        verdict=_tost_verdict(p1, p2, band_alpha, mean, band_lower, band_upper),
+    )
+
+
+def _band_target_bounds(target: Any) -> Optional[Tuple[Any, Any]]:
+    """Band bounds from ``[low, high]`` or ``{center, tol}``; None if neither form."""
+    if isinstance(target, list) and len(target) == 2:
+        return float(target[0]), float(target[1])
+    if isinstance(target, dict):
+        center = target.get("center", 0)
+        tol = target.get("tol", 0)
+        return center - tol, center + tol
+    return None
+
+
+def _band_candidate_stats(cand_data: Dict[str, Any]) -> Tuple[Any, Any, Any]:
+    """Candidate ``(mean, std, n)`` from samples (n >= 2) or aggregated stats."""
+    samples = cand_data.get("samples")
+    if samples is not None and len(samples) >= 2:
+        n = len(samples)
+        mean = sum(samples) / n
+        var = sum((x - mean) ** 2 for x in samples) / (n - 1)
+        return mean, math.sqrt(var), n
+    return cand_data.get("mean", 0.0), cand_data.get("std", 0.0), cand_data.get("n", 0)
+
+
+def _tost_verdict(p1: float, p2: float, band_alpha: float, mean: Any, band_lower: Any, band_upper: Any) -> str:
     # Pass if max(p1, p2) < alpha, equivalently if the (1 - 2α) CI ⊂ [L, U].
     #
     # NOTE: the in_band p-value test is *exactly* equivalent to "CI ⊂ [L, U]"
@@ -737,26 +837,10 @@ def _test_banded_objective(
     # band edge is low-power evidence -> "inconclusive" -> NoDecision
     # (spec promotion-gate-io.md §5.3 and the §6 "TOST fail (power)" row).
     if max(p1, p2) < band_alpha:
-        verdict = "in_band"
-    elif mean < band_lower or mean > band_upper:
-        verdict = "out_of_band"
-    else:
-        verdict = "inconclusive"
-
-    return BandedResult(
-        name=spec.name,
-        test_type="tost",
-        n=n,
-        mean=mean,
-        std=std,
-        ci_lower=ci_lower,
-        ci_upper=ci_upper,
-        band_lower=band_lower,
-        band_upper=band_upper,
-        p_value_lower=max(1e-300, min(1.0, p1)),
-        p_value_upper=max(1e-300, min(1.0, p2)),
-        verdict=verdict,
-    )
+        return "in_band"
+    if mean < band_lower or mean > band_upper:
+        return "out_of_band"
+    return "inconclusive"
 
 
 def _test_chance_constraint(
@@ -919,47 +1003,45 @@ def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
     # under-powered / inconclusive band does not Reject; it merely fails to
     # satisfy the Promote requirement (spec §5.3, "TOST fail (power)").
     if evidence.any_band_out_of_band:
-        failing = [
-            name for name, r in evidence.per_objective.items()
-            if isinstance(r, BandedResult) and r.verdict == "out_of_band"
-        ]
+        failing = _objective_names(evidence, BandedResult, lambda verdict: verdict == "out_of_band")
         return ("Reject", f"Banded objectives outside declared band: {', '.join(failing)}")
 
     if not evidence.all_noninferior:
-        failing = [
-            name for name, r in evidence.per_objective.items()
-            if isinstance(r, ObjectiveResult) and r.verdict == "inferior"
-        ]
-        if failing:
-            return (
-                "Reject",
-                f"Regression beyond the allowed margin demonstrated on: {', '.join(failing)}",
-            )
-        inconclusive = [
-            name for name, r in evidence.per_objective.items()
-            if isinstance(r, ObjectiveResult) and r.verdict == "inconclusive"
-        ]
-        return (
-            "NoDecision",
-            f"Non-inferiority not established on: {', '.join(inconclusive)}",
-        )
+        return _non_inferiority_decision(evidence)
 
     # Check for promotion (need at least one superior AND all bands proven in-band)
     if evidence.all_bands_pass and evidence.any_superior:
-        superior = [
-            name for name, r in evidence.per_objective.items()
-            if isinstance(r, ObjectiveResult) and r.verdict == "superior"
-        ]
+        superior = _objective_names(evidence, ObjectiveResult, lambda verdict: verdict == "superior")
         return ("Promote", f"All non-inferiority tests pass; superior on: {', '.join(superior)}")
 
     # All pass but no superiority demonstrated, or a band is inconclusive (low power).
     if not evidence.all_bands_pass:
-        inconclusive = [
-            name for name, r in evidence.per_objective.items()
-            if isinstance(r, BandedResult) and r.verdict != "in_band"
-        ]
+        inconclusive = _objective_names(evidence, BandedResult, lambda verdict: verdict != "in_band")
         return (
             "NoDecision",
             f"Banded objectives inconclusive (insufficient power): {', '.join(inconclusive)}",
         )
     return ("NoDecision", "All objectives non-inferior but no superiority demonstrated")
+
+
+def _objective_names(evidence: PromotionEvidence, result_type: type, verdict_matches: Any) -> List[str]:
+    """Names of per-objective results of ``result_type`` whose verdict matches."""
+    return [
+        name for name, r in evidence.per_objective.items()
+        if isinstance(r, result_type) and verdict_matches(r.verdict)
+    ]
+
+
+def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
+    """Decision when non-inferiority is not established on every objective."""
+    failing = _objective_names(evidence, ObjectiveResult, lambda verdict: verdict == "inferior")
+    if failing:
+        return (
+            "Reject",
+            f"Regression beyond the allowed margin demonstrated on: {', '.join(failing)}",
+        )
+    inconclusive = _objective_names(evidence, ObjectiveResult, lambda verdict: verdict == "inconclusive")
+    return (
+        "NoDecision",
+        f"Non-inferiority not established on: {', '.join(inconclusive)}",
+    )
