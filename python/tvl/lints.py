@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as dataclass_field
 from fractions import Fraction
 from math import lcm
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -809,7 +809,7 @@ class _CompositeCtx:
     # Module-level freshness-context coverage (§3.2 item 11 / RFC 0001 §3.5):
     # the promotion_policy.require_calibration.hash_covered_context keys and the
     # value covered under 'signal_inputs', resolved once for the whole module.
-    ctx_keys: Set[str] = field(default_factory=set)
+    ctx_keys: Set[str] = dataclass_field(default_factory=set)
     covered_signal_inputs: Optional[List[Any]] = None
 
     def add(self, code: str, message: str, path: List[Any], severity: str = "error") -> None:
@@ -1947,9 +1947,9 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
     for idx, clause in enumerate(structural):
         if not isinstance(clause, dict):
             continue
-        for clause_key in ("when", "then", "expr"):
-            expr = clause.get(clause_key)
-            expr_path = ["constraints", "structural", idx, clause_key]
+        for field in ("when", "then", "expr"):
+            expr = clause.get(field)
+            expr_path = ["constraints", "structural", idx, field]
             _check_structural_expression(expr, expr_path, context, issues)
 
 
