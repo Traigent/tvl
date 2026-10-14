@@ -462,6 +462,25 @@ def _reify_index_membership(
         model.AddImplication(member, lit)
 
 
+# Reified atom encodings: (constraint when the literal holds, constraint when it does not).
+_ATOM_REIFICATIONS: Dict[str, Any] = {
+    "==": (lambda var, enc: var == enc, lambda var, enc: var != enc),
+    "!=": (lambda var, enc: var != enc, lambda var, enc: var == enc),
+    "<": (lambda var, enc: var <= enc - 1, lambda var, enc: var >= enc),
+    "<=": (lambda var, enc: var <= enc, lambda var, enc: var >= enc + 1),
+    ">": (lambda var, enc: var >= enc + 1, lambda var, enc: var <= enc),
+    ">=": (lambda var, enc: var >= enc, lambda var, enc: var <= enc - 1),
+}
+
+# Value comparisons used to select the enum indices satisfying an ordering atom.
+_VALUE_ORDERINGS: Dict[str, Any] = {
+    "<": lambda val, threshold: val < threshold,
+    "<=": lambda val, threshold: val <= threshold,
+    ">": lambda val, threshold: val > threshold,
+    ">=": lambda val, threshold: val >= threshold,
+}
+
+
 def _atom_literal(
     model: cp_model.CpModel,
     var_map: Dict[str, cp_model.IntVar],
@@ -474,96 +493,97 @@ def _atom_literal(
     var = var_map[atom.path]
 
     if domain.kind == "bool":
-        bool_var = var
-        if atom.op == "==":
-            return bool_var if bool(atom.value) else bool_var.Not()
-        if atom.op == "!=":
-            return bool_var.Not() if bool(atom.value) else bool_var
-        raise ValueError(f"Unsupported bool operator {atom.op}")
-
+        return _bool_atom_literal(var, atom)
     if domain.kind == "enum":
-        values = domain.values or []
-        numeric_values = [v for v in values if isinstance(v, (int, float))]
-        is_numeric_enum = len(numeric_values) == len(values) and values
+        return _enum_atom_literal(model, var, domain, atom)
+    return _ordered_atom_literal(model, var, domain, atom)
 
-        encoded = None
-        if values:
-            try:
-                encoded = domain.encode(atom.value)
-            except ValueError:
-                encoded = None
 
-        lit = model.NewBoolVar(f"lit_{atom.path.replace('.', '_')}_{atom.op}_{atom.value}")
+def _atom_literal_name(atom: Atom) -> str:
+    return f"lit_{atom.path.replace('.', '_')}_{atom.op}_{atom.value}"
 
-        if atom.op == "==":
-            if encoded is None:
-                model.Add(lit == 0)
-            else:
-                model.Add(var == encoded).OnlyEnforceIf(lit)
-                model.Add(var != encoded).OnlyEnforceIf(lit.Not())
-            return lit
 
-        if atom.op == "!=":
-            if encoded is None:
-                model.Add(lit == 1)
-            else:
-                model.Add(var != encoded).OnlyEnforceIf(lit)
-                model.Add(var == encoded).OnlyEnforceIf(lit.Not())
-            return lit
+def _reify_atom(model: cp_model.CpModel, var: cp_model.IntVar, op: str, encoded: int, lit: cp_model.BoolVar) -> None:
+    holds, fails = _ATOM_REIFICATIONS[op]
+    model.Add(holds(var, encoded)).OnlyEnforceIf(lit)
+    model.Add(fails(var, encoded)).OnlyEnforceIf(lit.Not())
 
-        if is_numeric_enum and atom.op in ("<", "<=", ">", ">="):
-            threshold = float(atom.value)
-            # Compare enum VALUES against the threshold, not enum indices: the
-            # index order is not guaranteed to match value order (legacy
-            # dict-form tvars are stored verbatim; only list-form sorts), so we
-            # collect the exact set of value-satisfying indices and reify
-            # membership over it rather than assuming a contiguous index range.
-            if atom.op == "<":
-                allowed = [idx for idx, val in enumerate(values) if val < threshold]
-            elif atom.op == "<=":
-                allowed = [idx for idx, val in enumerate(values) if val <= threshold]
-            elif atom.op == ">":
-                allowed = [idx for idx, val in enumerate(values) if val > threshold]
-            else:  # ">="
-                allowed = [idx for idx, val in enumerate(values) if val >= threshold]
-            _reify_index_membership(model, var, allowed, len(values), lit)
-            return lit
 
-        # Ordering comparison (<, <=, >, >=) on a symbolic (non-numeric) enum
-        # has no defined order, so it cannot be encoded soundly. Forcing the
-        # literal true (the previous behaviour) made the atom a tautology and
-        # the whole clause fail open, letting violating configs pass. Reject it
-        # instead — matching the fail-closed `raise` for unsupported operators
-        # on ordered domains below (issue #40).
-        raise ValueError(
-            f"Unsupported ordering operator {atom.op!r} on symbolic enum "
-            f"'{atom.path}' (enum values are not ordered)"
-        )
-
-    encoded = domain.encode(atom.value)
-    lit = model.NewBoolVar(f"lit_{atom.path.replace('.', '_')}_{atom.op}_{atom.value}")
-
+def _bool_atom_literal(bool_var: cp_model.BoolVar, atom: Atom) -> cp_model.BoolVar:
     if atom.op == "==":
-        model.Add(var == encoded).OnlyEnforceIf(lit)
-        model.Add(var != encoded).OnlyEnforceIf(lit.Not())
-    elif atom.op == "!=":
-        model.Add(var != encoded).OnlyEnforceIf(lit)
-        model.Add(var == encoded).OnlyEnforceIf(lit.Not())
-    elif atom.op == "<":
-        model.Add(var <= encoded - 1).OnlyEnforceIf(lit)
-        model.Add(var >= encoded).OnlyEnforceIf(lit.Not())
-    elif atom.op == "<=":
-        model.Add(var <= encoded).OnlyEnforceIf(lit)
-        model.Add(var >= encoded + 1).OnlyEnforceIf(lit.Not())
-    elif atom.op == ">":
-        model.Add(var >= encoded + 1).OnlyEnforceIf(lit)
-        model.Add(var <= encoded).OnlyEnforceIf(lit.Not())
-    elif atom.op == ">=":
-        model.Add(var >= encoded).OnlyEnforceIf(lit)
-        model.Add(var <= encoded - 1).OnlyEnforceIf(lit.Not())
-    else:
-        raise ValueError(f"Unsupported operator {atom.op}")
+        return bool_var if bool(atom.value) else bool_var.Not()
+    if atom.op == "!=":
+        return bool_var.Not() if bool(atom.value) else bool_var
+    raise ValueError(f"Unsupported bool operator {atom.op}")
 
+
+def _enum_atom_literal(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    domain: Domain,
+    atom: Atom,
+) -> cp_model.BoolVar:
+    values = domain.values or []
+    encoded = _try_encode_enum(domain, values, atom.value)
+    lit = model.NewBoolVar(_atom_literal_name(atom))
+
+    if atom.op in ("==", "!="):
+        if encoded is None:
+            # A value outside the enum is never equal to the variable.
+            model.Add(lit == (0 if atom.op == "==" else 1))
+        else:
+            _reify_atom(model, var, atom.op, encoded, lit)
+        return lit
+
+    if _is_numeric_enum(values) and atom.op in _VALUE_ORDERINGS:
+        threshold = float(atom.value)
+        # Compare enum VALUES against the threshold, not enum indices: the
+        # index order is not guaranteed to match value order (legacy
+        # dict-form tvars are stored verbatim; only list-form sorts), so we
+        # collect the exact set of value-satisfying indices and reify
+        # membership over it rather than assuming a contiguous index range.
+        holds = _VALUE_ORDERINGS[atom.op]
+        allowed = [idx for idx, val in enumerate(values) if holds(val, threshold)]
+        _reify_index_membership(model, var, allowed, len(values), lit)
+        return lit
+
+    # Ordering comparison (<, <=, >, >=) on a symbolic (non-numeric) enum
+    # has no defined order, so it cannot be encoded soundly. Forcing the
+    # literal true (the previous behaviour) made the atom a tautology and
+    # the whole clause fail open, letting violating configs pass. Reject it
+    # instead — matching the fail-closed `raise` for unsupported operators
+    # on ordered domains below (issue #40).
+    raise ValueError(
+        f"Unsupported ordering operator {atom.op!r} on symbolic enum "
+        f"'{atom.path}' (enum values are not ordered)"
+    )
+
+
+def _try_encode_enum(domain: Domain, values: List[Any], value: Any) -> Optional[int]:
+    """Index of ``value`` in the enum, or ``None`` if it is not a member."""
+    if not values:
+        return None
+    try:
+        return domain.encode(value)
+    except ValueError:
+        return None
+
+
+def _is_numeric_enum(values: List[Any]) -> bool:
+    return bool(values) and all(isinstance(v, (int, float)) for v in values)
+
+
+def _ordered_atom_literal(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    domain: Domain,
+    atom: Atom,
+) -> cp_model.BoolVar:
+    encoded = domain.encode(atom.value)
+    lit = model.NewBoolVar(_atom_literal_name(atom))
+    if atom.op not in _ATOM_REIFICATIONS:
+        raise ValueError(f"Unsupported operator {atom.op}")
+    _reify_atom(model, var, atom.op, encoded, lit)
     return lit
 
 
