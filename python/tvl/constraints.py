@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
@@ -165,10 +166,7 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
     if expr is None:
         return [[]]
     if isinstance(expr, list):
-        disjuncts: List[List[Atom]] = []
-        for item in expr:
-            disjuncts.extend(parse_expression(item))
-        return disjuncts or [[]]
+        return _parse_expression_list(expr)
     if not isinstance(expr, str):
         raise ValueError(f"Expression must be a string; got {expr!r}")
 
@@ -191,15 +189,26 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
         disj = disj.strip()
         if not disj:
             continue
-        atoms: List[Atom] = []
-        for literal in _AND_SPLIT.split(disj):
-            literal = literal.strip()
-            if not literal:
-                continue
-            atoms.append(_parse_literal(literal))
-        disjuncts.append(atoms)
+        disjuncts.append(_parse_conjunction(disj))
 
     return disjuncts or [[]]
+
+
+def _parse_expression_list(expr: List[Any]) -> List[List[Atom]]:
+    disjuncts: List[List[Atom]] = []
+    for item in expr:
+        disjuncts.extend(parse_expression(item))
+    return disjuncts or [[]]
+
+
+def _parse_conjunction(disj: str) -> List[Atom]:
+    atoms: List[Atom] = []
+    for literal in _AND_SPLIT.split(disj):
+        literal = literal.strip()
+        if not literal:
+            continue
+        atoms.append(_parse_literal(literal))
+    return atoms
 
 
 def _parse_literal(text: str) -> Atom:
@@ -287,30 +296,7 @@ def check_structural_satisfiable(compiled: CompiledConstraints) -> Dict[str, Any
         var_map[path] = _create_variable(model, domain)
 
     for idx, constraint in enumerate(compiled.constraints):
-        # Evaluate antecedent → consequent
-        if not constraint.antecedent:
-            antecedent_conjs = [[]]
-        else:
-            antecedent_conjs = constraint.antecedent
-
-        if not constraint.consequent:
-            consequent_conjs = [[]]
-        else:
-            consequent_conjs = constraint.consequent
-
-        for conj_idx, antecedent_atoms in enumerate(antecedent_conjs):
-            cond_literals = [_atom_literal(model, var_map, compiled.domains, atom) for atom in antecedent_atoms]
-
-            effect_literals: List[cp_model.BoolVar] = []
-            for eff_idx, effect_atoms in enumerate(consequent_conjs):
-                lit = _conjunction_literal(model, [_atom_literal(model, var_map, compiled.domains, atom) for atom in effect_atoms], name=f"cons_{idx}_{conj_idx}_{eff_idx}")
-                effect_literals.append(lit)
-
-            if not effect_literals:
-                effect_literals.append(_true_literal(model))
-
-            clause = effect_literals + [lit.Not() for lit in cond_literals]
-            model.AddBoolOr(clause)
+        _add_implication_clauses(model, var_map, compiled.domains, idx, constraint)
 
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
@@ -324,88 +310,132 @@ def check_structural_satisfiable(compiled: CompiledConstraints) -> Dict[str, Any
     return {"ok": False, "assignment": None}
 
 
+def _add_implication_clauses(
+    model: cp_model.CpModel,
+    var_map: Dict[str, cp_model.IntVar],
+    domains: Dict[str, Domain],
+    idx: int,
+    constraint: StructuralConstraint,
+) -> None:
+    """Add ``antecedent -> consequent`` as one clause per antecedent disjunct."""
+    antecedent_conjs = constraint.antecedent or [[]]
+    consequent_conjs = constraint.consequent or [[]]
+
+    for conj_idx, antecedent_atoms in enumerate(antecedent_conjs):
+        cond_literals = [_atom_literal(model, var_map, domains, atom) for atom in antecedent_atoms]
+
+        effect_literals: List[cp_model.BoolVar] = []
+        for eff_idx, effect_atoms in enumerate(consequent_conjs):
+            lit = _conjunction_literal(model, [_atom_literal(model, var_map, domains, atom) for atom in effect_atoms], name=f"cons_{idx}_{conj_idx}_{eff_idx}")
+            effect_literals.append(lit)
+
+        if not effect_literals:
+            effect_literals.append(_true_literal(model))
+
+        clause = effect_literals + [lit.Not() for lit in cond_literals]
+        model.AddBoolOr(clause)
+
+
 def evaluate_assignment(compiled: CompiledConstraints, assignments: Dict[str, Any]) -> Dict[str, Any]:
     flat = flatten_assignments(assignments)
-    domain_issues: List[Dict[str, Any]] = []
-    for path, domain in compiled.domains.items():
-        if path not in flat:
-            domain_issues.append({"code": "missing_assignment", "path": path, "message": "Missing assignment"})
-            continue
-        value = flat[path]
-        if not domain.contains(value):
-            domain_issues.append({"code": "domain_violation", "path": path, "message": f"Value {value!r} outside domain"})
+    domain_issues = _assignment_domain_issues(compiled.domains, flat)
 
     # Fail closed on constraint atoms that reference an illegal (#51) or
-    # undeclared (#52) TVAR path. Without this, atom_true silently returns False
-    # for such a path, voiding the guard with no diagnostic (fail-open); the SAT
-    # sibling (_atom_literal) already raises "Unknown TVAR in constraint".
-    seen_paths: set[str] = set()
-    for constraint in compiled.constraints:
-        for clause_dnf in (constraint.antecedent, constraint.consequent):
-            for conj in clause_dnf:
-                for atom in conj:
-                    if atom.path in seen_paths:
-                        continue
-                    seen_paths.add(atom.path)
-                    if not _IDENT_RE.match(atom.path):
-                        domain_issues.append({
-                            "code": "illegal_ident",
-                            "path": atom.path,
-                            "message": f"Constraint references illegal identifier {atom.path!r}",
-                        })
-                    elif atom.path not in compiled.domains:
-                        domain_issues.append({
-                            "code": "unknown_reference",
-                            "path": atom.path,
-                            "message": f"Constraint references undeclared TVAR '{atom.path}'",
-                        })
-
-    def atom_true(atom: Atom) -> bool:
-        value = flat.get(atom.path)
-        if value is None:
-            return False
-        if atom.op == "==":
-            return value == atom.value
-        if atom.op == "!=":
-            return value != atom.value
-        if atom.op == "<":
-            return value < atom.value
-        if atom.op == "<=":
-            return value <= atom.value
-        if atom.op == ">":
-            return value > atom.value
-        if atom.op == ">=":
-            return value >= atom.value
-        raise ValueError(f"Unsupported operator {atom.op}")
+    # undeclared (#52) TVAR path. Without this, _atom_true silently returns
+    # False for such a path, voiding the guard with no diagnostic (fail-open);
+    # the SAT sibling (_atom_literal) already raises "Unknown TVAR in constraint".
+    domain_issues.extend(_constraint_reference_issues(compiled))
 
     constraint_issues: List[Dict[str, Any]] = []
     for idx, constraint in enumerate(compiled.constraints):
-        antecedent = constraint.antecedent or [[]]
-        consequent = constraint.consequent or [[]]
-
-        # The antecedent is a DNF (OR of conjunctions); it holds iff ANY
-        # disjunct holds. It is vacuously true only when EVERY disjunct is
-        # false. Short-circuiting on the first false disjunct (the previous
-        # behaviour) declared the whole constraint satisfied as soon as one
-        # disjunct was false — a fail-open that mirrored neither the intended
-        # semantics nor the SAT encoder, which encodes (d1 ∨ d2) → C as
-        # (d1 → C) ∧ (d2 → C) (issue #38).
-        antecedent_true = any(
-            all(atom_true(atom) for atom in cond) for cond in antecedent
-        )
-        if not antecedent_true:
-            # antecedent false → constraint vacuously satisfied
-            satisfied = True
-        else:
-            # antecedent holds → consequent must hold
-            satisfied = any(
-                all(atom_true(atom) for atom in conj) for conj in consequent
-            )
-
-        if not satisfied:
+        if not _constraint_holds(constraint, flat):
             constraint_issues.append({"code": "constraint_failed", "constraint_index": idx, "raw": constraint.raw})
 
     return {"domains": domain_issues, "constraints": constraint_issues}
+
+
+def _assignment_domain_issues(domains: Dict[str, Domain], flat: Dict[str, Any]) -> List[Dict[str, Any]]:
+    issues: List[Dict[str, Any]] = []
+    for path, domain in domains.items():
+        if path not in flat:
+            issues.append({"code": "missing_assignment", "path": path, "message": "Missing assignment"})
+            continue
+        value = flat[path]
+        if not domain.contains(value):
+            issues.append({"code": "domain_violation", "path": path, "message": f"Value {value!r} outside domain"})
+    return issues
+
+
+def _constraint_atoms(constraint: StructuralConstraint):
+    for clause_dnf in (constraint.antecedent, constraint.consequent):
+        for conj in clause_dnf:
+            yield from conj
+
+
+def _constraint_reference_issues(compiled: CompiledConstraints) -> List[Dict[str, Any]]:
+    issues: List[Dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for constraint in compiled.constraints:
+        for atom in _constraint_atoms(constraint):
+            if atom.path in seen_paths:
+                continue
+            seen_paths.add(atom.path)
+            if not _IDENT_RE.match(atom.path):
+                issues.append({
+                    "code": "illegal_ident",
+                    "path": atom.path,
+                    "message": f"Constraint references illegal identifier {atom.path!r}",
+                })
+            elif atom.path not in compiled.domains:
+                issues.append({
+                    "code": "unknown_reference",
+                    "path": atom.path,
+                    "message": f"Constraint references undeclared TVAR '{atom.path}'",
+                })
+    return issues
+
+
+_ATOM_COMPARISONS = (
+    ("==", operator.eq),
+    ("!=", operator.ne),
+    ("<", operator.lt),
+    ("<=", operator.le),
+    (">", operator.gt),
+    (">=", operator.ge),
+)
+
+
+def _atom_true(atom: Atom, flat: Dict[str, Any]) -> bool:
+    value = flat.get(atom.path)
+    if value is None:
+        return False
+    for op, compare in _ATOM_COMPARISONS:
+        if atom.op == op:
+            return compare(value, atom.value)
+    raise ValueError(f"Unsupported operator {atom.op}")
+
+
+def _constraint_holds(constraint: StructuralConstraint, flat: Dict[str, Any]) -> bool:
+    antecedent = constraint.antecedent or [[]]
+    consequent = constraint.consequent or [[]]
+
+    # The antecedent is a DNF (OR of conjunctions); it holds iff ANY
+    # disjunct holds. It is vacuously true only when EVERY disjunct is
+    # false. Short-circuiting on the first false disjunct (the previous
+    # behaviour) declared the whole constraint satisfied as soon as one
+    # disjunct was false — a fail-open that mirrored neither the intended
+    # semantics nor the SAT encoder, which encodes (d1 ∨ d2) → C as
+    # (d1 → C) ∧ (d2 → C) (issue #38).
+    antecedent_true = any(
+        all(_atom_true(atom, flat) for atom in cond) for cond in antecedent
+    )
+    if not antecedent_true:
+        # antecedent false → constraint vacuously satisfied
+        return True
+    # antecedent holds → consequent must hold
+    return any(
+        all(_atom_true(atom, flat) for atom in conj) for conj in consequent
+    )
 
 
 def _create_variable(model: cp_model.CpModel, domain: Domain) -> cp_model.IntVar:
@@ -413,20 +443,32 @@ def _create_variable(model: cp_model.CpModel, domain: Domain) -> cp_model.IntVar
     if domain.kind == "bool":
         return model.NewBoolVar(name)
     if domain.kind == "enum":
-        values = domain.values or []
-        if not values:
-            # Fallback to a binary selector
-            return model.NewIntVar(0, 1, name)
-        return model.NewIntVar(0, len(values) - 1, name)
+        return _create_enum_variable(model, domain, name)
     if domain.kind == "int":
-        lb = int(domain.minimum) if domain.minimum is not None else -10_000
-        ub = int(domain.maximum) if domain.maximum is not None else 10_000
-        return model.NewIntVar(lb, ub, name)
+        return _create_int_variable(model, domain, name)
     if domain.kind == "float":
-        lb = domain._encode_bound_lower(domain.minimum) if domain.minimum is not None else -1_000_000
-        ub = domain._encode_bound_upper(domain.maximum) if domain.maximum is not None else 1_000_000
-        return model.NewIntVar(lb, ub, name)
+        return _create_float_variable(model, domain, name)
     raise ValueError(f"Unsupported domain type {domain.kind}")
+
+
+def _create_enum_variable(model: cp_model.CpModel, domain: Domain, name: str) -> cp_model.IntVar:
+    values = domain.values or []
+    if not values:
+        # Fallback to a binary selector
+        return model.NewIntVar(0, 1, name)
+    return model.NewIntVar(0, len(values) - 1, name)
+
+
+def _create_int_variable(model: cp_model.CpModel, domain: Domain, name: str) -> cp_model.IntVar:
+    lb = int(domain.minimum) if domain.minimum is not None else -10_000
+    ub = int(domain.maximum) if domain.maximum is not None else 10_000
+    return model.NewIntVar(lb, ub, name)
+
+
+def _create_float_variable(model: cp_model.CpModel, domain: Domain, name: str) -> cp_model.IntVar:
+    lb = domain._encode_bound_lower(domain.minimum) if domain.minimum is not None else -1_000_000
+    ub = domain._encode_bound_upper(domain.maximum) if domain.maximum is not None else 1_000_000
+    return model.NewIntVar(lb, ub, name)
 
 
 def _reify_index_membership(
