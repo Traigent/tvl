@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict as Dict, Optional
 
 import yaml
 
@@ -51,7 +51,7 @@ def load_yaml_safely(path: Path) -> Any:
 
 
 def print_output(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     format_type: str,
     text_renderer: Optional[Callable[..., None]] = None,
 ) -> None:

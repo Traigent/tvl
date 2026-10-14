@@ -1,12 +1,12 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict as Dict
 
 from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
 
 
-def text_renderer(data: Dict[str, Any]) -> None:
+def text_renderer(data: dict[str, Any]) -> None:
     """Render the parsed AST in text mode."""
     print(json.dumps(data.get("ast"), indent=2, sort_keys=True))
 

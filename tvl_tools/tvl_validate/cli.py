@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict as Dict, List as List
 
 from jsonschema import Draft202012Validator
 
@@ -10,7 +10,7 @@ from tvl.lints import lint_module
 from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
 
 
-def _load_schema(tool_file: Path) -> Dict[str, Any]:
+def _load_schema(tool_file: Path) -> dict[str, Any]:
     """Load the TVL JSON Schema relative to this CLI module."""
     project_root = tool_file.resolve().parents[2]
     schema_path = project_root / "spec/grammar/tvl.schema.json"
@@ -18,11 +18,11 @@ def _load_schema(tool_file: Path) -> Dict[str, Any]:
         return json.load(handle)
 
 
-def _schema_issues(doc: Dict[str, Any], schema: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str, Any]]:
     """Return schema validation issues for the given document."""
     validator = Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
-    issues: List[Dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
     for err in errors:
         issues.append(
             {
@@ -35,7 +35,7 @@ def _schema_issues(doc: Dict[str, Any], schema: Dict[str, Any]) -> List[Dict[str
     return issues
 
 
-def text_renderer(data: Dict[str, Any]) -> None:
+def text_renderer(data: dict[str, Any]) -> None:
     issues = data.get("issues", [])
     if issues:
         for issue in issues:

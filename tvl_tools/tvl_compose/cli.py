@@ -11,7 +11,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict as Dict, List as List, Optional
 
 import yaml
 
@@ -45,7 +45,7 @@ def _resolve_base_path(overlay_path: Path, base_ref: str, overlay_root: Path) ->
     return base_path
 
 
-def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep merge override into base, with override taking precedence."""
     result = copy.deepcopy(base)
     for key, value in override.items():
@@ -65,7 +65,7 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     return result
 
 
-def _merge_tvar_lists(base_tvars: List[Dict], override_tvars: List[Dict]) -> List[Dict]:
+def _merge_tvar_lists(base_tvars: list[dict], override_tvars: list[dict]) -> list[dict]:
     """Merge TVAR lists by name, with overrides taking precedence."""
     result = copy.deepcopy(base_tvars)
     base_by_name = {t.get("name"): i for i, t in enumerate(result)}
@@ -211,10 +211,10 @@ def _band_interval(band: Any) -> Optional[tuple]:
 
 
 def _validate_safety_narrowing(
-    base: Dict[str, Any],
-    composed: Dict[str, Any],
-    waives: Optional[List[Any]] = None,
-) -> List[str]:
+    base: dict[str, Any],
+    composed: dict[str, Any],
+    waives: Optional[list[Any]] = None,
+) -> list[str]:
     """Validate that an overlay does not weaken the base's safety posture.
 
     TVAR domains and exploration budgets are covered by ``_validate_narrowing``. This
@@ -245,9 +245,9 @@ def _validate_safety_narrowing(
     Returns:
         A list of human-readable errors; empty when the overlay only tightens.
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
-    waived: Dict[str, str] = {}
+    waived: dict[str, str] = {}
     for entry in waives or []:
         if isinstance(entry, dict):
             clause, reason = entry.get("clause"), entry.get("reason")
@@ -265,7 +265,7 @@ def _validate_safety_narrowing(
         waived[_clause_key(clause)] = reason
 
     # --- chance constraints -------------------------------------------------
-    def by_name(policy: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    def by_name(policy: dict[str, Any]) -> dict[str, dict[str, Any]]:
         items = (policy or {}).get("chance_constraints") or []
         return {c.get("name"): c for c in items if isinstance(c, dict) and c.get("name")}
 
@@ -391,13 +391,13 @@ def _validate_safety_narrowing(
     return errors
 
 
-def _all_base_clauses(base: Dict[str, Any]) -> List[Any]:
+def _all_base_clauses(base: dict[str, Any]) -> list[Any]:
     """Every structural and derived clause declared by the base module."""
     constraints = base.get("constraints") or {}
     return list(constraints.get("structural") or []) + list(constraints.get("derived") or [])
 
 
-def _validate_narrowing(base: Dict[str, Any], composed: Dict[str, Any]) -> List[str]:
+def _validate_narrowing(base: dict[str, Any], composed: dict[str, Any]) -> list[str]:
     """Validate that the composed spec only narrows (doesn't widen) the base."""
     errors = []
 
@@ -529,7 +529,7 @@ def _compose(
     return composed
 
 
-def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, Any]:
+def compose(overlay_path: Path, validate_narrowing: bool = True) -> dict[str, Any]:
     """Compose an overlay file into a valid TVL 1.0 module.
 
     The initial overlay's directory is the composition root. Every ``extends``
@@ -544,7 +544,7 @@ def compose(overlay_path: Path, validate_narrowing: bool = True) -> Dict[str, An
     )
 
 
-def text_renderer(data: Dict[str, Any]) -> None:
+def text_renderer(data: dict[str, Any]) -> None:
     """Render compose result as text."""
     if data.get("ok"):
         if data.get("output_file"):
@@ -590,7 +590,7 @@ def main() -> None:
     try:
         composed = compose(args.file, validate_narrowing=not args.no_validate)
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "ok": True,
             "file": str(args.file),
             "composed": composed,

@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, List
+from typing import Any, Dict as Dict, List as List
 
 from tvl.configuration import load_configuration, validate_configuration
 from tvl.errors import TVLError
@@ -16,11 +16,11 @@ def _current_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _emit_event(payload: Dict[str, Any]) -> None:
+def _emit_event(payload: dict[str, Any]) -> None:
     print(json.dumps(payload))
 
 
-def _read_config(path: Path | str) -> Dict[str, Any]:
+def _read_config(path: Path | str) -> dict[str, Any]:
     if str(path) == "-":
         data = sys.stdin.read()
         with NamedTemporaryFile("w", delete=False, suffix=".yaml", encoding="utf-8") as tmp:
@@ -34,8 +34,8 @@ def _read_config(path: Path | str) -> Dict[str, Any]:
     return load_configuration(path)
 
 
-def _normalize_failures(report: Dict[str, Any]) -> List[Dict[str, Any]]:
-    failures: List[Dict[str, Any]] = []
+def _normalize_failures(report: dict[str, Any]) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
     for issue in report.get("domains", []):
         failures.append(
             {
@@ -70,7 +70,7 @@ def _normalize_failures(report: Dict[str, Any]) -> List[Dict[str, Any]]:
     return failures
 
 
-def _default_remediation(code: Any) -> List[str]:
+def _default_remediation(code: Any) -> list[str]:
     if code == "missing_assignment":
         return ["Provide an assignment for the missing TVAR"]
     if code == "domain_violation":

@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict as Dict, List as List, Tuple as Tuple
 
 from tvl.loader import load
 from tvl.measurement import load_measurement, prepare_measurement_bundle
@@ -16,10 +16,10 @@ def load_yaml(path: Path) -> Any:
 
 
 def _load_module_and_inputs(
-    inputs: List[Path],
+    inputs: list[Path],
     policy_override: Path | None,
-) -> Tuple[Dict[str, Any], Dict[str, Any], List[Dict[str, Any]], Path, Path]:
-    warnings: List[Dict[str, Any]] = []
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], Path, Path]:
+    warnings: list[dict[str, Any]] = []
 
     if len(inputs) == 3:
         module_path, incumbent_path, candidate_path = inputs
@@ -55,8 +55,8 @@ def _load_module_and_inputs(
     )
 
 
-def _qualify_issues(source: str, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    qualified: List[Dict[str, Any]] = []
+def _qualify_issues(source: str, issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    qualified: list[dict[str, Any]] = []
     for issue in issues:
         enriched = dict(issue)
         enriched["source"] = source

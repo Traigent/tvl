@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict as Dict, List as List, Tuple as Tuple
 
 from .configuration import validate_configuration
 from .errors import ParseError, SchemaError
@@ -10,7 +10,7 @@ from .schema import measurement_validator
 from .yaml_safe import safe_load
 
 
-def load_measurement(path: Path | str) -> Dict[str, Any]:
+def load_measurement(path: Path | str) -> dict[str, Any]:
     p = Path(path)
     try:
         data = safe_load(p.read_text(encoding="utf-8"))
@@ -25,13 +25,13 @@ def load_measurement(path: Path | str) -> Dict[str, Any]:
     return data
 
 
-def normalize_measurement_bundle(measurement: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    normalized: Dict[str, Any] = {}
+def normalize_measurement_bundle(measurement: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    normalized: dict[str, Any] = {}
     for key in ("bundle_id", "config_id", "module_id", "summary"):
         if key in measurement:
             normalized[key] = measurement[key]
 
-    warnings: List[Dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     normalized["objective_values"] = measurement.get("objective_values") or {}
     normalized["chance_outcomes"] = measurement.get("chance_outcomes") or {}
 
@@ -72,19 +72,19 @@ def normalize_measurement_bundle(measurement: Dict[str, Any]) -> Tuple[Dict[str,
 
 
 def prepare_measurement_bundle(
-    module: Dict[str, Any],
-    measurement: Dict[str, Any],
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    module: dict[str, Any],
+    measurement: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     normalized, warnings = normalize_measurement_bundle(measurement)
     readiness_issues = _evaluate_promotion_readiness(module, normalized)
     return normalized, warnings, readiness_issues
 
 
 def validate_measurement(
-    module: Dict[str, Any],
-    config: Dict[str, Any],
-    measurement: Dict[str, Any],
-) -> Dict[str, Any]:
+    module: dict[str, Any],
+    config: dict[str, Any],
+    measurement: dict[str, Any],
+) -> dict[str, Any]:
     config_report = validate_configuration(module, config)
     normalized, warnings, readiness_issues = prepare_measurement_bundle(module, measurement)
 
@@ -104,8 +104,8 @@ def validate_measurement(
     }
 
 
-def _evaluate_objectives(module: Dict[str, Any], measurement: Dict[str, Any]) -> List[Dict[str, Any]]:
-    issues: List[Dict[str, Any]] = []
+def _evaluate_objectives(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
     objective_entries = module.get("objectives") or []
     objectives = {
         obj.get("name"): obj for obj in objective_entries
@@ -184,8 +184,8 @@ def _evaluate_objectives(module: Dict[str, Any], measurement: Dict[str, Any]) ->
     return issues
 
 
-def _evaluate_chance(module: Dict[str, Any], measurement: Dict[str, Any]) -> List[Dict[str, Any]]:
-    issues: List[Dict[str, Any]] = []
+def _evaluate_chance(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
     chance_policy = [
         item for item in (module.get("promotion_policy", {}) or {}).get("chance_constraints", []) or []
         if isinstance(item, dict) and item.get("name")
@@ -236,8 +236,8 @@ def _evaluate_chance(module: Dict[str, Any], measurement: Dict[str, Any]) -> Lis
     return issues
 
 
-def _evaluate_promotion_readiness(module: Dict[str, Any], measurement: Dict[str, Any]) -> List[Dict[str, Any]]:
-    issues: List[Dict[str, Any]] = []
+def _evaluate_promotion_readiness(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
     strict_policy = ((module.get("promotion_policy") or {}).get("require_calibration") or {})
     strict_cvar = any(
         bool(((cvar.get("governance") or {}).get("require_calibration")))
@@ -311,11 +311,11 @@ def _evaluate_promotion_readiness(module: Dict[str, Any], measurement: Dict[str,
 
 
 def _convert_legacy_chance_outcomes(
-    legacy_chance: Dict[str, Any],
-    summary: Dict[str, Any],
-) -> Tuple[Dict[str, Dict[str, int]], List[Dict[str, Any]]]:
-    converted: Dict[str, Dict[str, int]] = {}
-    warnings: List[Dict[str, Any]] = []
+    legacy_chance: dict[str, Any],
+    summary: dict[str, Any],
+) -> tuple[dict[str, dict[str, int]], list[dict[str, Any]]]:
+    converted: dict[str, dict[str, int]] = {}
+    warnings: list[dict[str, Any]] = []
     default_trials = summary.get("trials")
 
     for name, data in legacy_chance.items():
@@ -367,8 +367,8 @@ def _convert_legacy_chance_outcomes(
 
 
 def _objective_observed_value(
-    canonical: Dict[str, Any] | None,
-    legacy: Dict[str, Any] | None,
+    canonical: dict[str, Any] | None,
+    legacy: dict[str, Any] | None,
 ) -> float | None:
     if canonical and isinstance(canonical, dict):
         samples = canonical.get("samples")
@@ -383,7 +383,7 @@ def _objective_observed_value(
     return None
 
 
-def _has_statistical_objective_evidence(data: Dict[str, Any] | None) -> bool:
+def _has_statistical_objective_evidence(data: dict[str, Any] | None) -> bool:
     if not isinstance(data, dict):
         return False
     samples = data.get("samples")
@@ -396,7 +396,7 @@ def _has_statistical_objective_evidence(data: Dict[str, Any] | None) -> bool:
     )
 
 
-def _has_canonical_chance_outcome(data: Dict[str, Any] | None) -> bool:
+def _has_canonical_chance_outcome(data: dict[str, Any] | None) -> bool:
     if not isinstance(data, dict):
         return False
     return data.get("violations") is not None and data.get("trials") is not None

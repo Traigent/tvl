@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict as Dict, List as List, Optional, Tuple as Tuple
 
 from .model import ValidationOptions, extract_validation_options
 
@@ -19,24 +19,24 @@ class DerivedConstraint:
     symbol: Optional[list] = None
     operator: Optional[str] = None
     value: Optional[float] = None
-    legacy_symbols: List[str] = field(default_factory=list)
+    legacy_symbols: list[str] = field(default_factory=list)
 
 
 @dataclass
 class OperationalModel:
     validation_options: ValidationOptions
     budget: BudgetSummary
-    derived_constraints: List[DerivedConstraint]
+    derived_constraints: list[DerivedConstraint]
 
 
 @dataclass
 class OperationalResult:
     ok: bool
     binding_budget: Optional[str]
-    issues: List[Dict[str, Any]]
+    issues: list[dict[str, Any]]
 
 
-def build_operational_model(module: Dict[str, Any]) -> OperationalModel:
+def build_operational_model(module: dict[str, Any]) -> OperationalModel:
     options = extract_validation_options(module)
     exploration = module.get("exploration") or {}
     budgets = exploration.get("budgets") or {}
@@ -68,9 +68,9 @@ def build_operational_model(module: Dict[str, Any]) -> OperationalModel:
     )
 
 
-def check_operational(module: Dict[str, Any]) -> OperationalResult:
+def check_operational(module: dict[str, Any]) -> OperationalResult:
     model = build_operational_model(module)
-    issues: List[Dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
 
     if not model.validation_options.skip_budget_checks:
         budget_issues, binding = _validate_budgets(model.budget)
@@ -104,8 +104,8 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
 
 
-def _validate_budgets(budget: BudgetSummary) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    issues: List[Dict[str, Any]] = []
+def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Optional[str]]:
+    issues: list[dict[str, Any]] = []
     binding: Optional[str] = None
 
     if budget.max_trials is not None and budget.max_trials <= 0:
@@ -144,7 +144,7 @@ def _validate_budgets(budget: BudgetSummary) -> Tuple[List[Dict[str, Any]], Opti
     return issues, binding
 
 
-def _flatten_prefixed_symbols(prefix: str, value: Any, symbol_table: Dict[str, Any]) -> None:
+def _flatten_prefixed_symbols(prefix: str, value: Any, symbol_table: dict[str, Any]) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
             if not isinstance(key, str):
@@ -157,13 +157,13 @@ def _flatten_prefixed_symbols(prefix: str, value: Any, symbol_table: Dict[str, A
 
 def _parse_derived_expression(
     expression: str,
-) -> Tuple[Optional[list], Optional[str], Optional[float], List[str]]:
+) -> tuple[Optional[list], Optional[str], Optional[float], list[str]]:
     import ast
     import re
     # Replace single `=` with `==` to support EBNF `lin_arith_expr` syntax in Python AST
     expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
 
-    def symbol_name(node: ast.AST) -> Tuple[Optional[str], bool]:
+    def symbol_name(node: ast.AST) -> tuple[Optional[str], bool]:
         if isinstance(node, ast.Name):
             return node.id, True
         if isinstance(node, ast.Attribute):
@@ -277,11 +277,11 @@ def _parse_derived_expression(
 
 
 def _validate_derived_constraints(
-    module: Dict[str, Any], constraints: List[DerivedConstraint]
-) -> Tuple[List[Dict[str, Any]], bool]:
+    module: dict[str, Any], constraints: list[DerivedConstraint]
+) -> tuple[list[dict[str, Any]], bool]:
     environment = module.get("environment") or {}
-    symbol_table: Dict[str, Any] = {}
-    issues: List[Dict[str, Any]] = []
+    symbol_table: dict[str, Any] = {}
+    issues: list[dict[str, Any]] = []
     has_error = False
 
     if not constraints:
@@ -384,11 +384,16 @@ def _validate_derived_constraints(
         op = derived.operator
         val = derived.value
         violated = False
-        if op == "<=" and numeric_value > val: violated = True
-        elif op == ">=" and numeric_value < val: violated = True
-        elif op == "<" and numeric_value >= val: violated = True
-        elif op == ">" and numeric_value <= val: violated = True
-        elif op in ("==", "=") and numeric_value != val: violated = True
+        if op == "<=" and numeric_value > val:
+            violated = True
+        elif op == ">=" and numeric_value < val:
+            violated = True
+        elif op == "<" and numeric_value >= val:
+            violated = True
+        elif op == ">" and numeric_value <= val:
+            violated = True
+        elif op in ("==", "=") and numeric_value != val:
+            violated = True
         
         if violated:
             has_error = True
