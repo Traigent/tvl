@@ -424,6 +424,26 @@ def _encode_clause(
     return clause_bool
 
 
+# Reified comparison: (constraint when the literal holds, constraint when it does not).
+_REIFIED_COMPARISONS: Dict[str, Any] = {
+    "==": (lambda lhs, rhs: lhs == rhs, lambda lhs, rhs: lhs != rhs),
+    "!=": (lambda lhs, rhs: lhs != rhs, lambda lhs, rhs: lhs == rhs),
+    ">=": (lambda lhs, rhs: lhs >= rhs, lambda lhs, rhs: lhs < rhs),
+    ">": (lambda lhs, rhs: lhs > rhs, lambda lhs, rhs: lhs <= rhs),
+    "<=": (lambda lhs, rhs: lhs <= rhs, lambda lhs, rhs: lhs > rhs),
+    "<": (lambda lhs, rhs: lhs < rhs, lambda lhs, rhs: lhs >= rhs),
+}
+
+_NUMERIC_KINDS = {"int", "float"}
+
+
+def _reify_comparison(model: cp_model.CpModel, lhs: Any, op: str, rhs: Any, bool_var: cp_model.BoolVar) -> None:
+    """Constrain ``bool_var`` to be true iff ``lhs <op> rhs``."""
+    holds, fails = _REIFIED_COMPARISONS[op]
+    model.Add(holds(lhs, rhs)).OnlyEnforceIf(bool_var)
+    model.Add(fails(lhs, rhs)).OnlyEnforceIf(bool_var.Not())
+
+
 def _encode_condition(
     model: cp_model.CpModel,
     var_map: Dict[str, cp_model.IntVar],
@@ -437,117 +457,118 @@ def _encode_condition(
 
     if var is None or domain is None:
         model.Add(bool_var == 0)
-        return bool_var
+    elif condition.rhs_ident is not None:
+        _encode_ident_comparison(model, var_map, domains, var, domain, condition, bool_var)
+    else:
+        _encode_value_comparison(model, var, domain, condition, bool_var)
+    return bool_var
 
-    if condition.rhs_ident is not None:
-        rhs_var = var_map.get(condition.rhs_ident)
-        rhs_domain = domains.get(condition.rhs_ident)
-        op = condition.operator
-        if rhs_var is None or rhs_domain is None or op not in {"==", "!="}:
-            model.Add(bool_var == 0)
-            return bool_var
 
-        if domain.kind == "enum" and rhs_domain.kind == "enum":
-            left_values = domain.values or []
-            right_values = rhs_domain.values or []
-            if not left_values or not right_values:
-                model.Add(bool_var == (1 if op == "!=" else 0))
-                return bool_var
-
-            left_index = {value: idx for idx, value in enumerate(left_values)}
-            right_index = {value: idx for idx, value in enumerate(right_values)}
-            shared = sorted(set(left_index.keys()) & set(right_index.keys()), key=str)
-            pairs = [(left_index[v], right_index[v]) for v in shared]
-            if not pairs:
-                model.Add(bool_var == (1 if op == "!=" else 0))
-                return bool_var
-
-            if op == "==":
-                model.AddAllowedAssignments([var, rhs_var], pairs).OnlyEnforceIf(bool_var)
-                model.AddForbiddenAssignments([var, rhs_var], pairs).OnlyEnforceIf(bool_var.Not())
-            else:
-                model.AddForbiddenAssignments([var, rhs_var], pairs).OnlyEnforceIf(bool_var)
-                model.AddAllowedAssignments([var, rhs_var], pairs).OnlyEnforceIf(bool_var.Not())
-            return bool_var
-
-        if domain.kind == "bool" and rhs_domain.kind == "bool":
-            if op == "==":
-                model.Add(var == rhs_var).OnlyEnforceIf(bool_var)
-                model.Add(var != rhs_var).OnlyEnforceIf(bool_var.Not())
-            else:
-                model.Add(var != rhs_var).OnlyEnforceIf(bool_var)
-                model.Add(var == rhs_var).OnlyEnforceIf(bool_var.Not())
-            return bool_var
-
-        if domain.kind in {"int", "float"} and rhs_domain.kind in {"int", "float"}:
-            left_denom = domain.precision if domain.kind == "float" else 1
-            right_denom = rhs_domain.precision if rhs_domain.kind == "float" else 1
-            left_scaled = var * right_denom
-            right_scaled = rhs_var * left_denom
-            if op == "==":
-                model.Add(left_scaled == right_scaled).OnlyEnforceIf(bool_var)
-                model.Add(left_scaled != right_scaled).OnlyEnforceIf(bool_var.Not())
-            else:
-                model.Add(left_scaled != right_scaled).OnlyEnforceIf(bool_var)
-                model.Add(left_scaled == right_scaled).OnlyEnforceIf(bool_var.Not())
-            return bool_var
-
-        model.Add(bool_var == 0)
-        return bool_var
-
+def _encode_ident_comparison(
+    model: cp_model.CpModel,
+    var_map: Dict[str, cp_model.IntVar],
+    domains: Dict[str, Domain],
+    var: cp_model.IntVar,
+    domain: Domain,
+    condition: Condition,
+    bool_var: cp_model.BoolVar,
+) -> None:
+    """Encode ``ident ==/!= other_ident``; unsupported pairings are false."""
+    rhs_var = var_map.get(condition.rhs_ident)
+    rhs_domain = domains.get(condition.rhs_ident)
     op = condition.operator
-    try:
-        if domain.kind == "float" and isinstance(condition.value, (int, float)):
-            val = float(condition.value)
-            P = domain.precision
-            if op in {"==", "!="}:
-                scaled = val * P
-                rounded = round(scaled)
-                if abs(scaled - rounded) > 1e-9:
-                    # Non-grid point
-                    if op == "==":
-                        model.Add(bool_var == 0)
-                        return bool_var
-                    else:
-                        model.Add(bool_var == 1)
-                        return bool_var
-                encoded_value = int(rounded)
-            elif op == ">=":
-                encoded_value = math.ceil(val * P)
-            elif op == ">":
-                encoded_value = math.floor(val * P) + 1
-            elif op == "<=":
-                encoded_value = math.floor(val * P)
-            elif op == "<":
-                encoded_value = math.ceil(val * P) - 1
-            else:
-                encoded_value = domain.encode(condition.value)
-        else:
-            encoded_value = domain.encode(condition.value)
-    except Exception:
+    if rhs_var is None or rhs_domain is None or op not in {"==", "!="}:
         model.Add(bool_var == 0)
-        return bool_var
-    if op == "==":
-        model.Add(var == encoded_value).OnlyEnforceIf(bool_var)
-        model.Add(var != encoded_value).OnlyEnforceIf(bool_var.Not())
-    elif op == "!=":
-        model.Add(var != encoded_value).OnlyEnforceIf(bool_var)
-        model.Add(var == encoded_value).OnlyEnforceIf(bool_var.Not())
-    elif op == ">=":
-        model.Add(var >= encoded_value).OnlyEnforceIf(bool_var)
-        model.Add(var < encoded_value).OnlyEnforceIf(bool_var.Not())
-    elif op == ">":
-        model.Add(var > encoded_value).OnlyEnforceIf(bool_var)
-        model.Add(var <= encoded_value).OnlyEnforceIf(bool_var.Not())
-    elif op == "<=":
-        model.Add(var <= encoded_value).OnlyEnforceIf(bool_var)
-        model.Add(var > encoded_value).OnlyEnforceIf(bool_var.Not())
-    elif op == "<":
-        model.Add(var < encoded_value).OnlyEnforceIf(bool_var)
-        model.Add(var >= encoded_value).OnlyEnforceIf(bool_var.Not())
+    elif domain.kind == "enum" and rhs_domain.kind == "enum":
+        _encode_enum_pair(model, var, domain, rhs_var, rhs_domain, op, bool_var)
+    elif domain.kind == "bool" and rhs_domain.kind == "bool":
+        _reify_comparison(model, var, op, rhs_var, bool_var)
+    elif domain.kind in _NUMERIC_KINDS and rhs_domain.kind in _NUMERIC_KINDS:
+        # Cross-multiply by the other side's precision so both sides share a scale.
+        left_scaled = var * _precision_denominator(rhs_domain)
+        right_scaled = rhs_var * _precision_denominator(domain)
+        _reify_comparison(model, left_scaled, op, right_scaled, bool_var)
     else:
         model.Add(bool_var == 0)
-    return bool_var
+
+
+def _precision_denominator(domain: Domain) -> int:
+    return domain.precision if domain.kind == "float" else 1
+
+
+def _encode_enum_pair(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    domain: Domain,
+    rhs_var: cp_model.IntVar,
+    rhs_domain: Domain,
+    op: str,
+    bool_var: cp_model.BoolVar,
+) -> None:
+    """Encode equality between two enum variables over their shared values."""
+    left_index = {value: idx for idx, value in enumerate(domain.values or [])}
+    right_index = {value: idx for idx, value in enumerate(rhs_domain.values or [])}
+    shared = sorted(set(left_index.keys()) & set(right_index.keys()), key=str)
+    pairs = [(left_index[v], right_index[v]) for v in shared]
+    if not pairs:
+        # No value can be equal on both sides (including an empty enum).
+        model.Add(bool_var == (1 if op == "!=" else 0))
+        return
+
+    equal, unequal = model.AddAllowedAssignments, model.AddForbiddenAssignments
+    when_true, when_false = (equal, unequal) if op == "==" else (unequal, equal)
+    when_true([var, rhs_var], pairs).OnlyEnforceIf(bool_var)
+    when_false([var, rhs_var], pairs).OnlyEnforceIf(bool_var.Not())
+
+
+def _encode_value_comparison(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    domain: Domain,
+    condition: Condition,
+    bool_var: cp_model.BoolVar,
+) -> None:
+    """Encode ``ident <op> literal``; unencodable literals and operators are false."""
+    op = condition.operator
+    try:
+        encoded_value = _encode_literal_value(domain, op, condition.value)
+    except Exception:
+        model.Add(bool_var == 0)
+        return
+    if encoded_value is None:
+        # Equality against a float that is off the precision grid.
+        model.Add(bool_var == (0 if op == "==" else 1))
+    elif op in _REIFIED_COMPARISONS:
+        _reify_comparison(model, var, op, encoded_value, bool_var)
+    else:
+        model.Add(bool_var == 0)
+
+
+def _encode_literal_value(domain: Domain, op: str, value: Any) -> Optional[int]:
+    """Encode a literal for comparison; ``None`` means an off-grid float equality."""
+    if domain.kind == "float" and isinstance(value, (int, float)):
+        return _encode_float_literal(domain, op, value)
+    return domain.encode(value)
+
+
+def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
+    val = float(value)
+    P = domain.precision
+    if op in {"==", "!="}:
+        scaled = val * P
+        rounded = round(scaled)
+        if abs(scaled - rounded) > 1e-9:
+            return None
+        return int(rounded)
+    if op == ">=":
+        return math.ceil(val * P)
+    if op == ">":
+        return math.floor(val * P) + 1
+    if op == "<=":
+        return math.floor(val * P)
+    if op == "<":
+        return math.ceil(val * P) - 1
+    return domain.encode(value)
 
 
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
@@ -564,20 +585,28 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
 
 
 def _candidate_values(domains: Dict[str, Domain], expressions: List[Expression]) -> Dict[str, List[Any]]:
-    values: Dict[str, set] = {}
-    for name, domain in domains.items():
-        base: set = set()
-        if domain.kind == "bool":
-            base.update({True, False})
-        elif domain.kind == "enum":
-            base.update(domain.values or [])
-        elif domain.kind in {"int", "float"}:
-            if domain.minimum is not None:
-                base.add(domain.minimum)
-            if domain.maximum is not None:
-                base.add(domain.maximum)
-        values[name] = base
+    values: Dict[str, set] = {name: _seed_values(domain) for name, domain in domains.items()}
+    _collect_condition_values(values, expressions)
+    return {name: _candidate_list(domains[name], val_set) for name, val_set in values.items()}
 
+
+def _seed_values(domain: Domain) -> set:
+    """Initial candidates implied by the domain declaration alone."""
+    base: set = set()
+    if domain.kind == "bool":
+        base.update({True, False})
+    elif domain.kind == "enum":
+        base.update(domain.values or [])
+    elif domain.kind in _NUMERIC_KINDS:
+        if domain.minimum is not None:
+            base.add(domain.minimum)
+        if domain.maximum is not None:
+            base.add(domain.maximum)
+    return base
+
+
+def _collect_condition_values(values: Dict[str, set], expressions: List[Expression]) -> None:
+    """Add each literal compared against, plus its numeric neighbours."""
     for expr in expressions:
         for clause in expr.expanded_clauses:
             for cond in clause:
@@ -589,33 +618,41 @@ def _candidate_values(domains: Dict[str, Domain], expressions: List[Expression])
                     vals.add(cond.value + 1)
                     vals.add(cond.value - 1)
 
-    candidate_lists: Dict[str, List[Any]] = {}
-    for name, val_set in values.items():
-        domain = domains[name]
-        if domain.kind == "bool":
-            candidate_lists[name] = [True, False]
-        elif domain.kind == "enum":
-            candidate_lists[name] = list(domain.values or [])
-        elif domain.kind == "int":
-            valid = sorted(int(v) for v in val_set if isinstance(v, (int, float)))
-            if domain.minimum is not None and domain.maximum is not None:
-                if domain.maximum - domain.minimum <= 10:
-                    valid = list(range(int(domain.minimum), int(domain.maximum) + 1))
-            if not valid:
-                if domain.minimum is not None:
-                    valid.append(int(domain.minimum))
-                valid.append(0)
-            candidate_lists[name] = sorted({v for v in valid if domain.contains(v)})
-        elif domain.kind == "float":
-            valid = [float(v) for v in val_set if isinstance(v, (int, float))]
-            if not valid:
-                if domain.minimum is not None:
-                    valid.append(float(domain.minimum))
-                valid.append(0.0)
-            candidate_lists[name] = sorted({v for v in valid if domain.contains(v)})
-        else:
-            candidate_lists[name] = list(val_set) if val_set else [None]
-    return candidate_lists
+
+def _candidate_list(domain: Domain, val_set: set) -> List[Any]:
+    if domain.kind == "bool":
+        return [True, False]
+    if domain.kind == "enum":
+        return list(domain.values or [])
+    if domain.kind == "int":
+        return _int_candidates(domain, val_set)
+    if domain.kind == "float":
+        return _float_candidates(domain, val_set)
+    return list(val_set) if val_set else [None]
+
+
+def _int_candidates(domain: Domain, val_set: set) -> List[Any]:
+    valid = sorted(int(v) for v in val_set if isinstance(v, (int, float)))
+    if domain.minimum is not None and domain.maximum is not None:
+        if domain.maximum - domain.minimum <= 10:
+            valid = list(range(int(domain.minimum), int(domain.maximum) + 1))
+    if not valid:
+        valid = _fallback_candidates(domain, int)
+    return sorted({v for v in valid if domain.contains(v)})
+
+
+def _float_candidates(domain: Domain, val_set: set) -> List[Any]:
+    valid = [float(v) for v in val_set if isinstance(v, (int, float))]
+    if not valid:
+        valid = _fallback_candidates(domain, float)
+    return sorted({v for v in valid if domain.contains(v)})
+
+
+def _fallback_candidates(domain: Domain, cast: Any) -> List[Any]:
+    """Candidates when no numeric value is known: the minimum, then zero."""
+    fallback = [cast(domain.minimum)] if domain.minimum is not None else []
+    fallback.append(cast(0))
+    return fallback
 
 
 def _search_assignment(
