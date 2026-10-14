@@ -21,17 +21,15 @@ class Domain:
 
     def encode(self, value: Any) -> int:
         if self.kind == "bool":
-            if isinstance(value, bool):
-                return 1 if value else 0
-            if isinstance(value, int) and value in (0, 1):
-                return value
-            raise ValueError(f"{self.path}: expected bool, got {value!r}")
+            return _encode_bool(self, value)
 
         if self.kind == "enum":
             if self.values is None:
                 raise ValueError(f"{self.path}: enum domain is missing values")
             if value not in self.values:
-                raise ValueError(f"{self.path}: value {value!r} not in enum {self.values}")
+                raise ValueError(
+                    f"{self.path}: value {value!r} not in enum {self.values}"
+                )
             return self.values.index(value)
 
         if self.kind == "int":
@@ -78,8 +76,12 @@ class Domain:
         if self.kind == "bool":
             return encoded in (0, 1)
 
-        lower = self._encode_bound_lower(self.minimum) if self.minimum is not None else None
-        upper = self._encode_bound_upper(self.maximum) if self.maximum is not None else None
+        lower = (
+            self._encode_bound_lower(self.minimum) if self.minimum is not None else None
+        )
+        upper = (
+            self._encode_bound_upper(self.maximum) if self.maximum is not None else None
+        )
         if lower is not None and encoded < lower:
             return False
         if upper is not None and encoded > upper:
@@ -95,6 +97,7 @@ class Domain:
             return None
         if self.kind == "float":
             import math
+
             return int(math.ceil(float(value) * self.precision))
         return int(value)
 
@@ -103,8 +106,17 @@ class Domain:
             return None
         if self.kind == "float":
             import math
+
             return int(math.floor(float(value) * self.precision))
         return int(value)
+
+
+def _encode_bool(domain: Domain, value: Any) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int) and value in (0, 1):
+        return value
+    raise ValueError(f"{domain.path}: expected bool, got {value!r}")
 
 
 def extract_domains(tvars: Dict[str, Any]) -> Dict[str, Domain]:
@@ -118,11 +130,15 @@ def extract_domains(tvars: Dict[str, Any]) -> Dict[str, Domain]:
     if isinstance(tvars, list):
         for idx, decl in enumerate(tvars):
             if not isinstance(decl, dict):
-                raise ValueError(f"tvars[{idx}]: expected dict, got {type(decl).__name__}")
+                raise ValueError(
+                    f"tvars[{idx}]: expected dict, got {type(decl).__name__}"
+                )
             name = decl.get("name")
             dtype = (decl.get("type") or "").lower()
             if not isinstance(name, str):
-                raise ValueError(f"tvars[{idx}]: missing or non-string 'name' field (got {type(name).__name__ if name is not None else 'None'})")
+                raise ValueError(
+                    f"tvars[{idx}]: missing or non-string 'name' field (got {type(name).__name__ if name is not None else 'None'})"
+                )
             domain_spec = decl.get("domain")
             domains[name] = _domain_from_decl(name, dtype, domain_spec)
         return domains
@@ -147,7 +163,9 @@ def extract_validation_options(module: Dict[str, Any]) -> ValidationOptions:
     )
 
 
-def _walk_legacy(domains: Dict[str, Domain], name: str, node: Any, prefix: str = "") -> None:
+def _walk_legacy(
+    domains: Dict[str, Domain], name: str, node: Any, prefix: str = ""
+) -> None:
     path = f"{prefix}.{name}" if prefix else name
     if isinstance(node, dict) and "type" in node:
         kind = node["type"].lower()
@@ -161,12 +179,20 @@ def _walk_legacy(domains: Dict[str, Domain], name: str, node: Any, prefix: str =
         elif kind == "int":
             minimum = node.get("min")
             maximum = node.get("max")
-            domains[path] = Domain(path=path, kind="int", minimum=minimum, maximum=maximum)
+            domains[path] = Domain(
+                path=path, kind="int", minimum=minimum, maximum=maximum
+            )
         elif kind == "float":
             minimum = node.get("min")
             maximum = node.get("max")
             precision = int(node.get("precision", 1000))
-            domains[path] = Domain(path=path, kind="float", minimum=minimum, maximum=maximum, precision=precision)
+            domains[path] = Domain(
+                path=path,
+                kind="float",
+                minimum=minimum,
+                maximum=maximum,
+                precision=precision,
+            )
         else:
             raise ValueError(f"{path}: unsupported domain type {kind}")
     elif isinstance(node, dict):
@@ -186,7 +212,11 @@ def _resolve_range_values(name: str, idx: int, comp: dict) -> List[Any]:
         return []
     lo_raw, hi_raw = r[0], r[1]
     resolution = comp.get("resolution")
-    if resolution is not None and isinstance(resolution, (int, float)) and float(resolution) > 0:
+    if (
+        resolution is not None
+        and isinstance(resolution, (int, float))
+        and float(resolution) > 0
+    ):
         lo_f, hi_f = float(lo_raw), float(hi_raw)
         step = float(resolution)
         n_steps = int(round((hi_f - lo_f) / step))
@@ -237,7 +267,9 @@ def _enumerate_tuple_product(name: str, components: Any) -> List[Any]:
     domain elements.  Returns a list of tuples suitable for enum encoding.
     """
     if not isinstance(components, list) or not components:
-        raise ValueError(f"{name}: tuple domain must define a non-empty 'components' list")
+        raise ValueError(
+            f"{name}: tuple domain must define a non-empty 'components' list"
+        )
 
     import itertools
 
@@ -308,7 +340,9 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
             elif "registry" in spec:
                 # Registry-backed domains are treated as opaque enums until resolved externally.
                 return Domain(path=name, kind="enum", values=[])
-        return Domain(path=name, kind=kind, minimum=minimum, maximum=maximum, precision=precision)
+        return Domain(
+            path=name, kind=kind, minimum=minimum, maximum=maximum, precision=precision
+        )
 
     raise ValueError(f"{name}: unsupported TVAR type '{dtype}'")
 
