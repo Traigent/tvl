@@ -245,8 +245,17 @@ def _validate_safety_narrowing(
     Returns:
         A list of human-readable errors; empty when the overlay only tightens.
     """
-    errors: list[str] = []
+    waived, errors = _parse_waivers(waives)
+    errors.extend(_chance_constraint_errors(base, composed))
+    errors.extend(_objective_errors(base, composed))
+    errors.extend(_dropped_clause_errors(base, composed, waived))
+    errors.extend(_stale_waiver_errors(base, waived))
+    return errors
 
+
+def _parse_waivers(waives: Optional[list[Any]]) -> tuple[dict[str, str], list[str]]:
+    """Map each well-formed waiver's clause key to its reason; report malformed ones."""
+    errors: list[str] = []
     waived: dict[str, str] = {}
     for entry in waives or []:
         if isinstance(entry, dict):
@@ -263,14 +272,23 @@ def _validate_safety_narrowing(
             )
             continue
         waived[_clause_key(clause)] = reason
+    return waived, errors
 
-    # --- chance constraints -------------------------------------------------
-    def by_name(policy: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        items = (policy or {}).get("chance_constraints") or []
-        return {c.get("name"): c for c in items if isinstance(c, dict) and c.get("name")}
 
-    base_cc = by_name(base.get("promotion_policy") or {})
-    comp_cc = by_name(composed.get("promotion_policy") or {})
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float))
+
+
+def _chance_constraints_by_name(policy: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    items = (policy or {}).get("chance_constraints") or []
+    return {c.get("name"): c for c in items if isinstance(c, dict) and c.get("name")}
+
+
+def _chance_constraint_errors(base: dict[str, Any], composed: dict[str, Any]) -> list[str]:
+    """Chance constraints may be tightened, never loosened or dropped."""
+    errors: list[str] = []
+    base_cc = _chance_constraints_by_name(base.get("promotion_policy") or {})
+    comp_cc = _chance_constraints_by_name(composed.get("promotion_policy") or {})
 
     for name, bc in base_cc.items():
         cc = comp_cc.get(name)
@@ -280,20 +298,31 @@ def _validate_safety_narrowing(
                 "Overlays may tighten a safety constraint, never drop it."
             )
             continue
-        b_thr, c_thr = bc.get("threshold"), cc.get("threshold")
-        if isinstance(b_thr, (int, float)) and isinstance(c_thr, (int, float)) and c_thr > b_thr:
-            errors.append(
-                f"chance_constraint '{name}': cannot raise threshold from {b_thr} to {c_thr} "
-                "(threshold bounds a violation rate; raising it permits more violations)"
-            )
-        b_conf, c_conf = bc.get("confidence"), cc.get("confidence")
-        if isinstance(b_conf, (int, float)) and isinstance(c_conf, (int, float)) and c_conf < b_conf:
-            errors.append(
-                f"chance_constraint '{name}': cannot lower confidence from {b_conf} to {c_conf} "
-                "(lower confidence is a weaker claim)"
-            )
+        errors.extend(_chance_constraint_loosening_errors(name, bc, cc))
+    return errors
 
-    # --- objectives ---------------------------------------------------------
+
+def _chance_constraint_loosening_errors(name: Any, bc: dict[str, Any], cc: dict[str, Any]) -> list[str]:
+    """``threshold`` bounds a violation rate (may only fall); ``confidence`` may only rise."""
+    errors: list[str] = []
+    b_thr, c_thr = bc.get("threshold"), cc.get("threshold")
+    if _is_number(b_thr) and _is_number(c_thr) and c_thr > b_thr:
+        errors.append(
+            f"chance_constraint '{name}': cannot raise threshold from {b_thr} to {c_thr} "
+            "(threshold bounds a violation rate; raising it permits more violations)"
+        )
+    b_conf, c_conf = bc.get("confidence"), cc.get("confidence")
+    if _is_number(b_conf) and _is_number(c_conf) and c_conf < b_conf:
+        errors.append(
+            f"chance_constraint '{name}': cannot lower confidence from {b_conf} to {c_conf} "
+            "(lower confidence is a weaker claim)"
+        )
+    return errors
+
+
+def _objective_errors(base: dict[str, Any], composed: dict[str, Any]) -> list[str]:
+    """Objectives may not be dropped, flip direction, change kind, or widen a band."""
+    errors: list[str] = []
     base_obj = {o.get("name"): o for o in (base.get("objectives") or []) if isinstance(o, dict)}
     comp_obj = {o.get("name"): o for o in (composed.get("objectives") or []) if isinstance(o, dict)}
 
@@ -302,93 +331,129 @@ def _validate_safety_narrowing(
         if co is None:
             errors.append(f"objective '{name}': removed in overlay (not allowed)")
             continue
-        if bo.get("direction") and co.get("direction") and bo["direction"] != co["direction"]:
-            errors.append(
-                f"objective '{name}': cannot change direction from "
-                f"'{bo['direction']}' to '{co['direction']}'"
-            )
-        # KIND INVARIANCE. A standard directional objective and a banded one are different
-        # gates. Swapping a directional objective for a banded one of the same name keeps
-        # the name-retention check happy while silently deleting the non-inferiority test,
-        # and the direction check never fires because the replacement has no `direction`.
-        b_band, c_band = bo.get("band"), co.get("band")
-        if bo.get("direction") and not b_band:
-            if c_band:
-                errors.append(
-                    f"objective '{name}': cannot convert a directional objective into a "
-                    "banded one (that removes the non-inferiority test)"
-                )
-            elif not co.get("direction"):
-                errors.append(
-                    f"objective '{name}': cannot drop 'direction' from a directional objective"
-                )
-
-        # A band's target interval is a gate input (promotion.py reads it), so widening it
-        # loosens the gate exactly as raising a threshold would. Both the [low, high] and
-        # {center, tol} forms are legal per the schema, so both are normalised before
-        # comparison -- comparing only list/list let the dict form through untouched.
-        if b_band is not None:
-            if c_band is None:
-                errors.append(f"objective '{name}': cannot remove its band")
-            else:
-                b_iv, c_iv = _band_interval(b_band), _band_interval(c_band)
-                if b_iv is None or c_iv is None:
-                    # Fail closed: an uncomparable band cannot be shown not to widen.
-                    errors.append(
-                        f"objective '{name}': band target is missing or not comparable "
-                        f"(base={(b_band or {}).get('target')!r}, "
-                        f"composed={(c_band or {}).get('target')!r}); "
-                        "cannot verify it was not widened"
-                    )
-                elif c_iv[0] < b_iv[0] - _BAND_EPS or c_iv[1] > b_iv[1] + _BAND_EPS:
-                    errors.append(
-                        f"objective '{name}': cannot widen band from "
-                        f"[{b_iv[0]}, {b_iv[1]}] to [{c_iv[0]}, {c_iv[1]}]"
-                    )
-                b_alpha, c_alpha = b_band.get("alpha"), c_band.get("alpha")
-                if (
-                    isinstance(b_alpha, (int, float))
-                    and isinstance(c_alpha, (int, float))
-                    and c_alpha > b_alpha
-                ):
-                    errors.append(
-                        f"objective '{name}': cannot raise band alpha from {b_alpha} to "
-                        f"{c_alpha} (a larger alpha makes the equivalence test easier to pass)"
-                    )
-
-    # --- constraint clauses -------------------------------------------------
-    for kind in ("structural", "derived"):
-        base_clauses = ((base.get("constraints") or {}).get(kind)) or []
-        comp_clauses = ((composed.get("constraints") or {}).get(kind)) or []
-        comp_keys = {_clause_key(c) for c in comp_clauses}
-        comp_bounds = [b for b in (_as_bound(c) for c in comp_clauses) if b]
-
-        for clause in base_clauses:
-            key = _clause_key(clause)
-            if key in comp_keys or key in waived:
-                continue
-            # A clause REPLACED by a strictly tighter bound on the same symbol has been
-            # hardened, not dropped: `env.context.n >= 3000` -> `>= 5990` is exactly what
-            # a stricter profile should do, and demanding the looser clause be restated
-            # alongside it would be nonsense.
-            base_bound = _as_bound(clause)
-            if base_bound and any(_tightens(base_bound, cb) for cb in comp_bounds):
-                continue
-            errors.append(
-                f"constraints.{kind}: clause {key!r} was dropped by the overlay. "
-                "If the narrowed domains make it vacuous, declare it under "
-                "_tvl_overlay.waives with a reason; otherwise restate it "
-                "(or replace it with a strictly tighter bound on the same symbol)."
-            )
-
-    unused = sorted(set(waived) - {_clause_key(c) for c in _all_base_clauses(base)})
-    for key in unused:
-        errors.append(
-            f"waives entry {key!r} does not match any clause in the base module "
-            "(stale waiver, or the clause text drifted)"
-        )
-
+        errors.extend(_objective_direction_errors(name, bo, co))
+        if bo.get("band") is not None:
+            errors.extend(_objective_band_errors(name, bo.get("band"), co.get("band")))
     return errors
+
+
+def _objective_direction_errors(name: Any, bo: dict[str, Any], co: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if bo.get("direction") and co.get("direction") and bo["direction"] != co["direction"]:
+        errors.append(
+            f"objective '{name}': cannot change direction from "
+            f"'{bo['direction']}' to '{co['direction']}'"
+        )
+    # KIND INVARIANCE. A standard directional objective and a banded one are different
+    # gates. Swapping a directional objective for a banded one of the same name keeps
+    # the name-retention check happy while silently deleting the non-inferiority test,
+    # and the direction check never fires because the replacement has no `direction`.
+    if bo.get("direction") and not bo.get("band"):
+        if co.get("band"):
+            errors.append(
+                f"objective '{name}': cannot convert a directional objective into a "
+                "banded one (that removes the non-inferiority test)"
+            )
+        elif not co.get("direction"):
+            errors.append(
+                f"objective '{name}': cannot drop 'direction' from a directional objective"
+            )
+    return errors
+
+
+def _objective_band_errors(name: Any, b_band: Any, c_band: Any) -> list[str]:
+    """A band's target interval is a gate input (promotion.py reads it).
+
+    Widening it loosens the gate exactly as raising a threshold would. Both the
+    [low, high] and {center, tol} forms are legal per the schema, so both are
+    normalised before comparison -- comparing only list/list let the dict form
+    through untouched.
+    """
+    if c_band is None:
+        return [f"objective '{name}': cannot remove its band"]
+    errors: list[str] = []
+    b_iv, c_iv = _band_interval(b_band), _band_interval(c_band)
+    if b_iv is None or c_iv is None:
+        # Fail closed: an uncomparable band cannot be shown not to widen.
+        errors.append(
+            f"objective '{name}': band target is missing or not comparable "
+            f"(base={(b_band or {}).get('target')!r}, "
+            f"composed={(c_band or {}).get('target')!r}); "
+            "cannot verify it was not widened"
+        )
+    elif c_iv[0] < b_iv[0] - _BAND_EPS or c_iv[1] > b_iv[1] + _BAND_EPS:
+        errors.append(
+            f"objective '{name}': cannot widen band from "
+            f"[{b_iv[0]}, {b_iv[1]}] to [{c_iv[0]}, {c_iv[1]}]"
+        )
+    errors.extend(_band_alpha_errors(name, b_band, c_band))
+    return errors
+
+
+def _band_alpha_errors(name: Any, b_band: Any, c_band: Any) -> list[str]:
+    b_alpha, c_alpha = b_band.get("alpha"), c_band.get("alpha")
+    if _is_number(b_alpha) and _is_number(c_alpha) and c_alpha > b_alpha:
+        return [
+            f"objective '{name}': cannot raise band alpha from {b_alpha} to "
+            f"{c_alpha} (a larger alpha makes the equivalence test easier to pass)"
+        ]
+    return []
+
+
+def _dropped_clause_errors(
+    base: dict[str, Any], composed: dict[str, Any], waived: dict[str, str]
+) -> list[str]:
+    """Structural and derived clauses may not be dropped unless waived or tightened."""
+    errors: list[str] = []
+    for kind in ("structural", "derived"):
+        errors.extend(_dropped_clause_errors_of_kind(kind, base, composed, waived))
+    return errors
+
+
+def _dropped_clause_errors_of_kind(
+    kind: str, base: dict[str, Any], composed: dict[str, Any], waived: dict[str, str]
+) -> list[str]:
+    errors: list[str] = []
+    base_clauses = _clauses_of_kind(base, kind)
+    comp_clauses = _clauses_of_kind(composed, kind)
+    comp_keys = {_clause_key(c) for c in comp_clauses}
+    comp_bounds = [b for b in (_as_bound(c) for c in comp_clauses) if b]
+
+    for clause in base_clauses:
+        key = _clause_key(clause)
+        if key in comp_keys or key in waived:
+            continue
+        # A clause REPLACED by a strictly tighter bound on the same symbol has been
+        # hardened, not dropped: `env.context.n >= 3000` -> `>= 5990` is exactly what
+        # a stricter profile should do, and demanding the looser clause be restated
+        # alongside it would be nonsense.
+        if _replaced_by_tighter_bound(clause, comp_bounds):
+            continue
+        errors.append(
+            f"constraints.{kind}: clause {key!r} was dropped by the overlay. "
+            "If the narrowed domains make it vacuous, declare it under "
+            "_tvl_overlay.waives with a reason; otherwise restate it "
+            "(or replace it with a strictly tighter bound on the same symbol)."
+        )
+    return errors
+
+
+def _clauses_of_kind(module: dict[str, Any], kind: str) -> list[Any]:
+    return ((module.get("constraints") or {}).get(kind)) or []
+
+
+def _replaced_by_tighter_bound(clause: Any, comp_bounds: list[tuple]) -> bool:
+    base_bound = _as_bound(clause)
+    return bool(base_bound) and any(_tightens(base_bound, cb) for cb in comp_bounds)
+
+
+def _stale_waiver_errors(base: dict[str, Any], waived: dict[str, str]) -> list[str]:
+    unused = sorted(set(waived) - {_clause_key(c) for c in _all_base_clauses(base)})
+    return [
+        f"waives entry {key!r} does not match any clause in the base module "
+        "(stale waiver, or the clause text drifted)"
+        for key in unused
+    ]
 
 
 def _all_base_clauses(base: dict[str, Any]) -> list[Any]:
