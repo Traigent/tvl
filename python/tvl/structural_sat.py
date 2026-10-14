@@ -114,30 +114,12 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
     model: cp_model.CpModel = structural.model
     var_map = structural.variables
     domains = structural.domains
-
-    clause_counter = 0
-    for expression in structural.expressions:
-        clause_bools: List[cp_model.BoolVar] = []
-        for clause in expression.expanded_clauses:
-            clause_bool = _encode_clause(model, var_map, domains, clause, clause_counter)
-            clause_counter += 1
-            clause_bools.append(clause_bool)
-        assumption = model.NewBoolVar(f"expr_{len(clause_bools)}_{clause_counter}")
-        expression.assumption = assumption
-        if clause_bools:
-            model.AddBoolOr(clause_bools + [assumption.Not()])
-        else:
-            model.Add(assumption == 0)
+    _encode_expression_assumptions(model, var_map, domains, structural.expressions)
 
     solver = cp_model.CpSolver()
     assumption_literals = [expr.assumption for expr in structural.expressions if expr.assumption is not None]
     have_assumptions = hasattr(solver, "SolveWithAssumptions")
-    if have_assumptions:
-        status = solver.SolveWithAssumptions(model, assumption_literals)
-    else:
-        for lit in assumption_literals:
-            model.Add(lit == 1)
-        status = solver.Solve(model)
+    status = _solve_under_assumptions(solver, model, assumption_literals, have_assumptions)
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         assignment = {
@@ -150,6 +132,40 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
         unsat_core_vars = solver.SufficientAssumptionsForInfeasibility()
     else:
         unsat_core_vars = assumption_literals
+    return _unsat_core_result(structural.expressions, unsat_core_vars)
+
+
+def _encode_expression_assumptions(
+    model: cp_model.CpModel,
+    var_map: Dict[str, Any],
+    domains: Dict[str, Domain],
+    expressions: List[Expression],
+) -> None:
+    """Encode each expression's clauses and attach the assumption literal guarding it."""
+    clause_counter = 0
+    for expression in expressions:
+        clause_bools: List[cp_model.BoolVar] = []
+        for clause in expression.expanded_clauses:
+            clause_bool = _encode_clause(model, var_map, domains, clause, clause_counter)
+            clause_counter += 1
+            clause_bools.append(clause_bool)
+        assumption = model.NewBoolVar(f"expr_{len(clause_bools)}_{clause_counter}")
+        expression.assumption = assumption
+        if clause_bools:
+            model.AddBoolOr(clause_bools + [assumption.Not()])
+        else:
+            model.Add(assumption == 0)
+
+
+def _solve_under_assumptions(solver: Any, model: Any, assumption_literals: List[Any], have_assumptions: bool) -> Any:
+    if have_assumptions:
+        return solver.SolveWithAssumptions(model, assumption_literals)
+    for lit in assumption_literals:
+        model.Add(lit == 1)
+    return solver.Solve(model)
+
+
+def _unsat_core_result(expressions: List[Expression], unsat_core_vars: Any) -> StructuralResult:
     unsat_info: List[Dict[str, Any]] = []
     core_metadata = {
         "size": 0,
@@ -157,53 +173,64 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
         "clauses": [],
         "expressions": [],
     }
-    for expr in structural.expressions:
+    for expr in expressions:
         if expr.assumption in unsat_core_vars:
-            core_metadata["expressions"].append({
-                "path": expr.path,
-                "expression": expr.text,
-            })
-            core_metadata["size"] += 1
-            clauses = expr.clause_strings
-            unsat_info.append(
-                {
-                    "path": expr.path,
-                    "expression": expr.text,
-                    "clauses": clauses,
-                }
-            )
-            for clause in expr.expanded_clauses:
-                clause_repr = [f"{cond.ident} {cond.operator} {cond.value}" for cond in clause]
-                core_metadata["clauses"].append(clause_repr)
-                for cond in clause:
-                    core_metadata["variables"].add(cond.ident)
+            _record_core_expression(expr, unsat_info, core_metadata)
     core_metadata["variables"] = sorted(core_metadata["variables"])
     return StructuralResult(ok=False, assignment=None, unsat_core=unsat_info, core_metadata=core_metadata)
+
+
+def _record_core_expression(
+    expr: Expression, unsat_info: List[Dict[str, Any]], core_metadata: Dict[str, Any]
+) -> None:
+    core_metadata["expressions"].append({
+        "path": expr.path,
+        "expression": expr.text,
+    })
+    core_metadata["size"] += 1
+    clauses = expr.clause_strings
+    unsat_info.append(
+        {
+            "path": expr.path,
+            "expression": expr.text,
+            "clauses": clauses,
+        }
+    )
+    for clause in expr.expanded_clauses:
+        clause_repr = [f"{cond.ident} {cond.operator} {cond.value}" for cond in clause]
+        core_metadata["clauses"].append(clause_repr)
+        for cond in clause:
+            core_metadata["variables"].add(cond.ident)
 
 
 # Helper functions -----------------------------------------------------------
 
 
 def _convert_literal_value(token_type: Optional[str], raw: Any) -> Any:
-    if isinstance(raw, (int, float, bool)):
-        return raw
-    if isinstance(raw, tuple):
-        return raw
+    # Non-strings (numbers, booleans, tuples, anything else) pass through unchanged.
     if not isinstance(raw, str):
         return raw
     if token_type == "BOOLEAN":
         return raw.lower() == "true"
     if token_type == "NUMBER":
-        if "." in raw or "e" in raw.lower():
-            return float(raw)
-        try:
-            return int(raw)
-        except ValueError:
-            return float(raw)
+        return _convert_number_token(raw)
     if token_type == "TUPLE_VAL":
         return _parse_tuple_literal(raw)
     if token_type == "STRING":
         return raw
+    return _convert_untyped_literal(raw)
+
+
+def _convert_number_token(raw: str) -> Any:
+    if "." in raw or "e" in raw.lower():
+        return float(raw)
+    try:
+        return int(raw)
+    except ValueError:
+        return float(raw)
+
+
+def _convert_untyped_literal(raw: str) -> Any:
     if raw.lower() in {"true", "false"}:
         return raw.lower() == "true"
     try:
@@ -240,37 +267,47 @@ def _split_tuple_parts(text: str) -> list[str]:
     while i < len(text):
         ch = text[i]
         if in_quote is not None:
-            current.append(ch)
-            if ch == "\\" and i + 1 < len(text):
-                # Escaped char inside quotes — consume next char verbatim
-                current.append(text[i + 1])
-                i += 2
-                continue
-            if ch == in_quote:
-                in_quote = None
-            i += 1
+            i, in_quote = _consume_quoted_char(text, i, in_quote, current)
             continue
-        if ch in ("'", '"'):
-            in_quote = ch
-            current.append(ch)
-        elif ch == "(":
-            depth += 1
-            current.append(ch)
-        elif ch == ")":
-            depth -= 1
-            current.append(ch)
-        elif ch == "," and depth == 0:
-            part = "".join(current).strip()
-            if part:
-                parts.append(part)
+        if ch == "," and depth == 0:
+            _append_part(parts, current)
             current = []
         else:
+            in_quote, depth = _track_unquoted_char(ch, depth)
             current.append(ch)
         i += 1
-    remainder = "".join(current).strip()
-    if remainder:
-        parts.append(remainder)
+    _append_part(parts, current)
     return parts
+
+
+def _consume_quoted_char(text: str, i: int, in_quote: str, current: list[str]) -> tuple[int, str | None]:
+    """Append the quoted character at ``i``; return the next index and quote state."""
+    ch = text[i]
+    current.append(ch)
+    if ch == "\\" and i + 1 < len(text):
+        # Escaped char inside quotes — consume next char verbatim
+        current.append(text[i + 1])
+        return i + 2, in_quote
+    if ch == in_quote:
+        return i + 1, None
+    return i + 1, in_quote
+
+
+def _track_unquoted_char(ch: str, depth: int) -> tuple[str | None, int]:
+    """Quote state and paren depth after an unquoted, non-separator character."""
+    if ch in ("'", '"'):
+        return ch, depth
+    if ch == "(":
+        return None, depth + 1
+    if ch == ")":
+        return None, depth - 1
+    return None, depth
+
+
+def _append_part(parts: list[str], current: list[str]) -> None:
+    part = "".join(current).strip()
+    if part:
+        parts.append(part)
 
 
 def _parse_tuple_element(p: str) -> Any:
@@ -285,17 +322,27 @@ def _parse_tuple_element(p: str) -> Any:
     if stripped.lower() == "false":
         return False
     # Number
-    try:
-        if "." in stripped or "e" in stripped.lower():
-            return float(stripped)
-        return int(stripped)
-    except ValueError:
-        pass
+    number = _parse_tuple_number(stripped)
+    if number is not _NOT_A_NUMBER:
+        return number
     # Quoted string
     if len(stripped) >= 2 and stripped[0] in ("'", '"') and stripped[-1] == stripped[0]:
         return _unescape_string(stripped[1:-1])
     # Bare string
     return stripped
+
+
+_NOT_A_NUMBER = object()
+
+
+def _parse_tuple_number(stripped: str) -> Any:
+    """``float``/``int`` for a numeric element, else the ``_NOT_A_NUMBER`` sentinel."""
+    try:
+        if "." in stripped or "e" in stripped.lower():
+            return float(stripped)
+        return int(stripped)
+    except ValueError:
+        return _NOT_A_NUMBER
 
 
 def _unescape_string(s: str) -> str:
@@ -327,62 +374,69 @@ def _expand_dnf(dnf: DNF, tvar_names: set[str]) -> List[List[Condition]]:
 def _integrate_literal(clauses: List[List[Condition]], literal: Literal, tvar_names: set[str]) -> List[List[Condition]]:
     if not clauses:
         return clauses
-
     if literal.kind == "membership":
-        values = [_convert_literal_value(t, v) for t, v in zip(literal.value_types, literal.values)]
-        if not values:
-            if literal.negated:
-                return clauses
-            return []
-        if literal.negated:
-            new_clauses: List[List[Condition]] = []
-            for clause in clauses:
-                extended = list(clause)
-                for value in values:
-                    new_op = "!="
-                    extended.append(Condition(literal.ident, new_op, value))
-                new_clauses.append(extended)
-            return new_clauses
-        new_clauses = []
-        for clause in clauses:
-            for value in values:
-                new_clause = list(clause)
-                new_clause.append(Condition(literal.ident, "==", value))
-                new_clauses.append(new_clause)
-        return new_clauses
-
+        return _integrate_membership(clauses, literal)
     if literal.kind == "interval":
-        left, right, op1, op2 = literal.values
-        left_value = _convert_literal_value("NUMBER", left)
-        right_value = _convert_literal_value("NUMBER", right)
-        if literal.negated:
-            new_clauses: List[List[Condition]] = []
-            for clause in clauses:
-                new_clauses.append(list(clause) + [Condition(literal.ident, "<", left_value)])
-                new_clauses.append(list(clause) + [Condition(literal.ident, ">", right_value)])
-            return new_clauses
-        else:
-            new_clauses: List[List[Condition]] = []
-            map_op_left = {"<=": ">=", "<": ">"}
-            map_op_right = {"<=": "<=", "<": "<"}
-            for clause in clauses:
-                new_clause = list(clause)
-                new_clause.append(Condition(literal.ident, map_op_left.get(op1, ">="), left_value))
-                new_clause.append(Condition(literal.ident, map_op_right.get(op2, "<="), right_value))
-                new_clauses.append(new_clause)
-            return new_clauses
-
+        return _integrate_interval(clauses, literal)
     if literal.kind == "comparison":
-        value_type = literal.value_types[0] if literal.value_types else None
-        operator = _normalize_operator(literal.operator, literal.negated)
-        raw = literal.values[0]
-        if value_type == "IDENT" and raw in tvar_names and operator in {"==", "!="}:
-            return [clause + [Condition(literal.ident, operator, None, rhs_ident=raw)] for clause in clauses]
-        value = _convert_literal_value(value_type, raw)
-        return [clause + [Condition(literal.ident, operator, value)] for clause in clauses]
-
+        return _integrate_comparison(clauses, literal, tvar_names)
     # Fallback: keep literal as unsupported, drop clause to avoid false SAT
     return []
+
+
+def _integrate_membership(clauses: List[List[Condition]], literal: Literal) -> List[List[Condition]]:
+    values = [_convert_literal_value(t, v) for t, v in zip(literal.value_types, literal.values)]
+    if not values:
+        if literal.negated:
+            return clauses
+        return []
+    if literal.negated:
+        new_clauses: List[List[Condition]] = []
+        for clause in clauses:
+            extended = list(clause)
+            for value in values:
+                extended.append(Condition(literal.ident, "!=", value))
+            new_clauses.append(extended)
+        return new_clauses
+    new_clauses = []
+    for clause in clauses:
+        for value in values:
+            new_clause = list(clause)
+            new_clause.append(Condition(literal.ident, "==", value))
+            new_clauses.append(new_clause)
+    return new_clauses
+
+
+def _integrate_interval(clauses: List[List[Condition]], literal: Literal) -> List[List[Condition]]:
+    left, right, op1, op2 = literal.values
+    left_value = _convert_literal_value("NUMBER", left)
+    right_value = _convert_literal_value("NUMBER", right)
+    new_clauses: List[List[Condition]] = []
+    if literal.negated:
+        for clause in clauses:
+            new_clauses.append(list(clause) + [Condition(literal.ident, "<", left_value)])
+            new_clauses.append(list(clause) + [Condition(literal.ident, ">", right_value)])
+        return new_clauses
+    map_op_left = {"<=": ">=", "<": ">"}
+    map_op_right = {"<=": "<=", "<": "<"}
+    for clause in clauses:
+        new_clause = list(clause)
+        new_clause.append(Condition(literal.ident, map_op_left.get(op1, ">="), left_value))
+        new_clause.append(Condition(literal.ident, map_op_right.get(op2, "<="), right_value))
+        new_clauses.append(new_clause)
+    return new_clauses
+
+
+def _integrate_comparison(
+    clauses: List[List[Condition]], literal: Literal, tvar_names: set[str]
+) -> List[List[Condition]]:
+    value_type = literal.value_types[0] if literal.value_types else None
+    operator = _normalize_operator(literal.operator, literal.negated)
+    raw = literal.values[0]
+    if value_type == "IDENT" and raw in tvar_names and operator in {"==", "!="}:
+        return [clause + [Condition(literal.ident, operator, None, rhs_ident=raw)] for clause in clauses]
+    value = _convert_literal_value(value_type, raw)
+    return [clause + [Condition(literal.ident, operator, value)] for clause in clauses]
 
 
 def _normalize_operator(operator: str, negated: bool) -> str:
