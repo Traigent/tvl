@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Tuple
+from typing import Iterable
 
 
 def mean(xs: Iterable[float]) -> float:

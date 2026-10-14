@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import sys
 import types
@@ -18,7 +19,6 @@ if package_name not in sys.modules:
     pkg.__path__ = [str(package_path)]  # type: ignore[attr-defined]
     sys.modules[package_name] = pkg
 
-import importlib.util
 
 spec = importlib.util.spec_from_file_location(
     "tvl.operational",

@@ -22,7 +22,6 @@ from .composites_model import (
     AcceptStat,
     AggregateDecl,
     AggregateKind,
-    Arm,
     ArmResult,
     ArmResultKind,
     Cascade,

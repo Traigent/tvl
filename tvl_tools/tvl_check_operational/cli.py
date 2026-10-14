@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-import yaml
 
 from tvl.loader import load
 from tvl.operational import check_operational

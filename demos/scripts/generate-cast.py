@@ -7,7 +7,6 @@ This creates synthetic recordings without needing a PTY.
 import json
 import subprocess
 import time
-import sys
 import os
 
 def generate_cast(script_path: str, output_path: str, title: str):

@@ -13,10 +13,8 @@ import itertools
 import pytest
 
 from .model import (
-    ALL_REJECTIONS,
     Calibrator,
     CVar,
-    Certificate,
     Evidence,
     FreshnessContext,
     Gate,

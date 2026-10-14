@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from fractions import Fraction
 from math import lcm
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
 
@@ -1947,9 +1947,9 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
     for idx, clause in enumerate(structural):
         if not isinstance(clause, dict):
             continue
-        for field in ("when", "then", "expr"):
-            expr = clause.get(field)
-            expr_path = ["constraints", "structural", idx, field]
+        for clause_key in ("when", "then", "expr"):
+            expr = clause.get(clause_key)
+            expr_path = ["constraints", "structural", idx, clause_key]
             _check_structural_expression(expr, expr_path, context, issues)
 
 

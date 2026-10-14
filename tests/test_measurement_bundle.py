@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import sys
 import types
@@ -17,8 +18,6 @@ if package_name not in sys.modules:
     pkg = types.ModuleType(package_name)
     pkg.__path__ = [str(package_path)]  # type: ignore[attr-defined]
     sys.modules[package_name] = pkg
-
-import importlib.util
 
 
 def _load_module(module_name: str, relative_path: str):

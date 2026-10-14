@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import sys
 import types
@@ -10,8 +11,6 @@ PKG_ROOT = BASE / "python"
 if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
 
-import types
-import importlib.util
 
 package_name = "tvl"
 package_path = PKG_ROOT / package_name

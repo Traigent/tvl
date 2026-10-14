@@ -14,7 +14,6 @@ import pytest
 
 from .model import (
     CTX_EXT_KEYS,
-    Certificate,
     FreshnessContext,
     h_c,
     issue_certificate,
