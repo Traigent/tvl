@@ -72,7 +72,7 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml
 - `tests/` and `conformance/` — executable validation and compatibility cases
 - `vscode-tvl/` and `editor_shared/` — editor support
 - `website/` — source for [tvl-lang.org](https://tvl-lang.org)
-- `proofs/` — Lean mechanization for selected results
+- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note)
 
 ## Start here
 

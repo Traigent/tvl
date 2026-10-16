@@ -55,4 +55,4 @@ lake build TVL.SMTEncoding
 
 CI enforcement:
 
-- `.github/workflows/proofs-ci.yml` enforces a strict zero-`sorry` policy for Lean sources.
+- `.github/workflows/lean-proofs.yml` builds the proofs with `lake build` on every change under `proofs/`, and fails if any Lean source contains `sorry`, `admit` or an `axiom` declaration.

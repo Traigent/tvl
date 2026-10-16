@@ -304,6 +304,9 @@ tvars:
 !!! note "Callable and registry-backed domains"
     These forms are supported by current TVL tooling, but the linter marks them as outside the formally verified subset. Expect warning-level diagnostics such as `unverifiable_callable_type` and `unverifiable_registry_domain`.
 
+!!! note "cvars, policies, and composites (RFC 0001/0002)"
+    The Lean proof tree (`proofs/`) predates RFC 0001 (`cvars`/`policies`) and RFC 0002 (`composites`) and has not yet been extended to cover them; formal soundness guarantees do not apply to modules using these constructs. There is no lint warning for this yet (tracked as follow-up work); see `formalization/tvl-formal-semantics.md` §1.4 for the disclosure.
+
 ## Constraints
 
 TVL separates constraints into structural rules and operational preconditions (`constraints.derived`).

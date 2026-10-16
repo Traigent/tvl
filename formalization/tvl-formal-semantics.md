@@ -62,6 +62,8 @@ The formal semantics and soundness proofs in this document apply to the **core T
 | Registry domains (`domain: { registry: ... }`) | External state interaction | Future work |
 | Filter expressions in registry refs | Filter language not formalized | Future work |
 | Callable types (`type: callable[Protocol]`) | Protocol typing not defined | Future work |
+| `cvars`/`policies` (RFC 0001, landed 2026-06-05) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
+| `composites` (RFC 0002, landed 2026-06-06) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
 
 **Implications**:
 
@@ -70,10 +72,17 @@ The formal semantics and soundness proofs in this document apply to the **core T
 2. **Warnings**: Conformant validators SHOULD emit warnings when excluded constructs are used:
    - `W6001: unverifiable_registry_domain` — "Module uses registry domain; formal soundness guarantees do not apply"
    - `W6002: unverifiable_callable_type` — "Module uses callable type; type safety is not formally verified"
+   - cvars/policies/composites (RFC 0001/0002) have **no lint warning implemented yet** (tracked as
+     follow-up work): `lint_module`'s existing conservative-extension guarantee
+     (`tests/model_checking/test_legacy_corpus.py`) locks identical diagnostics whether or not a
+     legacy module has `cvars`/`policies` injected, so adding a warning here needs that guarantee
+     re-scoped first — see the coverage note below instead for the disclosure in the meantime.
 
-3. **Workaround**: For formal guarantees, resolve registry domains to explicit enum domains before validation, and replace callable types with enum types listing known implementations.
+3. **Workaround**: For formal guarantees, resolve registry domains to explicit enum domains before validation, replace callable types with enum types listing known implementations, and restrict the module to the pre-RFC-0001/0002 subset (no `cvars`, `policies`, or `composites` blocks).
 
 **Rationale**: Registry domains require interaction with external state (registries), which introduces semantic complexity beyond the scope of this static specification. Callable types require a protocol typing system that would significantly expand the formalization. These features are valuable for practical use but are excluded from the formally verified core to keep the proofs tractable.
+
+**cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the Lean proof tree (`proofs/`) simply predates RFC 0001 and RFC 0002 and has never been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/*.lean` mentions `composite`, `cvar`, or `policy`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
 
 ### 1.5 Field Categorization and Semantic Layers
 
