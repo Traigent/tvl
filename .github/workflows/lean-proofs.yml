@@ -28,6 +28,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Reject sorry, admit and axiom declarations
+        run: |
+          if grep -rnE --include='*.lean' --exclude-dir=.lake '\bsorry\b|\badmit\b|^[[:space:]]*axiom\b' proofs; then
+            echo "::error::Lean sources must not contain sorry, admit or axiom declarations"
+            exit 1
+          fi
+
       # Re-verifies proofs/PROOF_SUMMARY.md's "Build completed successfully"
       # claim on every change instead of leaving it a point-in-time claim.
       # lean-action installs elan, fetches the Mathlib oleans cache, and runs
