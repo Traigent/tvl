@@ -25,7 +25,9 @@ def main() -> None:
 
     try:
         module = _load_module(args.file)
-    except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
+    except (TVLError, FileNotFoundError, ValueError) as exc:
+        # load() wraps YAML and file-read failures as ParseError (a TVLError),
+        # so this handler does not depend on importing yaml here.
         # A missing or malformed module file used to propagate as a raw
         # traceback and exit 1, with no JSON emitted even under --json. Mirror
         # the graceful degradation tvl-check-structural already provides:
