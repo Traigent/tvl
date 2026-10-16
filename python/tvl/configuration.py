@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict as Dict
 
 from .constraints import compile_constraints, evaluate_assignment
 from .errors import ParseError, SchemaError
@@ -10,7 +10,7 @@ from .schema import configuration_validator
 from .yaml_safe import safe_load
 
 
-def load_configuration(path: Path | str) -> Dict[str, Any]:
+def load_configuration(path: Path | str) -> dict[str, Any]:
     p = Path(path)
     try:
         data = safe_load(p.read_text(encoding="utf-8"))
@@ -25,14 +25,14 @@ def load_configuration(path: Path | str) -> Dict[str, Any]:
     return data
 
 
-def validate_configuration(module: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+def validate_configuration(module: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     compiled = compile_constraints(module)
     assignments = config.get("assignments", {}) or {}
     flat_assignments = flatten_assignments(assignments)
 
     module_id = (module.get("tvl") or {}).get("module")
     config_module_id = config.get("module_id")
-    module_mismatch: List[Dict[str, Any]] = []
+    module_mismatch: list[dict[str, Any]] = []
     if module_id and config_module_id and module_id != config_module_id:
         module_mismatch.append({
             "code": "module_mismatch",

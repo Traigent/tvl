@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict as Dict, List as List, Optional
 
 import yaml
 
@@ -24,7 +24,7 @@ def _current_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _emit_event(payload: Dict[str, Any]) -> None:
+def _emit_event(payload: dict[str, Any]) -> None:
     print(json.dumps(payload))
 
 
@@ -35,9 +35,9 @@ def _format_number(value: float) -> str:
 
 
 def _build_repair_candidates(
-    unsat_core: Optional[List[Dict[str, Any]]],
+    unsat_core: Optional[list[dict[str, Any]]],
     file_path: Path,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if not unsat_core:
         return []
 
@@ -47,7 +47,7 @@ def _build_repair_candidates(
         key=lambda entry: json.dumps(entry, sort_keys=True),
     )[:limit]
 
-    candidates: List[Dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     for index, entry in enumerate(ordered_core):
         expression = entry.get("expression")
         if not isinstance(expression, str):
@@ -65,10 +65,10 @@ def _build_repair_candidates(
             expression,
         )
 
-        symbols: List[str] = []
+        symbols: list[str] = []
         intent = "delete_clause"
-        edits: List[Dict[str, Any]] = []
-        rationale: List[str] = []
+        edits: list[dict[str, Any]] = []
+        rationale: list[str] = []
         confidence = 0.35
 
         if numeric_match:
@@ -141,7 +141,7 @@ def _build_repair_candidates(
 
 
 
-def _apply_candidate_edits(original_text: str, candidate: Dict[str, Any]) -> str:
+def _apply_candidate_edits(original_text: str, candidate: dict[str, Any]) -> str:
     edits = candidate.get("edits")
     if not isinstance(edits, list):
         return original_text
@@ -166,7 +166,7 @@ def _write_temp_file(content: str, suffix: str = "") -> Path:
         return Path(tmp.name)
 
 
-def _build_witness_id(assignment: Optional[Dict[str, Any]]) -> Optional[str]:
+def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
     if not isinstance(assignment, dict):
         return None
     try:
@@ -176,7 +176,7 @@ def _build_witness_id(assignment: Optional[Dict[str, Any]]) -> Optional[str]:
     return f"w-{abs(hash(items)) % 1_000_000:06d}"
 
 
-def _load_module(path: Path) -> Dict[str, Any]:
+def _load_module(path: Path) -> dict[str, Any]:
     return load(path)
 
 
@@ -191,7 +191,7 @@ def main() -> None:
     module_path = args.file
     temp_file: Optional[Path] = None
 
-    candidate_payload: Optional[Dict[str, Any]] = None
+    candidate_payload: Optional[dict[str, Any]] = None
     if args.candidate_file:
         candidate_payload = json.loads(args.candidate_file.read_text(encoding="utf-8"))
         original_text = args.file.read_text(encoding="utf-8")

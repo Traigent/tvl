@@ -66,8 +66,8 @@ def test_dict_form_and_list_form_agree():
         },
     }
     d = check_structural_satisfiable(compile_constraints(dict_form))
-    l = check_structural_satisfiable(compile_constraints(list_form))
-    assert d["ok"] == l["ok"] is False
+    lst = check_structural_satisfiable(compile_constraints(list_form))
+    assert d["ok"] == lst["ok"] is False
 
 
 def test_greater_than_on_unsorted_enum():

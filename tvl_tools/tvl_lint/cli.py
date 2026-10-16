@@ -1,18 +1,18 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict as Dict, List as List
 
 from tvl.lints import lint_module
 from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
 
 
-def lint(doc: Dict[str, Any], precision: int = 1000) -> List[Dict[str, Any]]:
+def lint(doc: dict[str, Any], precision: int = 1000) -> list[dict[str, Any]]:
     """Run lint checks against a parsed TVL document."""
     return lint_module(doc, precision=precision)
 
 
-def text_renderer(data: Dict[str, Any]) -> None:
+def text_renderer(data: dict[str, Any]) -> None:
     """Render lint issues in a human-friendly format."""
     issues = data.get("issues", [])
     if issues:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as dataclass_field
 from fractions import Fraction
 from math import lcm
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
 
@@ -809,7 +809,7 @@ class _CompositeCtx:
     # Module-level freshness-context coverage (§3.2 item 11 / RFC 0001 §3.5):
     # the promotion_policy.require_calibration.hash_covered_context keys and the
     # value covered under 'signal_inputs', resolved once for the whole module.
-    ctx_keys: Set[str] = field(default_factory=set)
+    ctx_keys: Set[str] = dataclass_field(default_factory=set)
     covered_signal_inputs: Optional[List[Any]] = None
 
     def add(self, code: str, message: str, path: List[Any], severity: str = "error") -> None:

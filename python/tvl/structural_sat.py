@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional
 
 try:  # pragma: no cover - optional dependency
     from ortools.sat.python import cp_model  # type: ignore
@@ -15,7 +16,6 @@ from .structural_parser import DNF, Literal, StructuralParseError, clause_to_str
 @dataclass
 class Clause:
     literals: List[Literal]
-import math
 
 
 @dataclass

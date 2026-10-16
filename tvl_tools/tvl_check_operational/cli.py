@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-import yaml
 
 from tvl.errors import TVLError
 from tvl.loader import load

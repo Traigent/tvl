@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict as Dict
 
 from .errors import ParseError, SchemaError
 from .schema import validator
 from .yaml_safe import safe_load
 
 
-def load(path: Path | str) -> Dict[str, Any]:
+def load(path: Path | str) -> dict[str, Any]:
     """Load and schema-validate a TVL YAML file into a Python dict.
 
     Raises:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Iterable, List, Sequence
+from typing import Iterable, List as List, Sequence
 
 # Cap the recursive-descent nesting depth (parentheses / chained `not`). Each
 # nesting level passes through ``unary()`` exactly once, and each level costs a
@@ -53,7 +53,7 @@ class Literal:
 
 @dataclass
 class DNF:
-    clauses: List[List[Literal]]
+    clauses: list[list[Literal]]
 
 
 class _Token:
@@ -72,7 +72,7 @@ def parse_expression(text: str) -> DNF:
     parser = _Parser(tokens)
     ast = parser.parse()
     nnf = _to_nnf(ast)
-    clauses: List[List[Literal]] = []
+    clauses: list[list[Literal]] = []
     for conjunction in _to_dnf(nnf):
         literals = [_literal_from_ast(node) for node in conjunction]
         literals.sort(key=lambda lit: (lit.ident, lit.operator, tuple(lit.values), lit.negated))
@@ -84,7 +84,7 @@ def parse_expression(text: str) -> DNF:
 def clause_to_string(clause: Sequence[Literal]) -> str:
     if not clause:
         return "true"
-    parts: List[str] = []
+    parts: list[str] = []
     for lit in clause:
         prefix = "not " if lit.negated else ""
         if lit.kind == "interval":
@@ -113,8 +113,8 @@ def _format_value(token_type: str, value: str) -> str:
     return value
 
 
-def _tokenize(text: str) -> List[_Token]:
-    tokens: List[_Token] = []
+def _tokenize(text: str) -> list[_Token]:
+    tokens: list[_Token] = []
     pos = 0
     length = len(text)
 
@@ -172,7 +172,7 @@ def _tokenize(text: str) -> List[_Token]:
         if ch in "'\"":
             quote = ch
             pos += 1
-            chars: List[str] = []
+            chars: list[str] = []
             while pos < length:
                 current = text[pos]
                 if current == "\\":
@@ -361,8 +361,8 @@ class _Parser:
                 "[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*."
             )
 
-    def set_literal(self) -> List[tuple[str, str]]:
-        values: List[tuple[str, str]] = []
+    def set_literal(self) -> list[tuple[str, str]]:
+        values: list[tuple[str, str]] = []
         if self.accept("LBRACE"):
             closing = "RBRACE"
         else:
@@ -386,7 +386,7 @@ class _Parser:
             return tok.type, value
         if tok.type == "LPAREN":
             self.advance()
-            items: List[str] = []
+            items: list[str] = []
             if self.accept("RPAREN"):
                 return "TUPLE_VAL", "()"
             while True:
@@ -449,10 +449,10 @@ def _to_dnf(node):
                     "Structural constraint too complex: DNF expansion exceeds "
                     f"{MAX_DNF_CLAUSES} clauses"
                 )
-            product: List[List[tuple]] = []
-            for l in left:
+            product: list[list[tuple]] = []
+            for left_clause in left:
                 for r in right:
-                    product.append(l + r)
+                    product.append(left_clause + r)
             return product
         if op == "or":
             combined = _to_dnf(node[1]) + _to_dnf(node[2])
