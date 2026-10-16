@@ -67,6 +67,60 @@ class LintModuleTests(unittest.TestCase):
         codes = _collect_codes(issues)
         self.assertIn("undeclared_tvar", codes)
 
+    def test_malformed_structural_constraint_missing_then_is_flagged(self) -> None:
+        """Issue #15: a one-sided `when` (no `then`, no `expr`) must not stay
+        lint-clean — it is unenforceable and previously compiled to zero
+        constraints while `tvl-lint` reported nothing."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "temperature", "type": "float", "domain": {"range": [0.0, 1.0]}},
+        ]
+        doc["constraints"] = {"structural": [{"when": "temperature = 0.5"}]}
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertIn("malformed_structural_constraint", codes)
+
+    def test_malformed_structural_constraint_unknown_key_is_flagged(self) -> None:
+        """Issue #15: neither `when`/`then` nor `expr` present (only an
+        unrecognised key) must be flagged, not silently skipped."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "temperature", "type": "float", "domain": {"range": [0.0, 1.0]}},
+        ]
+        doc["constraints"] = {"structural": [{"cond": "temperature = 0.5"}]}
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertIn("malformed_structural_constraint", codes)
+
+    def test_malformed_structural_constraint_both_shapes_is_flagged(self) -> None:
+        """Issue #15: `when`+`then` AND `expr` together violate the schema's
+        oneOf and must be flagged, not silently accepted as one of the two."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "temperature", "type": "float", "domain": {"range": [0.0, 1.0]}},
+        ]
+        doc["constraints"] = {
+            "structural": [
+                {"when": "temperature > 0.5", "then": "temperature < 1.0", "expr": "temperature != 0.9"},
+            ]
+        }
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertIn("malformed_structural_constraint", codes)
+
+    def test_wellformed_structural_constraint_not_flagged(self) -> None:
+        """Sanity: a well-formed {when, then} entry is not flagged."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "temperature", "type": "float", "domain": {"range": [0.0, 1.0]}},
+        ]
+        doc["constraints"] = {
+            "structural": [{"when": "temperature > 0.5", "then": "temperature < 1.0"}],
+        }
+        issues = lint_module(doc)
+        codes = _collect_codes(issues)
+        self.assertNotIn("malformed_structural_constraint", codes)
+
     def test_enum_literal_outside_domain(self) -> None:
         doc = _base_module()
         doc["tvars"] = [
