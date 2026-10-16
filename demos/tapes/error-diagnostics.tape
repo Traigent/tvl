@@ -1,5 +1,7 @@
 # TVL Error Diagnostics Demo
 # Shows helpful error messages and diagnostics
+# ILLUSTRATIVE ONLY: the `tvl`/`tvo` commands typed below run against demos/mock-cli/'s
+# simulated dispatcher, not the real installed tvl-spec package (see demos/README.md).
 
 Output output/error-diagnostics.gif
 Source tapes/_theme.tape

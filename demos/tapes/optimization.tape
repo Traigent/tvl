@@ -1,5 +1,7 @@
 # TVL Optimization Demo
 # Shows the value proposition: from vague requirements to precise specs + optimization
+# ILLUSTRATIVE ONLY: the `tvl`/`tvo` commands typed below run against demos/mock-cli/'s
+# simulated dispatcher, not the real installed tvl-spec package (see demos/README.md).
 
 Output output/optimization.gif
 Source tapes/_theme.tape
