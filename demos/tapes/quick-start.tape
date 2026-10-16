@@ -1,5 +1,7 @@
 # TVL Quick Start Demo
 # End-to-end workflow from spec to optimization
+# ILLUSTRATIVE ONLY: the `tvl`/`tvo` commands typed below run against demos/mock-cli/'s
+# simulated dispatcher, not the real installed tvl-spec package (see demos/README.md).
 
 Output output/quick-start.gif
 Source tapes/_theme.tape

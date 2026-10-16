@@ -1664,6 +1664,19 @@ def _parse_domain(
                 }
             )
             return set(), None, None
+        if len(parsed) != len(set(parsed)):
+            # Issue #24: a repeated enum/callable domain member silently
+            # collapsed into one arm (inflated cardinality, wasted trial
+            # budget, ambiguous encode/decode) with no diagnostic.
+            issues.append(
+                {
+                    "code": "duplicate_domain_value",
+                    "message": f"TVAR '{name}' domain contains duplicate value(s): "
+                    f"{sorted({str(v) for v in parsed if parsed.count(v) > 1})}",
+                    "path": path + ["domain"],
+                    "severity": "error",
+                }
+            )
         return set(parsed), None, None
 
     if kind in {"int", "float"}:
@@ -1691,9 +1704,10 @@ def _parse_domain(
                     )
                     return set(), None, None
                 converted: Set[Any] = set()
+                coerced_values: List[Any] = []
                 for item in parsed:
                     try:
-                        converted.add(_coerce_numeric(item, kind))
+                        coerced_values.append(_coerce_numeric(item, kind))
                     except ValueError:
                         issues.append(
                             {
@@ -1703,6 +1717,19 @@ def _parse_domain(
                                 "severity": "error",
                             }
                         )
+                if len(coerced_values) != len(set(coerced_values)):
+                    # Issue #24: same duplicate-member silent-accept as the
+                    # enum/callable branch above, for the numeric 'set' form.
+                    issues.append(
+                        {
+                            "code": "duplicate_domain_value",
+                            "message": f"TVAR '{name}' domain contains duplicate value(s): "
+                            f"{sorted({v for v in coerced_values if coerced_values.count(v) > 1})}",
+                            "path": path + ["domain"],
+                            "severity": "error",
+                        }
+                    )
+                converted.update(coerced_values)
                 return converted, None, None
             if "range" in spec:
                 range_vals = spec.get("range", [])
@@ -1946,7 +1973,42 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
 
     for idx, clause in enumerate(structural):
         if not isinstance(clause, dict):
+            issues.append(
+                {
+                    "code": "malformed_structural_constraint",
+                    "message": f"Structural constraint at index {idx} must be an object, got {clause!r}",
+                    "path": ["constraints", "structural", idx],
+                    "severity": "error",
+                }
+            )
             continue
+
+        when_expr = clause.get("when")
+        then_expr = clause.get("then")
+        expr_expr = clause.get("expr")
+        extra_keys = set(clause.keys()) - {"when", "then", "expr"}
+        has_when_then = when_expr is not None and then_expr is not None
+        has_expr = expr_expr is not None
+        # Mirror the schema's oneOf({when,then} | {expr}) + additionalProperties:
+        # false: reject a non-dict entry, an entry missing one side of when/then,
+        # an entry carrying both when/then AND expr, or an unrecognised key — the
+        # exact malformed shape the compilers now raise on (issue #15). Without
+        # this, tvl-lint (the one gateless first-class CLI) stayed clean on a
+        # module whose declared constraint is never enforced.
+        if extra_keys or has_when_then == has_expr:
+            issues.append(
+                {
+                    "code": "malformed_structural_constraint",
+                    "message": (
+                        f"Structural constraint at index {idx} does not match the required "
+                        f"{{when, then}} or {{expr}} shape (extra keys: {sorted(extra_keys)!r}): {clause!r}"
+                    ),
+                    "path": ["constraints", "structural", idx],
+                    "severity": "error",
+                }
+            )
+            continue
+
         for field in ("when", "then", "expr"):
             expr = clause.get(field)
             expr_path = ["constraints", "structural", idx, field]
@@ -2551,6 +2613,28 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                             "severity": "error",
                         }
                     )
+
+    # Issue #24: the forward check above only asserts every objective HAS a
+    # min_effect entry; it never checked the reverse — that every min_effect
+    # KEY names a real objective. A stale/renamed/typo'd key (e.g.
+    # 'ghost_typo') was silently accepted with no effect. Declared names
+    # include banded objectives too (their `direction` need not be a plain
+    # string), so a min_effect entry for a banded objective is not orphaned.
+    declared_names = {
+        objective.get("name")
+        for objective in objectives
+        if isinstance(objective, dict) and isinstance(objective.get("name"), str)
+    }
+    for key in min_effect:
+        if isinstance(key, str) and key not in declared_names:
+            issues.append(
+                {
+                    "code": "unknown_min_effect_objective",
+                    "message": f"promotion_policy.min_effect['{key}'] does not name a declared objective",
+                    "path": ["promotion_policy", "min_effect", key],
+                    "severity": "error",
+                }
+            )
 
     chance_constraints = policy.get("chance_constraints") or []
     if not isinstance(chance_constraints, list):
