@@ -113,130 +113,118 @@ def _format_value(token_type: str, value: str) -> str:
     return value
 
 
+def _fixed_token(text: str, pos: int, ch: str) -> tuple[_Token, int] | None:
+    if text.startswith("=>", pos):
+        return _Token("IMPLIES", "=>"), pos + 2
+    if text.startswith("<=", pos):
+        return _Token("LE", "<="), pos + 2
+    if text.startswith(">=", pos):
+        return _Token("GE", ">="), pos + 2
+    if text.startswith("==", pos):
+        return _Token("EQ", "=="), pos + 2
+    if text.startswith("!=", pos):
+        return _Token("NE", "!="), pos + 2
+    if ch in "<>=":
+        return _Token({"<": "LT", ">": "GT", "=": "EQ"}[ch], ch), pos + 1
+    if ch in "{}[](),":
+        mapping = {
+            "{": "LBRACE",
+            "}": "RBRACE",
+            "[": "LBRACKET",
+            "]": "RBRACKET",
+            "(": "LPAREN",
+            ")": "RPAREN",
+            ",": "COMMA",
+        }
+        return _Token(mapping[ch], ch), pos + 1
+    return None
+
+
+def _quoted_token(text: str, pos: int, length: int, quote: str) -> tuple[_Token, int]:
+    pos += 1
+    chars: list[str] = []
+    while pos < length:
+        current = text[pos]
+        if current == "\\":
+            if pos + 1 >= length:
+                raise StructuralParseError("Unterminated escape sequence in string literal")
+            chars.append(text[pos + 1])
+            pos += 2
+            continue
+        if current == quote:
+            return _Token("STRING", "".join(chars)), pos + 1
+        chars.append(current)
+        pos += 1
+    raise StructuralParseError("Unterminated string literal")
+
+
+def _number_token(text: str, pos: int, length: int) -> tuple[_Token, int]:
+    start = pos
+    pos += 1
+    has_dot = False
+    while pos < length:
+        current = text[pos]
+        if current.isdigit():
+            pos += 1
+        elif current == "." and not has_dot:
+            has_dot = True
+            pos += 1
+        else:
+            break
+    return _Token("NUMBER", text[start:pos]), pos
+
+
+def _word_token(text: str, pos: int, length: int) -> tuple[_Token, int]:
+    start = pos
+    pos += 1
+    # Normative Ident forbids hyphens (tvl.ebnf:252, tvl.schema.json:243);
+    # alphanumerics, '_' and dotted-path '.' continue an identifier
+    # (issue #51 — drop the previously-allowed mid-ident hyphen). A '-'
+    # is still allowed to continue when directly followed by an
+    # alphanumeric, so unquoted hyphenated barewords (e.g. gpt-4o)
+    # keep lexing as one IDENT/value instead of splitting into
+    # IDENT/NUMBER/IDENT — a trailing/standalone '-' still ends the
+    # identifier and is rejected as before.
+    while pos < length and (
+        text[pos].isalnum()
+        or text[pos] in "_."
+        or (text[pos] == "-" and pos + 1 < length and text[pos + 1].isalnum())
+    ):
+        pos += 1
+    ident = text[start:pos]
+    lowered = ident.lower()
+    if lowered in {"or", "and", "not", "in"}:
+        mapping = {"or": "OR", "and": "AND", "not": "NOT", "in": "IN"}
+        return _Token(mapping[lowered], lowered), pos
+    if lowered in {"true", "false"}:
+        return _Token("BOOLEAN", lowered), pos
+    return _Token("IDENT", ident), pos
+
+
+def _next_token(text: str, pos: int, length: int, ch: str) -> tuple[_Token, int]:
+    fixed = _fixed_token(text, pos, ch)
+    if fixed is not None:
+        return fixed
+    if ch in "'\"":
+        return _quoted_token(text, pos, length, ch)
+    if ch.isdigit() or (ch in "+-" and pos + 1 < length and text[pos + 1].isdigit()):
+        return _number_token(text, pos, length)
+    if ch.isalpha() or ch == "_":
+        return _word_token(text, pos, length)
+    raise StructuralParseError(f"Unexpected token starting at position {pos}: {text[pos:pos+10]!r}")
+
+
 def _tokenize(text: str) -> list[_Token]:
     tokens: list[_Token] = []
     pos = 0
     length = len(text)
-
     while pos < length:
         ch = text[pos]
-
         if ch.isspace():
             pos += 1
             continue
-
-        if text.startswith("=>", pos):
-            tokens.append(_Token("IMPLIES", "=>"))
-            pos += 2
-            continue
-
-        if text.startswith("<=", pos):
-            tokens.append(_Token("LE", "<="))
-            pos += 2
-            continue
-
-        if text.startswith(">=", pos):
-            tokens.append(_Token("GE", ">="))
-            pos += 2
-            continue
-
-        if text.startswith("==", pos):
-            tokens.append(_Token("EQ", "=="))
-            pos += 2
-            continue
-
-        if text.startswith("!=", pos):
-            tokens.append(_Token("NE", "!="))
-            pos += 2
-            continue
-
-        if ch in "<>=":
-            tokens.append(_Token({"<": "LT", ">": "GT", "=": "EQ"}[ch], ch))
-            pos += 1
-            continue
-
-        if ch in "{}[](),":
-            mapping = {
-                "{": "LBRACE",
-                "}": "RBRACE",
-                "[": "LBRACKET",
-                "]": "RBRACKET",
-                "(": "LPAREN",
-                ")": "RPAREN",
-                ",": "COMMA",
-            }
-            tokens.append(_Token(mapping[ch], ch))
-            pos += 1
-            continue
-
-        if ch in "'\"":
-            quote = ch
-            pos += 1
-            chars: list[str] = []
-            while pos < length:
-                current = text[pos]
-                if current == "\\":
-                    if pos + 1 >= length:
-                        raise StructuralParseError("Unterminated escape sequence in string literal")
-                    chars.append(text[pos + 1])
-                    pos += 2
-                    continue
-                if current == quote:
-                    tokens.append(_Token("STRING", "".join(chars)))
-                    pos += 1
-                    break
-                chars.append(current)
-                pos += 1
-            else:
-                raise StructuralParseError("Unterminated string literal")
-            continue
-
-        if ch.isdigit() or (ch in "+-" and pos + 1 < length and text[pos + 1].isdigit()):
-            start = pos
-            pos += 1
-            has_dot = False
-            while pos < length:
-                current = text[pos]
-                if current.isdigit():
-                    pos += 1
-                elif current == "." and not has_dot:
-                    has_dot = True
-                    pos += 1
-                else:
-                    break
-            tokens.append(_Token("NUMBER", text[start:pos]))
-            continue
-
-        if ch.isalpha() or ch == "_":
-            start = pos
-            pos += 1
-            # Normative Ident forbids hyphens (tvl.ebnf:252, tvl.schema.json:243);
-            # alphanumerics, '_' and dotted-path '.' continue an identifier
-            # (issue #51 — drop the previously-allowed mid-ident hyphen). A '-'
-            # is still allowed to continue when directly followed by an
-            # alphanumeric, so unquoted hyphenated barewords (e.g. gpt-4o)
-            # keep lexing as one IDENT/value instead of splitting into
-            # IDENT/NUMBER/IDENT — a trailing/standalone '-' still ends the
-            # identifier and is rejected as before.
-            while pos < length and (
-                text[pos].isalnum()
-                or text[pos] in "_."
-                or (text[pos] == "-" and pos + 1 < length and text[pos + 1].isalnum())
-            ):
-                pos += 1
-            ident = text[start:pos]
-            lowered = ident.lower()
-            if lowered in {"or", "and", "not", "in"}:
-                mapping = {"or": "OR", "and": "AND", "not": "NOT", "in": "IN"}
-                tokens.append(_Token(mapping[lowered], lowered))
-            elif lowered in {"true", "false"}:
-                tokens.append(_Token("BOOLEAN", lowered))
-            else:
-                tokens.append(_Token("IDENT", ident))
-            continue
-
-        raise StructuralParseError(f"Unexpected token starting at position {pos}: {text[pos:pos+10]!r}")
-
+        token, pos = _next_token(text, pos, length, ch)
+        tokens.append(token)
     tokens.append(_Token("EOF", ""))
     return tokens
 

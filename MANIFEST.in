@@ -1,1 +1,2 @@
 include tests/data/domain_encode_before.py.txt
+include tests/data/structural_tokenizer_subclass_before.json
