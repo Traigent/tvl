@@ -1,0 +1,35 @@
+# Frozen Domain.encode reference from 0ff104db3343f4ea3bf4242a641d534acec0953f.
+# Original full model.py SHA256: 5b8ce12edb0a668755e9570377a090dcb795258bb2dc2e2c5549e73efbf6592a.
+def encode(self, value: Any) -> int:
+    if self.kind == "bool":
+        if isinstance(value, bool):
+            return 1 if value else 0
+        if isinstance(value, int) and value in (0, 1):
+            return value
+        raise ValueError(f"{self.path}: expected bool, got {value!r}")
+
+    if self.kind == "enum":
+        if self.values is None:
+            raise ValueError(f"{self.path}: enum domain is missing values")
+        if value not in self.values:
+            raise ValueError(f"{self.path}: value {value!r} not in enum {self.values}")
+        return self.values.index(value)
+
+    if self.kind == "int":
+        if not isinstance(value, int):
+            raise ValueError(f"{self.path}: expected int, got {value!r}")
+        return value
+
+    if self.kind == "float":
+        if not isinstance(value, (int, float)):
+            raise ValueError(f"{self.path}: expected float, got {value!r}")
+        scaled = float(value) * self.precision
+        rounded = round(scaled)
+        if abs(scaled - rounded) > 1e-9:
+            raise ValueError(
+                f"{self.path}: value {value!r} is not on the precision grid "
+                f"(precision={self.precision}, resolution={1/self.precision})"
+            )
+        return int(rounded)
+
+    raise ValueError(f"{self.path}: unsupported domain kind {self.kind}")
