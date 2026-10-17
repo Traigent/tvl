@@ -47,6 +47,17 @@ TVL can be the specification layer for a verifiable certificate. A defensible cl
 
 Passing a TVL gate means that the candidate met the declared requirements under that pinned contract and evidence. It does not by itself prove universal safety, correctness, or performance outside that scope. See [AI Agent Requirements and Certification](docs/agent-requirements.md).
 
+## TVL 1.3 (draft): requirements in production
+
+TVL 1.3 is a draft, conservative extension of TVL 1.2: a module without the new blocks means exactly what it meant before. It adds three optional blocks: `requirements` (what must keep holding once the agent runs, such as "at most 5% of traces take longer than 2 s" or "the agent never calls a forbidden tool"), `monitors` (which evidence checks a requirement, before release or in production, and with what statistics) and `responses` (what should happen when a monitor reports a breach, from a notification to a human-approved suspend). A separate `tvl_pack` document carries organisation floors that modules can only tighten.
+
+TVL states what these declarations mean and what each verdict promises; its tools validate, compose and compile them, and `tvl-ci-gate` decides promotion monitors from fully resolved evaluation-set counts. Evaluating runtime evidence and carrying out responses is outside the language ([RFC 0003 §3.5](formalization/rfc-0003-runtime-requirements-monitors-responses.md)).
+
+- Guide: [Requirements, Monitors and Responses](docs/guides/requirements-monitors-responses.md)
+- Book: [Chapter 6 · Requirements in Production](tvl_book/website_content/book/chapter-06-requirements-in-production.md)
+- Specification: [RFC 0003](formalization/rfc-0003-runtime-requirements-monitors-responses.md) (DRAFT) and [formal semantics §12](formalization/tvl-formal-semantics.md)
+- Examples: [`spec/examples/runtime-1.3/`](spec/examples/runtime-1.3/)
+
 ## Quick start
 
 Install the Python package and CLI tools from the repository root:
@@ -76,7 +87,7 @@ The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables 
 - `tests/` and `conformance/` — executable validation and compatibility cases
 - `vscode-tvl/` and `editor_shared/` — editor support
 - `website/` — source for [tvl-lang.org](https://tvl-lang.org)
-- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note)
+- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note; the draft TVL 1.3 language results are listed in its *Runtime (TVL 1.3)* section)
 
 ## Start here
 
@@ -85,11 +96,12 @@ The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables 
 3. [Language Reference](docs/reference/language.md)
 4. [Semantics and Verification Reference](docs/reference/verification.md)
 5. [Agent Evaluation and Promotion Evidence](docs/guides/statistical-validation-guide.md)
-6. [Complete examples](spec/examples/)
+6. [Requirements, Monitors and Responses (TVL 1.3 draft)](docs/guides/requirements-monitors-responses.md)
+7. [Complete examples](spec/examples/)
 
 ## Specification boundary
 
-TVL standardizes what a conforming module means and what a verifier must check. It does not standardize search algorithms, optimizer architecture, scheduling, sample allocation, or internal solver representation. Those mechanisms may be documented by individual implementations without becoming part of the language contract.
+TVL standardizes what a conforming module means and what a verifier must check. It does not standardize search algorithms, optimizer architecture, scheduling, sample allocation, or internal solver representation. Those mechanisms may be documented by individual implementations without becoming part of the language contract. Likewise, for TVL 1.3 the language defines what a runtime requirement means and what each verdict promises; how an evaluator decides from runtime evidence and how a platform executes responses are not part of the language contract.
 
 ## License
 

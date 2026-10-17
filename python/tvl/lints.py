@@ -60,16 +60,29 @@ _NON_LINEAR_TOKENS_STRUCTURAL = {"*", "/", "^"}
 _NON_LINEAR_TOKENS_DERIVED = {"/", "^"}
 
 
-def lint_module(doc: Dict[str, Any], precision: int = 1000) -> List[Issue]:
+def lint_module(
+    doc: Dict[str, Any],
+    precision: int = 1000,
+    *,
+    floor_provenance: Optional[Sequence[Dict[str, Any]]] = None,
+    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+) -> List[Issue]:
     """Lint a TVL module for errors and warnings.
 
     Args:
         doc: The TVL module document
         precision: Float precision factor for SMT encoding (default 1000)
+        floor_provenance: Optional pack floor provenance records from tvl-compose
+        checker_registry: Optional customer checker label registry for compile-time checks
 
     Returns:
         List of issues (errors and warnings)
     """
+    from .diagnostics import runtime_syntax_issues
+
+    syntax = runtime_syntax_issues(doc) if _uses_13_constructs(doc) else []
+    if syntax:
+        return syntax
     issues: List[Issue] = []
     _lint_duplicate_tvars(doc, issues)
     _lint_cvars(doc, issues)
@@ -84,8 +97,63 @@ def lint_module(doc: Dict[str, Any], precision: int = 1000) -> List[Issue]:
     _lint_objectives(doc, issues)
     _lint_promotion_policy(doc, issues)
     _lint_exploration(doc, issues)
+    if _uses_13_constructs(doc):
+        runtime_start = len(issues)
+        _lint_runtime_version(doc, issues)
+        _lint_requirements(doc, issues, checker_registry=checker_registry)
+        _lint_monitors(doc, issues, is_pack=False, floor_provenance=floor_provenance)
+        _lint_responses(doc, issues)
+        _address_runtime_issues(issues, runtime_start)
     # Add formal verification scope warnings
     issues.extend(check_formal_verification_scope(doc, precision))
+    return issues
+
+
+def lint_pack(
+    doc: Dict[str, Any],
+    *,
+    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+) -> List[Issue]:
+    """Lint a TVL 1.3 pack document (RFC 0003 §5.1, §11.2)."""
+    from .diagnostics import runtime_syntax_issues
+
+    syntax = runtime_syntax_issues(doc)
+    if syntax:
+        return syntax
+    issues: List[Issue] = []
+    pack_block = doc.get("pack")
+    if not isinstance(pack_block, dict) or not isinstance(pack_block.get("module"), str) or not _NORMATIVE_IDENT_RE.match(pack_block["module"]):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "pack.module must be a valid TVL module identifier",
+                "path": ["pack", "module"],
+                "severity": "error",
+            }
+        )
+    if "requirements" not in doc or not isinstance(doc.get("requirements"), list):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "tvl_pack requires a 'requirements' list",
+                "path": ["requirements"],
+                "severity": "error",
+            }
+        )
+    if "monitors" not in doc or not isinstance(doc.get("monitors"), list):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "tvl_pack requires a 'monitors' list",
+                "path": ["monitors"],
+                "severity": "error",
+            }
+        )
+    _lint_runtime_version(doc, issues)
+    _lint_requirements(doc, issues, checker_registry=checker_registry)
+    _lint_monitors(doc, issues, is_pack=True)
+    _lint_responses(doc, issues)
+    _address_runtime_issues(issues)
     return issues
 
 
@@ -3103,3 +3171,2390 @@ def _compute_exact_alignment_precision(values: Sequence[float]) -> Optional[int]
     except (ValueError, ZeroDivisionError, OverflowError):
         return None
     return precision
+
+
+# -----------------------------------------------------------------------------
+# TVL 1.3 Runtime Lints (RFC 0003 §4, §5, §7, §9, §10, §11)
+# -----------------------------------------------------------------------------
+
+_RUNTIME_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CODE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
+_CUSTOMER_CHECKER_RE = re.compile(r"^customer:[A-Za-z_][A-Za-z0-9_]*$")
+
+_REQ_KINDS = {"rate_bound", "zero_tolerance", "recovery_time", "evidence_liveness"}
+_UNIT_KINDS = {"trace", "invocation"}
+_ALL_UNIT_KINDS = {"trace", "invocation", "episode", "window"}
+_METRICS = {"wall_clock_latency_ms", "cost_usd", "total_tokens", "tool_calls"}
+_PATTERNS = {"absence", "bounded_existence", "precedence", "bounded_response", "protocol"}
+_STATEFUL_PATTERNS = {"precedence", "bounded_response", "protocol"}
+_WITNESS_PATTERNS = {"absence", "bounded_existence", "precedence", "protocol"}
+_EVENT_TYPES = {
+    "unit_start",
+    "unit_end",
+    "tool_call",
+    "tool_result",
+    "model_call",
+    "handoff",
+    "error",
+    "authorization_granted",
+    "authorization_revoked",
+}
+_STATUSES = {"running", "completed", "failed", "rejected"}
+_CORRELATE_BY = {"unit", "correlation_id", "tool_call_id"}
+_PRECEDENCE_MODES = {"single_use", "reusable"}
+_UNLISTED_MODES = {"reject", "ignore"}
+_CATALOGUE_CHECKERS: Dict[str, Set[str]] = {
+    "traigent.refusal.v1": {"must_refuse", "complied"},
+}
+
+_PHASES = {"promotion", "runtime"}
+_PROFILES = {"backend_v1"}
+_APPLIES_TO = {"agent", "tenant_floor"}
+_SOURCES = {"backend_trace_metadata", "customer_side", "evaluation_set", "episodes", "windows"}
+_ATTRIBUTIONS = {"agent_key_exact_v1"}
+_RESOLUTIONS = {"terminal_status_v1"}
+_SAMPLING_MODES = {"head_sampled_declared", "hash_bernoulli_committed_v1"}
+_METHODS = {"clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1"}
+_MODELS = {"iid_bernoulli_within_window_v1"}
+_HOURS_DIVISORS = {1, 2, 3, 4, 6, 8, 12, 24}
+_BACKEND_HOURS = {1, 3, 6, 12, 24}
+_BACKEND_CONFIDENCES = {Fraction(9, 10), Fraction(95, 100), Fraction(99, 100)}
+
+_TRIGGER_EVENTS = {
+    "episode_opened",
+    "episode_continued",
+    "episode_open_for",
+    "episode_resolved",
+    "episode_withdrawn",
+    "recovery_overdue",
+    "recovery_cancelled",
+    "recovery_recovered",
+    "burn_breached",
+    "stale",
+    "live_again",
+    "unit_violation",
+}
+_ACTIONS = {
+    "notify",
+    "open_next_step",
+    "optimize",
+    "rollback",
+    "throttle",
+    "degrade",
+    "suspend",
+    "block_action",
+    "halt_unit",
+}
+_APPROVALS = {"none", "standing", "human"}
+_SEVERITIES = {"info", "warning", "critical"}
+_ON_CHECK_ERRORS = {"block", "allow"}
+_SUSPEND_FALLBACKS = {"static_unavailable", "route_to_human"}
+_SUSPEND_ESCALATION_EVENTS = {"episode_continued", "episode_open_for", "recovery_overdue"}
+
+
+def _address_runtime_issues(issues: List[Issue], start: int = 0) -> None:
+    from .diagnostics import field_path
+
+    for issue in issues[start:]:
+        issue["message"] = f"{field_path(issue.get('path', []))}: {issue['message']}"
+
+
+def _uses_13_constructs(doc: Dict[str, Any]) -> bool:
+    """RFC 0003 §11.1: presence-based opt-in for TVL 1.3 runtime blocks."""
+    if not isinstance(doc, dict):
+        return False
+    return any(key in doc for key in ("requirements", "monitors", "responses"))
+
+
+def _is_int_strict(value: Any) -> bool:
+    return type(value) is int
+
+
+def _to_exact_fraction(value: Any) -> Optional[Fraction]:
+    """Convert a JSON/YAML number to its exact decimal Fraction if recoverable (§4.2)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, int):
+        return Fraction(value)
+    if getattr(value, "_unrecoverable_decimal", False):
+        return None
+    import math
+    if not math.isfinite(value):
+        return None
+    text = repr(value)
+    if float(text) != value:
+        return None
+    try:
+        return Fraction(text)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def _legacy_module_names(doc: Dict[str, Any]) -> Set[str]:
+    names: Set[str] = set()
+    for block in ("tvars", "cvars", "policies", "composites"):
+        entries = doc.get(block) or []
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+                names.add(entry["name"])
+    return names
+
+
+def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
+    """RFC 0003 T17, §5.2, §11.1."""
+    if "tvl_version" not in doc or doc.get("tvl_version") is None:
+        issues.append(
+            {
+                "code": "runtime_version_required",
+                "message": "TVL 1.3 constructs and packs require tvl_version: '1.3'",
+                "path": ["tvl_version"],
+                "severity": "error",
+            }
+        )
+    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") != "1.3":
+        issues.append(
+            {
+                "code": "declared_version_below_constructs",
+                "message": 'TVL 1.3 constructs require a string version; quote it: "1.3"',
+                "path": ["tvl_version"],
+                "severity": "error",
+            }
+        )
+
+
+def _selector_canonical(sel: Dict[str, Any]) -> Tuple[Any, ...]:
+    return (
+        sel.get("event"),
+        sel.get("tool"),
+        sel.get("status"),
+        sel.get("ref"),
+    )
+
+
+def _selectors_can_overlap(s1: Dict[str, Any], s2: Dict[str, Any]) -> bool:
+    if s1.get("event") != s2.get("event"):
+        return False
+    for key in ("tool", "status", "ref"):
+        v1, v2 = s1.get(key), s2.get(key)
+        if v1 is not None and v2 is not None and v1 != v2:
+            return False
+    return True
+
+
+def _lint_selector(sel: Any, path: List[Any], issues: List[Issue]) -> None:
+    if not isinstance(sel, dict):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "Event selector must be a mapping",
+                "path": path,
+                "severity": "error",
+            }
+        )
+        return
+    event = sel.get("event")
+    if not isinstance(event, str) or event not in _EVENT_TYPES:
+        issues.append(
+            {
+                "code": "runtime_unknown_kind",
+                "message": "Unknown trace event type; expected an agent_trace_v1 event",
+                "path": path + ["event"],
+                "severity": "error",
+            }
+        )
+        return
+    if "tool" in sel:
+        tool = sel.get("tool")
+        if event not in {"tool_call", "tool_result"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Selector tool is allowed only on tool_call / tool_result",
+                    "path": path + ["tool"],
+                    "severity": "error",
+                }
+            )
+        if not isinstance(tool, str) or len(tool) > 128 or not _CODE_IDENT_RE.match(tool):
+            issues.append(
+                {
+                    "code": "runtime_tool_not_code_identifier",
+                    "message": "Selector tool must be a valid code_ident",
+                    "path": path + ["tool"],
+                    "severity": "error",
+                }
+            )
+    if "status" in sel:
+        status = sel.get("status")
+        if event not in {"unit_end", "tool_result"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Selector status is allowed only on unit_end / tool_result",
+                    "path": path + ["status"],
+                    "severity": "error",
+                }
+            )
+        if not isinstance(status, str) or status not in _STATUSES:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected status: running, completed, failed, rejected",
+                    "path": path + ["status"],
+                    "severity": "error",
+                }
+            )
+    if "ref" in sel:
+        ref = sel.get("ref")
+        if event not in {"authorization_granted", "authorization_revoked"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Selector ref is allowed only on authorization_granted / authorization_revoked",
+                    "path": path + ["ref"],
+                    "severity": "error",
+                }
+            )
+        elif not isinstance(ref, str) or not _RUNTIME_IDENT_RE.match(ref):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Selector ref must be a runtime identifier",
+                    "path": path + ["ref"],
+                    "severity": "error",
+                }
+            )
+
+
+def _lint_predicate(
+    pred: Any,
+    path: List[Any],
+    issues: List[Issue],
+    *,
+    exact_only: bool = False,
+    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+) -> None:
+    if not isinstance(pred, dict):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "Predicate must be an object",
+                "path": path,
+                "severity": "error",
+            }
+        )
+        return
+
+    has_metric = "metric" in pred
+    has_checker = "checker" in pred
+    has_pattern = "pattern" in pred
+    if sum([has_metric, has_checker, has_pattern]) != 1:
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "Predicate must specify exactly one of metric, checker, or pattern",
+                "path": path,
+                "severity": "error",
+            }
+        )
+        return
+
+    if exact_only and (has_metric or has_checker):
+        issues.append(
+            {
+                "code": "runtime_zero_tolerance_inexact",
+                "message": "zero_tolerance violation must be an exact_pred",
+                "path": path,
+                "severity": "error",
+            }
+        )
+        return
+
+    if has_metric:
+        if set(pred.keys()) != {"metric", "exceeds"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Metric predicate requires exactly 'metric' and 'exceeds'",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        metric = pred.get("metric")
+        if not isinstance(metric, str) or metric not in _METRICS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Unknown metric; expected wall_clock_latency_ms, cost_usd, total_tokens, tool_calls",
+                    "path": path + ["metric"],
+                    "severity": "error",
+                }
+            )
+            return
+        exceeds = pred.get("exceeds")
+        frac = _to_exact_fraction(exceeds)
+        if frac is None:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Metric 'exceeds' must be an exact decimal number",
+                    "path": path + ["exceeds"],
+                    "severity": "error",
+                }
+            )
+            return
+        if metric in {"wall_clock_latency_ms", "total_tokens", "tool_calls"}:
+            if not _is_int_strict(exceeds) or exceeds < 1:
+                issues.append(
+                    {
+                        "code": "runtime_exceeds_out_of_range",
+                        "message": "Metric exceeds must be an integer >= 1",
+                        "path": path + ["exceeds"],
+                        "severity": "error",
+                    }
+                )
+        elif metric == "cost_usd":
+            if frac <= 0:
+                issues.append(
+                    {
+                        "code": "runtime_exceeds_out_of_range",
+                        "message": "Metric 'cost_usd' exceeds must be > 0",
+                        "path": path + ["exceeds"],
+                        "severity": "error",
+                    }
+                )
+        return
+
+    if has_checker:
+        if set(pred.keys()) != {"checker", "label_in"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Checker predicate requires 'checker' and 'label_in'",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        checker = pred.get("checker")
+        label_in = pred.get("label_in")
+        if not isinstance(label_in, list) or not label_in:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "checker label_in must be a non-empty list",
+                    "path": path + ["label_in"],
+                    "severity": "error",
+                }
+            )
+            return
+        if not isinstance(checker, str):
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "checker id must be a string",
+                    "path": path + ["checker"],
+                    "severity": "error",
+                }
+            )
+            return
+        if checker in _CATALOGUE_CHECKERS:
+            allowed_labels = _CATALOGUE_CHECKERS[checker]
+            for l_idx, label in enumerate(label_in):
+                if not isinstance(label, str) or label not in allowed_labels:
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Expected catalogue label: must_refuse, complied",
+                            "path": path + ["label_in", l_idx],
+                            "severity": "error",
+                        }
+                    )
+        elif _CUSTOMER_CHECKER_RE.match(checker):
+            for l_idx, label in enumerate(label_in):
+                if not isinstance(label, str) or not _RUNTIME_IDENT_RE.match(label):
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Expected a customer checker label identifier",
+                            "path": path + ["label_in", l_idx],
+                            "severity": "error",
+                        }
+                    )
+            if checker_registry is not None:
+                if checker not in checker_registry:
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Customer checker requires an entry in the checker registry",
+                            "path": path + ["checker"],
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    bound_labels = set(checker_registry[checker])
+                    for l_idx, label in enumerate(label_in):
+                        if label not in bound_labels:
+                            issues.append(
+                                {
+                                    "code": "runtime_unknown_kind",
+                                    "message": "Label requires an entry in the checker registry labels",
+                                    "path": path + ["label_in", l_idx],
+                                    "severity": "error",
+                                }
+                            )
+        else:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected a catalogue checker id or customer:<identifier>",
+                    "path": path + ["checker"],
+                    "severity": "error",
+                }
+            )
+        return
+
+    # exact_pred
+    pattern = pred.get("pattern")
+    if not isinstance(pattern, str) or pattern not in _PATTERNS:
+        issues.append(
+            {
+                "code": "runtime_unknown_kind",
+                "message": "Unknown exact predicate pattern",
+                "path": path + ["pattern"],
+                "severity": "error",
+            }
+        )
+        return
+
+    if pattern == "absence":
+        if set(pred.keys()) != {"pattern", "a"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "absence pattern requires only 'pattern' and 'a'",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        _lint_selector(pred.get("a"), path + ["a"], issues)
+    elif pattern == "bounded_existence":
+        if "correlate_by" in pred:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "correlate_by is not supported by bounded_existence; max_count applies to the whole unit",
+                    "path": path + ["correlate_by"],
+                    "severity": "error",
+                }
+            )
+            return
+        if set(pred.keys()) != {"pattern", "a", "max_count"}:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "bounded_existence requires 'pattern', 'a', and 'max_count'",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        _lint_selector(pred.get("a"), path + ["a"], issues)
+        max_count = pred.get("max_count")
+        if not _is_int_strict(max_count) or max_count < 0:
+            issues.append(
+                {
+                    "code": "runtime_max_count_out_of_range",
+                    "message": "max_count must be an integer >= 0",
+                    "path": path + ["max_count"],
+                    "severity": "error",
+                }
+            )
+    elif pattern == "precedence":
+        allowed = {"pattern", "a", "b", "mode", "correlate_by"}
+        if not {"pattern", "a", "b"} <= set(pred.keys()) <= allowed:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "precedence has invalid or missing fields",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        _lint_selector(pred.get("a"), path + ["a"], issues)
+        _lint_selector(pred.get("b"), path + ["b"], issues)
+        if "mode" in pred and pred.get("mode") not in _PRECEDENCE_MODES:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected precedence mode: single_use, reusable",
+                    "path": path + ["mode"],
+                    "severity": "error",
+                }
+            )
+        if "correlate_by" in pred and pred.get("correlate_by") not in _CORRELATE_BY:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected correlate_by: unit, correlation_id, tool_call_id",
+                    "path": path + ["correlate_by"],
+                    "severity": "error",
+                }
+            )
+    elif pattern == "bounded_response":
+        allowed = {"pattern", "a", "b", "within_ms", "correlate_by"}
+        if not {"pattern", "a", "b", "within_ms"} <= set(pred.keys()) <= allowed:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "bounded_response has invalid or missing fields",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        _lint_selector(pred.get("a"), path + ["a"], issues)
+        _lint_selector(pred.get("b"), path + ["b"], issues)
+        within_ms = pred.get("within_ms")
+        if not _is_int_strict(within_ms) or within_ms < 1:
+            issues.append(
+                {
+                    "code": "runtime_within_ms_out_of_range",
+                    "message": "within_ms must be an integer >= 1",
+                    "path": path + ["within_ms"],
+                    "severity": "error",
+                }
+            )
+        if "correlate_by" in pred and pred.get("correlate_by") not in _CORRELATE_BY:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected correlate_by: unit, correlation_id, tool_call_id",
+                    "path": path + ["correlate_by"],
+                    "severity": "error",
+                }
+            )
+    elif pattern == "protocol":
+        req_keys = {"pattern", "alphabet", "states", "start", "transitions", "accepting", "rejecting"}
+        allowed = req_keys | {"unlisted"}
+        if not req_keys <= set(pred.keys()) <= allowed:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "protocol predicate has invalid or missing fields",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        if "unlisted" in pred and pred.get("unlisted") not in _UNLISTED_MODES:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected unlisted: reject, ignore",
+                    "path": path + ["unlisted"],
+                    "severity": "error",
+                }
+            )
+        alphabet = pred.get("alphabet")
+        states = pred.get("states")
+        start = pred.get("start")
+        transitions = pred.get("transitions")
+        accepting = pred.get("accepting")
+        rejecting = pred.get("rejecting")
+        if (
+            not isinstance(alphabet, list)
+            or not alphabet
+            or not isinstance(states, list)
+            or not states
+            or not isinstance(transitions, list)
+            or not isinstance(accepting, list)
+            or not isinstance(rejecting, list)
+        ):
+            issues.append(
+                {
+                    "code": "runtime_protocol_nondeterministic",
+                    "message": "protocol lists must be valid",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            return
+        for a_idx, sel in enumerate(alphabet):
+            _lint_selector(sel, path + ["alphabet", a_idx], issues)
+        state_set = set(states)
+        nondet = False
+        if len(state_set) != len(states) or start not in state_set:
+            nondet = True
+        if not set(accepting) <= state_set or not set(rejecting) <= state_set:
+            nondet = True
+        if set(accepting) & set(rejecting):
+            nondet = True
+        alphabet_canon = [
+            _selector_canonical(s) for s in alphabet if isinstance(s, dict)
+        ]
+        if len(alphabet_canon) != len(alphabet):
+            nondet = True
+        for i in range(len(alphabet)):
+            for j in range(i + 1, len(alphabet)):
+                if isinstance(alphabet[i], dict) and isinstance(alphabet[j], dict):
+                    if _selectors_can_overlap(alphabet[i], alphabet[j]):
+                        nondet = True
+        seen_trans: Set[Tuple[Any, Any]] = set()
+        alphabet_set = set(alphabet_canon)
+        for tr in transitions:
+            if not isinstance(tr, dict):
+                nondet = True
+                continue
+            fr = tr.get("from")
+            wh = tr.get("when")
+            to = tr.get("to")
+            if fr not in state_set or to not in state_set or not isinstance(wh, dict):
+                nondet = True
+                continue
+            wh_c = _selector_canonical(wh)
+            if wh_c not in alphabet_set or (fr, wh_c) in seen_trans:
+                nondet = True
+            seen_trans.add((fr, wh_c))
+        if nondet:
+            issues.append(
+                {
+                    "code": "runtime_protocol_nondeterministic",
+                    "message": "Protocol automaton must be deterministic and well-scoped (T12)",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+
+
+def _lint_requirements(
+    doc: Dict[str, Any],
+    issues: List[Issue],
+    *,
+    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+) -> None:
+    reqs = doc.get("requirements")
+    if reqs is None:
+        return
+    if not isinstance(reqs, list):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "requirements must be a list",
+                "path": ["requirements"],
+                "severity": "error",
+            }
+        )
+        return
+
+    legacy_names = _legacy_module_names(doc)
+    seen_names: Set[str] = set()
+
+    for idx, req in enumerate(reqs):
+        path = ["requirements", idx]
+        if not isinstance(req, dict):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Requirement declaration must be an object",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            continue
+
+        name = req.get("name")
+        if not isinstance(name, str) or not _RUNTIME_IDENT_RE.match(name):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Requirement name must be a runtime identifier",
+                    "path": path + ["name"],
+                    "severity": "error",
+                }
+            )
+        else:
+            if name in seen_names or name in legacy_names:
+                issues.append(
+                    {
+                        "code": "runtime_name_collision",
+                        "message": "Requirement name collides with an existing declaration",
+                        "path": path + ["name"],
+                        "severity": "error",
+                    }
+                )
+            seen_names.add(name)
+
+        kind = req.get("kind")
+        if not isinstance(kind, str) or kind not in _REQ_KINDS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Unknown requirement kind",
+                    "path": path + ["kind"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        unit = req.get("unit")
+        if not isinstance(unit, str) or unit not in _ALL_UNIT_KINDS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Unknown requirement unit",
+                    "path": path + ["unit"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        if kind == "rate_bound":
+            if unit not in _UNIT_KINDS:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "rate_bound unit must be 'trace' or 'invocation'",
+                        "path": path + ["unit"],
+                        "severity": "error",
+                    }
+                )
+            req_keys = {"name", "kind", "unit", "violation", "max_rate"}
+            allowed = req_keys | {"among"}
+            if not req_keys <= set(req.keys()) <= allowed:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "rate_bound has missing or forbidden fields",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            if "violation" in req:
+                _lint_predicate(
+                    req["violation"],
+                    path + ["violation"],
+                    issues,
+                    exact_only=False,
+                    checker_registry=checker_registry,
+                )
+            if "among" in req:
+                _lint_predicate(
+                    req["among"],
+                    path + ["among"],
+                    issues,
+                    exact_only=False,
+                    checker_registry=checker_registry,
+                )
+            if "max_rate" in req:
+                rate_frac = _to_exact_fraction(req.get("max_rate"))
+                if rate_frac is None:
+                    issues.append(
+                        {
+                            "code": "runtime_invalid_profile",
+                            "message": "max_rate must be an exact decimal number",
+                            "path": path + ["max_rate"],
+                            "severity": "error",
+                        }
+                    )
+                elif not (0 < rate_frac < 1):
+                    issues.append(
+                        {
+                            "code": "runtime_rate_out_of_range",
+                            "message": "max_rate must satisfy 0 < max_rate < 1",
+                            "path": path + ["max_rate"],
+                            "severity": "error",
+                        }
+                    )
+        elif kind == "zero_tolerance":
+            if unit not in _UNIT_KINDS:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "zero_tolerance unit must be 'trace' or 'invocation'",
+                        "path": path + ["unit"],
+                        "severity": "error",
+                    }
+                )
+            req_keys = {"name", "kind", "unit", "violation"}
+            allowed = req_keys | {"among"}
+            if not req_keys <= set(req.keys()) <= allowed:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "zero_tolerance has missing or forbidden fields",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            if "violation" in req:
+                _lint_predicate(
+                    req["violation"],
+                    path + ["violation"],
+                    issues,
+                    exact_only=True,
+                    checker_registry=checker_registry,
+                )
+            if "among" in req:
+                _lint_predicate(
+                    req["among"],
+                    path + ["among"],
+                    issues,
+                    exact_only=False,
+                    checker_registry=checker_registry,
+                )
+        elif kind == "recovery_time":
+            if unit != "episode":
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "recovery_time unit must be 'episode'",
+                        "path": path + ["unit"],
+                        "severity": "error",
+                    }
+                )
+            if set(req.keys()) != {"name", "kind", "unit", "of", "within_hours"}:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "recovery_time requires 'of' and 'within_hours'",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            within_hours = req.get("within_hours")
+            if within_hours is not None and (not _is_int_strict(within_hours) or within_hours < 1):
+                issues.append(
+                    {
+                        "code": "runtime_within_hours_out_of_range",
+                        "message": "within_hours must be an integer >= 1",
+                        "path": path + ["within_hours"],
+                        "severity": "error",
+                    }
+                )
+        elif kind == "evidence_liveness":
+            if unit != "window":
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "evidence_liveness unit must be 'window'",
+                        "path": path + ["unit"],
+                        "severity": "error",
+                    }
+                )
+            if set(req.keys()) != {"name", "kind", "unit", "of", "max_stale_windows"}:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "evidence_liveness requires 'of' and 'max_stale_windows'",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            max_stale = req.get("max_stale_windows")
+            if max_stale is not None and (not _is_int_strict(max_stale) or max_stale < 1):
+                issues.append(
+                    {
+                        "code": "runtime_max_stale_windows_out_of_range",
+                        "message": "max_stale_windows must be an integer >= 1",
+                        "path": path + ["max_stale_windows"],
+                        "severity": "error",
+                    }
+                )
+
+
+def _predicate_canonical(pred: Optional[Dict[str, Any]]) -> Any:
+    if not isinstance(pred, dict):
+        return None
+    if "metric" in pred:
+        exceeds = pred.get("exceeds")
+        frac = _to_exact_fraction(exceeds)
+        return ("metric", pred.get("metric"), frac if frac is not None else exceeds)
+    if "checker" in pred:
+        labels = tuple(sorted(set(pred.get("label_in") or [])))
+        return ("checker", pred.get("checker"), labels)
+    pattern = pred.get("pattern")
+    if pattern == "absence":
+        return ("absence", _selector_canonical(pred.get("a") or {}))
+    if pattern == "bounded_existence":
+        return ("bounded_existence", _selector_canonical(pred.get("a") or {}), pred.get("max_count"))
+    if pattern == "precedence":
+        return (
+            "precedence",
+            _selector_canonical(pred.get("a") or {}),
+            _selector_canonical(pred.get("b") or {}),
+            pred.get("mode", "single_use"),
+            pred.get("correlate_by", "unit"),
+        )
+    if pattern == "bounded_response":
+        return (
+            "bounded_response",
+            _selector_canonical(pred.get("a") or {}),
+            _selector_canonical(pred.get("b") or {}),
+            pred.get("within_ms"),
+            pred.get("correlate_by", "unit"),
+        )
+    if pattern == "protocol":
+        alphabet = tuple(sorted(_selector_canonical(s) for s in (pred.get("alphabet") or []) if isinstance(s, dict)))
+        states = tuple(sorted(set(pred.get("states") or [])))
+        accepting = tuple(sorted(set(pred.get("accepting") or [])))
+        rejecting = tuple(sorted(set(pred.get("rejecting") or [])))
+        transitions = tuple(
+            sorted(
+                (t.get("from"), _selector_canonical(t.get("when") or {}), t.get("to"))
+                for t in (pred.get("transitions") or [])
+                if isinstance(t, dict)
+            )
+        )
+        return (
+            "protocol",
+            alphabet,
+            states,
+            pred.get("start"),
+            transitions,
+            accepting,
+            rejecting,
+            pred.get("unlisted", "reject"),
+        )
+    return None
+
+
+def _requirement_identity(req: Dict[str, Any]) -> Any:
+    kind = req.get("kind")
+    if kind in {"rate_bound", "zero_tolerance"}:
+        return (
+            kind,
+            req.get("unit"),
+            _predicate_canonical(req.get("among")),
+            _predicate_canonical(req.get("violation")),
+        )
+    return (kind, req.get("unit"), req.get("of"))
+
+
+def _monitor_effective_key(mon: Dict[str, Any], req: Dict[str, Any]) -> Any:
+    kind = req.get("kind")
+    evidence = mon.get("evidence") or {}
+    decision = mon.get("decision") or {}
+    env_raw = evidence.get("deployment_environment", "production")
+    env_norm = env_raw.strip().lower() if isinstance(env_raw, str) else "production"
+    if mon.get("profile") == "backend_v1":
+        viol = req.get("violation") or {}
+        return ("backend_v1", "latency_violation_rate", viol.get("exceeds"), env_norm)
+    if kind in {"recovery_time", "evidence_liveness"}:
+        return ("obligation", _requirement_identity(req))
+    tf = _to_exact_fraction(decision.get("threshold_factor")) if "threshold_factor" in decision else None
+    return (
+        "primary_or_burn",
+        _requirement_identity(req),
+        evidence.get("source"),
+        env_norm,
+        evidence.get("attribution", "agent_key_exact_v1"),
+        decision.get("method"),
+        tf,
+    )
+
+
+def _monitor_role(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> str:
+    if mon.get("phase") == "promotion":
+        return "promotion"
+    kind = (req or {}).get("kind")
+    if kind == "recovery_time":
+        return "recovery"
+    if kind == "evidence_liveness":
+        return "liveness"
+    decision = mon.get("decision") or {}
+    if isinstance(decision, dict) and "threshold_factor" in decision:
+        return "burn"
+    if kind == "zero_tolerance":
+        return "primary_zero"
+    return "primary_rate"
+
+
+def _lint_monitors(
+    doc: Dict[str, Any],
+    issues: List[Issue],
+    *,
+    is_pack: bool = False,
+    floor_provenance: Optional[Sequence[Dict[str, Any]]] = None,
+) -> None:
+    mons = doc.get("monitors")
+    if mons is None:
+        return
+    if not isinstance(mons, list):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "monitors must be a list",
+                "path": ["monitors"],
+                "severity": "error",
+            }
+        )
+        return
+
+    reqs_list = doc.get("requirements") or []
+    reqs_by_name: Dict[str, Dict[str, Any]] = {
+        r["name"]: r
+        for r in reqs_list
+        if isinstance(r, dict) and isinstance(r.get("name"), str)
+    }
+    legacy_names = _legacy_module_names(doc)
+    seen_names: Set[str] = set()
+    mons_by_name: Dict[str, Dict[str, Any]] = {}
+    provenance_monitors = {
+        entry.get("monitor")
+        for entry in (floor_provenance or [])
+        if isinstance(entry, dict) and isinstance(entry.get("monitor"), str)
+    }
+    chance_names = {
+        c.get("name")
+        for c in ((doc.get("promotion_policy") or {}).get("chance_constraints") or [])
+        if isinstance(c, dict) and isinstance(c.get("name"), str)
+    }
+    seen_effective_keys: Set[Any] = set()
+
+    for idx, mon in enumerate(mons):
+        path = ["monitors", idx]
+        if not isinstance(mon, dict):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Monitor declaration must be an object",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            continue
+
+        name = mon.get("name")
+        if not isinstance(name, str) or not _RUNTIME_IDENT_RE.match(name):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Monitor name must be a runtime identifier",
+                    "path": path + ["name"],
+                    "severity": "error",
+                }
+            )
+        else:
+            if name in seen_names or name in legacy_names:
+                issues.append(
+                    {
+                        "code": "runtime_name_collision",
+                        "message": "Monitor name collides with an existing declaration",
+                        "path": path + ["name"],
+                        "severity": "error",
+                    }
+                )
+            seen_names.add(name)
+            mons_by_name[name] = mon
+
+        phase = mon.get("phase")
+        if not isinstance(phase, str) or phase not in _PHASES:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected monitor phase: promotion, runtime",
+                    "path": path + ["phase"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        profile = mon.get("profile")
+        if profile is not None and (not isinstance(profile, str) or profile not in _PROFILES):
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected monitor profile: backend_v1",
+                    "path": path + ["profile"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        applies_to = mon.get("applies_to")
+        if applies_to is not None and (not isinstance(applies_to, str) or applies_to not in _APPLIES_TO):
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected applies_to: agent, tenant_floor",
+                    "path": path + ["applies_to"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        if is_pack:
+            if applies_to != "tenant_floor" or phase != "runtime":
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "Pack monitors must explicitly declare applies_to: 'tenant_floor' and phase: 'runtime'",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+        else:
+            if applies_to == "tenant_floor" and name not in provenance_monitors:
+                issues.append(
+                    {
+                        "code": "tenant_floor_outside_pack",
+                        "message": "applies_to: 'tenant_floor' is only permitted inside a tvl_pack",
+                        "path": path + ["applies_to"],
+                        "severity": "error",
+                    }
+                )
+
+        req_name = mon.get("requirement")
+        req = reqs_by_name.get(req_name) if isinstance(req_name, str) else None
+        if req is None:
+            issues.append(
+                {
+                    "code": "runtime_missing_ref",
+                    "message": "Monitor requirement references an undeclared requirement",
+                    "path": path + ["requirement"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        req_kind = req.get("kind")
+        if req_kind not in _REQ_KINDS:
+            continue
+
+        evidence = mon.get("evidence")
+        decision = mon.get("decision")
+        if not isinstance(evidence, dict) or not isinstance(decision, dict):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Monitor requires 'evidence' and 'decision' mappings",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            continue
+
+        source = evidence.get("source")
+        if not isinstance(source, str) or source not in _SOURCES:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Unknown evidence source",
+                    "path": path + ["evidence", "source"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        if "attribution" in evidence and evidence.get("attribution") not in _ATTRIBUTIONS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected attribution: agent_key_exact_v1",
+                    "path": path + ["evidence", "attribution"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        if "resolution" in evidence and evidence.get("resolution") not in _RESOLUTIONS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected resolution: terminal_status_v1",
+                    "path": path + ["evidence", "resolution"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        sampling = evidence.get("sampling")
+        if sampling is not None:
+            if isinstance(sampling, str):
+                if sampling != "unverified":
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Unknown sampling mode",
+                            "path": path + ["evidence", "sampling"],
+                            "severity": "error",
+                        }
+                    )
+                    continue
+            elif isinstance(sampling, dict):
+                s_mode = sampling.get("mode")
+                if not isinstance(s_mode, str) or s_mode not in _SAMPLING_MODES:
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Unknown sampling mode",
+                            "path": path + ["evidence", "sampling", "mode"],
+                            "severity": "error",
+                        }
+                    )
+                    continue
+                s_rate = _to_exact_fraction(sampling.get("rate"))
+                if s_rate is None:
+                    issues.append(
+                        {
+                            "code": "runtime_invalid_profile",
+                            "message": "sampling.rate must be an exact decimal number",
+                            "path": path + ["evidence", "sampling", "rate"],
+                            "severity": "error",
+                        }
+                    )
+                elif not (0 < s_rate < 1):
+                    issues.append(
+                        {
+                            "code": "runtime_sampling_rate_out_of_range",
+                            "message": "sampling.rate must satisfy 0 < rate < 1",
+                            "path": path + ["evidence", "sampling", "rate"],
+                            "severity": "error",
+                        }
+                    )
+            else:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "Invalid sampling specification",
+                        "path": path + ["evidence", "sampling"],
+                        "severity": "error",
+                    }
+                )
+                continue
+
+        method = decision.get("method")
+        if not isinstance(method, str) or method not in _METHODS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Unknown decision method",
+                    "path": path + ["decision", "method"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        if "model" in decision and decision.get("model") not in _MODELS:
+            issues.append(
+                {
+                    "code": "runtime_unknown_kind",
+                    "message": "Expected model: iid_bernoulli_within_window_v1",
+                    "path": path + ["decision", "model"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        # T4: content checker on backend source
+        viol = req.get("violation") if isinstance(req.get("violation"), dict) else {}
+        among = req.get("among") if isinstance(req.get("among"), dict) else {}
+        has_checker_pred = "checker" in viol or "checker" in among
+        if has_checker_pred and source == "backend_trace_metadata":
+            issues.append(
+                {
+                    "code": "runtime_content_on_backend_source",
+                    "message": "Checker predicates cannot run on backend_trace_metadata",
+                    "path": path + ["evidence", "source"],
+                    "severity": "error",
+                }
+            )
+
+        # T5: zero_tolerance sampling forbidden
+        if req_kind == "zero_tolerance" and "sampling" in evidence:
+            issues.append(
+                {
+                    "code": "runtime_zero_tolerance_incomplete",
+                    "message": "zero_tolerance monitors cannot declare sampling",
+                    "path": path + ["evidence", "sampling"],
+                    "severity": "error",
+                }
+            )
+
+        is_backend = profile == "backend_v1"
+        if is_backend:
+            # T1: backend_v1 frozen fields
+            env_val = evidence.get("deployment_environment", "production")
+            env_ok = isinstance(env_val, str) and 1 <= len(env_val.strip()) <= 64
+            legacy_ok = (
+                req_kind == "rate_bound"
+                and req.get("unit") == "trace"
+                and "among" not in req
+                and viol.get("metric") == "wall_clock_latency_ms"
+                and phase == "runtime"
+                and source == "backend_trace_metadata"
+                and method == "clopper_pearson_exact_v1"
+                and evidence.get("sampling", "unverified") == "unverified"
+                and evidence.get("attribution", "agent_key_exact_v1") == "agent_key_exact_v1"
+                and evidence.get("resolution", "terminal_status_v1") == "terminal_status_v1"
+                and decision.get("model", "iid_bernoulli_within_window_v1") == "iid_bernoulli_within_window_v1"
+                and "threshold_factor" not in decision
+                and "limits" not in mon
+                and "single_producer" not in mon
+                and env_ok
+            )
+            if not legacy_ok:
+                issues.append(
+                    {
+                        "code": "runtime_legacy_profile_override",
+                        "message": "profile: backend_v1 freezes requirement, evidence, and decision fields (T1)",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            exceeds_val = viol.get("exceeds")
+            if _is_int_strict(exceeds_val) and exceeds_val > 600_000:
+                issues.append(
+                    {
+                        "code": "runtime_exceeds_out_of_range",
+                        "message": "Under backend_v1, wall_clock_latency_ms exceeds must be in 1..600000",
+                        "path": ["requirements", reqs_list.index(req), "violation", "exceeds"],
+                        "severity": "error",
+                    }
+                )
+        else:
+            # T2: backend_trace_metadata requires profile: backend_v1
+            if source == "backend_trace_metadata" and not has_checker_pred:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "source: backend_trace_metadata requires profile: backend_v1",
+                        "path": path + ["evidence", "source"],
+                        "severity": "error",
+                    }
+                )
+            if method == "clopper_pearson_exact_v1":
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "clopper_pearson_exact_v1 requires profile: backend_v1",
+                        "path": path + ["decision", "method"],
+                        "severity": "error",
+                    }
+                )
+
+        # T3: kind compatibility (§4.3)
+        compat_ok = True
+        if req_kind == "rate_bound":
+            if source not in {"backend_trace_metadata", "customer_side", "evaluation_set"}:
+                compat_ok = False
+            if (phase == "promotion") != (source == "evaluation_set"):
+                compat_ok = False
+            if method not in {"clopper_pearson_exact_v1", "clopper_pearson_rational_v2"}:
+                compat_ok = False
+        elif req_kind == "zero_tolerance":
+            if source not in {"customer_side", "evaluation_set"}:
+                compat_ok = False
+            if (phase == "promotion") != (source == "evaluation_set"):
+                compat_ok = False
+            if method != "exact_count_v1":
+                compat_ok = False
+        elif req_kind == "recovery_time":
+            if source != "episodes" or phase != "runtime" or method != "exact_count_v1":
+                compat_ok = False
+        elif req_kind == "evidence_liveness":
+            if source != "windows" or phase != "runtime" or method != "exact_count_v1":
+                compat_ok = False
+        if not compat_ok and not is_backend:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Incompatible requirement kind, evidence source, phase, or decision method (§4.3)",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+
+        # T6: sampling compatibility
+        if sampling is not None and req_kind != "zero_tolerance":
+            if sampling == "unverified" and source != "backend_trace_metadata":
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "sampling: unverified is only permitted with backend_trace_metadata",
+                        "path": path + ["evidence", "sampling"],
+                        "severity": "error",
+                    }
+                )
+            elif isinstance(sampling, dict) and (source != "customer_side" or req_kind != "rate_bound"):
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "Declared sampling modes are only permitted with customer_side rate_bound monitors",
+                        "path": path + ["evidence", "sampling"],
+                        "severity": "error",
+                    }
+                )
+
+        # Role-specific required and forbidden fields (§4.5)
+        role = _monitor_role(mon, req)
+        window = mon.get("window")
+        episode = mon.get("episode")
+        limits = mon.get("limits")
+        has_exact_pred = "pattern" in viol or "pattern" in among
+        has_stateful_pred = (
+            viol.get("pattern") in _STATEFUL_PATTERNS or among.get("pattern") in _STATEFUL_PATTERNS
+        )
+
+        role_fields: List[Tuple[List[Any], str]] = []
+
+        def forbid_fields(obj: Dict[str, Any], prefix: List[Any], keys: Sequence[str]) -> None:
+            for key in keys:
+                if key in obj:
+                    role_fields.append((prefix + [key], "field is forbidden"))
+
+        def require_fields(obj: Any, prefix: List[Any], keys: Sequence[str]) -> None:
+            if not isinstance(obj, dict):
+                role_fields.append((prefix, "required object is missing"))
+                return
+            for key in keys:
+                if key not in obj:
+                    role_fields.append((prefix + [key], "required field is missing"))
+
+        if role in {"promotion", "recovery", "liveness"}:
+            forbid_fields(evidence, ["evidence"], ("deployment_environment", "attribution"))
+            for key, value in (("window", window), ("episode", episode)):
+                if value is not None:
+                    role_fields.append(([key], "field is forbidden"))
+            forbid_fields(decision, ["decision"], ("horizon_days", "model", "threshold_factor"))
+        if role in {"recovery", "liveness"}:
+            forbid_fields(evidence, ["evidence"], ("resolution", "sampling"))
+            forbid_fields(decision, ["decision"], ("confidence", "false_alarm_budget", "min_samples", "max_unresolved_fraction"))
+            if limits is not None:
+                role_fields.append((["limits"], "field is forbidden"))
+            forbid_fields(mon, [], ("single_producer",))
+        elif role == "promotion":
+            if req_kind == "rate_bound":
+                require_fields(decision, ["decision"], ("confidence", "false_alarm_budget"))
+            elif req_kind == "zero_tolerance":
+                forbid_fields(decision, ["decision"], ("confidence", "false_alarm_budget", "max_unresolved_fraction"))
+        elif role == "burn":
+            if episode is not None:
+                role_fields.append((["episode"], "field is forbidden"))
+            forbid_fields(decision, ["decision"], ("confidence",))
+            require_fields(window, ["window"], ("tumbling_hours", "grace_minutes"))
+            require_fields(decision, ["decision"], ("false_alarm_budget", "horizon_days", "min_samples", "max_unresolved_fraction", "threshold_factor"))
+        elif role == "primary_zero":
+            require_fields(window, ["window"], ("tumbling_hours", "grace_minutes"))
+            require_fields(episode, ["episode"], ("closure_windows", "closure_max_age_hours"))
+            forbid_fields(decision, ["decision"], ("model", "confidence", "false_alarm_budget", "horizon_days", "max_unresolved_fraction", "threshold_factor"))
+        elif role == "primary_rate" and not is_backend:
+            require_fields(window, ["window"], ("tumbling_hours", "grace_minutes"))
+            require_fields(episode, ["episode"], ("closure_windows", "closure_max_age_hours"))
+            require_fields(decision, ["decision"], ("confidence", "false_alarm_budget", "horizon_days", "min_samples", "max_unresolved_fraction"))
+
+        if "single_producer" in mon and not has_exact_pred and not is_backend:
+            role_fields.append((["single_producer"], "field requires an exact predicate"))
+
+        if source in {"customer_side", "evaluation_set"} and has_stateful_pred:
+            require_fields(limits, ["limits"], ("max_active_obligations", "max_tracked_correlations"))
+
+        if not is_backend:
+            for subpath, reason in role_fields:
+                issues.append({
+                    "code": "runtime_invalid_profile",
+                    "message": f"{reason} for role '{role}' (§4.5)",
+                    "path": path + subpath,
+                    "severity": "error",
+                })
+
+        # Numeric domains for monitor fields (§4.2, §5.4)
+        w_hours: Optional[int] = None
+        grace_min: Optional[int] = None
+        if isinstance(window, dict):
+            if "tumbling_hours" in window:
+                wh = window.get("tumbling_hours")
+                allowed_hours = _BACKEND_HOURS if is_backend else _HOURS_DIVISORS
+                if not _is_int_strict(wh) or wh not in allowed_hours:
+                    issues.append(
+                        {
+                            "code": "runtime_window_out_of_range",
+                            "message": "tumbling_hours is outside its allowed domain",
+                            "path": path + ["window", "tumbling_hours"],
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    w_hours = wh
+            elif is_backend:
+                w_hours = 6
+
+            if "grace_minutes" in window:
+                gm = window.get("grace_minutes")
+                if not _is_int_strict(gm) or not (0 <= gm <= 360):
+                    issues.append(
+                        {
+                            "code": "runtime_grace_out_of_range",
+                            "message": "grace_minutes must be in 0..360",
+                            "path": path + ["window", "grace_minutes"],
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    grace_min = gm
+            elif is_backend:
+                grace_min = 30
+        elif is_backend:
+            w_hours = 6
+            grace_min = 30
+
+        conf_frac: Optional[Fraction] = None
+        if "confidence" in decision:
+            cf = _to_exact_fraction(decision.get("confidence"))
+            if cf is None:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "confidence must be an exact decimal number",
+                        "path": path + ["decision", "confidence"],
+                        "severity": "error",
+                    }
+                )
+            elif (is_backend and cf not in _BACKEND_CONFIDENCES) or (not is_backend and not (0 < cf < 1)):
+                issues.append(
+                    {
+                        "code": "runtime_confidence_out_of_range",
+                        "message": "confidence is outside its allowed domain",
+                        "path": path + ["decision", "confidence"],
+                        "severity": "error",
+                    }
+                )
+            else:
+                conf_frac = cf
+        elif is_backend:
+            conf_frac = Fraction(95, 100)
+
+        budget_frac: Optional[Fraction] = None
+        if "false_alarm_budget" in decision:
+            bf = _to_exact_fraction(decision.get("false_alarm_budget"))
+            if bf is None:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "false_alarm_budget must be an exact decimal number",
+                        "path": path + ["decision", "false_alarm_budget"],
+                        "severity": "error",
+                    }
+                )
+            elif not (0 < bf <= Fraction(1, 2)):
+                issues.append(
+                    {
+                        "code": "runtime_false_alarm_budget_out_of_range",
+                        "message": "false_alarm_budget must satisfy 0 < false_alarm_budget <= 0.5",
+                        "path": path + ["decision", "false_alarm_budget"],
+                        "severity": "error",
+                    }
+                )
+            else:
+                budget_frac = bf
+        elif is_backend:
+            budget_frac = Fraction(5, 100)
+
+        horizon_val: Optional[int] = None
+        if "horizon_days" in decision:
+            hd = decision.get("horizon_days")
+            if not _is_int_strict(hd) or not (1 <= hd <= 365):
+                issues.append(
+                    {
+                        "code": "runtime_horizon_out_of_range",
+                        "message": "horizon_days must be in 1..365",
+                        "path": path + ["decision", "horizon_days"],
+                        "severity": "error",
+                    }
+                )
+            else:
+                horizon_val = hd
+        elif is_backend:
+            horizon_val = 30
+
+        min_samples_val: Optional[int] = None
+        if "min_samples" in decision:
+            ms = decision.get("min_samples")
+            if not _is_int_strict(ms) or not (1 <= ms <= 10_000_000):
+                issues.append(
+                    {
+                        "code": "runtime_min_samples_out_of_range",
+                        "message": "min_samples must be in 1..10000000",
+                        "path": path + ["decision", "min_samples"],
+                        "severity": "error",
+                    }
+                )
+            else:
+                min_samples_val = ms
+        elif is_backend:
+            min_samples_val = 200
+        elif role in {"primary_zero", "promotion"}:
+            min_samples_val = 1
+
+        if "max_unresolved_fraction" in decision:
+            uf = _to_exact_fraction(decision.get("max_unresolved_fraction"))
+            if uf is None:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "max_unresolved_fraction must be an exact decimal number",
+                        "path": path + ["decision", "max_unresolved_fraction"],
+                        "severity": "error",
+                    }
+                )
+            elif not (0 <= uf <= Fraction(1, 2)):
+                issues.append(
+                    {
+                        "code": "runtime_unresolved_fraction_out_of_range",
+                        "message": "max_unresolved_fraction must satisfy 0 <= f <= 0.5",
+                        "path": path + ["decision", "max_unresolved_fraction"],
+                        "severity": "error",
+                    }
+                )
+
+        c_windows: Optional[int] = None
+        c_age: Optional[int] = None
+        if isinstance(episode, dict):
+            if "closure_windows" in episode:
+                cw = episode.get("closure_windows")
+                if not _is_int_strict(cw) or not (1 <= cw <= 24):
+                    issues.append(
+                        {
+                            "code": "runtime_closure_windows_out_of_range",
+                            "message": "closure_windows must be in 1..24",
+                            "path": path + ["episode", "closure_windows"],
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    c_windows = cw
+            elif is_backend:
+                c_windows = 2
+
+            if "closure_max_age_hours" in episode:
+                ca = episode.get("closure_max_age_hours")
+                if not _is_int_strict(ca) or not (1 <= ca <= 720):
+                    issues.append(
+                        {
+                            "code": "runtime_closure_age_out_of_range",
+                            "message": "closure_max_age_hours must be in 1..720",
+                            "path": path + ["episode", "closure_max_age_hours"],
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    c_age = ca
+            elif is_backend:
+                c_age = 24
+        elif is_backend:
+            c_windows = 2
+            c_age = 24
+
+        if isinstance(limits, dict):
+            if "max_active_obligations" in limits:
+                mao = limits.get("max_active_obligations")
+                if not _is_int_strict(mao) or mao < 1:
+                    issues.append(
+                        {
+                            "code": "runtime_max_active_obligations_out_of_range",
+                            "message": "max_active_obligations must be >= 1",
+                            "path": path + ["limits", "max_active_obligations"],
+                            "severity": "error",
+                        }
+                    )
+            if "max_tracked_correlations" in limits:
+                mtc = limits.get("max_tracked_correlations")
+                if not _is_int_strict(mtc) or mtc < 1:
+                    issues.append(
+                        {
+                            "code": "runtime_max_tracked_correlations_out_of_range",
+                            "message": "max_tracked_correlations must be >= 1",
+                            "path": path + ["limits", "max_tracked_correlations"],
+                            "severity": "error",
+                        }
+                    )
+
+        # Closure reachability (§5.6)
+        if (
+            role in {"primary_rate", "primary_zero"}
+            and w_hours is not None
+            and grace_min is not None
+            and c_windows is not None
+            and c_age is not None
+        ):
+            if c_age * 60 < c_windows * w_hours * 60 + grace_min + 60:
+                issues.append(
+                    {
+                        "code": "closure_unreachable",
+                        "message": "closure_max_age_hours cannot accommodate closure_windows + grace + 1h",
+                        "path": path + ["episode"],
+                        "severity": "error",
+                    }
+                )
+
+        # Burn threshold and power check (§5.4)
+        theta_frac = _to_exact_fraction(req.get("max_rate")) if req_kind == "rate_bound" else None
+        if role == "burn" and not is_backend:
+            tf_frac = _to_exact_fraction(decision.get("threshold_factor"))
+            if tf_frac is None:
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "threshold_factor must be an exact decimal number",
+                        "path": path + ["decision", "threshold_factor"],
+                        "severity": "error",
+                    }
+                )
+            elif (
+                theta_frac is not None
+                and 0 < theta_frac < 1
+                and budget_frac is not None
+                and horizon_val is not None
+                and w_hours is not None
+                and min_samples_val is not None
+            ):
+                b_theta = tf_frac * theta_frac
+                m_windows = (24 * horizon_val) // w_hours
+                alpha_w = budget_frac / m_windows
+                if tf_frac <= 1 or b_theta >= 1 or (b_theta ** min_samples_val) >= alpha_w:
+                    issues.append(
+                        {
+                            "code": "runtime_burn_out_of_range",
+                            "message": "burn monitor requires b > 1, b*theta < 1, and breach reachable at min_samples",
+                            "path": path + ["decision", "threshold_factor"],
+                            "severity": "error",
+                        }
+                    )
+
+        # Primary rate_bound power checks (§5.5)
+        if (
+            role == "primary_rate"
+            and theta_frac is not None
+            and 0 < theta_frac < 1
+            and conf_frac is not None
+            and budget_frac is not None
+            and horizon_val is not None
+            and w_hours is not None
+            and min_samples_val is not None
+        ):
+            m_windows = (24 * horizon_val) // w_hours
+            met_unreachable = False
+            breach_unreachable = False
+            if method == "clopper_pearson_rational_v2":
+                met_unreachable = ((1 - theta_frac) ** min_samples_val) > (1 - conf_frac)
+                alpha_w = budget_frac / m_windows
+                breach_unreachable = (theta_frac ** min_samples_val) >= alpha_w
+            else:
+                try:
+                    import math
+                    from scipy.stats import beta  # type: ignore
+
+                    up = float(beta.ppf(float(conf_frac), 1, min_samples_val))
+                    alpha_w_f = float(budget_frac) / m_windows
+                    lo = float(beta.ppf(alpha_w_f, min_samples_val, 1))
+                    if math.isnan(up) or math.isnan(lo):
+                        raise ValueError("scipy.stats.beta.ppf returned NaN")
+                    met_unreachable = up > float(theta_frac)
+                    breach_unreachable = lo <= float(theta_frac)
+                except Exception:  # noqa: BLE001
+                    issues.append(
+                        {
+                            "code": "runtime_invalid_profile",
+                            "message": (
+                                f"Monitor '{name}' uses clopper_pearson_exact_v1, "
+                                "whose power bounds could not be evaluated with scipy.stats.beta"
+                            ),
+                            "path": path + ["decision", "method"],
+                            "severity": "error",
+                        }
+                    )
+
+            if met_unreachable:
+                issues.append(
+                    {
+                        "code": "runtime_met_unreachable_at_min_samples",
+                        "message": "Monitor cannot establish MET at decision.min_samples",
+                        "path": path + ["decision", "min_samples"],
+                        "severity": "warning" if is_backend else "error",
+                    }
+                )
+            if breach_unreachable:
+                issues.append(
+                    {
+                        "code": "runtime_breach_unreachable_at_min_samples",
+                        "message": "Monitor cannot establish BREACHED at decision.min_samples",
+                        "path": path + ["decision", "min_samples"],
+                        "severity": "warning",
+                    }
+                )
+
+        # Promotion monitor shadowing chance constraint (§5.5)
+        if role == "promotion" and (name in chance_names or req_name in chance_names):
+            issues.append(
+                {
+                    "code": "chance_constraint_shadowed",
+                    "message": "Promotion monitor shadows chance_constraint of the same name",
+                    "path": path + ["name"],
+                    "severity": "warning",
+                }
+            )
+
+        # Effective key duplicate check (§5.6)
+        if phase == "runtime":
+            eff_scope = applies_to or ("tenant_floor" if is_pack else "agent")
+            eff_key = (eff_scope, _monitor_effective_key(mon, req))
+            if eff_key in seen_effective_keys:
+                issues.append(
+                    {
+                        "code": "runtime_duplicate_key",
+                        "message": "Monitor duplicates the effective key of another monitor",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            seen_effective_keys.add(eff_key)
+
+    # Obligation requirement references (`of`), deadline feasibility, and cycle detection
+    liveness_covered_monitors: Set[str] = set()
+    for r_idx, req in enumerate(reqs_list):
+        if not isinstance(req, dict):
+            continue
+        r_kind = req.get("kind")
+        if r_kind not in {"recovery_time", "evidence_liveness"}:
+            continue
+        of_name = req.get("of")
+        path = ["requirements", r_idx, "of"]
+        target_mon = mons_by_name.get(of_name) if isinstance(of_name, str) else None
+        if target_mon is None:
+            issues.append(
+                {
+                    "code": "runtime_missing_ref",
+                    "message": "Requirement of references an undeclared monitor",
+                    "path": path,
+                    "severity": "error",
+                }
+            )
+            continue
+        target_req = reqs_by_name.get(target_mon.get("requirement", ""))
+        target_role = _monitor_role(target_mon, target_req)
+        if r_kind == "recovery_time":
+            if target_role not in {"primary_rate", "primary_zero"}:
+                issues.append(
+                    {
+                        "code": "runtime_ref_kind_mismatch",
+                        "message": "recovery_time of must reference a primary runtime monitor with an episode",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            else:
+                within_hours = req.get("within_hours")
+                t_win = target_mon.get("window") or {}
+                t_ep = target_mon.get("episode") or {}
+                w_h = t_win.get("tumbling_hours", 6 if target_mon.get("profile") == "backend_v1" else None)
+                k_c = t_ep.get("closure_windows", 2 if target_mon.get("profile") == "backend_v1" else None)
+                if _is_int_strict(within_hours) and within_hours >= 1 and _is_int_strict(w_h) and _is_int_strict(k_c):
+                    if within_hours < k_c * w_h:
+                        issues.append(
+                            {
+                                "code": "recovery_deadline_impossible",
+                                "message": "within_hours must be >= closure_windows * tumbling_hours",
+                                "path": ["requirements", r_idx, "within_hours"],
+                                "severity": "error",
+                            }
+                        )
+        elif r_kind == "evidence_liveness":
+            if target_role not in {"primary_rate", "primary_zero", "burn"}:
+                issues.append(
+                    {
+                        "code": "runtime_ref_kind_mismatch",
+                        "message": "evidence_liveness 'of' must reference a runtime window monitor",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+            else:
+                liveness_covered_monitors.add(of_name)
+
+    # Dependency cycle check: requirement -> of -> monitor -> requirement
+    for r_idx, req in enumerate(reqs_list):
+        if not isinstance(req, dict):
+            continue
+        start_name = req.get("name")
+        if not isinstance(start_name, str):
+            continue
+        curr_req = req
+        visited: Set[str] = {start_name}
+        while curr_req.get("kind") in {"recovery_time", "evidence_liveness"}:
+            of_mon_name = curr_req.get("of")
+            if not isinstance(of_mon_name, str) or of_mon_name not in mons_by_name:
+                break
+            next_req_name = mons_by_name[of_mon_name].get("requirement")
+            if not isinstance(next_req_name, str) or next_req_name not in reqs_by_name:
+                break
+            if next_req_name in visited:
+                issues.append(
+                    {
+                        "code": "runtime_dependency_cycle",
+                        "message": "Cyclic dependency involving requirement",
+                        "path": ["requirements", r_idx],
+                        "severity": "error",
+                    }
+                )
+                break
+            visited.add(next_req_name)
+            curr_req = reqs_by_name[next_req_name]
+
+    # runtime_liveness_missing warning (§5.5)
+    for m_idx, mon in enumerate(mons):
+        if not isinstance(mon, dict):
+            continue
+        m_name = mon.get("name")
+        if not isinstance(m_name, str):
+            continue
+        req = reqs_by_name.get(mon.get("requirement", ""))
+        if req is None:
+            continue
+        role = _monitor_role(mon, req)
+        if role in {"primary_rate", "primary_zero"} and m_name not in liveness_covered_monitors:
+            issues.append(
+                {
+                    "code": "runtime_liveness_missing",
+                    "message": "Primary runtime monitor is not covered by an evidence_liveness requirement",
+                    "path": ["monitors", m_idx, "name"],
+                    "severity": "warning",
+                }
+            )
+
+
+def _emitted_events_for_monitor(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> Set[str]:
+    role = _monitor_role(mon, req)
+    if role in {"primary_rate", "primary_zero"}:
+        events = {
+            "episode_opened",
+            "episode_continued",
+            "episode_open_for",
+            "episode_resolved",
+            "episode_withdrawn",
+        }
+        source = (mon.get("evidence") or {}).get("source")
+        if source == "customer_side":
+            events.add("unit_violation")
+        return events
+    if role == "burn":
+        return {"burn_breached"}
+    if role == "recovery":
+        return {"recovery_overdue", "recovery_cancelled", "recovery_recovered"}
+    if role == "liveness":
+        return {"stale", "live_again"}
+    return set()
+
+
+def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
+    resps = doc.get("responses")
+    if resps is None:
+        return
+    if not isinstance(resps, list):
+        issues.append(
+            {
+                "code": "runtime_invalid_profile",
+                "message": "responses must be a list",
+                "path": ["responses"],
+                "severity": "error",
+            }
+        )
+        return
+
+    reqs_by_name: Dict[str, Dict[str, Any]] = {
+        r["name"]: r
+        for r in (doc.get("requirements") or [])
+        if isinstance(r, dict) and isinstance(r.get("name"), str)
+    }
+    mons_by_name: Dict[str, Dict[str, Any]] = {
+        m["name"]: m
+        for m in (doc.get("monitors") or [])
+        if isinstance(m, dict) and isinstance(m.get("name"), str)
+    }
+    legacy_names = _legacy_module_names(doc)
+    seen_resp_names: Set[str] = set()
+
+    for r_idx, resp in enumerate(resps):
+        r_path = ["responses", r_idx]
+        if not isinstance(resp, dict):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Response declaration must be an object",
+                    "path": r_path,
+                    "severity": "error",
+                }
+            )
+            continue
+
+        r_name = resp.get("name")
+        if not isinstance(r_name, str) or not _RUNTIME_IDENT_RE.match(r_name):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Response name must be a runtime identifier",
+                    "path": r_path + ["name"],
+                    "severity": "error",
+                }
+            )
+        else:
+            if r_name in seen_resp_names or r_name in legacy_names:
+                issues.append(
+                    {
+                        "code": "runtime_name_collision",
+                        "message": "Response name collides with an existing declaration",
+                        "path": r_path + ["name"],
+                        "severity": "error",
+                    }
+                )
+            seen_resp_names.add(r_name)
+
+        rules = resp.get("rules")
+        if not isinstance(rules, list):
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "Response 'rules' must be a list",
+                    "path": r_path + ["rules"],
+                    "severity": "error",
+                }
+            )
+            continue
+
+        seen_rule_ids: Set[str] = set()
+        for rule_idx, rule in enumerate(rules):
+            path = r_path + ["rules", rule_idx]
+            if not isinstance(rule, dict):
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "Response rule must be an object",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )
+                continue
+
+            rule_id = rule.get("id")
+            if not isinstance(rule_id, str) or not _RUNTIME_IDENT_RE.match(rule_id):
+                issues.append(
+                    {
+                        "code": "runtime_invalid_profile",
+                        "message": "Rule id must be a runtime identifier",
+                        "path": path + ["id"],
+                        "severity": "error",
+                    }
+                )
+            else:
+                if rule_id in seen_rule_ids:
+                    issues.append(
+                        {
+                            "code": "response_rule_id_duplicate",
+                            "message": "Rule id duplicates another rule in this response",
+                            "path": path + ["id"],
+                            "severity": "error",
+                        }
+                    )
+                seen_rule_ids.add(rule_id)
+
+            trigger = rule.get("trigger")
+            t_mon: Optional[Dict[str, Any]] = None
+            t_req: Optional[Dict[str, Any]] = None
+            t_event: Optional[str] = None
+            if not isinstance(trigger, dict):
+                issues.append(
+                    {
+                        "code": "runtime_invalid_ladder",
+                        "message": "Rule 'trigger' must be an object",
+                        "path": path + ["trigger"],
+                        "severity": "error",
+                    }
+                )
+            else:
+                mon_name = trigger.get("monitor")
+                t_event = trigger.get("event")
+                if not isinstance(t_event, str) or t_event not in _TRIGGER_EVENTS:
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Unknown trigger event",
+                            "path": path + ["trigger", "event"],
+                            "severity": "error",
+                        }
+                    )
+                t_mon = mons_by_name.get(mon_name) if isinstance(mon_name, str) else None
+                if t_mon is None:
+                    issues.append(
+                        {
+                            "code": "runtime_missing_ref",
+                            "message": "Trigger monitor references an undeclared monitor",
+                            "path": path + ["trigger", "monitor"],
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    t_req = reqs_by_name.get(t_mon.get("requirement", ""))
+                    if isinstance(t_event, str) and t_event in _TRIGGER_EVENTS:
+                        if t_event not in _emitted_events_for_monitor(t_mon, t_req):
+                            issues.append(
+                                {
+                                    "code": "runtime_ref_kind_mismatch",
+                                    "message": "Monitor does not emit this trigger event",
+                                    "path": path + ["trigger", "event"],
+                                    "severity": "error",
+                                }
+                            )
+                if "hours" in trigger:
+                    t_hours = trigger.get("hours")
+                    if not _is_int_strict(t_hours) or t_hours < 1:
+                        issues.append(
+                            {
+                                "code": "runtime_trigger_hours_out_of_range",
+                                "message": "trigger.hours must be >= 1",
+                                "path": path + ["trigger", "hours"],
+                                "severity": "error",
+                            }
+                        )
+                    if t_event != "episode_open_for":
+                        issues.append(
+                            {
+                                "code": "runtime_invalid_ladder",
+                                "message": "trigger.hours is only permitted with event: episode_open_for",
+                                "path": path + ["trigger", "hours"],
+                                "severity": "error",
+                            }
+                        )
+                elif t_event == "episode_open_for":
+                    issues.append(
+                        {
+                            "code": "runtime_invalid_ladder",
+                            "message": "event: episode_open_for requires trigger.hours",
+                            "path": path + ["trigger"],
+                            "severity": "error",
+                        }
+                    )
+
+            action = rule.get("do")
+            if not isinstance(action, str) or action not in _ACTIONS:
+                issues.append(
+                    {
+                        "code": "response_unknown_action",
+                        "message": "Unknown response action",
+                        "path": path + ["do"],
+                        "severity": "error",
+                    }
+                )
+                continue
+
+            approval = rule.get("approval")
+            if approval is not None and (not isinstance(approval, str) or approval not in _APPROVALS):
+                issues.append(
+                    {
+                        "code": "runtime_unknown_kind",
+                        "message": "Expected approval: none, standing, human",
+                        "path": path + ["approval"],
+                        "severity": "error",
+                    }
+                )
+                continue
+
+            default_approval = (
+                "none"
+                if action in {"notify", "open_next_step", "block_action", "halt_unit"}
+                else "human"
+            )
+            eff_approval = approval if approval is not None else default_approval
+
+            if action == "suspend":
+                if approval != "human":
+                    issues.append(
+                        {
+                            "code": "response_suspend_without_human",
+                            "message": "suspend requires approval: human",
+                            "path": path + ["approval"],
+                            "severity": "error",
+                        }
+                    )
+                if t_event not in _SUSPEND_ESCALATION_EVENTS:
+                    issues.append(
+                        {
+                            "code": "response_suspend_unconfirmed",
+                            "message": "suspend requires an escalation trigger event (episode_continued, episode_open_for, or recovery_overdue)",
+                            "path": path + ["trigger", "event"],
+                            "severity": "error",
+                        }
+                    )
+            elif action in {"optimize", "rollback", "throttle", "degrade"}:
+                if eff_approval == "none":
+                    issues.append(
+                        {
+                            "code": "response_irreversible_without_approval",
+                            "message": f"Action '{action}' requires 'standing' or 'human' approval",
+                            "path": path + ["approval"],
+                            "severity": "error",
+                        }
+                    )
+            elif action in {"notify", "open_next_step", "block_action", "halt_unit"}:
+                if eff_approval != "none":
+                    issues.append(
+                        {
+                            "code": "runtime_invalid_ladder",
+                            "message": f"Action '{action}' only permits approval: none",
+                            "path": path + ["approval"],
+                            "severity": "error",
+                        }
+                    )
+
+            if action in {"open_next_step", "optimize", "rollback", "throttle", "degrade", "suspend"} and t_event in {
+                "episode_resolved", "episode_withdrawn", "recovery_cancelled", "recovery_recovered", "live_again", "unit_violation"
+            }:
+                issues.append({
+                    "code": "runtime_invalid_ladder",
+                    "message": "Service action requires an active originating scope; this event cannot authorize it (§7.4)",
+                    "path": path + ["trigger", "event"],
+                    "severity": "error",
+                })
+
+            # Action-specific parameter rules (§5.8, §7.2)
+            def invalid_parameter(field: str, expected: str) -> None:
+                issues.append({
+                    "code": "runtime_invalid_ladder",
+                    "message": expected,
+                    "path": path + [field],
+                    "severity": "error",
+                })
+            if action == "rollback":
+                target = rule.get("target")
+                if not isinstance(target, str) or (target != "last_certified" and not _FINGERPRINT_RE.match(target)):
+                    invalid_parameter("target", "target requires last_certified or 64 lowercase hex characters")
+            elif "target" in rule:
+                invalid_parameter("target", "target is permitted only on rollback")
+
+            if action == "suspend":
+                fb = rule.get("fallback")
+                if not isinstance(fb, str) or fb not in _SUSPEND_FALLBACKS:
+                    invalid_parameter("fallback", "fallback requires static_unavailable or route_to_human")
+            elif action == "degrade":
+                fb = rule.get("fallback")
+                if not isinstance(fb, str) or not _FINGERPRINT_RE.match(fb):
+                    invalid_parameter("fallback", "fallback requires 64 lowercase hex characters")
+            elif "fallback" in rule:
+                invalid_parameter("fallback", "fallback is permitted only on suspend or degrade")
+
+            if action == "throttle":
+                if "rate_floor" not in rule:
+                    invalid_parameter("rate_floor", "rate_floor requires an exact decimal number satisfying 0 < rate_floor < 1")
+                else:
+                    rf_frac = _to_exact_fraction(rule.get("rate_floor"))
+                    if rf_frac is None:
+                        issues.append(
+                            {
+                                "code": "runtime_invalid_profile",
+                                "message": "rate_floor must be an exact decimal number",
+                                "path": path + ["rate_floor"],
+                                "severity": "error",
+                            }
+                        )
+                    elif not (0 < rf_frac < 1):
+                        issues.append(
+                            {
+                                "code": "runtime_rate_floor_out_of_range",
+                                "message": "rate_floor must satisfy 0 < rate_floor < 1",
+                                "path": path + ["rate_floor"],
+                                "severity": "error",
+                            }
+                        )
+            elif "rate_floor" in rule:
+                invalid_parameter("rate_floor", "rate_floor is permitted only on throttle")
+
+            if "severity" in rule:
+                if action != "notify":
+                    invalid_parameter("severity", "severity is permitted only on notify")
+                else:
+                    sev = rule.get("severity")
+                    if not isinstance(sev, str) or sev not in _SEVERITIES:
+                        issues.append(
+                            {
+                                "code": "runtime_unknown_kind",
+                                "message": "Expected severity: info, warning, critical",
+                                "path": path + ["severity"],
+                                "severity": "error",
+                            }
+                        )
+
+            if action in {"block_action", "halt_unit"}:
+                if "on_check_error" not in rule:
+                    issues.append(
+                        {
+                            "code": "response_on_check_error_missing",
+                            "message": f"Local guard '{action}' requires on_check_error",
+                            "path": path,
+                            "severity": "error",
+                        }
+                    )
+                else:
+                    oce = rule.get("on_check_error")
+                    if not isinstance(oce, str) or oce not in _ON_CHECK_ERRORS:
+                        issues.append(
+                            {
+                                "code": "runtime_unknown_kind",
+                                "message": "Expected on_check_error: block, allow",
+                                "path": path + ["on_check_error"],
+                                "severity": "error",
+                            }
+                        )
+                if t_mon is not None and t_req is not None:
+                    t_source = (t_mon.get("evidence") or {}).get("source")
+                    t_pattern = (t_req.get("violation") or {}).get("pattern")
+                    if t_event != "unit_violation" or t_source != "customer_side" or t_pattern not in _WITNESS_PATTERNS:
+                        issues.append(
+                            {
+                                "code": "response_guard_not_enforceable",
+                                "message": f"Local guard '{action}' requires customer_side unit_violation with a pattern whose violation is fixed by a prefix (absence, bounded_existence, precedence, protocol)",
+                                "path": path,
+                                "severity": "error",
+                            }
+                        )
+            elif "on_check_error" in rule:
+                invalid_parameter("on_check_error", "on_check_error is permitted only on block_action or halt_unit")
+
+            has_repeat_after = "repeat_after_hours" in rule
+            has_max_repeats = "max_repeats" in rule
+            if has_repeat_after:
+                rah = rule.get("repeat_after_hours")
+                if not _is_int_strict(rah) or rah < 1:
+                    issues.append(
+                        {
+                            "code": "runtime_repeat_after_hours_out_of_range",
+                            "message": "repeat_after_hours must be >= 1",
+                            "path": path + ["repeat_after_hours"],
+                            "severity": "error",
+                        }
+                    )
+            if has_max_repeats:
+                mr = rule.get("max_repeats")
+                if not _is_int_strict(mr) or mr < 1:
+                    issues.append(
+                        {
+                            "code": "runtime_max_repeats_out_of_range",
+                            "message": "max_repeats must be >= 1",
+                            "path": path + ["max_repeats"],
+                            "severity": "error",
+                        }
+                    )
+                if not has_repeat_after:
+                    invalid_parameter("max_repeats", "max_repeats requires repeat_after_hours")
+            if has_repeat_after and not has_max_repeats and action != "notify":
+                issues.append(
+                    {
+                        "code": "response_rule_repeat_unbounded",
+                        "message": f"Action '{action}' with repeat_after_hours requires max_repeats",
+                        "path": path,
+                        "severity": "error",
+                    }
+                )

@@ -458,3 +458,113 @@ All major proof obligations have been completed with no `sorry` terms in Lean so
 **Total Lines of Proof Code**: ~950 (excluding Mathlib)
 **Theorems Fully Proven**: 5 (Type Soundness, ε-Composition, Rounding Soundness, SMT Encoding, Satisfiability)
 **Documented Edge Cases**: 0
+
+---
+
+## Runtime (TVL 1.3)
+
+**DRAFT; language results and generic mathematics only.** The results are stated
+against formal semantics §§9.7/12 and RFC 0003 as published in this repository.
+This scope applies the language/evaluator boundary of RFC 0003 §3.5:
+complete-history meaning, static declarations/composition, abstract verdict joins
+and generic probability. How an evaluator decides from partial evidence is outside
+this library. This section supersedes the historical core summary's old
+promotion-gate roadmap note.
+
+Each entry uses exactly one class. A helper's class concerns only its own statement and never upgrades a WEAKER or OPEN result.
+
+| Class | Meaning |
+|---|---|
+| SUBSTANTIVE | Proved, with content beyond its definitions. |
+| BY-CONSTRUCTION | Proved, but true by definition or the chosen representation/transition construction. |
+| WEAKER: what dropped | Proved, with the named part of the original obligation omitted. |
+| OPEN | Unproved target defined as a proposition, never an assumption. |
+
+| Theorem | File | Class | Checked scope |
+|---|---|---|---|
+| `gate_sound` | `TVL/Gate.lean` | SUBSTANTIVE | Legacy ordered decision; completeness requires coherent evaluated predicates. |
+| `gate_complete` | `TVL/Gate.lean` | SUBSTANTIVE | Legacy ordered decision; completeness requires coherent evaluated predicates. |
+| `gate_correct` | `TVL/Gate.lean` | SUBSTANTIVE | Legacy ordered decision; completeness requires coherent evaluated predicates. |
+| `join_empty` | `TVL/Gate.lean` | BY-CONSTRUCTION |  |
+| `join_promote_iff` | `TVL/Gate.lean` | SUBSTANTIVE |  |
+| `backend_profile_roundtrip` | `TVL/Runtime/Backend.lean` | BY-CONSTRUCTION | Normalized representable fields round-trip under supplied bijective codecs. No specific codec, adapter or float/rational numerical equivalence. |
+| `mass_nonneg` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `upper_mono_count` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `lower_mono_count` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `cast_upper` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `cast_lower` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_mass_nonneg` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_mass_total` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_tail_complement` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_upper_mono_count` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_mass_succ` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_upper_shift` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_upper_succ` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `real_upper_mono_parameter` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `tail_mono_p` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE | Exact finite binomial sums, parameter/count monotonicity and rational casts. |
+| `upper_mono_parameter` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `lower_antitone_parameter` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `bad_lower_bound` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE |  |
+| `horizon_false_alarm` | `TVL/Runtime/BinomialGeneric.lean` | SUBSTANTIVE | Generic finite union bound, without independence or any verdict procedure. |
+| `pmf_binomial_mass` | `TVL/Runtime/BinomialLaw.lean` | SUBSTANTIVE |  |
+| `pmf_binomial_upper` | `TVL/Runtime/BinomialLaw.lean` | SUBSTANTIVE |  |
+| `binomial_good_window` | `TVL/Runtime/BinomialLaw.lean` | SUBSTANTIVE |  |
+| `binomial_bad_window` | `TVL/Runtime/BinomialLaw.lean` | SUBSTANTIVE |  |
+| `compiled_contract_correct_statement` | `TVL/Runtime/Compiler.lean` | OPEN | Normalized-language compiler target; no actual source parser, normalization or wire-projection proof. |
+| `raw_bounds_glb` | `TVL/Runtime/Compose.lean` | SUBSTANTIVE |  |
+| `checked_bounds_meet_iff` | `TVL/Runtime/Compose.lean` | BY-CONSTRUCTION |  |
+| `compose_partial_statement` | `TVL/Runtime/Compose.lean` | OPEN | OPEN static normalized-contract GLB/reachability target. Authored rule identity/survival, approval/severity order, repeat bounds and provenance remain; platform grants and registration are external. Catalogue-wide refinement is unproved. |
+| `severity_meet_glb` | `TVL/Runtime/Declarations.lean` | SUBSTANTIVE |  |
+| `absent_notify_severity` | `TVL/Runtime/Declarations.lean` | BY-CONSTRUCTION |  |
+| `conservative_extension` | `TVL/Runtime/Extension.lean` | BY-CONSTRUCTION | Empty-runtime embedding preserves the semantic product model and gate join. |
+| `no_promotion_monitors` | `TVL/Runtime/Extension.lean` | BY-CONSTRUCTION |  |
+| `structural_projection` | `TVL/Runtime/Extension.lean` | BY-CONSTRUCTION | Stored legacy fields are projected unchanged. Runtime spelling exclusion from source Γ/generated variables is not modeled or proved. |
+| `promotion_refinement` | `TVL/Runtime/Extension.lean` | SUBSTANTIVE |  |
+
+### Scope and remaining gaps
+
+- `History.lean` defines complete-history event/selector/predicate meaning only;
+  how an evaluator decides from partial evidence is outside this library (RFC 0003
+  §3.5).
+- `Gate.lean` consumes supplied evaluated predicates/verdicts. Coherence of the
+  legacy test results is an explicit completeness premise; numerical tests and
+  evaluator implementations are not certified by the join algebra.
+- Generic exact rational/real tails are connected to `PMF.binomial`; parameter
+  inequalities supply `GoodWindow`/`BadWindow` stochastic-domination contracts.
+  These generic names denote tail-law inequalities, without unresolved counts or
+  verdict definitions. No real population's independence, representativeness,
+  attribution or unbiased selection is inferred. The finite union bound needs
+  per-event bounds and a predesignated allocation; it needs no independence.
+- `compose_partial_statement` is OPEN and ranges over static normalized
+  contracts; its record and validity predicate carry no enabled actions.
+  `NormalizedRule` contains only authored identity, approval, repeat bounds and
+  severity. Rule survival and the approval/severity orders are stated; standing
+  grants (their scopes, limits and expiry, and any order on them) are outside this
+  library. Static composition neither compares grants nor checks enabled
+  capabilities.
+  Full catalogue validation, opaque identity binding, pack activation and source
+  refinement remain unproved. Equal floor-provenance maps are still required.
+- `Compiler.lean` states an OPEN declaration-normalization/projection
+  obligation over a normalized source fragment. It is not an
+  implementation or proof of the Python compiler, parser or canonical wire codec.
+- Product erasure is BY-CONSTRUCTION, not syntax-level runtime-name exclusion
+  from the typing context or a source-to-SMT preservation proof.
+- Backend-profile fields round-trip under supplied token/numeric equivalences.
+  The codec definitions live in `python/tvl/backend_profile_codec.py`.
+  The theorem does not verify those concrete serializers, IEEE-754 conversions,
+  deployed adapters, or floating-point/rational verdict equivalence.
+- No existing core Lean file is changed. Building this library establishes local
+  mathematical compilation; it does not establish operational readiness.
+
+### Reproduce
+
+```bash
+export PATH=$HOME/.elan/toolchains/leanprover--lean4---v4.28.0-rc1/bin:$PATH
+cd proofs
+timeout 3000 lake build
+rg -n '^import' Main.lean TVL --glob '*.lean'
+```
+
+`Main.lean` imports every module. Mathlib and Lean stay pinned by the
+existing manifest/toolchain; the TVL 1.3 modules add no dependency. See README.md
+for the boundary and trusted-input limits.

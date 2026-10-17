@@ -1,0 +1,67 @@
+# Scenario 22 (awkward): A text-to-SQL agent must never call any of three write or DDL tools; absence takes one tool, so the set is written as a two-state protocol.
+tvl:
+  module: examples.runtime13.forbidden_tool_set_via_protocol
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: forbidden_tool_set_via_protocol_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: no_write_tools
+    kind: zero_tolerance
+    unit: invocation
+    violation:
+      pattern: protocol
+      alphabet:
+        - { event: tool_call, tool: warehouse.run_write_sql }
+        - { event: tool_call, tool: warehouse.run_ddl }
+        - { event: tool_call, tool: warehouse.drop_table }
+      states: [clean, tripped]
+      start: clean
+      transitions:
+        - { from: clean, when: { event: tool_call, tool: warehouse.run_write_sql }, to: tripped }
+        - { from: clean, when: { event: tool_call, tool: warehouse.run_ddl }, to: tripped }
+        - { from: clean, when: { event: tool_call, tool: warehouse.drop_table }, to: tripped }
+      accepting: [clean]
+      rejecting: [tripped]
+      unlisted: ignore
+  - name: no_write_tools_live
+    kind: evidence_liveness
+    unit: window
+    of: no_write_tools_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: no_write_tools_prod
+    requirement: no_write_tools
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 60 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 48 }
+    limits: { max_active_obligations: 16, max_tracked_correlations: 256 }
+    single_producer: true
+  - name: no_write_tools_live_check
+    requirement: no_write_tools_live
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: write_tool_guard
+    rules:
+      - { id: block_write, trigger: { monitor: no_write_tools_prod, event: unit_violation }, do: block_action, on_check_error: block }
+      - { id: page, trigger: { monitor: no_write_tools_prod, event: episode_opened }, do: notify, severity: critical }

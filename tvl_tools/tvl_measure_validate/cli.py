@@ -5,6 +5,7 @@ from pathlib import Path
 from tvl.configuration import load_configuration
 from tvl.errors import TVLError
 from tvl.loader import load
+from tvl.lints import _uses_13_constructs
 from tvl.measurement import load_measurement, validate_measurement
 
 
@@ -59,19 +60,26 @@ def main() -> None:
                     for issue in report["chance"]:
                         print(f"    {issue}")
 
-        if not report["ok"]:
+        if not report["ok"] or (_uses_13_constructs(module) and not report.get("promotion_ready")):
             raise SystemExit(2)
     except TVLError as exc:
-        diag = {
+        diag: dict = {
             "ok": False,
             "error": str(exc),
             "module": str(args.module),
             "config": str(args.config),
             "measurement": str(args.measurement),
         }
+        if getattr(exc, "code", None) == "unsupported_construct":
+            diag["code"] = "unsupported_construct"
+            diag["construct"] = getattr(exc, "construct", None)
         if args.json:
             print(json.dumps(diag, indent=2))
         else:
+            if getattr(exc, "code", None) == "unsupported_construct":
+                import sys
+
+                print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
             print("Validation failed.")
             print(f"Error: {exc}")
         raise SystemExit(2)

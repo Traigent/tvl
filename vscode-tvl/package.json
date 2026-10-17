@@ -50,7 +50,9 @@
         ],
         "extensions": [
           ".tvl.yml",
-          ".tvl.yaml"
+          ".tvl.yaml",
+          ".pack.tvl.yml",
+          ".pack.tvl.yaml"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
@@ -64,6 +66,52 @@
         "language": "tvl",
         "scopeName": "source.tvl",
         "path": "./syntaxes/tvl.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "tvl",
+        "path": "./snippets/tvl.code-snippets"
+      },
+      {
+        "language": "yaml",
+        "path": "./snippets/tvl.code-snippets"
+      }
+    ],
+    "yamlValidation": [
+      {
+        "fileMatch": [
+          "*.pack.tvl.yml",
+          "*.pack.tvl.yaml",
+          "*-pack.tvl.yml",
+          "*-pack.tvl.yaml"
+        ],
+        "url": "./schemas/tvl-pack.schema.json"
+      },
+      {
+        "fileMatch": [
+          "*.tvl.yml",
+          "*.tvl.yaml"
+        ],
+        "url": "./schemas/tvl.schema.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": [
+          "*.pack.tvl.yml",
+          "*.pack.tvl.yaml",
+          "*-pack.tvl.yml",
+          "*-pack.tvl.yaml"
+        ],
+        "url": "./schemas/tvl-pack.schema.json"
+      },
+      {
+        "fileMatch": [
+          "*.tvl.yml",
+          "*.tvl.yaml"
+        ],
+        "url": "./schemas/tvl.schema.json"
       }
     ],
     "configuration": {

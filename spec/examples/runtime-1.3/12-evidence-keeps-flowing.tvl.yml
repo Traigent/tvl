@@ -1,0 +1,52 @@
+# Scenario 12: The monitoring of the destructive-shell guard must itself stay alive: if 3 consecutive windows have no usable evidence, alert, and alert again when evidence returns.
+tvl:
+  module: examples.runtime13.evidence_keeps_flowing
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: evidence_keeps_flowing_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: no_destructive_shell
+    kind: zero_tolerance
+    unit: invocation
+    violation: { pattern: absence, a: { event: tool_call, tool: shell.rm_recursive } }
+  - name: shell_guard_flowing
+    kind: evidence_liveness
+    unit: window
+    of: no_destructive_shell_prod
+    max_stale_windows: 3
+
+monitors:
+  - name: no_destructive_shell_prod
+    requirement: no_destructive_shell
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 6, grace_minutes: 30 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 24 }
+  - name: shell_guard_flowing_check
+    requirement: shell_guard_flowing
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: liveness_alerts
+    rules:
+      - { id: went_stale, trigger: { monitor: shell_guard_flowing_check, event: stale }, do: notify, severity: critical }
+      - { id: came_back, trigger: { monitor: shell_guard_flowing_check, event: live_again }, do: notify, severity: info }
+      - { id: violation_open, trigger: { monitor: no_destructive_shell_prod, event: episode_opened }, do: notify, severity: critical }

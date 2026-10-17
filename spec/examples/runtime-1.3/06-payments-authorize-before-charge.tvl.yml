@@ -1,0 +1,68 @@
+# Scenario 06: A payments agent may call payments.charge only after a payment authorization on the same correlation id; unauthorized charges are blocked, and a breach must clear within 48 hours.
+tvl:
+  module: examples.runtime13.payments_authorize_before_charge
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: payments_authorize_before_charge_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: payment_needs_authorization
+    kind: zero_tolerance
+    unit: invocation
+    violation:
+      pattern: precedence
+      a: { event: authorization_granted, ref: payment_auth }
+      b: { event: tool_call, tool: payments.charge }
+      mode: single_use
+      correlate_by: correlation_id
+  - name: payment_breach_recovers
+    kind: recovery_time
+    unit: episode
+    of: payment_needs_authorization_prod
+    within_hours: 48
+  - name: payment_guard_live
+    kind: evidence_liveness
+    unit: window
+    of: payment_needs_authorization_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: payment_needs_authorization_prod
+    requirement: payment_needs_authorization
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 60 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 48 }
+    limits: { max_active_obligations: 64, max_tracked_correlations: 1024 }
+  - name: payment_breach_recovers_check
+    requirement: payment_breach_recovers
+    phase: runtime
+    evidence: { source: episodes }
+    decision: { method: exact_count_v1 }
+  - name: payment_guard_live_check
+    requirement: payment_guard_live
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: payment_guard
+    rules:
+      - { id: block_charge, trigger: { monitor: payment_needs_authorization_prod, event: unit_violation }, do: block_action, on_check_error: block }
+      - { id: page, trigger: { monitor: payment_needs_authorization_prod, event: episode_opened }, do: notify, severity: critical }
+      - { id: page_overdue, trigger: { monitor: payment_breach_recovers_check, event: recovery_overdue }, do: notify, severity: critical }

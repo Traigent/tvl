@@ -11,7 +11,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict as Dict, List as List, Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -625,6 +625,15 @@ def _compose(
     # Remove overlay-specific keys from output
     composed.pop("_tvl_overlay", None)
 
+    # RFC 0003 §9.1: runtime checks always run (even under --no-validate)
+    if any(k in base or k in overrides for k in ("requirements", "monitors", "responses")):
+        from tvl.runtime import compose_runtime_documents
+
+        rt_composed, _ = compose_runtime_documents(base, composed, operation="overlay")
+        for k in ("requirements", "monitors", "responses"):
+            if k in rt_composed:
+                composed[k] = rt_composed[k]
+
     # Validate narrowing if requested
     if validate_narrowing:
         errors = _validate_narrowing(base, composed)
@@ -671,9 +680,22 @@ def text_renderer(data: dict[str, Any]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Compose TVL overlay files into valid TVL 1.0 modules",
+        description="Compose TVL overlay files into valid TVL modules",
     )
-    parser.add_argument("file", type=Path, help="Path to overlay YAML file")
+    parser.add_argument("file", type=Path, help="Path to overlay or module YAML file")
+    parser.add_argument(
+        "--pack",
+        action="append",
+        type=Path,
+        default=[],
+        help="Path to tvl_pack YAML file(s) to compose as organisation floors",
+    )
+    parser.add_argument(
+        "--meet",
+        type=Path,
+        default=None,
+        help="Path to another module or pack YAML file for raw meet without a candidate",
+    )
     parser.add_argument(
         "-o",
         "--output",
@@ -683,7 +705,7 @@ def main() -> None:
     parser.add_argument(
         "--no-validate",
         action="store_true",
-        help="Skip narrowing validation",
+        help="Skip legacy narrowing validation",
     )
     parser.add_argument(
         "--validate",
@@ -694,24 +716,77 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        composed = compose(args.file, validate_narrowing=not args.no_validate)
+        if args.pack and args.meet is not None:
+            raise ValueError("--pack and --meet cannot be combined")
+
+        raw_doc = load_yaml_safely(args.file)
+        if not isinstance(raw_doc, dict):
+            raise TypeError("Input file must be a YAML mapping")
+
+        if "_tvl_overlay" in raw_doc:
+            composed = compose(args.file, validate_narrowing=not args.no_validate)
+        elif args.pack or args.meet is not None:
+            composed = copy.deepcopy(raw_doc)
+        else:
+            composed = compose(args.file, validate_narrowing=not args.no_validate)
+
+        floor_provenance: list[dict[str, Any]] = []
+        if args.pack:
+            from tvl.runtime import compose_runtime_documents
+
+            for pack_path in args.pack:
+                pack_doc = load_yaml_safely(pack_path)
+                if not isinstance(pack_doc, dict):
+                    raise TypeError(f"Pack file {pack_path} must be a YAML mapping")
+                composed, floor_provenance = compose_runtime_documents(
+                    pack_doc,
+                    composed,
+                    operation="overlay",
+                    floor_provenance=floor_provenance,
+                )
+
+        if args.meet is not None:
+            from tvl.runtime import compose_runtime_documents
+
+            other_doc = load_yaml_safely(args.meet)
+            if not isinstance(other_doc, dict):
+                raise TypeError(f"Meet file {args.meet} must be a YAML mapping")
+            composed, floor_provenance = compose_runtime_documents(
+                composed,
+                other_doc,
+                operation="meet",
+                floor_provenance=floor_provenance,
+            )
 
         result: dict[str, Any] = {
             "ok": True,
             "file": str(args.file),
             "composed": composed,
         }
+        if args.pack or floor_provenance:
+            result["floor_provenance"] = floor_provenance
 
-        # Optionally validate the composed module (independent of output target)
+        # Write to output file if specified (before --validate so --validate checks the exact bytes written)
+        emitted_yaml = yaml.safe_dump(composed, default_flow_style=False, sort_keys=False)
+        if args.output:
+            args.output.write_text(emitted_yaml, encoding="utf-8")
+            result["output_file"] = str(args.output)
+
+        # Optionally validate the exact composed YAML bytes written/emitted
         if args.validate:
-            from tvl.lints import lint_module
-
+            from tvl.lints import lint_module, lint_pack
+            from tvl.schema import pack_validator
+            from tvl.yaml_safe import safe_load as parse_yaml_safely
             from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
 
-            schema = _load_schema(Path(__file__))
-            issues = _schema_issues(composed, schema)
+            raw_to_validate = args.output.read_text(encoding="utf-8") if args.output else emitted_yaml
+            parsed_written = parse_yaml_safely(raw_to_validate)
+
+            is_pack = "pack" in parsed_written and "tvl" not in parsed_written
+            schema = pack_validator().schema if is_pack else _load_schema(Path(__file__))
+            issues = _schema_issues(parsed_written, schema)
             if not issues:
-                issues = lint_module(composed)
+                issues = lint_pack(parsed_written) if is_pack else lint_module(parsed_written, floor_provenance=floor_provenance)
 
             result["validation"] = {
                 "ok": len(issues) == 0,
@@ -721,18 +796,35 @@ def main() -> None:
             if issues:
                 result["ok"] = False
 
-        # Write to output file if specified
-        if args.output:
-            with args.output.open("w", encoding="utf-8") as handle:
-                yaml.dump(composed, handle, default_flow_style=False, sort_keys=False)
-            result["output_file"] = str(args.output)
-
         print_output(result, get_format(args), text_renderer)
 
         if not result["ok"]:
             sys.exit(2)
 
     except Exception as exc:  # noqa: BLE001
+        from tvl.runtime import RuntimeClosedError
+
+        if isinstance(exc, RuntimeClosedError):
+            fmt = get_format(args)
+            diag = {
+                "ok": False,
+                "file": str(args.file),
+                "error": exc.code,
+                "issues": [
+                    {
+                        "code": exc.code,
+                        "message": exc.message,
+                        "path": exc.path,
+                        "severity": "error",
+                    }
+                ],
+            }
+            if fmt == "json":
+                print(json.dumps(diag, indent=2))
+            else:
+                path = ".".join(str(part) for part in exc.path) or "<root>"
+                print(f"Error: {exc.code} at {path}: {exc.message}", file=sys.stderr)
+            sys.exit(2)
         handle_error(exc, args)
 
 

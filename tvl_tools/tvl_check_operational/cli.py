@@ -41,9 +41,15 @@ def main() -> None:
                 "status": "error",
                 "error": error_msg,
             }
+            if getattr(exc, "code", None) == "unsupported_construct":
+                error_payload["code"] = "unsupported_construct"
+                error_payload["construct"] = getattr(exc, "construct", None)
             print(json.dumps(error_payload, indent=2))
         else:
-            print(f"Error loading module: {error_msg}", file=sys.stderr)
+            if getattr(exc, "code", None) == "unsupported_construct":
+                print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
+            else:
+                print(f"Error loading module: {error_msg}", file=sys.stderr)
         raise SystemExit(2)
 
     result = check_operational(module)

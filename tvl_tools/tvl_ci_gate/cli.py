@@ -2,12 +2,27 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict as Dict, List as List, Tuple as Tuple
+from typing import Any
 
-from tvl.loader import load
+from tvl.lints import _uses_13_constructs, lint_module
+from tvl.loader import is_pack_document, load
 from tvl.measurement import load_measurement, prepare_measurement_bundle
 from tvl.promotion import epsilon_pareto_gate
 from tvl.yaml_safe import safe_load
+
+
+def _refuse_unsupported(construct: str, use_json: bool) -> None:
+    if use_json:
+        diag = {
+            "ok": False,
+            "error": f"unsupported_construct: {construct}",
+            "code": "unsupported_construct",
+            "construct": construct,
+        }
+        print(json.dumps(diag, indent=2))
+    else:
+        print(f"unsupported_construct: {construct}", file=sys.stderr)
+    raise SystemExit(2)
 
 
 def load_yaml(path: Path) -> Any:
@@ -29,6 +44,18 @@ def _load_module_and_inputs(
     if len(inputs) == 2 and policy_override is not None:
         incumbent_path, candidate_path = inputs
         policy_doc = load_yaml(policy_override)
+        if isinstance(policy_doc, dict):
+            if is_pack_document(policy_doc):
+                err = ValueError("unsupported_construct: tvl_pack")
+                err.code = "unsupported_construct"  # type: ignore[attr-defined]
+                err.construct = "tvl_pack"  # type: ignore[attr-defined]
+                raise err
+            for blk in ("requirements", "monitors", "responses"):
+                if blk in policy_doc:
+                    err = ValueError(f"unsupported_construct: {blk}")
+                    err.code = "unsupported_construct"  # type: ignore[attr-defined]
+                    err.construct = blk  # type: ignore[attr-defined]
+                    raise err
         warnings.append(
             {
                 "code": "deprecated_ci_gate_policy_flag",
@@ -87,13 +114,33 @@ def main() -> None:
             args.inputs,
             args.policy,
         )
+        if args.policy is None and _uses_13_constructs(module):
+            lint_issues = lint_module(module)
+            lint_errors = [i for i in lint_issues if i.get("severity") == "error"]
+            if lint_errors:
+                diag = {
+                    "ok": False,
+                    "error": "Module failed runtime lint checks.",
+                    "issues": lint_issues,
+                }
+                print(json.dumps(diag, indent=2))
+                raise SystemExit(2)
+
         objectives = module.get("objectives", []) or []
 
         incumbent_raw = load_measurement(incumbent_path)
         candidate_raw = load_measurement(candidate_path)
 
-        incumbent, incumbent_warnings, incumbent_readiness = prepare_measurement_bundle(module, incumbent_raw)
-        candidate, candidate_warnings, candidate_readiness = prepare_measurement_bundle(module, candidate_raw)
+        if args.policy is not None:
+            if "monitor_outcomes" in incumbent_raw or "monitor_outcomes" in candidate_raw:
+                _refuse_unsupported("monitor_outcomes", args.json)
+
+        incumbent, incumbent_warnings, incumbent_readiness = prepare_measurement_bundle(
+            module, incumbent_raw, role="incumbent"
+        )
+        candidate, candidate_warnings, candidate_readiness = prepare_measurement_bundle(
+            module, candidate_raw, role="candidate"
+        )
 
         warnings = cli_warnings + _qualify_issues(str(incumbent_path), incumbent_warnings)
         warnings.extend(_qualify_issues(str(candidate_path), candidate_warnings))
@@ -115,6 +162,8 @@ def main() -> None:
             candidate=candidate,
             policy=policy,
             objectives=objectives,
+            requirements=module.get("requirements"),
+            monitors=module.get("monitors"),
         )
 
         result = {
@@ -128,7 +177,16 @@ def main() -> None:
             print(json.dumps(result, indent=2))
         else:
             print(f"Decision: {decision}")
-            print(f"Reason: {evidence.get('decision_reason', '')}")
+            if _uses_13_constructs(module):
+                # Names remain in evidence; render a complete closed explanation.
+                reason = evidence.get("summary", {}).get("decision_reason", "").partition(":")[0]
+                if reason.endswith("; superior on"):
+                    reason = reason.removesuffix("; superior on") + "; at least one objective is superior"
+                else:
+                    reason = reason.removesuffix(" on")
+                print(f"Reason: {reason}")
+            else:
+                print(f"Reason: {evidence.get('decision_reason', '')}")
             if warnings:
                 print("Warnings:")
                 for warning in warnings:
@@ -144,6 +202,8 @@ def main() -> None:
     except SystemExit:
         raise
     except Exception as e:  # noqa: BLE001
+        if getattr(e, "code", None) == "unsupported_construct":
+            _refuse_unsupported(str(getattr(e, "construct", "")), args.json)
         diag = {"ok": False, "error": str(e)}
         print(json.dumps(diag, indent=2))
         sys.exit(2)

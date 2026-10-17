@@ -1,0 +1,12 @@
+case_format: tvl-runtime-case/1
+family: promotion
+description: An explicit UNKNOWN reason defers promotion.
+spec_refs:
+- RFC 0003 promotion join
+module: {}
+input:
+  kind: join
+  legacy_decision: Promote
+  monitor_verdicts: [MET, UNKNOWN(engine_required)]
+expected:
+  promotion_decision: NoDecision

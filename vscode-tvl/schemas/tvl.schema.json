@@ -1,0 +1,1056 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tvl-lang.org/schemas/tvl.schema.json",
+  "title": "TVL Module",
+  "description": "Schema for Tuned Variables Language (TVL) modules. Captures the normative surface syntax for validation tooling.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tvl",
+    "environment",
+    "evaluation_set",
+    "tvars",
+    "objectives",
+    "promotion_policy"
+  ],
+  "properties": {
+    "tvl": {
+      "type": "object",
+      "description": "Module metadata block (`tvl.module`) identifying the namespace of the specification; see Listing 9.",
+      "additionalProperties": false,
+      "required": ["module"],
+      "properties": {
+        "module": {
+          "type": "string",
+          "description": "Fully-qualified module identifier (e.g., `corp.product.spec`), matching the paper's namespace convention."
+        },
+        "validation": {
+          "type": "object",
+          "description": "Optional validation configuration for tooling (e.g., skip certain checks during development).",
+          "additionalProperties": false,
+          "properties": {
+            "skip_budget_checks": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, skip validation of exploration budget constraints."
+            },
+            "skip_cost_estimation": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, skip cost estimation checks for derived constraints."
+            }
+          }
+        }
+      }
+    },
+    "tvl_version": {
+      "type": ["string", "number"],
+      "description": "Optional declared language version."
+    },
+    "environment": {
+      "type": "object",
+      "description": "Environment snapshot supplying deployment bindings and numeric context used to specialise domains and operational preconditions.",
+      "additionalProperties": false,
+      "required": ["snapshot_id"],
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC3339 timestamp that labels the environment snapshot (`E_τ` in §III)."
+        },
+        "bindings": {
+          "type": "object",
+          "description": "Opaque deployment references pinned for reproducibility and auditability (for example retriever index IDs, gateway regions, or catalog versions). Bindings are not numeric operational-precondition symbols."
+        },
+        "context": {
+          "type": "object",
+          "description": "Optional numeric environment context used by operational preconditions under `constraints.derived`. Operational arithmetic must reference `env.context.*`."
+        }
+      }
+    },
+    "evaluation_set": {
+      "type": "object",
+      "description": "Evaluation set definition that anchors the dataset and optional randomness seed used in validation runs (§III.B).",
+      "additionalProperties": false,
+      "required": ["dataset"],
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "description": "Canonical identifier or URI for the evaluation dataset (Listing 9 `evaluation_set.dataset`)."
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Optional deterministic seed for stochastic evaluation sets."
+        }
+      }
+    },
+    "tvars": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of TVAR declarations (Γ) including `name`, `type`, and `domain` entries.",
+      "items": { "$ref": "#/$defs/TVarDecl" }
+    },
+    "cvars": {
+      "type": "array",
+      "description": "TVL 1.1 (RFC 0001): ordered list of calibrated-variable declarations — governed but NOT searched; absent from Γ, the configuration space, and structural SAT.",
+      "items": { "$ref": "#/$defs/CVarDecl" }
+    },
+    "policies": {
+      "type": "array",
+      "description": "TVL 1.1 (RFC 0001): named operational policy declarations (first strategy: cascade). Operational layer — never enters Γ, F^str, or the dominance relation.",
+      "items": { "$ref": "#/$defs/PolicyDecl" }
+    },
+    "composites": {
+      "type": "array",
+      "description": "TVL 1.2 (RFC 0002): the sealed composite-knob algebra — named bundles of member knobs and gate declarations under a declared control-flow shape (cascade | ensemble | loop). A composite is a namespace/expansion/provenance unit, NOT a binding kind: it never enters Γ, the configuration space, or the dominance relation (§3.1). Conservative extension — a module with no composites block parses byte-identically to TVL 1.1 (§4).",
+      "items": { "$ref": "#/$defs/Composite" }
+    },
+    "requirements": {
+      "type": "array",
+      "description": "TVL 1.3 (RFC 0003): sealed runtime requirement declarations (rate_bound | zero_tolerance | recovery_time | evidence_liveness).",
+      "items": { "$ref": "#/$defs/RequirementDecl" }
+    },
+    "monitors": {
+      "type": "array",
+      "description": "TVL 1.3 (RFC 0003): monitor declarations binding requirements to evidence sources and decision procedures.",
+      "items": { "$ref": "#/$defs/MonitorDecl" }
+    },
+    "responses": {
+      "type": "array",
+      "description": "TVL 1.3 (RFC 0003): governed response declarations over monitor events.",
+      "items": { "$ref": "#/$defs/ResponseDecl" }
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Constraint sets split between structural (TVAR formulas) and derived (linear constraints over numeric `env.context.*` symbols) clauses.",
+      "additionalProperties": false,
+      "properties": {
+        "structural": {
+          "type": "array",
+          "description": "Typed DNF clauses over TVARs that must hold for structural feasibility.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "when": {
+                "type": "string",
+                "description": "Antecedent formula (optional) specifying the guard for an implication."
+              },
+              "then": {
+                "type": "string",
+                "description": "Consequent formula enforced when the `when` guard is satisfied."
+              },
+              "expr": {
+                "type": "string",
+                "description": "Standalone structural formula without implication sugar."
+              }
+            },
+            "oneOf": [
+              { "required": ["when", "then"] },
+              { "required": ["expr"] }
+            ]
+          }
+        },
+        "derived": {
+          "type": "array",
+          "description": "Linear real-valued predicates over numeric `env.context.*` symbols used for operational validation.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["require"],
+            "properties": {
+              "require": {
+                "type": "string",
+                "description": "Linear inequality or equality (affine form) that must hold under the environment snapshot. Operational preconditions may reference only numeric `env.context.*` symbols."
+              }
+            }
+          }
+        }
+      }
+    },
+    "objectives": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Primary and banded objectives evaluated by the promotion gate (maximize/minimize or TOST band).",
+      "items": { "$ref": "#/$defs/Objective" }
+    },
+    "promotion_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dominance"],
+      "description": "Promotion gate configuration controlling ε-Pareto dominance, error tolerances, and optional chance constraints (§III.G).",
+      "properties": {
+        "dominance": {
+          "enum": ["epsilon_pareto"],
+          "description": "Dominance relation applied to objective vectors; TVL 1.0 mandates ε-Pareto."
+        },
+        "alpha": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0.05,
+          "description": "Family-wise error rate budget (0 < α < 1); defaults to 0.05 when omitted (Listing 10)."
+        },
+        "min_effect": {
+          "type": "object",
+          "description": "Per-objective ε tolerances that define acceptable deltas for dominance comparisons.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Non-negative ε applied to the named objective."
+          }
+        },
+        "adjust": {
+          "enum": ["none", "bonferroni", "holm", "BH"],
+          "description": "Multiple-testing adjustment strategy applied before promotion. Options: none (no adjustment), bonferroni (FWER control), holm (FWER control, more powerful), BH (Benjamini–Hochberg FDR control)."
+        },
+        "chance_constraints": {
+          "type": "array",
+          "description": "Optional hard constraints expressed as minimum confidence thresholds on metrics.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "threshold", "confidence"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Metric identifier constrained at promotion time."
+              },
+              "threshold": {
+                "type": "number",
+                "description": "Target value the metric must satisfy."
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence level for the chance constraint evaluation."
+              }
+            }
+          }
+        },
+        "tie_breakers": {
+          "type": "object",
+          "description": "Secondary ordering rules for resolving ties after ε-Pareto comparison.",
+          "additionalProperties": {
+            "enum": ["min", "max", "min_abs_deviation", "custom"],
+            "description": "Tie-breaking strategy for the corresponding objective."
+          }
+        },
+        "require_calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "description": "TVL 1.1 (RFC 0001 §3.5/§3.6): strict evidence mode — certificate freshness is validated against the hash-covered calibration context. The mandatory ctx_core is implicit and immutable; hash_covered_context selects EXTENSION keys only.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "hash_covered_context": {
+              "type": "array",
+              "description": "Optional extension keys added to the always-hashed ctx_core. TVL 1.2 (RFC 0002 §3.2 item 11) adds 'signal_inputs' — the use-site SignalUse.inputs that select which keys the scoring function reads (conservative: an optional extension key; ctx_core is untouched).",
+              "items": {
+                "enum": ["stage_versions", "model_versions", "budget_assumptions", "cost_assumptions", "signal_inputs"]
+              }
+            },
+            "signal_inputs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+              },
+              "description": "TVL 1.2 (RFC 0002 §3.2 item 11): the ordered value covered under the 'signal_inputs' freshness-context key — the input-key list the calibration held fixed. A composite-bound threshold whose governing SignalUse has non-empty inputs requires this to be present (in hash_covered_context) AND equal to the use-site ordered input list (unbound_signal_inputs)."
+            }
+          }
+        }
+      }
+    },
+    "exploration": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "deprecated": true,
+      "description": "Legacy, non-semantic implementation hints for a runtime. Retained for compatibility; portable TVL requirement specifications should place search strategy, sampling, scheduling, and budgets in a separate implementation profile or run plan.",
+      "properties": {
+        "strategy": {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": true,
+          "description": "Primary search strategy configuration (grid, TPE, CMA-ES, NSGA-II, etc.).",
+          "properties": {
+            "type": {
+              "enum": ["random", "grid", "tpe", "cmaes", "nsga2", "custom"],
+              "description": "Name of the exploration algorithm to run."
+            }
+          }
+        },
+        "initial_sampling": {
+          "type": ["string", "object"],
+          "description": "Optional design for seeding the search (e.g., `latin_hypercube`)."
+        },
+        "parallelism": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Settings related to concurrent trial execution.",
+          "properties": {
+            "max_parallel_trials": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Upper bound on concurrently scheduled trials."
+            }
+          }
+        },
+        "convergence": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional stopping rule based on convergence metrics (e.g., hypervolume improvement).",
+          "properties": {
+            "metric": {
+              "enum": ["hypervolume_improvement", "none"],
+              "description": "Convergence signal monitored during exploration."
+            },
+            "window": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Sliding window size for convergence metric aggregation."
+            },
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Minimum improvement required to continue exploration."
+            }
+          }
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Hard limits on trials, cost, or wall-clock runtime used during exploration (§III.H).",
+          "properties": {
+            "max_trials": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of trials permitted."
+            },
+            "max_spend_usd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Budget cap on spend in USD; optional when cost estimation is available."
+            },
+            "max_wallclock_s": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum wall-clock duration in seconds allowed for the exploration run."
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "TVarDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "domain"],
+      "description": "Single tuned-variable declaration (`(name, type, domain)` in Listing 8).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique TVAR identifier; dotted names allowed for nested structures (§III.A). Pattern is the single normative Ident grammar (RFC 0001 §3.7(2)) — previously unpatterned, which let TVAR names bypass the shared-namespace lexical rule the 1.1 declarations enforce."
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(bool|int|float|enum\\[(str|int|float)\\]|tuple\\[.+\\]|callable\\[[A-Za-z0-9_.-]+\\])$",
+          "description": "Declared TVAR type. TVL 1.0 supports primitive, enum, tuple, and `callable[ProtoId]` forms."
+        },
+        "domain": {
+          "$ref": "#/$defs/DomainSpec",
+          "description": "Domain specification applicable to the declared type; specialised via the environment (§III.A, Appendix X)."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "Scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.1 (RFC 0001 §3.7(6)): optional ownership metadata (node/agent/workflow). Informational — metadata layer (§1.5.3).",
+      "properties": {
+        "node": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "agent": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "workflow": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "CVarDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "calibration"],
+      "description": "TVL 1.1 (RFC 0001 §3.3): calibrated-variable declaration. The optional domain is a VALIDITY domain (closed interval for float ranges; no resolution required) — never a search domain.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique name in the shared tvars ∪ cvars ∪ policies namespace."
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(bool|int|float|enum\\[(str|int|float)\\])$",
+          "description": "Declared CVAR type (primitive or enum; tuple/callable deferred)."
+        },
+        "domain": {
+          "$ref": "#/$defs/DomainSpec",
+          "description": "OPTIONAL validity domain — membership check on the calibrated output."
+        },
+        "calibration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "signal": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "calibrator": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+            "depends_on": {
+              "type": "array",
+              "description": "Tuned parents π ⊆ N_T — a freshness relation, NOT a constraint.",
+              "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+            }
+          }
+        },
+        "governance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "require_calibration": { "type": "boolean" }
+          }
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "GateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "threshold"],
+      "description": "TVL 1.1 (RFC 0001 §3.8): cascade gate. threshold is a namespace reference that MUST resolve to a CVAR (kind-checked by the lints).",
+      "properties": {
+        "kind": { "const": "margin_below" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "PolicyDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "strategy", "stages"],
+      "description": "TVL 1.1 (RFC 0001 §3.8): named operational policy. stages are OPAQUE runtime stage identifiers (environment.bindings precedent), NOT namespace references.",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "kind": { "const": "policy" },
+        "strategy": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Strategy identifier. The schema checks SHAPE only; the v1 strategy REGISTRY (cascade) is enforced by the normative lints — intentional layering."
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Opaque runtime stage identifiers, normatively constrained to the TVL Ident grammar per RFC 0001 §3.8 (StageRef ::= Ident; a later relaxation would be non-breaking, a tightening would not).",
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GateDecl" }
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "Composite": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2/§3.9): a composite-knob declaration. The schema checks SHAPE only and is deliberately OPEN (additionalProperties:true): §3.11 makes the body-field discipline a NORMATIVE LINT (unknown_composite_field for unknown/cross-kind fields; composite_binds_value for a bound value), in 1:1 correspondence with the well-formedness rules. The kind REGISTRY (cascade|ensemble|loop), arm/gate/stop/aggregate registries, namespace references, threshold types, cardinality arity, acyclicity, and the signal/threshold calibration binding are likewise enforced by the lints — the same shape-vs-registry layering RFC 0001 uses for PolicyDecl.strategy, taken one step further so the closed-shape diagnostics are the lints' own (not generic schema_error).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Unique name in the shared tvars ∪ cvars ∪ policies ∪ composites namespace (N_X). Shadowing/duplication enforced by the lints."
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Constructor discriminator. The schema checks SHAPE only; the SEALED v1 registry (cascade | ensemble | loop) is enforced by the lints (unknown_composite_kind) so a fourth kind reports the normative diagnostic rather than a generic schema error."
+        },
+        "placement": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Cascade only; default post. SHAPE-checked here; the pre|post registry and the kind/placement gate symmetry are enforced by the lints."
+        },
+        "arms": {
+          "type": "array",
+          "description": "Cascade/ensemble arms. Non-emptiness (empty_arms) and arity (cascade_arity, cardinality_arity_mismatch) are enforced by the lints.",
+          "items": { "$ref": "#/$defs/ArmSurface" }
+        },
+        "gates": {
+          "type": "array",
+          "description": "Cascade gates. |gates| = |arms| − 1 (cascade_arity) enforced by the lints.",
+          "items": { "$ref": "#/$defs/CompositeGateDecl" }
+        },
+        "cardinality": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Ensemble sampling-form sample count: a namespace reference to a TVAR or CVAR of TVL type int. Required iff |arms| = 1, forbidden if |arms| > 1 (cardinality_arity_mismatch); int-typed (invalid_cardinality_type); k≥1 is resolution-time R9 (invalid_cardinality_value)."
+        },
+        "aggregate": {
+          "$ref": "#/$defs/AggregateDecl",
+          "description": "Ensemble aggregation declaration."
+        },
+        "body": {
+          "$ref": "#/$defs/ArmSurface",
+          "description": "Loop body — a single arm."
+        },
+        "state_keys": {
+          "type": "array",
+          "description": "Loop threaded-state keys (content-free identifiers; [] ⟺ pure body).",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+          }
+        },
+        "stop": {
+          "$ref": "#/$defs/StopDecl",
+          "description": "Loop stop declaration."
+        },
+        "max_iters": {
+          "type": "integer",
+          "description": "Loop iteration bound (totality). max_iters ≥ 1 enforced by the lints (invalid_max_iters)."
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "The ONLY surface provenance key (RFC 0002 §3.7/§3.9): a flat sugar key mapping to Provenance.pattern. The full closed Provenance object is expansion-output metadata (SDK-internal) — never surface syntax."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Opaque operational map — explicitly OUTSIDE the P8 privacy guarantee, exactly as PolicyDecl.parameters (§3.2)."
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
+      }
+    },
+    "ArmSurface": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Bare identifier = a stage arm with empty tuned_params (back-compatible with policies.stages). A bare id colliding with a composite name is rejected by the lints (ambiguous_arm)."
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Object arm form: a stage arm {stage, tuned_params?} or a tagged nesting {composite}. The schema is OPEN (additionalProperties:true) and shape-permissive: §3.9 makes the closed-shape check a NORMATIVE LINT (invalid_arm_shape for unknown/ambiguous keys; missing_composite_ref for an unresolved nesting; invalid_tuned_param for non-TVAR tuned_params).",
+          "properties": {
+            "stage": { "type": "string" },
+            "composite": { "type": "string" },
+            "tuned_params": { "type": "array" }
+          }
+        }
+      ],
+      "description": "TVL 1.2 (RFC 0002 §3.9): the ONE arm surface form, used everywhere an Arm appears (cascade arms, loop body, ensemble arms and judge)."
+    },
+    "SignalSurface": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "TVL 1.2 (RFC 0002 §3.9): the SignalUse surface form (signal_below gates and signal_accept stops). signal names a registry signal exactly as calibration.signal does. The schema is OPEN: §3.2/§3.9 make the closed-shape check a NORMATIVE LINT — a malformed SignalUse (missing 'signal', unknown keys, non-list 'inputs') rejects invalid_signal_use, and stop inputs ⊄ state_keys rejects stop_signal_outside_state.",
+      "properties": {
+        "signal": { "type": "string" },
+        "inputs": {
+          "description": "Declared input keys the signal reads. For stops MUST ⊆ state_keys (stop_signal_outside_state); for pre-gates, opaque input-feature identifiers. A non-list value rejects invalid_signal_use (lint)."
+        }
+      }
+    },
+    "CompositeGateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "threshold"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): a composite cascade gate. The gate-kind registry (margin_below | signal_below — unknown_gate_kind, reused from RFC 0001), kind/placement symmetry, margin-bearing arm typing, signal requirement, and threshold-as-CVAR/int-or-float are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "signal": { "$ref": "#/$defs/SignalSurface" }
+      }
+    },
+    "AggregateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): ensemble aggregation. The aggregate-kind registry (majority_vote | judge_max — unknown_aggregate_kind), the judge requirement (missing_judge iff judge_max), and accept-threshold-as-CVAR are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "judge": {
+          "$ref": "#/$defs/ArmSurface",
+          "description": "REQUIRED iff kind=judge_max; stage- or composite-tagged (missing_judge)."
+        },
+        "accept": { "$ref": "#/$defs/AcceptDecl" }
+      }
+    },
+    "AcceptDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "stat", "threshold"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): optional ensemble acceptance (either aggregate kind). Acceptance direction is ≥ — deliberately DISTINCT from cascade escalation's <. kind=stat_at_least, stat ∈ {vote_margin, vote_agreement} (registries enforced by the lints); threshold MUST resolve to a CVAR.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "stat": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" }
+      }
+    },
+    "StopDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "TVL 1.2 (RFC 0002 §3.2): loop stop. The stop-kind registry (signal_accept | external_accept | exhausted — unknown_stop_kind), the per-kind required fields (missing_stop_threshold / missing_stop_signal iff signal_accept; missing_stop_predicate iff external_accept), the signal-input ⊆ state_keys rule (stop_signal_outside_state), and threshold-as-CVAR/int-or-float are enforced by the lints.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "threshold": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "signal": { "$ref": "#/$defs/SignalSurface" },
+        "predicate": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "REQUIRED iff kind=external_accept: OPAQUE runtime predicate id (StageRef-style — outside P8)."
+        }
+      }
+    },
+    "DomainSpec": {
+      "oneOf": [
+        { "$ref": "#/$defs/EnumVals" },
+        { "$ref": "#/$defs/Range" },
+        { "$ref": "#/$defs/SetVals" },
+        { "$ref": "#/$defs/RegistryRef" },
+        { "$ref": "#/$defs/TupleComponents" }
+      ],
+      "description": "Union type covering the admissible domain encodings described in Listing 9."
+    },
+    "EnumVals": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": ["string", "number", "boolean"] },
+      "description": "Finite set of literal values (used for enums or small discrete spaces)."
+    },
+    "Range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["range"],
+      "properties": {
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number" },
+            { "type": "number" }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Closed numeric interval `[min, max]` (inclusive bounds) from Appendix X."
+        },
+        "resolution": {
+          "type": ["number", "integer"],
+          "exclusiveMinimum": 0,
+          "description": "Optional discretisation step for continuous ranges. A step of 0 enumerates no grid points, so it is rejected here the same way $defs/TupleRange's component resolution already is (issue #24)."
+        }
+      }
+    },
+    "SetVals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["set"],
+      "properties": {
+        "set": {
+          "type": "array",
+          "items": { "type": ["string", "number", "boolean"] },
+          "description": "Explicit enumerated set encoded as an object wrapper (handy for richer metadata)."
+        }
+      },
+      "description": "Wrapper form for explicit discrete sets when additional annotations are needed."
+    },
+    "RegistryRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry"],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Lookup token for registry-backed domains (e.g., callable protocol IDs). Resolved lazily at specialization time."
+        },
+        "filter": {
+          "type": "string",
+          "description": "Optional implementation-defined predicate for filtering registry entries (e.g., 'version >= 2.0')."
+        },
+        "version": {
+          "type": "string",
+          "description": "Optional version constraint for the registry lookup (e.g., '>=1.0.0', '~2.3')."
+        }
+      },
+      "description": "Domain referencing an external registry of admissible values. Resolution: registry_ref → resolve(E_τ, R) → set[values]"
+    },
+    "TupleComponents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["components"],
+      "properties": {
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Tuple domain as a list of component domains. Semantics: Cartesian product of components.",
+          "items": { "$ref": "#/$defs/TupleComponentDomainSpec" }
+        }
+      },
+      "description": "Tuple domain specification encoded as component domains (product semantics)."
+    },
+    "TupleComponentDomainSpec": {
+      "oneOf": [
+        { "$ref": "#/$defs/EnumVals" },
+        { "$ref": "#/$defs/SetVals" },
+        { "$ref": "#/$defs/RegistryRef" },
+        { "$ref": "#/$defs/TupleRange" },
+        { "$ref": "#/$defs/TupleComponents" }
+      ],
+      "description": "Domain forms allowed inside tuple components. Float ranges in tuple components require an explicit resolution."
+    },
+    "TupleRange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["range"],
+          "properties": {
+            "range": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "integer" },
+                { "type": "integer" }
+              ],
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Closed integer interval `[min, max]` (inclusive)."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["range", "resolution"],
+          "properties": {
+            "range": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "number" },
+                { "type": "number" }
+              ],
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Closed numeric interval `[min, max]` (inclusive)."
+            },
+            "resolution": {
+              "type": ["number", "integer"],
+              "exclusiveMinimum": 0,
+              "description": "Grid step used to enumerate tuple-component float ranges."
+            }
+          }
+        }
+      ],
+      "description": "Range domain for tuple components: integer ranges can omit resolution; non-integer ranges require it."
+    },
+    "Objective": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["name", "direction"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Objective identifier (e.g., `quality`, `latency`)."
+            },
+            "metric_ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional stable metric identifier resolved by the evaluation harness (for example `metrics.latency_p95_ms.v1`)."
+            },
+            "direction": {
+              "enum": ["maximize", "minimize"],
+              "description": "Dominance direction for the objective."
+            }
+          }
+        },
+        {
+          "required": ["name", "band"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Objective identifier for banded targets."
+            },
+            "metric_ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional stable metric identifier resolved by the evaluation harness for the banded objective."
+            },
+            "band": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "test", "alpha"],
+              "properties": {
+                "target": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                        { "type": "number" },
+                        { "type": "number" }
+                      ],
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "description": "Closed interval [L, U] representing acceptable band bounds."
+                    },
+                    {
+                      "type": "object",
+                      "required": ["center", "tol"],
+                      "properties": {
+                        "center": {
+                          "type": "number",
+                          "description": "Mean value around which the tolerance band is enforced."
+                        },
+                        "tol": {
+                          "type": "number",
+                          "minimum": 0,
+                          "description": "Non-negative tolerance radius."
+                        }
+                      }
+                    }
+                  ],
+                  "description": "Target region for the banded objective (interval form or center/tolerance)."
+                },
+                "test": {
+                  "enum": ["TOST"],
+                  "description": "Statistical test used for band validation; TVL 1.0 mandates TOST."
+                },
+                "alpha": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Significance level for the band test."
+                }
+              },
+              "description": "Banded objective parameters mirroring Listing 10."
+            }
+          }
+        }
+      ],
+      "description": "Objective definition supporting both scalar dominance and banded (TOST) objectives, with an optional declarative metric reference."
+    },
+    "RuntimeIdent": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "description": "TVL 1.3 runtime identifier (plain ident, no dots; RFC 0003 §4.2)."
+    },
+    "RequirementDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "unit"],
+      "description": "TVL 1.3 (RFC 0003 §4.1, §5.1): runtime requirement declaration. The schema checks closed keys, primitive types, required base keys, and runtime ident pattern; registries and variant-specific fields are checked by lints.",
+      "properties": {
+        "name": { "$ref": "#/$defs/RuntimeIdent" },
+        "kind": { "type": "string", "examples": ["evidence_liveness", "rate_bound", "recovery_time", "zero_tolerance"], "x-enum": ["evidence_liveness", "rate_bound", "recovery_time", "zero_tolerance"] },
+        "unit": { "type": "string" },
+        "among": { "$ref": "#/$defs/PredicateDecl" },
+        "violation": { "$ref": "#/$defs/PredicateDecl" },
+        "max_rate": { "type": "number" },
+        "of": { "$ref": "#/$defs/RuntimeIdent" },
+        "within_hours": { "type": "integer" },
+        "max_stale_windows": { "type": "integer" }
+      }
+    },
+    "PredicateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.3 (RFC 0003 §4.1, §11.4.8): unit predicate (metric, checker, or exact pattern).",
+      "properties": {
+        "metric": { "type": "string" },
+        "exceeds": { "type": "number" },
+        "checker": { "type": "string" },
+        "label_in": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "pattern": { "type": "string", "examples": ["absence", "bounded_existence", "bounded_response", "precedence", "protocol"], "x-enum": ["absence", "bounded_existence", "bounded_response", "precedence", "protocol"] },
+        "a": { "$ref": "#/$defs/SelectorDecl" },
+        "b": { "$ref": "#/$defs/SelectorDecl" },
+        "max_count": { "type": "integer" },
+        "mode": { "type": "string" },
+        "correlate_by": { "type": "string" },
+        "within_ms": { "type": "integer" },
+        "alphabet": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SelectorDecl" }
+        },
+        "states": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RuntimeIdent" }
+        },
+        "start": { "$ref": "#/$defs/RuntimeIdent" },
+        "transitions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TransitionDecl" }
+        },
+        "accepting": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RuntimeIdent" }
+        },
+        "rejecting": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RuntimeIdent" }
+        },
+        "unlisted": { "type": "string" }
+      }
+    },
+    "SelectorDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event"],
+      "properties": {
+        "event": { "type": "string", "examples": ["authorization_granted", "authorization_revoked", "error", "handoff", "model_call", "tool_call", "tool_result", "unit_end", "unit_start"], "x-enum": ["authorization_granted", "authorization_revoked", "error", "handoff", "model_call", "tool_call", "tool_result", "unit_end", "unit_start"] },
+        "tool": { "type": "string" },
+        "status": { "type": "string" },
+        "ref": { "$ref": "#/$defs/RuntimeIdent" }
+      }
+    },
+    "TransitionDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "when", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/RuntimeIdent" },
+        "when": { "$ref": "#/$defs/SelectorDecl" },
+        "to": { "$ref": "#/$defs/RuntimeIdent" }
+      }
+    },
+    "MonitorDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "requirement", "phase", "evidence", "decision"],
+      "properties": {
+        "name": { "$ref": "#/$defs/RuntimeIdent" },
+        "requirement": { "$ref": "#/$defs/RuntimeIdent" },
+        "phase": { "type": "string", "examples": ["promotion", "runtime"], "x-enum": ["promotion", "runtime"] },
+        "profile": { "type": "string" },
+        "applies_to": { "type": "string" },
+        "evidence": { "$ref": "#/$defs/EvidenceDecl" },
+        "window": { "$ref": "#/$defs/WindowDecl" },
+        "decision": { "$ref": "#/$defs/DecisionDecl" },
+        "episode": { "$ref": "#/$defs/EpisodeDecl" },
+        "limits": { "$ref": "#/$defs/LimitsDecl" },
+        "single_producer": { "type": "boolean" }
+      }
+    },
+    "EvidenceDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string", "examples": ["backend_trace_metadata", "customer_side", "episodes", "evaluation_set", "windows"], "x-enum": ["backend_trace_metadata", "customer_side", "episodes", "evaluation_set", "windows"] },
+        "deployment_environment": { "type": "string" },
+        "attribution": { "type": "string" },
+        "resolution": { "type": "string" },
+        "sampling": { "$ref": "#/$defs/SamplingDecl" }
+      }
+    },
+    "SamplingDecl": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "rate"],
+          "properties": {
+            "mode": { "type": "string" },
+            "rate": { "type": "number" }
+          }
+        }
+      ]
+    },
+    "WindowDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tumbling_hours": { "type": "integer" },
+        "grace_minutes": { "type": "integer" }
+      }
+    },
+    "DecisionDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": { "type": "string", "examples": ["clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1"], "x-enum": ["clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1"] },
+        "model": { "type": "string" },
+        "confidence": { "type": "number" },
+        "false_alarm_budget": { "type": "number" },
+        "horizon_days": { "type": "integer" },
+        "min_samples": { "type": "integer" },
+        "max_unresolved_fraction": { "type": "number" },
+        "threshold_factor": { "type": "number" }
+      }
+    },
+    "EpisodeDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "closure_windows": { "type": "integer" },
+        "closure_max_age_hours": { "type": "integer" }
+      }
+    },
+    "LimitsDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_active_obligations": { "type": "integer" },
+        "max_tracked_correlations": { "type": "integer" }
+      }
+    },
+    "ResponseDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "rules"],
+      "properties": {
+        "name": { "$ref": "#/$defs/RuntimeIdent" },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RuleDecl" }
+        }
+      }
+    },
+    "RuleDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trigger", "do"],
+      "properties": {
+        "id": { "$ref": "#/$defs/RuntimeIdent" },
+        "trigger": { "$ref": "#/$defs/TriggerDecl" },
+        "do": { "type": "string", "examples": ["block_action", "degrade", "halt_unit", "notify", "open_next_step", "optimize", "rollback", "suspend", "throttle"], "x-enum": ["block_action", "degrade", "halt_unit", "notify", "open_next_step", "optimize", "rollback", "suspend", "throttle"] },
+        "approval": { "type": "string" },
+        "target": { "type": "string" },
+        "severity": { "type": "string" },
+        "fallback": { "type": "string" },
+        "rate_floor": { "type": "number" },
+        "repeat_after_hours": { "type": "integer" },
+        "max_repeats": { "type": "integer" },
+        "on_check_error": { "type": "string" }
+      }
+    },
+    "TriggerDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monitor", "event"],
+      "properties": {
+        "monitor": { "$ref": "#/$defs/RuntimeIdent" },
+        "event": { "type": "string", "examples": ["burn_breached", "episode_continued", "episode_open_for", "episode_opened", "episode_resolved", "episode_withdrawn", "live_again", "recovery_cancelled", "recovery_overdue", "recovery_recovered", "stale", "unit_violation"], "x-enum": ["burn_breached", "episode_continued", "episode_open_for", "episode_opened", "episode_resolved", "episode_withdrawn", "live_again", "recovery_cancelled", "recovery_overdue", "recovery_recovered", "stale", "unit_violation"] },
+        "hours": { "type": "integer" }
+      }
+    }
+  }
+}

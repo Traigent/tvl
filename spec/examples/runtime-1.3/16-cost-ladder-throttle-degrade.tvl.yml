@@ -1,0 +1,64 @@
+# Scenario 16: On a cost-per-trace breach, warn, ask for an optimization run, throttle admissions to half rate, then degrade to a pinned cheap configuration if still breached after 12 hours.
+tvl:
+  module: examples.runtime13.cost_ladder_throttle_degrade
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: cost_ladder_throttle_degrade_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: trace_cost_1usd
+    kind: rate_bound
+    unit: trace
+    violation: { metric: cost_usd, exceeds: 1.00 }
+    max_rate: 0.03
+  - name: trace_cost_flowing
+    kind: evidence_liveness
+    unit: window
+    of: trace_cost_1usd_prod
+    max_stale_windows: 3
+
+monitors:
+  - name: trace_cost_1usd_prod
+    requirement: trace_cost_1usd
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 6, grace_minutes: 30 }
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      horizon_days: 30
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+    episode: { closure_windows: 2, closure_max_age_hours: 24 }
+  - name: trace_cost_flowing_check
+    requirement: trace_cost_flowing
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: cost_ladder
+    rules:
+      - { id: warn_open, trigger: { monitor: trace_cost_1usd_prod, event: episode_opened }, do: notify, severity: warning }
+      - { id: optimize_open, trigger: { monitor: trace_cost_1usd_prod, event: episode_opened }, do: optimize, approval: standing }
+      - { id: throttle_half, trigger: { monitor: trace_cost_1usd_prod, event: episode_continued }, do: throttle, rate_floor: 0.5, approval: standing }
+      - id: degrade_cheap
+        trigger: { monitor: trace_cost_1usd_prod, event: episode_open_for, hours: 12 }
+        do: degrade
+        approval: human
+        fallback: "25b77fdfe1038b1cf49e6fa0123afc7e95aee8f2b5547b8b5735cd0e62f3d42b"

@@ -2,9 +2,12 @@
   "scopeName": "source.tvl",
   "name": "TVL",
   "patterns": [
-    { "include": "source.yaml" },
     {
-      "match": "^(\\s*)(tvl|tvl_version)(?=\\s*:)",
+      "name": "comment.line.number-sign.yaml",
+      "match": "#.*$"
+    },
+    {
+      "match": "^(\\s*)(tvl|tvl_version|pack|tvl_pack)(?=\\s*:)",
       "captures": {
         "2": { "name": "entity.name.class.tvl" }
       }
@@ -16,9 +19,15 @@
       }
     },
     {
-      "match": "^(\\s*)(tvars)(?=\\s*:)",
+      "match": "^(\\s*)(tvars|cvars|policies|composites)(?=\\s*:)",
       "captures": {
         "2": { "name": "entity.name.type.tvl" }
+      }
+    },
+    {
+      "match": "^(\\s*)(requirements|monitors|responses)(?=\\s*:)",
+      "captures": {
+        "2": { "name": "entity.name.section.tvl.runtime" }
       }
     },
     {
@@ -52,8 +61,37 @@
       }
     },
     {
+      "name": "support.function.tvl.runtime.key",
+      "match": "\\b(module|name|kind|unit|among|violation|max_rate|of|within_hours|max_stale_windows|metric|exceeds|checker|label_in|pattern|a|b|max_count|mode|correlate_by|within_ms|alphabet|states|start|transitions|accepting|rejecting|unlisted|from|when|to|event|tool|status|ref|requirement|phase|profile|applies_to|evidence|window|decision|episode|limits|single_producer|source|deployment_environment|attribution|resolution|sampling|rate|tumbling_hours|grace_minutes|method|model|confidence|false_alarm_budget|horizon_days|min_samples|max_unresolved_fraction|threshold_factor|closure_windows|closure_max_age_hours|max_active_obligations|max_tracked_correlations|rules|id|trigger|do|approval|target|severity|fallback|rate_floor|repeat_after_hours|max_repeats|on_check_error|monitor|hours|monitor_outcomes)\\b(?=\\s*:)"
+    },
+    {
       "name": "support.function.tvl.constraint",
       "match": "\\b(when|then|require|band|target|test|direction|dominance|alpha|adjust|min_effect|chance_constraints|threshold|confidence|strategy|budgets|convergence|domain|components|set|range|resolution|registry|filter|version)\\b"
-    }
+    },
+    {
+      "name": "constant.language.tvl.kind",
+      "match": "\\b(rate_bound|zero_tolerance|recovery_time|evidence_liveness|trace|invocation|episode|window)\\b"
+    },
+    {
+      "name": "constant.language.tvl.pattern",
+      "match": "\\b(absence|bounded_existence|precedence|bounded_response|protocol|wall_clock_latency_ms|cost_usd|total_tokens|tool_calls|single_use|reusable|correlation_id|tool_call_id|reject|ignore|running|completed|failed|rejected|must_refuse|complied|traigent\\.refusal\\.v1)\\b"
+    },
+    {
+      "name": "constant.language.tvl.event",
+      "match": "\\b(unit_start|unit_end|tool_call|tool_result|model_call|handoff|error|authorization_granted|authorization_revoked|episode_opened|episode_continued|episode_open_for|episode_resolved|episode_withdrawn|recovery_overdue|recovery_cancelled|recovery_recovered|burn_breached|stale|live_again|unit_violation)\\b"
+    },
+    {
+      "name": "keyword.control.tvl.action",
+      "match": "\\b(notify|open_next_step|optimize|rollback|throttle|degrade|suspend|block_action|halt_unit)\\b"
+    },
+    {
+      "name": "constant.language.tvl.approval",
+      "match": "\\b(none|standing|human|info|warning|critical|last_certified|static_unavailable|route_to_human|block|allow)\\b"
+    },
+    {
+      "name": "support.constant.tvl.monitor",
+      "match": "\\b(promotion|runtime|backend_v1|agent|tenant_floor|backend_trace_metadata|customer_side|evaluation_set|episodes|windows|unverified|head_sampled_declared|hash_bernoulli_committed_v1|clopper_pearson_exact_v1|clopper_pearson_rational_v2|exact_count_v1|iid_bernoulli_within_window_v1|agent_key_exact_v1|terminal_status_v1)\\b"
+    },
+    { "include": "source.yaml" }
   ]
 }

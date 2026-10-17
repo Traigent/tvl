@@ -10,6 +10,8 @@ number of resolved aliases, turning an OOM into a fast, catchable error.
 
 from __future__ import annotations
 
+from fractions import Fraction
+import math
 from typing import Any
 
 import yaml
@@ -28,8 +30,32 @@ class YAMLLimitError(yaml.YAMLError):
     """Raised when a YAML document exceeds a safety limit (size or alias budget)."""
 
 
+class _YAMLFloat(float):
+    """Float subclass retaining original YAML decimal lexeme when precision was lost in binary64."""
+
+    __slots__ = ("_raw_lexeme", "_unrecoverable_decimal")
+    _raw_lexeme: str
+    _unrecoverable_decimal: bool
+
+    def __new__(cls, value: float, raw_lexeme: str, *, unrecoverable: bool = True) -> "_YAMLFloat":
+        obj = super().__new__(cls, value)
+        obj._raw_lexeme = raw_lexeme
+        obj._unrecoverable_decimal = unrecoverable
+        return obj
+
+    def __copy__(self) -> "_YAMLFloat":
+        return _YAMLFloat(float(self), self._raw_lexeme, unrecoverable=self._unrecoverable_decimal)
+
+    def __deepcopy__(self, memo: Any) -> "_YAMLFloat":
+        return _YAMLFloat(float(self), self._raw_lexeme, unrecoverable=self._unrecoverable_decimal)
+
+
+yaml.SafeDumper.add_representer(_YAMLFloat, yaml.SafeDumper.represent_float)
+yaml.Dumper.add_representer(_YAMLFloat, yaml.Dumper.represent_float)
+
+
 class _BoundedSafeLoader(yaml.SafeLoader):
-    """SafeLoader that also bounds anchor/alias expansion.
+    """SafeLoader that also bounds anchor/alias expansion and retains unrecoverable decimal lexemes.
 
     This is the standard PyYAML billion-laughs mitigation: count alias
     resolutions during composition and raise once the budget is exceeded,
@@ -49,6 +75,25 @@ class _BoundedSafeLoader(yaml.SafeLoader):
                     f"({MAX_YAML_ALIASES}); possible entity-expansion DoS"
                 )
         return super().compose_node(parent, index)
+
+    def construct_yaml_float(self, node: Any) -> Any:
+        val = super().construct_yaml_float(node)
+        if isinstance(val, float) and math.isfinite(val):
+            raw = str(node.value).replace("_", "").strip()
+            try:
+                raw_frac = Fraction(raw)
+                rep_frac = Fraction(repr(val))
+                if raw_frac != rep_frac:
+                    return _YAMLFloat(val, raw, unrecoverable=True)
+            except (ValueError, ZeroDivisionError):
+                return _YAMLFloat(val, raw, unrecoverable=True)
+        return val
+
+
+_BoundedSafeLoader.add_constructor(
+    "tag:yaml.org,2002:float",
+    _BoundedSafeLoader.construct_yaml_float,
+)
 
 
 def safe_load(source: Any) -> Any:

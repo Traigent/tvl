@@ -167,6 +167,14 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 
     Review the current TVL surface, including types, constraints, objectives, and promotion policy.
 
+-   :material-pulse: **[Requirements, Monitors and Responses (TVL 1.3 draft)](guides/requirements-monitors-responses.md)**
+
+    State what an agent must keep doing in production, which evidence checks it, and what should happen when it stops.
+
+-   :material-book-clock: **[Book Chapter 6 · Requirements in Production](https://github.com/Traigent/tvl/blob/main/tvl_book/website_content/book/chapter-06-requirements-in-production.md)**
+
+    The TVL 1.3 draft told as stories: a latency promise, an authorization before every charge, a release gate on the same requirement, and a response ladder under an organisation floor.
+
 -   :material-code-braces: **[Example Walkthroughs](examples/walkthroughs.md)**
 
     Follow the canonical examples for RAG bots, routers, tool-use agents, validation fixtures, and overlays.

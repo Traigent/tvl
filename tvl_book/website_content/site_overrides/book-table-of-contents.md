@@ -11,6 +11,7 @@
 - [Chapter 03 · Constraints](tvl/chapter-03-constraints.md)
 - [Chapter 04 · Patterns](tvl/chapter-04-patterns.md)
 - [Chapter 05 · Integration](tvl/chapter-05-integration.md)
+- [Chapter 06 · Requirements in Production (TVL 1.3 draft)](tvl/chapter-06-requirements-in-production.md)
 - [Resources · Tools and Plug-ins](tvl/resources.md)
 - [Hands-on Labs](tvl/labs.md)
 - [Guided Walkthrough](tvl/walkthrough.md)

@@ -10,3 +10,7 @@ This suite captures a minimal set of black-box cases that the loader and validat
 - `cases/measurements/valid.yml` — measurement bundle satisfying objectives
 
 `expected/results.json` records executable expected outcomes. `tests/test_conformance_suite.py` runs the structural, configuration, measurement, and promotion cases against the reference implementation.
+
+## Runtime (TVL 1.3)
+
+The DRAFT 1.3 language cases live in [`cases/runtime/README.md`](cases/runtime/README.md). Their independent public registry covers declaration tooling and projection; passing them never enables an engine.

@@ -50,8 +50,9 @@ For TVL to serve as a trustworthy specification language, we must establish:
 - **§9**: Promotion Semantics — acceptability, dominance, and promotion correctness
 - **§10**: Conformance Requirements — behavior required of implementations
 - **§11**: Future Work — proposed extensions, not current requirements
+- **§12**: Runtime Semantics (TVL 1.3) — draft requirements, monitors, obligations, and governed responses
 
-Sections 2–6 and 9 specify **what** TVL constructs mean. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, sample allocation, and candidate scheduling are outside this formal language contract.
+Sections 2–6 and 9 specify **what** core TVL constructs mean; §12 specifies the optional TVL 1.3 runtime extension. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
 
 ### 1.4 Scope of Formal Guarantees
 
@@ -83,6 +84,8 @@ The formal semantics and soundness proofs in this document apply to the **core T
 **Rationale**: Registry domains require interaction with external state (registries), which introduces semantic complexity beyond the scope of this static specification. Callable types require a protocol typing system that would significantly expand the formalization. These features are valuable for practical use but are excluded from the formally verified core to keep the proofs tractable.
 
 **cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the Lean proof tree (`proofs/`) simply predates RFC 0001 and RFC 0002 and has never been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/*.lean` mentions `composite`, `cvar`, or `policy`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
+
+**Runtime extension scope (TVL 1.3, DRAFT)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
 
 ### 1.5 Field Categorization and Semantic Layers
 
@@ -1502,6 +1505,20 @@ An implementation MAY use the informative SMT encoding in §8, another solver en
 4. Verify evaluation results include sample size for proper df calculation
 5. Distinguish demonstrated failure (`Reject`) from insufficient evidence (`NoDecision`)
 
+### 10.6 Runtime Monitor Requirements
+
+An implementation claiming support for the draft TVL 1.3 language MUST:
+
+1. Parse and validate the three runtime blocks and `tvl_pack` with the schema/lint layering and closed diagnostics of RFC 0003 §5; check the sealed kind/source/phase/method combinations and references in §12.1; refuse unsupported constructs at every reader entrypoint rather than ignoring or stripping them.
+2. Leave every TVL 1.2 module, diagnostic and promotion result unchanged (§12.13, Theorem 12.1).
+3. Compose only compatible identities and schedules, tighten fields in their declared orders, and reject an unreachable composition (§12.12). Organization floors belong in a separate `tvl_pack`.
+4. Compile only to the closed hosted projection (§12.13), fail closed on an unresolved alias or unavailable token map, and test a privacy canary for every projection row. Observability carries no privacy guarantee; customer-side content checks never consume content-bearing observability evidence.
+5. Join opt-in promotion monitors with §9 as specified in §12.7; leave a module with no such monitors unchanged. A built-in promotion evaluator decides only what Definition 12.16 allows and otherwise returns `NoDecision`.
+6. Never present validation, compilation or language conformance as enablement of an evaluator or authorization of a response action.
+7. Supply conformance cases for parsing, lints, composition, codecs, compilation, projection and the promotion join (RFC 0003 §13). Existing TVL 1.2 results MUST remain unchanged.
+
+An evaluator claiming to implement a TVL 1.3 evaluator profile MUST meet the contracts of §§12.4–12.11. How it does so is specified by that profile, outside this document.
+
 ---
 
 ## 11. Future Work
@@ -1520,15 +1537,480 @@ Potential language extensions requiring formal treatment:
 
 1. **Conditional domains**: Domain that depends on other TVAR values
 2. **Hierarchical modules**: Module composition and refinement
-3. **Temporal constraints**: Constraints over configuration sequences
+3. **General temporal constraints**: Constructs beyond the sealed runtime catalogue in §12; the TVL 1.3 monitoring and response semantics themselves are specified there, not deferred
 
 ### 11.3 Verification
 
 Connecting TVL to verification frameworks:
 
-1. **Runtime monitoring**: Verify configurations satisfy constraints at deployment
+1. **Deployment verification**: Establish implementation and deployment evidence for the runtime semantics in §12
 2. **Invariant checking**: Prove optimizer preserves feasibility
 3. **Optimizer profiles**: Separately specified, algorithm-specific guarantees on exploration efficiency
+
+---
+
+## 12. Runtime Semantics (TVL 1.3)
+
+| | |
+|---|---|
+| **Status** | **DRAFT** — RFC 0003; design decisions D1–D5 recorded 2026-10-16 (RFC 0003 §16.1) |
+| **Target language version** | TVL 1.3, conservative extension of TVL 1.2 |
+| **Semantic layers** | Requirements → unit predicates on complete histories → window verdicts → episodes and obligations → declared responses |
+| **Defined here** | The meaning of runtime declarations on complete histories, the meaning of every parameter, and the contract each verdict, episode, obligation state and response effect must satisfy |
+| **Not defined here** | How an evaluator decides from partial, unordered or late evidence, which partial-evidence conditions leave a window undecided and in which order, how it accounts for units it cannot classify, how committed sampling selects and commits, how it tracks episodes and obligations over time, and how a controller executes and arbitrates responses. These belong to an evaluator profile outside TVL (Definition 12.7) |
+| **Guarantee boundary** | Conditional statements in §12.14 about the language and about exact binomial tests; no claim of completed mechanization, conformance, or production enablement |
+
+Definitions in this section extend, rather than replace, §§2–9. The three optional blocks are `requirements`, `monitors`, and `responses`. A requirement states a property; a monitor binds it to evidence and a decision method; a response declares allowed reactions. Runtime declarations inhabit a separate typing context `Γ_rt` and never enter the TVAR context `Γ`, `Config(Δ,E_τ)`, `F^str`, the SMT encoding, or ε-dominance. Write `erase(M)` for the otherwise unchanged legacy semantic module after removing these extension blocks (§12.13). General temporal logic is a mathematical interpretation device, not additional surface syntax.
+
+TVL is a specification language. This section says what a requirement means on a unit's complete history and what each verdict promises. Verdicts themselves are produced by an evaluator profile outside TVL, which must meet the contracts stated here. TVL's own tools validate, compose and compile declarations; the only verdicts they compute are those of the release gate (Definition 12.16), which decides promotion monitors from complete counts and defers everything else.
+
+### 12.1 Runtime Domains and Well-formedness
+
+**Definition 12.1 (Runtime domains)**.
+
+```
+Class       = {sat, vio, unres}
+Population  = {true, false, unknown}
+Verdict     = {MET, BREACHED} ∪ {UNKNOWN(r) | r is a closed reason code}
+ReqKind     = {rate_bound, zero_tolerance, recovery_time, evidence_liveness}
+UnitKind    = {trace, invocation}
+Phase       = {promotion, runtime}
+Method      = {clopper_pearson_rational_v2, clopper_pearson_exact_v1, exact_count_v1}
+```
+
+`excluded` is a selection outcome, not a fourth classification. Write a unit as `v` to distinguish it from unresolved count `u`; write confidence as `c_conf` to distinguish it from configuration `c`. All decimal parameters in the rational method denote exact members of `ℚ`. Counts are natural numbers; durations are nonnegative rational multiples of a declared time unit. Runtime names, checker labels, and correlation keys are distinct from TVAR values.
+
+Surface syntax, syntax-level closed enums and lexical constraints are normative in [RFC 0003](rfc-0003-runtime-requirements-monitors-responses.md), including status, severity, code identifiers, fingerprints, labels, SDK version strings, and checker registries. This section interprets their parsed semantic values rather than defining competing syntax. A response rule's event selector is its `trigger` field; a protocol transition's event selector is its `when` field (RFC §4.1). Diagnostic codes are defined only by RFC §5; Appendix B.4 supplies cross-references for codes explicitly named here.
+
+**Definition 12.2 (Well-formed runtime contract)**. `WF_rt(M)` requires finite, uniquely named declarations, correctly typed references, acyclic monitor dependencies, deterministic selectors/checkers under their declared contracts, and the following compatibility table.
+
+| Requirement | Evidence source | Phase | Decision method |
+|---|---|---|---|
+| `rate_bound` | `backend_trace_metadata` with `backend_v1`; `customer_side`; `evaluation_set` | runtime, or promotion with `evaluation_set` | rational `_v2`, or float `_v1` only with `backend_v1` |
+| `zero_tolerance` | `customer_side`; `evaluation_set` | runtime, or promotion with `evaluation_set` | `exact_count_v1` |
+| `recovery_time` | `episodes` | runtime | `exact_count_v1` |
+| `evidence_liveness` | `windows` | runtime | `exact_count_v1` |
+
+For a rate monitor, `0 < θ < 1`, `0 < α_w ≤ 1`, `0 ≤ c_conf ≤ 1`, `0 ≤ f ≤ 1`, and `min_samples ≥ 1`; a profile may impose narrower domains. `θ` is the maximum violation rate and `f` is `max_unresolved_fraction`. Episode parameters satisfy `K ≥ 1` and positive closure age. Recovery deadline `T` and liveness allowance `L` are positive integers in their declared units. Resource limits are positive and part of the compiled contract. Unsupported domains or missing evidence contracts are refused, never interpreted by an unspecified default.
+
+`zero_tolerance` restricts its violation predicate to `exact_pred`; `rate_bound` may use a metric, exact pattern, or checker predicate. `backend_v1` fixes `rate_bound`, `unit: trace`, metric `wall_clock_latency_ms`, `source: backend_trace_metadata`, `method: clopper_pearson_exact_v1`, `sampling: unverified`, and the hosted latency profile's parameter domains and defaults; it forbids `among` and `threshold_factor`. It is not a synonym for the rational profile. A checker runs customer-side, including when evaluating an evaluation set. `single_producer: true` declares that every event of a unit is emitted by one producer; a unit that contradicts the declaration is not classified on its strength. A protocol is a finite deterministic automaton with declared handling of unlisted transitions. `trigger.hours` is present iff the trigger is `episode_open_for`; the referenced monitor must emit the selected event.
+
+### 12.2 Units, Events, and Complete Histories
+
+**Definition 12.3 (Units)**. A unit is what a requirement counts. Its kind is declared by `unit`:
+
+- **`trace`**: one end-to-end handling of one request by the agent's deployment, recorded as one trace: from receipt of the request to the final response, including every model call, tool call and handoff made for it, in every component that contributes to it.
+- **`invocation`**: one execution of the monitored agent itself: one call of its entry point, from receiving its input to returning its output, including the calls it makes.
+
+A trace contains one or more invocations; when the agent is called once per request the two coincide. A requirement's counts and rate are over units of its declared kind, and `unit` is part of requirement identity (§12.12): a trace requirement and an invocation requirement with the same predicate are different requirements. Each unit has metadata: agent key, deployment environment label, start time, end time, final status, and the metric values of RFC §4.1 (`wall_clock_latency_ms` is end time minus start time). `episode` and `window` are the lifecycle units of obligation requirements (§12.9).
+
+**Definition 12.4 (Events)**. The closed event alphabet `agent_trace_v1` is
+
+```
+{unit_start, unit_end(status), tool_call(tool), tool_result(tool,status),
+ model_call, handoff, error(class), authorization_granted(ref), authorization_revoked(ref)}.
+
+e = (producer, sequence, type, time, unit_id, correlation_id?, tool_call_id?, causal_parent?, fields)
+```
+
+| Event | Marks |
+|---|---|
+| `unit_start` | the unit begins |
+| `unit_end(status)` | the unit ends; `status` is its final status, one of `completed`, `failed`, `rejected` (`running` is not final) |
+| `tool_call(tool)` | the agent requests the tool `tool`, a code identifier (function, module or qualified name); carries the call's `tool_call_id` |
+| `tool_result(tool,status)` | the result of a tool call returns with `status`; carries the same `tool_call_id` as its call |
+| `model_call` | the agent calls a model |
+| `handoff` | the agent hands control to another agent or to a person |
+| `error(class)` | an error occurs; `class` is local-only metadata, not selectable and not exported |
+| `authorization_granted(ref)` | an authorization of kind `ref` is granted inside the unit, for example a payment authorization or a user consent |
+| `authorization_revoked(ref)` | an authorization of kind `ref` is withdrawn |
+
+Events are emitted by the agent's customer-side instrumentation: an SDK, the agent framework, or the agent's own code. A **producer** is one emitting component with its own increasing sequence numbers; `(producer, sequence)` identifies an event. `time` is the producer's timestamp in milliseconds. `causal_parent`, when the producer knows it, identifies the event that caused this one; it records cause, not time. Hosted metadata monitors read no events (§12.5).
+
+- **`ref`** is an identifier the author chooses for a kind of authorization; the instrumentation stamps it on the matching grant and revocation events. A selector with `ref` matches only events carrying that ref.
+- **`correlation_id`** is an optional identifier the instrumentation stamps on the events of one logical transaction inside a unit (one payment, one booking). **`tool_call_id`** identifies one tool call and is carried by that call and its result.
+- **`correlate_by`** ∈ {`unit`, `correlation_id`, `tool_call_id`} (default `unit`) selects the key under which a predicate matches events: two events match only if they carry the same key. Under `unit` every event of the unit has the unit's key. An event that lacks the selected key matches no event under any key.
+
+A selector `s` tests the declared event type and optional tool/status/ref fields, subject to RFC §4's applicability rules: `tool` applies only to `tool_call`/`tool_result`, `status` only to `unit_end`/`tool_result`, and `ref` only to `authorization_granted`/`authorization_revoked`. A selector with `event: error` matches the event type only.
+
+**Definition 12.5 (Complete history)**. The complete history `h` of a unit is its full, finite sequence of events in execution order — the order in which they actually happened, a total order — together with its metadata and, for each checker predicate position (`among` or `violation`), the label the checker returned for that position. Write `before_h(a,b)` when `a` precedes `b` in `h`. Unit predicates (§12.3) are defined on complete histories. An evaluator usually observes less than the complete history: events may be missing, late, or unordered across producers. What it may conclude from such evidence is governed by the classification contract (Definition 12.8), not by the predicates themselves.
+
+### 12.3 Complete-History Unit Predicates
+
+**Definition 12.6 (Violation predicates)**. For a complete history `h`, `V_q(h) ∈ 𝔹` denotes violation of requirement predicate `q`. Event sets below use matching correlation keys. A metric/checker value must be present, resolved, and valid under its declared source contract.
+
+| Predicate `q` | `V_q(h) = true` iff |
+|---|---|
+| `metric m exceeds ℓ` | the resolved metric `md_h.m > ℓ` (strict inequality) |
+| `absence(a)` | at least one event matches `a` |
+| `bounded_existence(a,B)` | more than `B` distinct events match `a` |
+| `precedence(a,b,mode,correlate_by)` | no legal authorization assignment exists for all matching `b` events, as defined below |
+| `bounded_response(a,b,Δ,correlate_by)` | no legal one-to-one timely response assignment covers all matching `a` events |
+| `protocol(DFA)` | an ordered run reaches a rejecting state, or ends outside the accepting states |
+| `checker id label_in Λ` | the label returned by checker `id` for the `violation` position belongs to `Λ` |
+
+A legal precedence assignment maps each matching `b` to a matching `a` of the same correlation key with `before_h(a,b)`, such that `a` is not revoked before `b`. A **revocation** matches a grant iff it is an `authorization_revoked` event with the same `ref` and the same correlation key as an `authorization_granted` event and occurs after it; it revokes every such earlier grant for every later `b`. A revocation affects only `authorization_granted` events: when the `a` selector names another event type, revocations do not apply. `single_use` (default) requires an injective assignment: an `a` can authorize at most one `b`. `reusable` drops injectivity; a reusable grant remains available until revoked. A consumed single-use grant is not restored by a later event.
+
+A legal bounded-response assignment is an injective map from matching `a` events to matching `b` events of the same key, with `before_h(a,b)` and `0 ≤ t_b − t_a ≤ Δ`. A response exactly at the deadline counts. One response cannot discharge two obligations. Both predicates ask whether some assignment exists; neither depends on a particular matching order.
+
+For a DFA `(Q,Σ,δ,q₀,F,R)`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
+
+The population expression `among` is interpreted as a membership test `A_q(h)`: for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
+
+**Prefix-fixed violations.** The violations of `absence`, `bounded_existence`, `precedence` and a `protocol` reaching a rejecting state are fixed by a finite prefix of the history: once a prefix violates, every extension violates. The violations of `bounded_response`, a `protocol` ending outside its accepting states, a metric threshold and a checker label are not; they depend on the whole unit. Only prefix-fixed violations can be acted on before an effect (§12.10).
+
+### 12.4 Unit Classifications and Evaluator Profiles
+
+**Definition 12.7 (Evaluator profile)**. An evaluator profile is a named, versioned specification, outside TVL, of a procedure that turns observed evidence about the units of a compiled contract into unit classifications, window verdicts, episode and obligation states, and response directives. Monitors select an evaluator profile through their declared method, evidence source and `profile`. TVL does not specify these procedures. It fixes the contracts below, which every conforming evaluator profile must meet; an evaluator that cannot meet them for some evidence returns `unres` or `UNKNOWN(r)` for it. TVL's public tools contain one minimal evaluator, the release gate of Definition 12.16.
+
+**Definition 12.8 (Classification contract)**. For a unit `v` with complete history `h`, an evaluator's classification is a claim about `h`:
+
+```
+classify(v) = vio       ⟹  A_q(h) ∧ V_q(h)
+classify(v) = sat       ⟹  A_q(h) ∧ ¬V_q(h)
+classify(v) = excluded  ⟹  ¬A_q(h)
+classify(v) = unres     asserts nothing.
+```
+
+The evaluator usually has not observed all of `h`; each claim must hold whatever the unobserved part of `h` is. Thus a missing event never establishes satisfaction, and a missing response never establishes a violation. A unit whose population membership is unknown is `unres`. An excluded unit contributes to neither `n`, `k` nor `u`. A unit whose events exceed a declared resource limit (`max_active_obligations`, `max_tracked_correlations`) need not be classified and is then `unres`.
+
+A local guard (`block_action`, `halt_unit`) acts on a unit only when, before the effect it would prevent, the evaluator has established `A_q(h)` and a prefix-fixed violation of `q` (§12.3) on events that are already part of the unit. When it cannot establish both at that moment, the rule's declared `on_check_error` decides. A guard never acts on a unit with `A_q(h)` false.
+
+### 12.5 Windows, Populations, Sampling, and Report Counts
+
+**Definition 12.9 (Windows and populations)**. A runtime window monitor evaluates fixed tumbling windows `w=[s,s+W)` aligned to multiples of `W` hours from UTC midnight; `due(w)=s+W+grace`. A unit is **attributed** to the monitor's agent by the declared rule; under `agent_key_exact_v1`, iff exactly one active agent in the monitor's deployment scope has the unit's agent key. Unattributed units belong to no window's `n`, `k`, `u` or `pl`; they are reported only as `unattributed`. An attributed unit in the monitor's environment belongs to the window that contains its start time. An attributed unit whose start time is unknown cannot be placed by start time and is **unplaceable** (`pl`); it is never counted as resolved. A window's **population** is its placed units for which `A_q` holds.
+
+Hosted metadata monitors (`backend_v1`) read only unit metadata. Their violation predicate is wall-clock latency strictly exceeding the threshold. Classification is supplied by the evaluator profile (Definition 12.7), subject to the guarantees of Definition 12.8.
+
+**Definition 12.10 (Sampling declarations)**. Selection operates on whole units before their outcomes exist, never on selected events of an otherwise unobserved unit. The closed sampling modes mean:
+
+1. `unverified`: the hosted latency profile's census of ingested traces, with no assertion that upstream capture is independent of outcomes.
+2. `head_sampled_declared(r)`: each unit is selected or not at its start, before its outcome exists, with probability `r`, and the decision is recorded on the unit. A unit selected after its outcome is known (tail sampling) contradicts the declaration; a window containing one is `UNKNOWN(sampling_biased)`.
+3. `hash_bernoulli_committed_v1(r)`: each unit is selected with probability `r` by a selection that is committed before the window starts, depends on nothing about the unit's outcome, and can be checked after the window. The selection rule and its commitment belong to the evaluator profile; the mode is usable only where an evaluator profile supports it. Any secret input of the selection stays customer-side.
+
+An omitted `sampling` on `customer_side` means census: every unit in scope is selected. A sampling rate below one is never census evidence. Fixed-list strata are separate monitors with separate allocations; there is no implicit pooling. Sampling supports rate claims under the stated model, not “always” or “never” prevention. Customer reports are `client_attested`; metadata recount and verified configuration attribution are different evidence qualifications.
+
+**Definition 12.11 (Report counts)**. A customer-side window report (RFC §11.4.3) is bound to a contract digest, monitor reference, monitor revision and window, and states the counts
+
+```
+selected      attributed in-scope units that sampling selected (all of them for census)
+reported      selected units the report accounts for
+dropped       selected units the report does not account for
+n             reported in-population units classified sat or vio;   k = those classified vio
+u_reported    reported units classified unres (including unknown population membership)
+pl            reported units that are unplaceable
+excluded      reported units with A_q false
+unattributed  units outside the attributed partition; in no other count
+tail_sampled  reported units selected after their outcome was known (head_sampled_declared only)
+
+selected = reported + dropped,      reported = n + u_reported + pl + excluded,      0 ≤ k ≤ n,
+tail_sampled ≤ reported.
+```
+
+The identities are validity conditions on a report; a report that violates one is rejected (`runtime_report_conservation`). Each selected unit identifier counts once. Units the report does not account for, and units it reports as unresolved, are units the evaluator could not classify: under the verdict contract (Definition 12.13) they can never strengthen a verdict. How an evaluator profile carries them into its decision counts is its applied counting rule, not part of TVL.
+
+### 12.6 Window Verdicts and Decision Methods
+
+**Definition 12.12 (Exact binomial tails)**. For `N ∈ ℕ`, `0 ≤ j ≤ N`, and `p ∈ [0,1]`, define
+
+```
+b(N,p,i) = (N choose i) · p^i · (1−p)^(N−i)
+T⁺(N,p,j) = ∑_{i=j}^N b(N,p,i)       (* upper tail, including j *)
+T⁻(N,p,j) = ∑_{i=0}^j b(N,p,i)       (* lower tail, including j *).
+```
+
+Empty upper tails are zero and lower tails at or above `N` are one. Endpoints use `0^0=1`. For rational inputs every summand, sum, and comparison is rational; casting into real probabilities preserves the value. No inverse beta approximation or floating-point tolerance appears in `clopper_pearson_rational_v2`.
+
+**Definition 12.13 (Verdict contract)**. A window verdict is a claim about the window's population. Write `p_w` for the window's violation rate under the declared model `iid_bernoulli_within_window_v1`: within one window, the population's units violate independently, each with probability `p_w`. The claims are:
+
+| Kind and method | `BREACHED` promises | `MET` promises |
+|---|---|---|
+| `rate_bound`, `clopper_pearson_rational_v2` | if `p_w ≤ θ`, the probability that the window is `BREACHED` is at most `α_w`; over the `m` predesignated windows of a horizon, the probability of any false `BREACHED` is at most `α_FA` | if `p_w ≥ θ`, the probability that the window is `MET` is at most `1 − c_conf` |
+| `rate_bound`, `clopper_pearson_exact_v1` | the hosted latency profile's floating-point computation of the same tests (Definition 12.14); no probability bound is claimed | as for `BREACHED` |
+| `zero_tolerance`, `exact_count_v1` | at least one unit of the population violates (`V_q(h)` for some population unit) | the window's population was completely covered — census selection, every selected unit accounted for and classified, none unplaceable, every unit's history complete — it has at least `min_samples` units, and none violates |
+
+`UNKNOWN(r)` promises neither, with a closed reason `r`. The rate claims assume sound classifications, outcome-independent selection, and that each window's violation count is stochastically dominated by `Bin(N,θ)` when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`); IID Bernoulli units are a sufficient special case. `sampling: unverified` does not satisfy the selection assumption by its name. Units the evaluator could not classify never strengthen a verdict: the promises hold whatever their complete histories turn out to be.
+
+Each window reason names why a window carries no verdict:
+
+| Reason | Meaning |
+|---|---|
+| `late_evaluation` | the window was not decided within its lateness allowance: `2W` after `due(w)` (a decision at exactly `2W` is timely) |
+| `revision_gap` | the hosted latency profile could not decide the window because a profile revision interrupted it |
+| `insufficient` | the window has fewer units than `min_samples` asks for, or none |
+| `unplaceable` | more of the window's units could not be placed by start time than `max_unresolved_fraction` tolerates |
+| `unresolved` | more of the window's units could not be classified than `max_unresolved_fraction` tolerates |
+| `sampling_biased` | selection contradicted the declared sampling (Definition 12.10) |
+| `inconclusive` | the evidence supports neither verdict |
+| `incomplete` | zero tolerance only: no violation is established and the window is not completely covered |
+
+Which of these conditions an evaluator profile checks, how it measures them from partial evidence, and in which order it applies them relative to each other and to the tests of Definition 12.14 are that profile's, within the contract above.
+
+Parameter meanings: `min_samples` is the smallest window, in units, that the author accepts as the basis of a rate verdict, and the smallest population for a zero-tolerance `MET`; a zero-tolerance `BREACHED` needs one established violation at any size. `max_unresolved_fraction` `f` is the largest share of a window's units that the author tolerates as unclassifiable, and separately as unplaceable. How an evaluator profile counts units against these two parameters, including whether unresolved units count toward `min_samples`, is its counting rule (Definition 12.7); under `backend_v1` it is the hosted latency profile's. `grace_minutes` is how long after the window's end evidence for it still counts; at `due(w)` the window's evidence is final, and evidence that arrives later never changes a recorded verdict. `horizon_days` `H` and `false_alarm_budget` `α_FA` fix the predesignated statistical looks: for `W` dividing 24,
+
+```
+m = 24H/W ∈ ℕ,  m≥1;      α_w = α_FA/m.
+```
+
+More generally the same bound requires a finite predesignated family with `∑_w α_w ≤ α_FA`. Promotion has one look (§12.7). Revisions, repeat evaluations, new strata, or new burn monitors cannot acquire an unaccounted statistical look. A horizon bound is not an infinite-lifetime bound; multiple monitors require a separately stated aggregate budget (e.g. the sum of their budgets).
+
+**Definition 12.14 (Decision methods)**. The methods are named tests; their plain statistical meaning is:
+
+- **`clopper_pearson_rational_v2`**: the exact one-sided binomial tests, in exact rational arithmetic. With `N` counted units of which `k` violate and every counted unit resolved, the window is `BREACHED` iff `k ≥ 1 ∧ T⁺(N,θ,k) < α_w` (the probability of at least `k` violations at rate `θ` is below `α_w`), otherwise `MET` iff `k < N ∧ T⁻(N,θ,k) ≤ 1 − c_conf` (the one-sided Clopper–Pearson upper confidence bound at confidence `c_conf` is at most `θ`), and otherwise `UNKNOWN(inconclusive)`. These are the tests of a window that is decided; which windows an evaluator profile leaves undecided with a reason of Definition 12.13 is that profile's. Equality of the upper tail with `α_w` is not a breach; equality of the lower tail with `1−c_conf` passes; the two conditions cannot both hold when `c_conf ≥ α_w`. When some counted units are unresolved, the evaluator profile applies its own counting rule, subject to the verdict contract.
+- **`clopper_pearson_exact_v1`**: the same two tests as the hosted latency profile computes them, in IEEE-754 floating point through inverse beta functions. It is defined by that computation, not by ideal real arithmetic; the name `_exact_v1` is a stored method identifier, not a claim of exact machine arithmetic. The two methods can disagree at near-ties, and no theorem relates them.
+- **`exact_count_v1`**: deterministic counting. For zero tolerance: `BREACHED` on one established violation; `MET` only on a completely covered window of at least `min_samples` units with none violating; otherwise `UNKNOWN(insufficient)` or `UNKNOWN(incomplete)`; a window not decided within its lateness allowance is `UNKNOWN(late_evaluation)`. A census-complete empty window is `UNKNOWN(insufficient)`, never `MET`: the language does not conclude `MET` from no traffic, so an idle or suspended agent cannot close a breach episode or satisfy recovery through empty windows. For obligation monitors the method decides the obligation state of Definitions 12.18 and 12.20.
+
+**Burn monitors.** A burn monitor is a separate rational-method monitor on the same requirement, with independent schedule/allocation and `threshold_factor=b`, where `b>1`, `bθ<1`, and breach is reachable at `min_samples`. Its breach test uses `bθ` in place of `θ`; it has no `MET` test and no episode, so a window it decides without a breach is `UNKNOWN(inconclusive)`. `burn_breached` is emitted on the first window of each streak of adjacent `BREACHED` windows; any non-`BREACHED` window or missing adjacent decision ends the streak. A burn monitor never opens, continues, or closes a primary episode and is forbidden under `backend_v1`.
+
+### 12.7 Promotion Monitors and the Release Gate
+
+**Definition 12.15 (Promotion refinement)**. A promotion monitor evaluates the candidate on the named evaluation set once. It has no window, horizon, or episode; `m=1`, `α_w=α_FA`, default `min_samples=1`, default `max_unresolved_fraction=0`. A rate monitor uses the rational method; a zero-tolerance monitor uses the compatible exact-count method. Its counts come from `monitor_outcomes[monitor_name]={n,k,u,pl}` in the candidate measurement bundle, produced by the evaluation harness (RFC §11.4.2); a missing/invalid outcome cannot pass. Zero-tolerance `MET` additionally requires the explicit boolean field `monitor_outcomes[monitor_name].complete: true`, the harness's attestation that every evaluation-set unit is accounted for, together with `u=0`, `pl=0`, and `N≥min_samples`. Neither omitted nor false `complete` can establish `MET`, and `u=0 ∧ pl=0` does not supply a default completeness assertion. Runtime lateness and window guards do not apply. No incumbent `monitor_outcomes` are required by this candidate-only refinement.
+
+Let `D₁₂` be the existing §9.7 decision on `erase(M)` and valid legacy evidence. Set `J(MET)=pass`, `J(BREACHED)=Reject`, `J(UNKNOWN(r))=NoDecision(r)`. After preserving validation errors, define
+
+```
+D₁₃ = Reject       if D₁₂=Reject or any promotion monitor maps to Reject
+    = NoDecision   otherwise, if D₁₂=NoDecision or any maps to NoDecision
+    = D₁₂          otherwise.
+
+Promote₁₃ ⟺ Promote₁₂ ∧ ∀μ ∈ PromotionMonitors(M), verdict_μ=MET.
+```
+
+Thus any rejection dominates any inconclusive monitor. Passing all monitors does not turn an existing `NoDecision` into promotion. A module without promotion monitors has exactly §9.7's meaning. Chance constraints retain Definition 9.8 and their existing failure behavior; no chance constraint is deleted or silently replaced by a monitor on the same quantity (`chance_constraint_shadowed` is a warning). Promotion monitors are acceptability evidence, not additions to the objective vector or the dominance relation.
+
+**Definition 12.16 (Release gate)**. The public release gate is the evaluator of TVL's own tools (`tvl-ci-gate`, `tvl-measure-validate`). It decides a promotion monitor only from complete counts, using the standard exact binomial tests, and defers everything else. For a valid outcome `{n,k,u,pl}` (natural numbers, `k ≤ n`; anything else is the readiness issue `missing_monitor_counts`), apply the first matching row:
+
+| Order | Condition | Result |
+|---|---|---|
+| 1 | `u > 0` or `pl > 0` | `UNKNOWN(engine_required)` |
+| 2 | zero tolerance and `complete` is not `true` | `UNKNOWN(incomplete)` |
+| 3 | zero tolerance and `k ≥ 1` | `BREACHED` |
+| 4 | `n < min_samples` | `UNKNOWN(insufficient)` |
+| 5 | zero tolerance | `MET` |
+| 6 | rate bound and `k ≥ 1 ∧ T⁺(n,θ,k) < α_FA` | `BREACHED` |
+| 7 | rate bound and `k < n ∧ T⁻(n,θ,k) ≤ 1 − c_conf` | `MET` |
+| 8 | otherwise | `UNKNOWN(inconclusive)` |
+
+`engine_required` means that the counts contain unresolved or unplaceable units, which the release gate does not interpret; an evaluator profile that handles them may decide such a monitor. It is a release-gate reason, not a window reason. The rows are the rational and exact-count methods of Definition 12.14 restricted to `u = pl = 0`, with `max_unresolved_fraction` unused. The results join by Definition 12.15.
+
+**Chance constraints and promotion rate monitors.** A 1.2 chance constraint with threshold `θ` and confidence `c` passes on `k` violations in `n ≥ 1` trials iff the one-sided Clopper–Pearson upper bound at confidence `c` is at most `θ` (Definition 9.8). By the beta–binomial identity this holds, in exact arithmetic, iff `k < n ∧ T⁻(n,θ,k) ≤ 1 − c`: at `u = 0` and matched confidence, a chance-constraint pass is exactly the promotion monitor's `MET` test on the same counts. (The chance constraint computes the bound in floating point, so the two can differ at exact ties.) The monitor returns `MET` when, in addition, `n ≥ min_samples` and its breach test, which is checked first, does not hold; the breach and `MET` tests cannot both hold when `c_conf ≥ α_FA`. The two differ in what failure means. The chance constraint maps every non-pass to `Reject`, whether the counts demonstrate a breach or are merely inconclusive. The monitor maps a demonstrated breach (`k ≥ 1 ∧ T⁺(n,θ,k) < α_FA`) to `Reject` and an inconclusive result to `NoDecision`. Example: `n = 10`, `k = 1`, `θ = 0.1`, `c = 0.95`, `α_FA = 0.05`. `T⁻(10, 1/10, 1) = 0.7360989291 > 0.05`, so neither passes, and the chance constraint rejects (its upper bound is about 0.394). `T⁺(10, 1/10, 1) = 0.6513215599` is not below `0.05`, so the monitor does not breach: it returns `UNKNOWN(inconclusive)`, which maps to `NoDecision`. Legacy behaviour is unchanged: chance constraints keep Definition 9.8, a module without promotion monitors gates exactly as before, and when both are present the chance constraint's `Reject` still wins the join.
+
+---
+
+### 12.8 Episodes
+
+**Definition 12.17 (Episodes)**. An episode is the lifecycle of one breach of a primary monitor (per effective monitor key, RFC §9.4). An episode is open or closed, and it ends exactly once: its terminal outcome is `resolved` or `withdrawn`, never both. An episode ID is determined by the effective monitor key and the opening evaluation's immutable identity. Its events mean:
+
+1. **`episode_opened`**: a breach began — the monitor had a `BREACHED` window while no episode of it was open. **`episode_continued`**: the open episode's breach persists — a further `BREACHED` window.
+2. **`episode_resolved`**: the requirement has been shown met again: the episode resolves after `K` consecutive `MET` windows of its monitor, `K = closure_windows`, all of which ended within `closure_max_age_hours` of the evaluation that resolves it, so that old evidence never closes an episode. When composition tightens these parameters (§12.12), the tighter values apply.
+3. **`episode_withdrawn`**: the requirement the episode measures was weakened (`requirement_weakened`) or retired (`requirement_retired`, `agent_retired`, `floor_removed`) while the episode was open. Withdrawal is never resolution.
+
+`episode_open_for(h)` occurs once per episode, when the recorded opening time plus `h` hours is reached and the episode is still open. Timers, acknowledgement, or mute never resolve an episode. Closure freshness and lifecycle timestamps use evaluation time; the recovery deadline does not (Definition 12.18). How an evaluator profile tracks episodes from a monitor's window verdicts, revisions and retirements, and how windows evaluated under different parameters count toward closure, are that profile's (Definition 12.7). It never chooses a favourable history: when it cannot establish those records, it has no lifecycle evidence for the affected episodes.
+
+### 12.9 Recovery and Evidence Liveness
+
+**Definition 12.18 (Window-time recovery)**. `recovery_time(μ,T)` creates one obligation per episode of `μ`. Its ID is `(episode_id, recovery_requirement_ref)`. Let `e₀` be the end of the episode's opening window and `D=e₀+T`. `D` is a WINDOW-TIME deadline (design decision D5): the closing window must end within `T` hours of the opening window's end. It is not `opened_at+T`. The obligation states mean:
+
+| State | Meaning |
+|---|---|
+| `RECOVERED` | the episode resolved, and its closing window ends no later than `D` |
+| `OVERDUE` | the evidence establishes that the episode did not resolve with a closing window ending by `D`; missing or late evidence never establishes it |
+| `CANCELLED` | the episode was withdrawn before the obligation was `RECOVERED` or `OVERDUE` |
+| `PENDING` | not decided yet: evidence about the windows ending by `D` can still arrive in time |
+| `UNKNOWN(lifecycle_unavailable)` | none of the above can be established from the available evidence |
+
+`RECOVERED`, `OVERDUE` and `CANCELLED` are terminal: once established, the obligation keeps that state. How an evaluator profile establishes these states from window and lifecycle records, and how it records later lifecycle changes beside a terminal state, are that profile's (Definition 12.7). `recovery_recovered`, `recovery_overdue` and `recovery_cancelled` mark the obligation reaching that state. Project `RECOVERED↦MET`, `OVERDUE↦BREACHED`, and `PENDING`, `CANCELLED` and lifecycle unavailability to `UNKNOWN` with their reasons (`pending`, `cancelled`, `lifecycle_unavailable`). The terminality of `OVERDUE` does not authorize effects forever: a service effect still needs its originating episode open (§12.10).
+
+Report `window_recovery_duration = closing_window.end−e₀` when resolution exists and, separately, `wall_clock_lifecycle_duration = closed_at−opened_at` when both timestamps exist. A cancelled episode has a withdrawal duration, not a recovery duration. Neither displayed duration substitutes for the state.
+
+**Definition 12.19 (Recovery feasibility)**. With the composed required closure count `K_close`, the earliest possible closing window after the opening window ends at `e₀+K_close·W`. Therefore `recovery_deadline_impossible` holds iff `T<K_close·W`; equality is feasible in window time. This is only an earliest separation: closure also needs its windows to be fresh at the closing evaluation (Definition 12.17), so delayed evaluations can postpone or prevent closure and yield `OVERDUE` although the windows were `MET` in time. When an episode has enough consecutive `MET` windows to close but they are too old at an evaluation, that fact is reported as `closure_blocked_by_lag` beside the state; it does not change the state.
+
+**Definition 12.20 (Evidence liveness)**. `evidence_liveness(μ,L)` is a health obligation over the due windows of `μ` since its activation; a floor-only monitor activates at first attributed traffic. A window is due when `now≥due(w)`; the due windows include windows for which nothing was recorded. A due window carries **usable evidence** when it was decided from evidence that arrived; a window decided `UNKNOWN(inconclusive)` from real units carries it, because liveness concerns evidence arriving, not the requirement being met. Absence of evidence is never usable evidence: a due window for which nothing was recorded, or for which no customer-side report arrived by `due(w)`, never carries it. Which other windows carry it is the evaluator profile's (Definition 12.7). `L` is how many consecutive due windows may lack usable evidence. The states mean:
+
+| State | Meaning |
+|---|---|
+| `LIVE` | at least one of the last `L+1` due windows carries usable evidence |
+| `STALE` | none of the last `L+1` due windows carries usable evidence |
+| `UNKNOWN(insufficient)` | fewer than `L+1` windows are due |
+| `UNKNOWN(awaiting)` | neither `LIVE` nor `STALE` can be established yet |
+
+Project `LIVE↦MET` and `STALE↦BREACHED`. `stale` marks the monitor becoming `STALE`; `live_again` marks it being `LIVE` again after it was `STALE`. Liveness does not invent a behavioral breach episode; recovery, behavior, coverage, and monitor health remain separate quantities.
+
+### 12.10 Responses: Declarative Meaning
+
+**Definition 12.21 (Actions and approval levels)**. The sealed action set, its meaning and its minimum authority are:
+
+| Rank | Action | Meaning | Approval |
+|---|---|---|---|
+| 0 | implicit record | the originating event is recorded; not declarable | — |
+| 1 | `notify` | deliver an alert with the rule's `severity` | `none` |
+| 2 | `open_next_step` | open a recommended next step for the people or coding agent who maintain the agent, toward restoring the requirement; it is withdrawn when the episode closes. Opening it changes nothing in production; acting on it is a separate action with its own authority | `none` |
+| 3 | `optimize` | start a bounded optimization of the agent's configuration; its candidate must pass the promotion gate before deployment | `standing` or `human` |
+| 3 | `rollback` | redeploy the `target` configuration, which must be eligible now (Definition 12.24) | `standing` or `human` |
+| 4 | `throttle` | lower the deployment's admission rate to at most `rate_floor` times its unthrottled admission rate | `standing` or `human` |
+| 4 | `degrade` | route new work to the certified `fallback` configuration, which must be eligible now | `standing` or `human` |
+| 5 | `suspend` | stop admitting new units and drain existing work under `fallback` (`static_unavailable` or `route_to_human`); requires an open episode with at least one `BREACHED` window and an escalation event | per-episode `human`, always |
+| local | `block_action`, `halt_unit` | in-process, before the effect: suppress the violating event, or stop the unit (§12.4) | `none` |
+
+Ranks describe impact, not permission to execute an undeclared intermediate rung. Repair alternatives share a rank. `rate_floor` is a fraction in `(0,1)`: a smaller value throttles harder. `block_action` and `halt_unit` act only on prefix-fixed violations of `absence`, `bounded_existence`, `precedence` or `protocol` (§12.3); metric, bounded-response and checker results do not authorize them, and neither authorizes a service-wide suspend. Every local guard declares `on_check_error ∈ {block,allow}`.
+
+Authority levels are ordered `none < standing < human` for refinement, subject to each action's mandatory minimum. `none` means the installed contract itself permits the narrowly specified action, not that every effect is unrestricted. A **standing grant** is an owner-signed authority record outside TVL documents, bound to the agent, the current contract digest, the controller, a target scope and quantitative limits (occurrences and, for `optimize`, cost), with an expiry at most 30 days after issuance (design decision D2). Each occurrence, including each repeat, must fit its remaining limits; a retry of one occurrence does not consume it again. Human authorization is specific to the action and scope. A suspend requires a human approval for its episode even if a standing grant exists. A resume is a human control transition, not a declarable response action.
+
+**Definition 12.22 (Triggers, scopes, and occurrences)**. The only alert events are
+
+```
+episode_opened, episode_continued, episode_open_for(h), episode_resolved,
+episode_withdrawn, recovery_overdue, recovery_cancelled, recovery_recovered,
+burn_breached, stale, live_again, unit_violation.
+```
+
+`unit_violation` occurs when a unit with `A_q(h)` true is established as violating a prefix-fixed predicate. Each event belongs to a **scope**, the thing whose state it reports:
+
+| Event family | Scope |
+|---|---|
+| episode | the episode |
+| recovery | the recovery obligation `(episode ID, recovery requirement ref)` |
+| burn | the burn monitor's current `BREACHED` streak, identified by its first window |
+| liveness | the liveness monitor's transition window |
+| unit | the monitor and the SDK unit identifier |
+
+Each response rule has an immutable `rule.id`, unique in its response revision. A rule's first firing in a scope is occurrence 0; each `repeat_after_hours` firing is a new occurrence, measured in lifecycle time, only while the scope is active, at most `max_repeats` times. Further deliveries of the same trigger, and retries of one occurrence, are the same occurrence. Repeating effectful actions require a finite `max_repeats`.
+
+**Definition 12.23 (Effect authority)**. `notify` has **event authority**: its recorded event authorizes delivery after the scope closes, including resolved, withdrawn and recovered notifications and notifications from an older response revision. It requires neither an open scope nor a standing grant. Acknowledgement or mute affects delivery only.
+
+Every other remote action has **service-effect authority**: at the time of its effect, its rule must still exist in the current response revision, its contract must be current, its approval must be valid, and its originating scope must still require intervention:
+
+| Scope | Still requires intervention iff |
+|---|---|
+| episode | the episode is open |
+| recovery | the obligation is not `RECOVERED` or `CANCELLED` (`OVERDUE`, `PENDING` and `UNKNOWN` qualify) **and** its episode is still open |
+| burn | the `BREACHED` streak persists |
+| liveness | the state is still `STALE` |
+| unit | never, for a remote service effect: a unit event authorizes only `notify` and the local guards |
+
+A service effect that has not taken place when its scope closes or its response revision changes never takes place. Terminal recovery and liveness events can notify, but cannot create a new service-effect scope. A unit guard is the local exception: it acts on its installed rule and current evidence, without a reachable remote authority.
+
+### 12.11 Controls, Eligibility, and Release
+
+**Definition 12.24 (Target eligibility)**. A certified fingerprint `fp` is eligible as a rollback target or degrade fallback at the time of the effect iff its certificate is valid, unrevoked and fresh then, it is **configuration-attributed** (an agent-scoped certificate is insufficient), it establishes the current composed requirements, its environment and dependencies are compatible, it is not a configuration that breached in a currently open episode, and the customer's configuration store holds a configuration whose hash is `fp`. Store membership alone is not eligibility. A `last_certified` target resolves, at the time of the effect, to the certificate with the latest certification time for this agent; if that target is ineligible, the effect is held and a notification is raised — no other fingerprint is substituted. Rollback is a repair attempt, not episode resolution; its undo is a new promotion, not blind restoration of the previous fingerprint. An unfinished optimization may be cancelled, but spent resources are not undone.
+
+**Definition 12.25 (Active controls and release)**. Effective controls are combined per type, not by taking a maximum action rank:
+
+1. **Suspend**: admission is stopped while ANY suspend is active. Resolution, withdrawal, a response revision, disconnection, or recomputing other controls never removes it. Resolution OR withdrawal of the originating episode makes a human `resume` eligible; neither releases the suspend. Each release requires an authorized human resume; other active suspends keep admissions closed.
+2. **Throttle**: the effective `rate_floor` is the minimum over the active throttles, or the unthrottled rate if none remains.
+3. **Degrade**: new work is routed only to a fallback that is eligible at the time of the effect (Definition 12.24). How a controller arbitrates between active degrades that name different fallbacks is its evaluator profile's (Definition 12.7); no arbitration routes work in a way that violates another active obligation.
+4. **Rollback**: each rollback redeploys a target that is eligible at the time of its effect (Definition 12.24); how a controller orders several pending rollbacks is its evaluator profile's. A completed rollback does not assert that the breached requirement recovered.
+
+Only an authorized human may release a throttle or degrade; release recomputes the effective control from the controls that remain. Scope closure, grant expiry or an eligible route never releases a control. Release of one control never neutralizes another still-active control. A conflict does not itself authorize a suspend; the suspend preconditions and human gate still apply.
+
+**Hold when unreachable (design decision D2)**. While remote authority — the controller, an approver, or grant verification — is unreachable, no new service-level effect and no release starts. Applied controls stay applied; an active suspend stays active. Installed local `block_action`/`halt_unit` guards continue, and notifications may be recorded locally. A pending next step or optimization waits. Unreachability never supplies human approval or an automatic suspend or resume.
+
+No declared action is silently inert: a platform that cannot execute a declared action refuses the registration that declares it (`response_action_unsupported`). Registration is outside TVL (RFC §12).
+
+### 12.12 Refinement, Meet, Reachability, and Packs
+
+**Definition 12.26 (Refinement order)**. Write `A ⊑_rt B` to mean A is at least as strict as B, after canonical name/effective-key resolution under RFC §9.4, including pack-to-module reference rewriting and retained floor provenance. Compatibility first requires identical predicate, unit, population expression, evidence source, `deployment_environment`, attribution rule, `resolution`, decision method, `decision.model`, `threshold_factor`, and schedule. Schedule includes alignment, window width, grace, horizon and false-alarm allocation. Sampling mode/rate, single-producer, checker/DFA and resource-limit contracts must be identical unless a separate verified refinement rule exists; this draft supplies none. Changing an immutable component is an incompatible replacement, not an ordered numeric update.
+
+For compatible entries the coordinate orders are:
+
+| Field | Condition for `A ⊑_rt B` | Raw meet coordinate |
+|---|---|---|
+| `max_rate` | `θ_A ≤ θ_B` | minimum |
+| `confidence` | `c_A ≥ c_B` | maximum |
+| `min_samples` | `a_A ≥ a_B` | maximum |
+| `max_unresolved_fraction` | `f_A ≤ f_B` | minimum |
+| `closure_windows` | `K_A ≥ K_B` | maximum |
+| `closure_max_age_hours` | `age_A ≤ age_B` | minimum |
+| `within_hours` | `T_A ≤ T_B` | minimum |
+| `max_stale_windows` | `L_A ≤ L_B` | minimum |
+
+For responses, A must retain every base rule of B under the same `rule.id`, trigger, action, target, fallback, rate floor, and `on_check_error`; approval cannot weaken and repeat bounds cannot widen. Standing grants are not TVL declarations, so refinement never compares them. On `notify` rules, severity is a coordinate ordered `info < warning < critical`, with absent severity normalized to `critical` before comparison (RFC §4.6). Require `severity_A ≥ severity_B`; lowering is rejected after default filling, including when either side omits severity. Non-`notify` rules have no severity coordinate. Additional rules must themselves be well-formed. `repeat_after_hours` is immutable in this draft; a retained `max_repeats` may only decrease, and no repeat is added to a rule that had none. An omitted mandatory base rule is not an empty or more permissive override. Equal names with different immutable fields fail composition rather than creating parallel conflicting definitions.
+
+**Definition 12.27 (Partial composition)**. On compatible coordinates the raw meet `A ⊓ B` takes the table's bounds, unions declarations/rules by canonical identity, takes the stronger required approval, takes the maximum normalized severity on each compatible retained `notify` rule, and takes the smaller `max_repeats` of each compatible retained rule. Cross-namespace/effective-key collisions are rejected. The raw meet is the greatest lower bound in this product order, before feasibility validation:
+
+```
+A ⊓ B ⊑_rt A,     A ⊓ B ⊑_rt B,
+(C ⊑_rt A ∧ C ⊑_rt B) ⇒ C ⊑_rt A ⊓ B.
+```
+
+Validated `compose(A,B)` is defined iff the compatible raw meet is well-formed and passes all mandatory reachability checks. These require the method-specific domain and mandatory power checks, each action's minimum approval, every reference, and, for each episode/recovery pair, closure freshness reachability and `T≥K_close·W`. A power warning under `backend_v1` does not invalidate an otherwise valid profile or meet. In the inherited fixed-window closure contract, in hours/minutes,
+
+```
+60·closure_max_age_hours ≥ 60·closure_windows·W + grace_minutes + 60.
+```
+
+This is the hosted latency profile's guard, not a promise that delayed evaluations will close an episode. A composed max closure count and min age can fail it even when both inputs pass individually.
+
+For a primary runtime rate monitor, test `MET` reachability at `N=min_samples` with `k=0` and every unit resolved. For the rational method this is `(1−θ)^N ≤ 1−c_conf` with `N≥1`; the float profile uses its own computation, not a rational substitution. Failure emits `runtime_met_unreachable_at_min_samples`: a **warning** under `profile: backend_v1`, an **error** otherwise (RFC §5.5). The warning preserves valid legacy profiles even when their minimum-sized windows cannot establish `MET`. Breach reachability at that count is `θ^N<α_w` for the rational method; report `runtime_breach_unreachable_at_min_samples` as a warning if it fails on a primary monitor, using the method's own computation for the float profile. Burn escalation requires breach reachability at `bθ` and fails its burn validity check otherwise. These minimum-sample power lints do not apply to promotion monitors. Tightening is validated again after meet; a failed mandatory check rejects composition rather than weakening a bound. Whether a platform can execute the composed declarations is a registration question outside TVL (RFC §12), not part of validated composition.
+
+A `tvl_pack` is a separate TVL 1.3 document containing pack identity, requirements, tenant-floor monitors, and optional responses, without dummy TVARs, objectives, or evaluation sets. Only pack monitors may declare `applies_to: tenant_floor`; ordinary module monitors apply to the agent. Activated, digest-bound packs compose with agent declarations by the same compatible meet. An agent overlay cannot weaken or delete a floor. A standalone composed module is rejected with `tenant_floor_outside_pack` only if it carries a tenant-floor monitor without floor provenance. An all-paired composition containing only agent-scoped monitors may validate as an ordinary module; source bytes alone neither reveal composition nor establish pack activation (RFC §9.4). Floor-only monitoring starts at first attributed traffic; retiring a floor is a retirement with reason `floor_removed` (Definition 12.17). Activation is an authorized registration operation, not an effect inferred merely from parsing a file.
+
+### 12.13 Hosted Projection and Module Denotation
+
+**Definition 12.28 (Closed projection)**. Let `Π_host` project a local runtime contract using an available per-tenant token map. The map must consistently preserve identity and joins; it is not a pass-through for customer-chosen strings. Export ONLY:
+
+| Local field | Hosted representation |
+|---|---|
+| requirement/monitor/response/rule names, protocol states, module/pack module names, selector `ref` | opaque locally minted references |
+| suspend fallback | closed enum `static_unavailable` or `route_to_human` |
+| degrade fallback / rollback target | certified fingerprint or `last_certified` |
+| customer labels in `label_in` / `among` | indices in the declared checker label list |
+| customer checker ID | keyed commitment `customer:<commitment>`; catalogue IDs retain their catalogue identity |
+| environment label | opaque environment reference, resolved only at the authorized read edge |
+| selector tool names | validated code identifiers |
+| numbers, enums, event types, method/sampling names | closed values; exact parameters serialized as decimal strings |
+
+Anything unlisted is not exported. Unit IDs in reports/commitments must be SDK-minted opaque IDs, not arbitrary supplied names. Digests over contracts are computed after projection/tokenization, never used as an excuse to hash and export arbitrary raw content. An unresolved alias or unavailable token map fails closed (`runtime_unresolved_alias`); errors are closed codes without echoing inputs. Reports carry only closed counts, references, method/version identities, and commitments. Customer content/checkers remain customer-side. Only metadata monitors read observability data, and observability carries no privacy guarantee. This is a required data boundary, not a claim that a particular wire implementation has passed its canaries.
+
+**Definition 12.29 (Erasure and denotation)**. `erase(M)` deletes only `requirements`, `monitors`, and `responses` and their extension-specific annotations, yielding the otherwise identical TVL 1.2 semantic module. A version label is administrative; erasure does not rewrite a TVAR, objective, chance constraint, band, policy, composite, or evaluation binding. The meaning of a module is
+
+```
+⟦M⟧₁.₃ = ⟨ Gate_M, Req_M, Resp_M ⟩
+  Gate_M = ⟦erase(M)⟧₁.₂ with promotion refined by §12.7
+  Req_M  = for each runtime monitor μ, the relation between complete unit histories and the
+           verdict, episode and obligation records that satisfy the contracts of §§12.4–12.9
+  Resp_M = for each history of recorded events, the response effects permitted by §§12.10–12.11
+```
+
+`Req_M` and `Resp_M` are specifications, not programs: an evaluator profile realises them, and its outputs at every finite prefix may depend only on evidence received by then and on explicit clock inputs. A missing future report is not evidence already received. Compilation into `tvl-runtime-contract/1` and `tvl-runtime-local/1` (RFC §11.5) is a declaration projection: it preserves the normalized declarations, their identities and their hosted forms, and installs, enables or runs nothing.
+
+The **conservative-extension claim** is equality of the legacy projection with `⟦erase(M)⟧₁.₂`; an embedded 1.2 module has no runtime declarations and exactly its prior promotion decision. Runtime-only declarations do not alter legacy promotion. Opt-in promotion monitors restrict promotion as in §12.7, never redefine §9.7. Unsupported extension constructs are refused, not erased by an older reader. A document using 1.3 constructs requires explicit `tvl_version: "1.3"`; omission is diagnosed with `runtime_version_required`, while an explicitly incompatible declaration is diagnosed with `declared_version_below_constructs` (RFC §5). Omission on legacy modules retains legacy version handling. No change to legacy construct detection is part of this denotation.
+
+---
+
+### 12.14 Theorem Statements and Explicit Limits
+
+The numbered statements below are **claimed proof obligations** about the language and about exact binomial tests, not declarations that Lean files compile or that any implementation satisfies them. `proofs/PROOF_SUMMARY.md` is the authority for each statement's proof status. Obligations about how an evaluator profile meets the contracts of §§12.4–12.11 — the soundness of its classification and counting rules, its episode and obligation procedures, and its response execution — are stated with that profile, outside TVL. Every statement assumes the relevant `WF_rt` conditions.
+
+For statistical statements require `N∈ℕ`, `θ,α,c_conf∈ℚ`, `0<θ<1`, `0<α≤1`, `0≤c_conf≤1`. A true rate `p` may be real with `0≤p≤1`. Under a binomial model, a Lean representation uses the nonnegative real cast of `p` (e.g. `p_nn : NNReal` with real value `p`) and a proof `p_nn≤1` for `PMF.binomial`; rational thresholds/budgets are cast without rounding. Tail probabilities can then be expressed as finite sums of PMF masses, cast from `ENNReal` to real using finiteness. This describes the required mathematical types, not an unverified pinned-library API signature.
+
+Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j, Pr[X≥j]≤Pr[Y≥j]`. A count `K` is a **good window** for `(N,θ)` when `K ≤st Bin(N,θ)` and a **bad window** when `Bin(N,θ) ≤st K`; IID Bernoulli units with `p≤θ` (respectively `p≥θ`) suffice. For random `N`, require these conditions for each conditional law given `N`, not just an unconditional marginal. No independence between different windows is required below.
+
+1. **Theorem 12.1 — `conservative_extension` (claimed)**. For every well-formed TVL 1.2 semantic module `M₁₂`, embed it with empty runtime blocks as `ι(M₁₂)`. For every valid legacy evidence bundle `Y`, `D₁₃(ι(M₁₂),Y)=D₁₂(M₁₂,Y)`, and its runtime declarations are empty. More generally, if `PromotionMonitors(M)=∅`, the legacy component of `⟦M⟧₁.₃` equals `⟦erase(M)⟧₁.₂` on every such `Y`.
+
+2. **Theorem 12.2 — `structural_projection` (claimed)**. For every `WF_rt(M)`, environment `E_τ`, configuration `c`, and admissible §8 encoding parameters `(P,idx)`, the TVAR context, configuration domain, `F^str(c,·)`, `F^op(E_τ,·)`, and structural encoding of `M` are identical to those of `erase(M)`. Runtime names do not occur in `Γ` or generated structural variables.
+
+3. **Theorem 12.3 — `promotion_refinement`, `join_promote_iff`, `join_empty` (claimed)**. For the join of Definition 12.15: `Promote₁₃ ⟺ Promote₁₂ ∧ ∀μ, verdict_μ=MET`; if `D₁₂=Reject` or some monitor maps to `Reject` then `D₁₃=Reject`; with no promotion monitors `D₁₃=D₁₂`. The statement is about the join over supplied verdicts, not about how a verdict was computed.
+
+4. **Theorem 12.4 — `tail_mono_p` (claimed, exact binomial model)**. For `0≤p≤q≤1` and `0≤j≤N`, `T⁺(N,p,j)≤T⁺(N,q,j)` and `T⁻(N,q,j)≤T⁻(N,p,j)`. For `j≤j'≤N`, `T⁺(N,p,j')≤T⁺(N,p,j)` and `T⁻(N,p,j)≤T⁻(N,p,j')`. These are statements about exact finite sums, not computed beta quantiles.
+
+5. **Theorem 12.5 — exact upper-tail test level (claimed, generic)**. If `K` is a good window for `(N,θ)`, then `Pr[K≥1 ∧ T⁺(N,θ,K)<α] ≤ α`. The rejection set is upward closed in `K` (Theorem 12.4), so its probability is at most the upper tail at its least member, which is below `α`. IID Bernoulli counts with `p≤θ` are good windows. This is a paper result: no Lean declaration states it; its mechanised ingredients are `upper_mono_count` and `binomial_good_window`.
+
+6. **Theorem 12.6 — exact lower-tail test level (claimed, generic)**. If `K` is a bad window for `(N,θ)`, then `Pr[K<N ∧ T⁻(N,θ,K)≤1−c_conf] ≤ 1−c_conf`. The acceptance set is downward closed in `K`, so its probability is at most the lower tail at its greatest member. IID Bernoulli counts with `p≥θ` are bad windows, including at equality. This is a paper result: no Lean declaration states it; its mechanised ingredients are `bad_lower_bound`, `lower_mono_count` and `binomial_bad_window`.
+
+7. **Theorem 12.7 — `horizon_false_alarm` (claimed, generic)**. For a predesignated finite family of events `E₁,…,E_m` with `Pr[E_i]≤α_i` and `∑_i α_i≤α_FA`, `Pr[⋃_i E_i]≤α_FA`. No independence is assumed. With `E_i` the false-`BREACHED` event of window `i`, this is the horizon budget of Definition 12.13. Data-dependent redefinition of windows, looks, budgets, or horizon is not covered without the corresponding conditional bound.
+
+8. **Theorem 12.8 — `compose_partial` (claimed, static; Lean target `compose_partial_statement`)**. On compatible normalized contracts, with absent `notify` severity filled as `critical` and severity ordered `info < warning < critical`, raw `A⊓B` (maximum severity on shared notify rules) is a greatest lower bound for `⊑_rt`. Validated `compose(A,B)` succeeds iff that raw meet satisfies `WF_rt` and all reachability conditions in Definition 12.27. On success, `compose(A,B)⊑_rt A` and `compose(A,B)⊑_rt B`; an unreachable raw meet is an error, not a weakened composition. Incompatible identity/schedule is outside the raw meet's domain.
+
+9. **Theorem 12.9 — `severity_meet_glb` (claimed)**. Normalizing an absent `notify` severity yields `critical`, and the maximum of two normalized severities is their greatest lower bound in the strictness order (higher severity is stricter).
+
+10. **Theorem 12.10 — `backend_profile_roundtrip` (claimed, representation only)**. Fix the hosted profile schema/version and a bijective local token map. On normalized valid `backend_v1` profile records consisting only of the representable profile fields, with no additional local-only rules/annotations, `lift(lower(p))=p`; symmetrically lowering a lifted canonical hosted profile preserves its field values and stored method/sampling names. Required numeric serialization preserves the stored values. This is an identity of representations, not equality of `_v1` and rational `_v2` window verdicts or proof of a deployed adapter.
+
+11. **Theorem 12.11 — `compiled_contract_correct_statement` (open target)**. For `WF_rt(M)`, compilation returns a contract whose normalized declarations, predicates, identities and notify severities equal those of `M` after default filling and projection. This is a target for declaration normalization and projection only; no parser, canonical wire encoding or source-to-contract preservation proof is supplied, and it says nothing about evaluator behaviour.
+
+12. **Deferred — float/rational numerical refinement**. No theorem here relates `clopper_pearson_exact_v1` to `clopper_pearson_rational_v2`. A wider equivalence would require an explicit numerical-refinement hypothesis and separate verification; neither follows from Theorems 12.4–12.7 or 12.10.
+
+13. **Not claimed / deferred — stronger statistical and behavioral guarantees**. Episode-level false-closure probability, heterogeneous-unit bounds (including a Hoeffding-based extension), anytime-valid sequences, infinite-horizon control, unsampled prevention, checker accuracy, and repair efficacy are outside these claims. A finite-horizon false-alarm bound and a consecutive-`MET` rule do not establish them.
 
 ---
 
@@ -1553,6 +2035,24 @@ Connecting TVL to verification frameworks:
 | `≽_ε` | Weak ε-Pareto dominance |
 | `σ(·)` | Direction sign (+1 for max, -1 for min) |
 | `δ_i` | Direction-normalized difference |
+| `Γ_rt` | Separate runtime declaration typing context; never extends TVAR context `Γ` |
+| `v`, `h` | Unit and its complete history |
+| `before_h(a,b)` | Event `a` precedes event `b` in the complete history `h` |
+| `A_q(h)`, `V_q(h)` | Population-membership and violation predicates on a complete history |
+| `sat`, `vio`, `unres` | Satisfied, violating, unresolved unit classifications; exclusion is separate |
+| `n`, `k`, `u`, `pl`, `N` | Resolved, violating, unresolved, unplaceable counts; `N` the counted units of a decision (`N=n` when every counted unit is resolved) |
+| `u_reported`, `dropped` | Reported unresolved units; selected units a report does not account for |
+| `p_w` | A window's violation rate under the declared model |
+| `θ`, `c_conf`, `f` | Maximum violation rate, window confidence, maximum unresolved fraction |
+| `α_FA`, `α_w`, `m` | Predesignated horizon budget, per-window allocation, number of looks |
+| `T⁺(N,p,j)`, `T⁻(N,p,j)` | Inclusive exact binomial upper and lower tails |
+| `X ≤st Y` | First-order stochastic domination on natural counts; good and bad windows |
+| `W`, `due(w)` | Tumbling window width; window end plus grace |
+| `K_close` | Required consecutive MET count for closing an episode, after composition |
+| `e₀`, `D` | Opening window end and window-time recovery deadline `e₀+T` |
+| `A ⊑_rt B`, `A ⊓ B` | A tightens compatible B; their raw greatest lower bound |
+| `Π_host` | Closed hosted projection after tokenization |
+| `erase(M)`, `⟦M⟧₁.₃` | Legacy semantic projection and extended module denotation |
 
 ## Appendix B: Error Code Mapping
 
@@ -1588,6 +2088,24 @@ Connecting TVL to verification frameworks:
 | Registry domain used | `unverifiable_registry_domain` |
 | Callable type used | `unverifiable_callable_type` |
 | Float precision inadequate | `inadequate_precision` |
+
+### B.4 Runtime Validation and Lint Codes (TVL 1.3, DRAFT)
+
+[RFC 0003 §5](rfc-0003-runtime-requirements-monitors-responses.md#5-static-semantics-diagnostics) is the single normative source for TVL 1.3 diagnostic codes, conditions, and severities. This appendix does not define aliases or a second registry. The following are only cross-references for codes explicitly used in §12; all other runtime diagnostics, syntax-level enums, and lexical constraints are specified in the RFC. These references do not assert that an implementation already emits the diagnostics.
+
+| Use in §12 | Canonical diagnostic in RFC §5 |
+|---|---|
+| Refuse unsupported constructs (Definition 12.29) or an unexecutable declared action at registration (Definition 12.25) | `unsupported_construct`, `response_action_unsupported` |
+| Reject a report that violates its count identities (Definition 12.11) | `runtime_report_conservation` |
+| Report MET power at the minimum sample count (Definition 12.27) | `runtime_met_unreachable_at_min_samples` — warning under `backend_v1`, error otherwise |
+| Report breach power at the minimum sample count (Definition 12.27) | `runtime_breach_unreachable_at_min_samples` — warning for primary monitors; burn reachability is mandatory |
+| Reject an impossible window-time recovery deadline (Definition 12.19) | `recovery_deadline_impossible` |
+| Retain both overlapping promotion checks (Definition 12.15) | `chance_constraint_shadowed` — warning |
+| Report missing or invalid promotion counts (Definitions 12.15–12.16) | `missing_monitor_counts` — a readiness issue |
+| Fail closed on an unresolved alias or unavailable token map (Definition 12.28) | `runtime_unresolved_alias` |
+| Require a version for 1.3 constructs while preserving legacy omission handling (Definition 12.29) | `runtime_version_required` when omitted; `declared_version_below_constructs` for an explicitly incompatible value |
+
+Verdict reasons such as `insufficient`, `incomplete`, `sampling_biased`, `awaiting`, `lifecycle_unavailable`, and `engine_required` are evaluation outcomes, not static lint errors. Their syntax-level closed values are normative in the RFC; §12 defines their meaning.
 
 ## Appendix C: References
 

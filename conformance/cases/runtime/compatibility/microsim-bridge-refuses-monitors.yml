@@ -1,0 +1,38 @@
+case_format: tvl-runtime-case/1
+family: compatibility
+description: microsim bridge refuses monitors
+spec_refs:
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#5.1
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#11.2
+input:
+  kind: toolchain
+  entrypoint: tvl-microsim-bridge
+  reader: v1_3
+  arguments: []
+expected:
+  error: unsupported_construct
+  construct: monitors
+  exit_code: 2
+module:
+  tvl:
+    module: conformance.runtime
+  tvl_version: '1.3'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  monitors: []

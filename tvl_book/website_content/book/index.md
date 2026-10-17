@@ -36,6 +36,7 @@ flowchart LR
 | [Constraints & Units](chapter-03-constraints.md) | Declarative safety rails with CEL | Constraint lab spec + pytest |
 | [Patterns](chapter-04-patterns.md) | Inheritance, overlays, and hotfixes | Environment tree + overlay YAML |
 | [Integration](chapter-05-integration.md) | TVL with Triagent (TVO) and DVL | Deployment manifest + CI script |
+| [Requirements in Production](chapter-06-requirements-in-production.md) | TVL 1.3 (draft): requirements, monitors and responses after release | Campus latency module, organisation floor pack |
 | [Resources](resources.md) | Commands, references, and next steps | Tooling cheat sheet |
 | [Hands-on Labs](labs.md) | Run Traigent examples aligned with the chapters | Hello World, Tradeoffs, Guardrails |
 | [Guided Walkthrough](walkthrough.md) | Step-by-step SDK tour | `walkthrough.sh` script |

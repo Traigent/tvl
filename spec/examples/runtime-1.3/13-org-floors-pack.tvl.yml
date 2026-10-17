@@ -1,0 +1,66 @@
+# Scenario 13: An organisation pack sets floors for every agent: latency at most 10 % over 2 s, never run a recursive shell delete, and monitoring evidence must keep flowing.
+tvl_version: "1.3"
+pack: { module: examples_runtime13.org_floors }
+requirements:
+  - name: floor_latency_2s
+    kind: rate_bound
+    unit: trace
+    violation: { metric: wall_clock_latency_ms, exceeds: 2000 }
+    max_rate: 0.10
+  - name: floor_latency_live
+    kind: evidence_liveness
+    unit: window
+    of: floor_latency_2s_prod
+    max_stale_windows: 4
+  - name: floor_no_recursive_delete
+    kind: zero_tolerance
+    unit: invocation
+    violation: { pattern: absence, a: { event: tool_call, tool: shell.rm_recursive } }
+  - name: floor_delete_live
+    kind: evidence_liveness
+    unit: window
+    of: floor_no_recursive_delete_prod
+    max_stale_windows: 2
+monitors:
+  - name: floor_latency_2s_prod
+    requirement: floor_latency_2s
+    phase: runtime
+    profile: backend_v1
+    applies_to: tenant_floor
+    evidence: { source: backend_trace_metadata, deployment_environment: production }
+    window: { tumbling_hours: 6, grace_minutes: 30 }
+    decision:
+      method: clopper_pearson_exact_v1
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      horizon_days: 30
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+    episode: { closure_windows: 2, closure_max_age_hours: 24 }
+  - name: floor_latency_live_check
+    requirement: floor_latency_live
+    phase: runtime
+    applies_to: tenant_floor
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+  - name: floor_no_recursive_delete_prod
+    requirement: floor_no_recursive_delete
+    phase: runtime
+    applies_to: tenant_floor
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 60 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 48 }
+  - name: floor_delete_live_check
+    requirement: floor_delete_live
+    phase: runtime
+    applies_to: tenant_floor
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+responses:
+  - name: floor_alerts
+    rules:
+      - { id: floor_latency_open, trigger: { monitor: floor_latency_2s_prod, event: episode_opened }, do: notify, severity: warning }
+      - { id: floor_delete_block, trigger: { monitor: floor_no_recursive_delete_prod, event: unit_violation }, do: block_action, on_check_error: block }
+      - { id: floor_delete_page, trigger: { monitor: floor_no_recursive_delete_prod, event: episode_opened }, do: notify, severity: critical }
+      - { id: floor_stale, trigger: { monitor: floor_latency_live_check, event: stale }, do: notify, severity: critical }

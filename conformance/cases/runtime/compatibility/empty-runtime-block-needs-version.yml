@@ -1,0 +1,36 @@
+case_format: tvl-runtime-case/1
+family: compatibility
+description: empty runtime block needs version
+spec_refs:
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#11.1
+input:
+  kind: lint
+  operation: validate
+expected:
+  diagnostics:
+  - code: runtime_version_required
+    severity: error
+  absent_diagnostics:
+  - declared_version_below_constructs
+module:
+  tvl:
+    module: conformance.runtime
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  responses: []
