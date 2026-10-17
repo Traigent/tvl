@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from tvl.backend_profile_codec import to_backend_profile
-from tvl.canonical import RuntimeClosedError, _HOSTED_CHECKER_RE, _REF_RE, minimal_decimal_str
+from tvl.canonical import RuntimeClosedError, HOSTED_CHECKER_RE, REF_RE, minimal_decimal_str
 from tvl.lints import _monitor_role
 from tvl.diagnostics import field_path
 from tvl.schema import runtime_contract_validator
@@ -79,10 +79,10 @@ def _build_token_lookup(
         if not isinstance(ns, str) or not isinstance(loc, str) or not isinstance(host, str):
             raise RuntimeClosedError("runtime_unresolved_alias", path=["tokens", idx], message="token-map entry requires namespace, local and a valid unique hosted token")
         if ns == "checker":
-            if not _HOSTED_CHECKER_RE.match(host):
+            if not HOSTED_CHECKER_RE.match(host):
                 raise RuntimeClosedError("runtime_unresolved_alias", path=["tokens", idx], message="token-map entry requires namespace, local and a valid unique hosted token")
         else:
-            if not _REF_RE.match(host):
+            if not REF_RE.match(host):
                 raise RuntimeClosedError("runtime_unresolved_alias", path=["tokens", idx], message="token-map entry requires namespace, local and a valid unique hosted token")
         key = (ns, loc)
         rkey = (ns, host)

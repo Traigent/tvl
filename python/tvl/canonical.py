@@ -38,13 +38,14 @@ APPROVAL_ORDER = {"none": 0, "standing": 1, "human": 2}
 APPROVAL_BY_RANK = {0: "none", 1: "standing", 2: "human"}
 
 
-_REF_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+# Lexical types of RFC 0003 §4.2.1 (public; shared with evaluator profiles).
+REF_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
-_HOSTED_CHECKER_RE = re.compile(r"^customer:[0-9a-f]{64}$")
+HOSTED_CHECKER_RE = re.compile(r"^customer:[0-9a-f]{64}$")
 
 
-_DECIMAL_STR_RE = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$")
+DECIMAL_STR_RE = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$")
 
 
 class RuntimeClosedError(TVLError):
