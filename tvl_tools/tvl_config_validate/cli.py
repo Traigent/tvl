@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict as Dict, List as List
+from typing import Any
 
 from tvl.configuration import load_configuration, validate_configuration
 from tvl.errors import TVLError
@@ -136,7 +136,10 @@ def main() -> None:
         if not report["ok"]:
             raise SystemExit(5)
     except TVLError as exc:
-        diag = {"ok": False, "error": str(exc), "module": str(args.module), "config": str(args.config)}
+        diag: dict[str, Any] = {"ok": False, "error": str(exc), "module": str(args.module), "config": str(args.config)}
+        if getattr(exc, "code", None) == "unsupported_construct":
+            diag["code"] = "unsupported_construct"
+            diag["construct"] = getattr(exc, "construct", None)
         if args.json:
             event = {
                 "schemaVersion": "1.0",
@@ -149,11 +152,17 @@ def main() -> None:
                 "durationMs": 0,
                 "backend": "static",
             }
+            if getattr(exc, "code", None) == "unsupported_construct":
+                event["code"] = "unsupported_construct"
+                event["construct"] = getattr(exc, "construct", None)
             _emit_event(event)
             diag.update(event)
             print(json.dumps(diag, indent=2))
         else:
-            print(f"Error: {exc}", file=sys.stderr)
+            if getattr(exc, "code", None) == "unsupported_construct":
+                print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
+            else:
+                print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(5)
 
 

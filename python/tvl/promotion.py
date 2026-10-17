@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .errors import ParseError
+from .promotion_join import join_promotion_decisions
 
 # Statistical functions - we use math for basic operations,
 # but scipy is required for proper t-distribution and beta functions
@@ -98,6 +99,7 @@ class PromotionEvidence:
     """Complete evidence bundle for a promotion decision."""
     per_objective: Dict[str, Union[ObjectiveResult, BandedResult]] = field(default_factory=dict)
     chance_constraints: Dict[str, ChanceResult] = field(default_factory=dict)
+    promotion_monitors: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     all_noninferior: bool = False
     any_superior: bool = False
     all_bands_pass: bool = True
@@ -109,7 +111,7 @@ class PromotionEvidence:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert evidence to dictionary for serialization."""
-        return {
+        out: Dict[str, Any] = {
             "per_objective": {
                 k: _result_to_dict(v) for k, v in self.per_objective.items()
             },
@@ -127,6 +129,9 @@ class PromotionEvidence:
                 "decision_reason": self.decision_reason,
             },
         }
+        if self.promotion_monitors:
+            out["promotion_monitors"] = dict(self.promotion_monitors)
+        return out
 
 
 def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
@@ -186,6 +191,9 @@ def epsilon_pareto_gate(
     candidate: Dict[str, Any],
     policy: Dict[str, Any],
     objectives: Optional[List[Dict[str, Any]]] = None,
+    *,
+    requirements: Optional[List[Dict[str, Any]]] = None,
+    monitors: Optional[List[Dict[str, Any]]] = None,
 ) -> Decision:
     """Perform ε-Pareto dominance testing with statistical rigor.
 
@@ -225,6 +233,7 @@ def epsilon_pareto_gate(
     _apply_pvalue_adjustment(evidence, super_pvalues, inferior_pvalues, adjust, alpha)
     _assign_objective_verdicts(evidence, alpha)
     _test_all_chance_constraints(evidence, chance_constraints, cand_chance)
+    _test_promotion_monitors(evidence, candidate, requirements, monitors)
 
     # Make decision
     decision, reason = _make_decision(evidence)
@@ -349,6 +358,40 @@ def _test_all_chance_constraints(
         evidence.chance_constraints[name] = result
         if result.verdict != "pass":
             evidence.all_chance_pass = False
+
+
+def _test_promotion_monitors(
+    evidence: PromotionEvidence,
+    candidate: Dict[str, Any],
+    requirements: Optional[List[Dict[str, Any]]],
+    monitors: Optional[List[Dict[str, Any]]],
+) -> None:
+    # Evaluate opt-in TVL 1.3 promotion monitors when present (RFC 0003 §6.11, §11.3)
+    promo_monitors = [
+        m for m in (monitors or [])
+        if isinstance(m, dict) and m.get("phase") == "promotion"
+    ]
+    if promo_monitors:
+        from .promotion_monitor import evaluate_promotion_monitor
+
+        reqs_by_name = {
+            r["name"]: r for r in (requirements or [])
+            if isinstance(r, dict) and isinstance(r.get("name"), str)
+        }
+        cand_mon_outcomes = candidate.get("monitor_outcomes") or {}
+        for mon in promo_monitors:
+            m_name = mon.get("name", "")
+            req = reqs_by_name.get(mon.get("requirement", ""))
+            outcome = cand_mon_outcomes.get(m_name)
+            if req is not None and isinstance(outcome, dict) and 0 <= int(outcome.get("k", 0)) <= int(outcome.get("n", 0)):
+                evidence.promotion_monitors[m_name] = evaluate_promotion_monitor(req, mon, outcome)
+            else:
+                evidence.promotion_monitors[m_name] = {
+                    "verdict": "UNKNOWN",
+                    "reason": "insufficient",
+                    "mapped_decision": "NoDecision",
+                    "counts": outcome or {},
+                }
 
 
 def require_scipy() -> None:
@@ -1014,8 +1057,8 @@ def _adjust_pvalues(p_values: List[float], method: str) -> List[float]:
     return p_values
 
 
-def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
-    """Make final promotion decision based on evidence."""
+def _make_legacy_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
+    """Make the TVL 1.2 promotion decision based on legacy evidence."""
     # Hard acceptability failures take precedence over inconclusive comparisons.
     if not evidence.all_chance_pass:
         failing = [
@@ -1070,3 +1113,19 @@ def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
         "NoDecision",
         f"Non-inferiority not established on: {', '.join(inconclusive)}",
     )
+
+def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
+    """Make final promotion decision based on evidence, joining promotion monitors when present."""
+    legacy_dec, legacy_reason = _make_legacy_decision(evidence)
+    if not evidence.promotion_monitors:
+        return (legacy_dec, legacy_reason)
+    decision = join_promotion_decisions(
+        legacy_dec, [result.get("verdict") for result in evidence.promotion_monitors.values()],
+    )
+    if decision == legacy_dec:
+        return (legacy_dec, legacy_reason)
+    if decision == "Reject":
+        names = [name for name, result in evidence.promotion_monitors.items() if result["verdict"] == "BREACHED"]
+        return (decision, f"Promotion monitors breached: {', '.join(names)}")
+    names = [name for name, result in evidence.promotion_monitors.items() if result["verdict"] != "MET"]
+    return (decision, f"Promotion monitors inconclusive: {', '.join(names)}")

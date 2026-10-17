@@ -1,0 +1,13 @@
+case_format: tvl-runtime-case/1
+family: promotion
+description: Join supplied verdicts without interpreting event evidence.
+spec_refs:
+- RFC 0003 promotion join
+module: {}
+input:
+  kind: join
+  legacy_decision: Promote
+  monitor_verdicts:
+  - MET
+expected:
+  promotion_decision: Promote

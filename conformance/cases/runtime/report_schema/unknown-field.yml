@@ -1,0 +1,41 @@
+case_format: tvl-runtime-case/1
+family: report_schema
+description: Validate only the closed report exchange shape; no report acceptance
+  or accounting.
+spec_refs:
+- tvl-runtime-report/1 schema
+module: {}
+input:
+  kind: schema
+  instance:
+    format: tvl-runtime-report/1
+    contract_digest: '1111111111111111111111111111111111111111111111111111111111111111'
+    monitor_ref: monitor_token
+    monitor_revision: revision_token
+    window_start_ms: 0
+    counts:
+      n: 0
+      k: 0
+      u_reported: 0
+      pl: 0
+      excluded: 0
+      selected: 0
+      reported: 0
+      dropped: 0
+      unattributed: 0
+    tail_sampled: 0
+    coverage:
+      census: false
+      unit_histories_complete: false
+      producer_set_complete: false
+      producer_sequences_contiguous: false
+      response_deadlines_covered: false
+      watermarks_through_ms: null
+    checker_refs: []
+    salt_digest: null
+    units_commitment: '2222222222222222222222222222222222222222222222222222222222222222'
+    sdk_version: 1.3.0
+    evidence_tier: client_attested
+    message: customer content
+expected:
+  schema_valid: false

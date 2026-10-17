@@ -1,0 +1,71 @@
+# Scenario 09: A refund agent must follow lookup, policy check, refund, receipt in that order, and may never refund before checking policy or finish without sending the receipt.
+tvl:
+  module: examples.runtime13.refund_workflow
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: refund_workflow_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: refund_workflow
+    kind: zero_tolerance
+    unit: invocation
+    violation:
+      pattern: protocol
+      alphabet:
+        - { event: tool_call, tool: orders.lookup }
+        - { event: tool_call, tool: refunds.check_policy }
+        - { event: tool_call, tool: refunds.issue }
+        - { event: tool_call, tool: comms.send_receipt }
+      states: [start, looked_up, eligible, refunded, closed]
+      start: start
+      transitions:
+        - { from: start, when: { event: tool_call, tool: orders.lookup }, to: looked_up }
+        - { from: looked_up, when: { event: tool_call, tool: orders.lookup }, to: looked_up }
+        - { from: looked_up, when: { event: tool_call, tool: refunds.check_policy }, to: eligible }
+        - { from: eligible, when: { event: tool_call, tool: refunds.check_policy }, to: eligible }
+        - { from: eligible, when: { event: tool_call, tool: refunds.issue }, to: refunded }
+        - { from: refunded, when: { event: tool_call, tool: comms.send_receipt }, to: closed }
+      accepting: [start, looked_up, eligible, closed]
+      rejecting: []
+      unlisted: reject
+  - name: refund_workflow_live
+    kind: evidence_liveness
+    unit: window
+    of: refund_workflow_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: refund_workflow_prod
+    requirement: refund_workflow
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 60 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 48 }
+    limits: { max_active_obligations: 32, max_tracked_correlations: 512 }
+    single_producer: true
+  - name: refund_workflow_live_check
+    requirement: refund_workflow_live
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: refund_guard
+    rules:
+      - { id: block_step, trigger: { monitor: refund_workflow_prod, event: unit_violation }, do: block_action, on_check_error: block }
+      - { id: page, trigger: { monitor: refund_workflow_prod, event: episode_opened }, do: notify, severity: warning }

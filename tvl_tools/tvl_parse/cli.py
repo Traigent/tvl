@@ -1,8 +1,9 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict as Dict
+from typing import Any
 
+from tvl.loader import is_pack_document
 from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
 
 
@@ -19,11 +20,13 @@ def main() -> None:
 
     try:
         ast = load_yaml_safely(args.file)
-        output = {
+        output: dict[str, Any] = {
             "ok": True,
             "file": str(args.file),
             "ast": ast,
         }
+        if is_pack_document(ast):
+            output["document_kind"] = "pack"
         print_output(output, get_format(args), text_renderer)
 
     except Exception as exc:  # noqa: BLE001

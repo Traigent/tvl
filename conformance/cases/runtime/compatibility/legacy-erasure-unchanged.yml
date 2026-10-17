@@ -1,0 +1,56 @@
+case_format: tvl-runtime-case/1
+family: compatibility
+description: A legacy module has an empty runtime and an identical legacy semantic projection; existing corpus tests
+  remain mandatory.
+spec_refs:
+- formalization/tvl-formal-semantics.md#12.7
+- formalization/tvl-formal-semantics.md#12.13
+module:
+  tvl:
+    module: conformance.runtime
+  tvl_version: '1.2'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+input:
+  kind: roundtrip
+  operation: legacy_erasure
+expected:
+  legacy_projection:
+    tvl:
+      module: conformance.runtime
+    tvl_version: '1.2'
+    environment:
+      snapshot_id: '2026-10-16T00:00:00Z'
+    evaluation_set:
+      dataset: test://runtime
+    tvars:
+    - name: model_choice
+      type: enum[str]
+      domain:
+      - small
+      - large
+    objectives:
+    - name: quality
+      direction: maximize
+    promotion_policy:
+      dominance: epsilon_pareto
+      alpha: 0.05
+      min_effect:
+        quality: 0.02
+  runtime_empty: true

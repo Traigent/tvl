@@ -1,0 +1,113 @@
+case_format: tvl-runtime-case/1
+family: compatibility
+description: transition on key unquoted
+spec_refs:
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#5.1
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#11.2
+input:
+  kind: toolchain
+  entrypoint: tvl-validate
+  reader: v1_3
+  document_yaml: "tvl:\n  module: conformance.runtime\ntvl_version: '1.3'\nenvironment:\n  snapshot_id: '2026-10-16T00:00:00Z'\n\
+    evaluation_set:\n  dataset: test://runtime\ntvars:\n- name: model_choice\n  type: enum[str]\n  domain:\n  -\
+    \ small\n  - large\nobjectives:\n- name: quality\n  direction: maximize\npromotion_policy:\n  dominance: epsilon_pareto\n\
+    \  alpha: 0.05\n  min_effect:\n    quality: 0.02\nrequirements:\n- name: requirement_main\n  kind: rate_bound\n\
+    \  unit: invocation\n  violation:\n    pattern: protocol\n    alphabet:\n    - event: authorization_granted\n\
+    \    - event: tool_call\n      tool: execute\n    states:\n    - start\n    - ready\n    - done\n    - bad\n\
+    \    start: start\n    transitions:\n    - from: start\n      on:\n        event: authorization_granted\n  \
+    \    to: ready\n    - from: ready\n      when:\n        event: tool_call\n        tool: execute\n      to: done\n\
+    \    accepting:\n    - done\n    rejecting:\n    - bad\n  max_rate: 0.05\nmonitors:\n- name: monitor_main\n\
+    \  requirement: requirement_main\n  phase: runtime\n  evidence:\n    source: customer_side\n    deployment_environment:\
+    \ production\n    attribution: agent_key_exact_v1\n    resolution: terminal_status_v1\n    sampling:\n     \
+    \ mode: head_sampled_declared\n      rate: 0.5\n  decision:\n    method: clopper_pearson_rational_v2\n    confidence:\
+    \ 0.95\n    false_alarm_budget: 0.05\n    min_samples: 200\n    max_unresolved_fraction: 0.05\n    horizon_days:\
+    \ 30\n    model: iid_bernoulli_within_window_v1\n  applies_to: agent\n  window:\n    tumbling_hours: 6\n   \
+    \ grace_minutes: 30\n  episode:\n    closure_windows: 2\n    closure_max_age_hours: 24\n  single_producer: true\n\
+    \  limits:\n    max_active_obligations: 100\n    max_tracked_correlations: 100\n"
+expected:
+  error: schema_error
+  exit_code: 2
+module:
+  tvl:
+    module: conformance.runtime
+  tvl_version: '1.3'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: requirement_main
+    kind: rate_bound
+    unit: invocation
+    violation:
+      pattern: protocol
+      alphabet:
+      - event: authorization_granted
+      - event: tool_call
+        tool: execute
+      states:
+      - start
+      - ready
+      - done
+      - bad
+      start: start
+      transitions:
+      - from: start
+        when:
+          event: authorization_granted
+        to: ready
+      - from: ready
+        when:
+          event: tool_call
+          tool: execute
+        to: done
+      accepting:
+      - done
+      rejecting:
+      - bad
+    max_rate: 0.05
+  monitors:
+  - name: monitor_main
+    requirement: requirement_main
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      attribution: agent_key_exact_v1
+      resolution: terminal_status_v1
+      sampling:
+        mode: head_sampled_declared
+        rate: 0.5
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+      horizon_days: 30
+      model: iid_bernoulli_within_window_v1
+    applies_to: agent
+    window:
+      tumbling_hours: 6
+      grace_minutes: 30
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 24
+    single_producer: true
+    limits:
+      max_active_obligations: 100
+      max_tracked_correlations: 100

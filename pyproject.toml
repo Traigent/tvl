@@ -48,6 +48,7 @@ tvl-check-structural = "tvl_tools.tvl_check_structural.cli:main"
 tvl-check-operational = "tvl_tools.tvl_check_operational.cli:main"
 tvl-compose = "tvl_tools.tvl_compose.cli:main"
 tvl-microsim-bridge = "tvl_tools.microsim_bridge.cli:main"
+tvl-compile-runtime = "tvl_tools.tvl_compile_runtime.cli:main"
 
 [project.entry-points."mkdocs.plugins"]
 social_override = "tvl_book_plugins.social_override:SocialOverridePlugin"
@@ -68,6 +69,7 @@ packages = [
   "tvl_tools.tvl_check_operational",
   "tvl_tools.tvl_compose",
   "tvl_tools.microsim_bridge",
+  "tvl_tools.tvl_compile_runtime",
 ]
 package-dir = { tvl = "python/tvl", tvl_book_plugins = "python/tvl_book_plugins", tvl_tools = "tvl_tools" }
 

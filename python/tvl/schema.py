@@ -7,6 +7,9 @@ import json
 
 def _grammar_root() -> Path:
     here = Path(__file__).resolve()
+    bundled = here.parent / "spec/grammar"
+    if bundled.is_dir():
+        return bundled
     return here.parents[2] / "spec/grammar"
 
 
@@ -25,3 +28,19 @@ def configuration_validator() -> Draft202012Validator:
 
 def measurement_validator() -> Draft202012Validator:
     return validator("tvl-measurement.schema.json")
+
+
+def pack_validator() -> Draft202012Validator:
+    return validator("tvl-pack.schema.json")
+
+
+def runtime_contract_validator() -> Draft202012Validator:
+    return validator("tvl-runtime-contract.schema.json")
+
+
+def runtime_local_validator() -> Draft202012Validator:
+    return validator("tvl-runtime-local.schema.json")
+
+
+def runtime_report_validator() -> Draft202012Validator:
+    return validator("tvl-runtime-report.schema.json")

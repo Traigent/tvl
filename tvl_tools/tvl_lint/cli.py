@@ -1,14 +1,17 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict as Dict, List as List
+from typing import Any
 
-from tvl.lints import lint_module
+from tvl.lints import lint_module, lint_pack
+from tvl.loader import is_pack_document
 from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
 
 
 def lint(doc: dict[str, Any], precision: int = 1000) -> list[dict[str, Any]]:
-    """Run lint checks against a parsed TVL document."""
+    """Run lint checks against a parsed TVL document (module or tvl_pack)."""
+    if is_pack_document(doc):
+        return lint_pack(doc)
     return lint_module(doc, precision=precision)
 
 
@@ -54,11 +57,13 @@ def main() -> None:
                 }
             ]
 
-        out = {
+        out: dict[str, Any] = {
             "ok": len(issues) == 0,
             "file": str(args.file),
             "issues": issues,
         }
+        if is_pack_document(doc):
+            out["document_kind"] = "pack"
 
         print_output(out, get_format(args), text_renderer)
 

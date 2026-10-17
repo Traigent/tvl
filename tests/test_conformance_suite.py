@@ -71,3 +71,31 @@ def test_chance_constraint_gate_conformance() -> None:
             module["objectives"],
         )
         assert decision == EXPECTED[relative_path][candidate_name]
+
+
+RUNTIME_CASES_DIR = CASES / "runtime"
+RUNTIME_CASE_PATHS = [p.relative_to(RUNTIME_CASES_DIR).as_posix() for p in sorted(RUNTIME_CASES_DIR.rglob("*.yml"))]
+
+@pytest.mark.parametrize("relative_case_path", RUNTIME_CASE_PATHS)
+def test_runtime_conformance_case(relative_case_path):
+    from tvl.runtime_conformance import run_runtime_conformance_case
+    from tvl.yaml_safe import safe_load
+    case = RUNTIME_CASES_DIR / relative_case_path
+    run_runtime_conformance_case(safe_load(case.read_text()), case_path=case)
+
+
+def test_language_families_present_and_all_cases_mapped():
+    from tvl.runtime_conformance import LANGUAGE_FAMILY_GLOBS
+    for family, globs in LANGUAGE_FAMILY_GLOBS.items():
+        assert any(any(Path(p).match(g) for g in globs) for p in RUNTIME_CASE_PATHS), family
+    for p in RUNTIME_CASE_PATHS:
+        assert any(Path(p).match(g) for globs in LANGUAGE_FAMILY_GLOBS.values() for g in globs), p
+
+
+def test_runtime_fixture_checker():
+    import importlib.util
+    path = ROOT / "conformance/tools/check_runtime_cases.py"
+    spec = importlib.util.spec_from_file_location("public_fixture_checker", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.main() == 0

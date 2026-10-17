@@ -14,6 +14,38 @@ All notable changes to the TVL spec, schema, tools, and SDK will be documented i
 - Documented every diagnostic emitted by `tvl.lints` in `docs/reference/error-codes.md`, including the codes for `cvars`, `policies`, `require_calibration`, and `composites`.
 - Installation instructions now describe installing from a clone of this repository; the package is not published to a registry.
 
+## TVL 1.3 (draft) - unreleased
+
+TVL 1.3 is a draft and a conservative extension of 1.2: a module without the new blocks is read exactly as before, and no 1.1 or 1.2 document gains a diagnostic.
+
+TVL 1.3 adds language only. TVL defines what each requirement, monitor and response means and what each verdict promises, and its tools check, compose and compile these declarations. It evaluates no runtime evidence and executes no response: runtime verdicts come from an evaluator outside TVL (RFC 0003 §3.5). The only verdicts a TVL tool computes are those of the release gate, for promotion monitors whose counts contain no unresolved or unplaceable units.
+
+### Added
+
+- Three optional module blocks, `requirements`, `monitors` and `responses`, and a separate `tvl_pack` document for organisation floors. A module that uses any of them, and every pack, declares `tvl_version: "1.3"` (a string).
+- Four sealed requirement kinds: `rate_bound`, `zero_tolerance`, `recovery_time` and `evidence_liveness`.
+- Seven unit predicates: numeric `metric`, `checker` labels, and the event patterns `absence`, `bounded_existence`, `precedence`, `bounded_response` and `protocol`.
+- Monitors for promotion (before release, on the evaluation set) and runtime (production) evidence, with tumbling windows, `clopper_pearson_rational_v2` and `exact_count_v1` decisions, episodes, burn monitors, sampling modes, and the frozen `backend_v1` profile.
+- Runtime verdicts `MET`, `BREACHED` and `UNKNOWN(reason)`; absence of evidence is never `MET`.
+- A sealed response ladder: `notify`, `open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`, `block_action` and `halt_unit`, with `none`, `standing` and `human` approvals.
+- JSON Schemas: `tvl-pack.schema.json`, `tvl-runtime-contract.schema.json`, `tvl-runtime-local.schema.json` and `tvl-runtime-report.schema.json`; `tvl.schema.json` gains the three optional root properties; `tvl-measurement.schema.json` gains `monitor_outcomes`.
+- A `tvl-compile-runtime` command that turns a module or pack, a token map and an optional checker registry into `runtime-contract.json` and `runtime-local.json`.
+- `tvl-compose --pack` (organisation floors that can only be tightened) and `--meet`, and the same tighten-only rule for overlays over the three blocks.
+- `tvl-ci-gate` joins promotion monitors with the existing promotion decision (`MET` passes, `BREACHED` is `Reject`, `UNKNOWN` is `NoDecision`) when a module declares them, and `tvl-measure-validate` reads `monitor_outcomes` from measurement bundles; a missing count is the new readiness issue `missing_monitor_counts`.
+- TVL 1.3 lints and diagnostic codes (see the error code catalog), including `runtime_liveness_missing`, `runtime_met_unreachable_at_min_samples`, `closure_unreachable` and `recovery_deadline_impossible`.
+- `unsupported_construct` for tools that meet a 1.3 construct they do not implement; they refuse instead of ignoring it.
+- 23 example modules and packs in `spec/examples/runtime-1.3/`.
+- Documentation: the guide *Requirements, Monitors and Responses*, a TVL 1.3 section in the language reference, TVL 1.3 entries in the error code catalog, and book chapter 6 *Requirements in Production*.
+
+### Changed
+
+- `tvl-validate` and `tvl-lint` treat a root mapping with `pack` and without `tvl` as a `tvl_pack`.
+- `tvl-check-structural`, `tvl-check-operational` and `tvl-config-validate` ignore the three runtime blocks in a module and refuse a pack with `unsupported_construct`; `tvl-ci-gate --policy` refuses any runtime block.
+
+### Not in 1.3
+
+Sliding windows, anytime-valid sequential tests, per-user or cross-unit state, conditions on event arguments, boolean combinations of predicates, and routing of notifications. See *What TVL 1.3 cannot express* in the guide.
+
 ## [1.2.0] - 2026-06-06
 
 Date is when RFC 0002 (`formalization/rfc-0002-composite-knobs.md`) and its validators landed on `main`.

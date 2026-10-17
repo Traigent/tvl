@@ -1,0 +1,19 @@
+case_format: tvl-runtime-case/1
+family: compatibility
+description: parse dispatches pack
+spec_refs:
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#5.1
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#11.2
+input:
+  kind: toolchain
+  entrypoint: tvl-parse
+  reader: v1_3
+expected:
+  exit_code: 0
+  document_kind: pack
+pack:
+  tvl_version: '1.3'
+  pack:
+    module: test_pack
+  requirements: []
+  monitors: []

@@ -1,0 +1,54 @@
+# Scenario 05: A coding agent may see at most 3 failed test runs per invocation; the 4th failure halts the run.
+tvl:
+  module: examples.runtime13.coding_agent_retry_cap
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: coding_agent_retry_cap_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: failed_test_retries
+    kind: zero_tolerance
+    unit: invocation
+    violation:
+      pattern: bounded_existence
+      a: { event: tool_result, tool: sandbox.run_tests, status: failed }
+      max_count: 3
+  - name: retry_cap_live
+    kind: evidence_liveness
+    unit: window
+    of: failed_test_retries_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: failed_test_retries_prod
+    requirement: failed_test_retries
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 60 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 48 }
+  - name: retry_cap_live_check
+    requirement: retry_cap_live
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: retry_guard
+    rules:
+      - { id: halt_run, trigger: { monitor: failed_test_retries_prod, event: unit_violation }, do: halt_unit, on_check_error: allow }
+      - { id: warn, trigger: { monitor: failed_test_retries_prod, event: episode_opened }, do: notify, severity: warning }

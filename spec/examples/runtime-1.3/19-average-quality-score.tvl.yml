@@ -1,0 +1,61 @@
+# Scenario 19 (awkward): The team wants "average answer quality at least 0.8"; the closest TVL 1.3 can say is that at most 10 % of invocations are graded poor by a customer-side grader.
+# Compile-time input: a tvl-checker-registry/1 file binding customer:answer_grade to the labels [good, acceptable, poor].
+tvl:
+  module: examples.runtime13.average_quality_score
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: average_quality_score_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: poor_answer_rate
+    kind: rate_bound
+    unit: invocation
+    violation: { checker: "customer:answer_grade", label_in: [poor] }
+    max_rate: 0.10
+  - name: grade_flowing
+    kind: evidence_liveness
+    unit: window
+    of: poor_answer_rate_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: poor_answer_rate_prod
+    requirement: poor_answer_rate
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      sampling: { mode: head_sampled_declared, rate: 0.20 }
+    window: { tumbling_hours: 24, grace_minutes: 120 }
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      horizon_days: 30
+      min_samples: 100
+      max_unresolved_fraction: 0.10
+    episode: { closure_windows: 2, closure_max_age_hours: 72 }
+  - name: grade_flowing_check
+    requirement: grade_flowing
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: quality_alerts
+    rules:
+      - { id: warn_open, trigger: { monitor: poor_answer_rate_prod, event: episode_opened }, do: notify, severity: warning }

@@ -600,3 +600,392 @@ For the full formal treatment, the repository also includes:
 
 *   `tvl/formalization/tvl-formal-semantics.md`
 </details>
+
+## TVL 1.3: requirements, monitors, responses
+
+!!! warning "Draft"
+    TVL 1.3 is a draft. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
+    values they accept. For a guided introduction read
+    [Requirements, Monitors and Responses](../guides/requirements-monitors-responses.md). The normative source is
+    `formalization/rfc-0003-runtime-requirements-monitors-responses.md`, and the machine-readable shape is
+    `spec/grammar/tvl.schema.json` and `spec/grammar/tvl-pack.schema.json`.
+
+TVL 1.3 is a conservative extension of 1.2: a module without these blocks is read exactly as before. TVL specifies and checks these
+declarations; a runtime platform evaluates them and carries out responses. The release gate of `tvl-ci-gate` additionally
+evaluates promotion monitors from fully resolved counts; its limits are listed below.
+
+### Where each check runs
+
+The JSON Schema checks only **shape**: closed key sets (an unknown key is a `schema_error`), JSON types (booleans are not numbers, integers are
+JSON integers), the always-required keys, and the identifier pattern of runtime names. Everything else - sealed enums, which fields a
+variant needs or forbids, numeric ranges, references between declarations, cross-field rules - is checked by the lints and reported with the
+specific code listed in the [error code catalog](error-codes.md#tvl-13-diagnostics). `tvl-validate` runs the lints only when the schema
+passes; `tvl-lint` runs no schema. Use `tvl-validate`.
+
+### Module and pack placement
+
+| Key | Where | Type | Notes |
+|---|---|---|---|
+| `tvl_version` | module root, pack root | string `"1.3"` | **required** as soon as `requirements`, `monitors` or `responses` appears (even empty) and in every pack. Absent: `runtime_version_required`. Any other value, including the number `1.3`: `declared_version_below_constructs`. The schema accepts a string or a number so the lint can give the specific code. |
+| `requirements` | module root, pack root | list of requirement | optional in a module, required in a pack |
+| `monitors` | module root, pack root | list of monitor | optional in a module, required in a pack |
+| `responses` | module root, pack root | list of response | optional in both |
+| `pack` | pack root only | `{ module: <name> }` | required in a pack; `module` is a TVL module identifier (dots allowed) |
+
+A **pack root** has exactly the keys `tvl_version`, `pack`, `requirements`, `monitors`, `responses`. A root mapping with `pack` and without `tvl` is
+treated as a pack. Pack monitors must declare `applies_to: tenant_floor` and `phase: runtime`.
+
+### Names and namespaces
+
+Requirement, monitor and response names, rule `id`s, protocol states, and selector `ref`s are *runtime identifiers*:
+`^[A-Za-z_][A-Za-z0-9_]*$`, no dots. Requirements, monitors and responses are three separate namespaces; rule ids are scoped to their response. A
+runtime name equal to a tvar, cvar, policy or composite name, or a duplicate within one namespace, is `runtime_name_collision`.
+Because TVL loads YAML 1.1, an unquoted `yes`, `no`, `on`, `off`, `true` or `false` is a boolean and fails the string type.
+
+### Value types and domains
+
+Numbers mean the exact value of their decimal literal. A literal that cannot be recovered exactly from a floating-point number
+(more than 15 significant digits is not guaranteed) is rejected with `runtime_invalid_profile`.
+
+| Type | Values |
+|---|---|
+| `ident` | `^[A-Za-z_][A-Za-z0-9_]*$` |
+| `code_ident` (selector `tool`) | `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`, at most 128 characters |
+| `prob_open` (`max_rate`, sampling `rate`, `rate_floor`) | decimal x with 0 < x < 1 |
+| `conf` (`confidence`) | decimal c with 0 < c < 1 |
+| `prob` (`false_alarm_budget`) | decimal with 0 < x <= 0.5 |
+| `frac` (`max_unresolved_fraction`) | decimal with 0 <= x <= 0.5 |
+| `hours` (`tumbling_hours`) | a divisor of 24: 1, 2, 3, 4, 6, 8, 12, 24 |
+| `grace_minutes` | integer 0 to 360 |
+| `min_samples` | integer 1 to 10,000,000 |
+| `horizon_days` | integer 1 to 365 |
+| `closure_windows` | integer 1 to 24 |
+| `closure_max_age_hours` | integer 1 to 720 |
+| `exceeds` | for `wall_clock_latency_ms`, `total_tokens`, `tool_calls`: integer >= 1. For `cost_usd`: decimal > 0 |
+| `threshold_factor` | decimal b with b > 1 and b times `max_rate` < 1 |
+| `within_hours`, `max_stale_windows`, `within_ms`, `trigger.hours`, `repeat_after_hours`, `max_repeats`, `limits.*` | integer >= 1 |
+| `max_count` | integer >= 0 |
+| `fingerprint` | `^[0-9a-f]{64}$`: the fingerprint of a certified configuration |
+| `label` | `^[A-Za-z_][A-Za-z0-9_]*$`; for a catalogue checker, a member of its label list |
+| `env_label` | the environment label; trimmed and lower-cased, 1 to 64 characters |
+
+An out-of-range value is the dedicated `runtime_*_out_of_range` code for that field. A value of the wrong JSON type (a string where an integer is
+required) is a `schema_error`.
+
+### `requirements`
+
+Common keys: `name` (required, `ident`), `kind` (required), `unit` (required). `kind` is one of four sealed values:
+
+| `kind` | `unit` | Keys | Meaning |
+|---|---|---|---|
+| `rate_bound` | `trace` or `invocation` | `violation` (required, any predicate), `max_rate` (required, `prob_open`), `among` (optional predicate) | at most `max_rate` of the units in scope may violate |
+| `zero_tolerance` | `trace` or `invocation` | `violation` (required, an *exact* predicate), `among` (optional predicate) | no unit in scope may violate |
+| `recovery_time` | `episode` | `of` (required: a runtime monitor that has an episode), `within_hours` (required) | after a breach the requirement must be met again within `within_hours` of window time |
+| `evidence_liveness` | `window` | `of` (required: a runtime window monitor, primary or burn), `max_stale_windows` (required) | the monitor must keep producing usable evidence |
+
+Keys that belong to another kind are `runtime_invalid_profile`. `among` is not allowed under `profile: backend_v1`.
+
+A `trace` covers one request end to end, including its model calls, tool calls and handoffs across contributing
+components. An `invocation` is one execution of the monitored agent itself; several invocations can belong to a
+trace. Individual tool and model calls are events within a unit. Predicates describe the unit's complete history;
+an evaluator profile outside TVL determines what partial evidence justifies reporting about it.
+
+### Predicates (`violation`, `among`)
+
+A predicate is exactly one of three families. Unknown keys are rejected.
+
+| Family | Keys | Notes |
+|---|---|---|
+| metric | `metric`, `exceeds` | `metric` is `wall_clock_latency_ms`, `cost_usd`, `total_tokens` or `tool_calls`. A unit violates when the metric is strictly greater than `exceeds`. Only under `rate_bound`. |
+| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. Only under `rate_bound`, and only for `customer_side` or `evaluation_set` evidence. |
+| exact | `pattern` and its keys, below | allowed under `rate_bound` and `zero_tolerance` |
+
+**Exact patterns**
+
+| `pattern` | Required keys | Optional keys | Notes |
+|---|---|---|---|
+| `absence` | `a` | | any matching event violates |
+| `bounded_existence` | `a`, `max_count` | | the (`max_count` + 1)-th matching event violates |
+| `precedence` | `a`, `b` | `mode`, `correlate_by` | `mode`: `single_use` (default) or `reusable`. A `b` needs an earlier usable `a`. |
+| `bounded_response` | `a`, `b`, `within_ms` | `correlate_by` | every `a` needs a `b` after it within `within_ms` ms (inclusive) |
+| `protocol` | `alphabet`, `states`, `start`, `transitions`, `accepting`, `rejecting` | `unlisted` | deterministic state machine; `unlisted` is `reject` (default) or `ignore` |
+
+`correlate_by` is `unit` (default), `correlation_id` or `tool_call_id`, only on `precedence` and `bounded_response`.
+`bounded_existence` counts across the whole unit. Correlation matching needs the same non-missing key on both events.
+`precedence` uses each `a` at most once unless `mode: reusable`; an `authorization_revoked` invalidates earlier
+`authorization_granted` events with the same `ref` and correlation key, and never invalidates an `a` of another
+event type. `bounded_response` matches one `b` to each `a`, one-to-one, after it in event order and within the
+inclusive deadline.
+
+A checker answers separately for each predicate position (`among` or `violation`), with one declared label or no
+result. Its predicate holds iff that answer is in `label_in`; no result leaves the unit unresolved. The catalogue
+checker has exactly the labels `must_refuse` and `complied`: the first is the positive answer to the `among`
+question, the second to the `violation` question; the other label is negative in each position. The customer's
+policy determines what must be refused. Checker accuracy is outside TVL's guarantees.
+
+**Selector** (`a`, `b`, `alphabet` entries, `when`): `{ event, [tool], [status], [ref] }`.
+
+| Key | Type | Allowed with |
+|---|---|---|
+| `event` (required) | `unit_start`, `unit_end`, `tool_call`, `tool_result`, `model_call`, `handoff`, `error`, `authorization_granted`, `authorization_revoked` | - |
+| `tool` | `code_ident` | `tool_call`, `tool_result` |
+| `status` | `running`, `completed`, `failed`, `rejected` | `unit_end`, `tool_result` |
+| `ref` | `ident` | `authorization_granted`, `authorization_revoked` |
+
+A selector field on the wrong event is `runtime_invalid_profile`. `{ event: error }` matches every error; the error class is not selectable.
+
+Events are emitted by the agent's customer-side instrumentation (SDK, framework or own code). `ref` names an
+authorization kind, not an individual grant. `correlation_id` identifies a logical transaction within the unit;
+`tool_call_id` identifies one tool call and its result. Instrumentation supplies these event fields; selectors
+test only the fields in the table above.
+
+**Protocol transition**: `{ from: <state>, when: <selector>, to: <state> }`. Constraints: at most one transition per (state, alphabet entry);
+no event may match two alphabet entries; every `when` is an alphabet entry; `start`, `accepting`, `rejecting` and every transition endpoint are declared
+states; `accepting` and `rejecting` do not overlap (`runtime_protocol_nondeterministic`). The transition key is `when`, not `on` (YAML 1.1 reads `on` as a
+boolean).
+
+### `monitors`
+
+| Key | Type | Required | Allowed values and notes |
+|---|---|---|---|
+| `name` | `ident` | yes | |
+| `requirement` | `ident` | yes | the one requirement it checks (`runtime_missing_ref`) |
+| `phase` | string | yes | `promotion` or `runtime` |
+| `profile` | string | no | `backend_v1` |
+| `applies_to` | string | no | `agent` (default in a module) or `tenant_floor` (only in a pack, and required there) |
+| `evidence` | object | yes | see below |
+| `window` | object | per role | `{ tumbling_hours, grace_minutes }` and nothing else |
+| `decision` | object | yes | see below |
+| `episode` | object | per role | `{ closure_windows, closure_max_age_hours }` |
+| `limits` | object | per T13 | `{ max_active_obligations, max_tracked_correlations }`, integers >= 1 |
+| `single_producer` | boolean | no | default `false`; only with an exact-pattern violation |
+
+**`evidence`**
+
+| Key | Allowed values |
+|---|---|
+| `source` (required) | `backend_trace_metadata`, `customer_side`, `evaluation_set`, `episodes`, `windows` |
+| `deployment_environment` | an environment label; default `production`. Not allowed on promotion or obligation monitors. |
+| `attribution` | `agent_key_exact_v1` (default) |
+| `resolution` | `terminal_status_v1` (default) |
+| `sampling` | the string `unverified`, or `{ mode, rate }` with `mode` = `head_sampled_declared` or `hash_bernoulli_committed_v1` and `rate` a `prob_open` |
+
+**`decision`**
+
+| Key | Allowed values |
+|---|---|
+| `method` (required) | `clopper_pearson_exact_v1`, `clopper_pearson_rational_v2`, `exact_count_v1` |
+| `model` | `iid_bernoulli_within_window_v1` (default) |
+| `confidence` | `conf` |
+| `false_alarm_budget` | `prob` |
+| `horizon_days` | `horizon_days` |
+| `min_samples` | `min_samples` |
+| `max_unresolved_fraction` | `frac` |
+| `threshold_factor` | `threshold_factor`; marks a burn monitor |
+
+**Compatible combinations.** Any other combination is `runtime_invalid_profile`.
+
+| Requirement kind | Evidence source | Phase | Method |
+|---|---|---|---|
+| `rate_bound` | `backend_trace_metadata` (with `backend_v1`), `customer_side`, `evaluation_set` | `runtime`; `promotion` only with `evaluation_set` | `clopper_pearson_exact_v1` (only with `backend_v1`), `clopper_pearson_rational_v2` |
+| `zero_tolerance` | `customer_side`, `evaluation_set` | `runtime`; `promotion` only with `evaluation_set` | `exact_count_v1` |
+| `recovery_time` | `episodes` | `runtime` | `exact_count_v1` |
+| `evidence_liveness` | `windows` | `runtime` | `exact_count_v1` |
+
+**Monitor roles and their fields.** A *primary* monitor is a `runtime` `rate_bound` or `zero_tolerance` monitor without `threshold_factor`; a *burn*
+monitor is a `runtime` `rate_bound` monitor with `threshold_factor`; a *promotion* monitor has `phase: promotion`; an *obligation* monitor checks a
+`recovery_time` or `evidence_liveness` requirement. R = required, D = optional with the stated default, F = forbidden.
+
+| Field | Primary `rate_bound` | Primary `zero_tolerance` | Burn | Promotion | Obligation |
+|---|---|---|---|---|---|
+| `evidence.deployment_environment` | D `production` | D `production` | D `production` | F | F |
+| `evidence.attribution` | D | D | D | F | F |
+| `evidence.resolution` | D | D | D | D | F |
+| `evidence.sampling` | by source | F | by source | F | F |
+| `window` | R | R | R | F | F |
+| `decision.method` | R | R (`exact_count_v1`) | R (`clopper_pearson_rational_v2`) | R | R (`exact_count_v1`) |
+| `decision.model` | D | F | D | F | F |
+| `decision.confidence` | R | F | F | R for `rate_bound`, F for `zero_tolerance` | F |
+| `decision.false_alarm_budget` | R | F | R | R for `rate_bound`, F for `zero_tolerance` | F |
+| `decision.horizon_days` | R | F | R | F | F |
+| `decision.min_samples` | R | D `1` | R | D `1` | F |
+| `decision.max_unresolved_fraction` | R | F | R | D `0` for `rate_bound`, F for `zero_tolerance` | F |
+| `decision.threshold_factor` | F | F | R | F | F |
+| `episode` | R | R | F | F | F |
+| `limits` | R for stateful patterns, otherwise D | as primary `rate_bound` | as primary `rate_bound` | as primary `rate_bound` | F |
+| `single_producer` | D `false` | D `false` | D `false` | D `false` | F |
+
+"Stateful patterns" means: a `customer_side` or `evaluation_set` monitor whose violation is `precedence`, `bounded_response` or `protocol` must declare
+`limits`; other monitors may declare them. Outside the `backend_v1` profile and the defaults shown, no statistical field has a default; an omitted one is `runtime_invalid_profile`.
+
+**Sampling by source.** `unverified` only with `backend_trace_metadata`. `head_sampled_declared` and `hash_bernoulli_committed_v1` only with
+`customer_side` and `rate_bound`. `evaluation_set`, `episodes` and `windows` take no sampling. Omitted `sampling` on `customer_side` means a census.
+`zero_tolerance` monitors declare no sampling.
+
+**References.** `recovery_time.of` names a runtime monitor with an episode (a primary monitor). `evidence_liveness.of` names a runtime window monitor
+(primary or burn). A cycle of requirement - `of` - monitor - `requirement` - requirement is `runtime_dependency_cycle`. Two monitors with the same
+effective key (same requirement identity, source, environment, attribution, method and `threshold_factor`) are `runtime_duplicate_key`, even if their
+requirements have different names or different bounds.
+
+**Schedule rules.** `closure_max_age_hours * 60 >= closure_windows * tumbling_hours * 60 + grace_minutes + 60` or `closure_unreachable`.
+`within_hours >= closure_windows * tumbling_hours` or `recovery_deadline_impossible`. A primary `rate_bound` monitor must be able to reach `MET` at
+`min_samples` or `runtime_met_unreachable_at_min_samples` (a warning under `backend_v1`), and should be able to reach `BREACHED` or
+`runtime_breach_unreachable_at_min_samples` warns. A primary monitor with no `evidence_liveness` requirement warns (`runtime_liveness_missing`).
+
+### Profile `backend_v1`
+
+`profile: backend_v1` freezes a monitor to the hosting platform's built-in latency requirement. It requires: `kind: rate_bound`, `unit: trace`,
+`violation.metric: wall_clock_latency_ms`, `phase: runtime`, `evidence.source: backend_trace_metadata`, `decision.method: clopper_pearson_exact_v1`,
+`sampling: unverified`, `attribution: agent_key_exact_v1`, `resolution: terminal_status_v1`, `model: iid_bernoulli_within_window_v1`. It forbids `among`,
+`threshold_factor`, `limits` and `single_producer`. Any other field or value is `runtime_legacy_profile_override`. Omitted fields take the defaults below, and
+`window` and `episode` may then be omitted whole.
+
+| Field | Allowed | Default |
+|---|---|---|
+| `max_rate` | 0 < x < 1 | none |
+| `violation.exceeds` (ms) | integer 1 to 600,000 | none |
+| `deployment_environment` | trimmed, lower-cased, 1 to 64 characters | `production` |
+| `confidence` | 0.90, 0.95, 0.99 | 0.95 |
+| `tumbling_hours` | 1, 3, 6, 12, 24 | 6 |
+| `grace_minutes` | 0 to 360 | 30 |
+| `min_samples` | 1 to 10,000,000 | 200 |
+| `max_unresolved_fraction` | 0 to 0.5 | 0.05 |
+| `false_alarm_budget` | above 0, at most 0.5 | 0.05 |
+| `horizon_days` | 1 to 365 | 30 |
+| `closure_windows` | 1 to 24 | 2 |
+| `closure_max_age_hours` | 1 to 720 | 24 |
+
+### `responses`
+
+A response is `{ name, rules }`. A rule is:
+
+| Key | Type | Required | Notes |
+|---|---|---|---|
+| `id` | `ident` | yes | unique within its response (`response_rule_id_duplicate`) |
+| `trigger` | `{ monitor, event, [hours] }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and forbidden otherwise. |
+| `do` | action | yes | the sealed action set below. `record` is implicit and cannot be declared (`response_unknown_action`). |
+| `approval` | `none`, `standing`, `human` | yes for `suspend`, otherwise no | allowed values and defaults by action, below |
+| `target` | `last_certified` or `fingerprint` | `rollback` only | |
+| `severity` | `info`, `warning`, `critical` | `notify` only | default `critical` |
+| `fallback` | `static_unavailable` or `route_to_human` for `suspend`; a `fingerprint` for `degrade` | `suspend`, `degrade` | |
+| `rate_floor` | `prob_open` | `throttle` only | admission cap as a fraction of the unthrottled rate; smaller throttles harder |
+| `repeat_after_hours` | integer >= 1 | no | re-fires while the scope is active |
+| `max_repeats` | integer >= 1 | no | requires `repeat_after_hours`; required for every action except `notify` that repeats |
+| `on_check_error` | `block`, `allow` | `block_action`, `halt_unit` only | no default |
+
+A parameter that does not belong to the action, or is missing, is `runtime_invalid_ladder`.
+
+**Actions**
+
+| `do` | Approval allowed (default) | Extra fields | Trigger restriction |
+|---|---|---|---|
+| `notify` | `none` | `severity` | any event |
+| `open_next_step` | `none` | none | active-scope events only (below); an open episode is needed for an effect |
+| `optimize` | `standing`, `human` (`human`) | none | active-scope events only (below); a next step must have been issued |
+| `rollback` | `standing`, `human` (`human`) | `target` (required) | active-scope events only (below) |
+| `throttle` | `standing`, `human` (`human`) | `rate_floor` (required) | active-scope events only (below) |
+| `degrade` | `standing`, `human` (`human`) | `fallback` fingerprint (required) | active-scope events only (below) |
+| `suspend` | explicit `human` required | `fallback` enum (required) | `episode_continued`, `episode_open_for` or `recovery_overdue` only (`response_suspend_unconfirmed`) |
+| `block_action` | `none` | `on_check_error` (required) | `unit_violation` on a `customer_side` monitor whose pattern is fixed by a prefix (`absence`, `bounded_existence`, `precedence`, `protocol`) |
+| `halt_unit` | `none` | `on_check_error` (required) | as `block_action` |
+
+The lints reject a remote service action (`open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`)
+on `episode_resolved`, `episode_withdrawn`, `recovery_cancelled`, `recovery_recovered`, `live_again` or
+`unit_violation` with `runtime_invalid_ladder`. These events cannot authorize a new remote effect. They can still
+`notify`; `unit_violation` can also authorize local guards. A service effect still needs its action-specific
+preconditions and a scope requiring intervention when it happens (RFC §7.4).
+
+`optimize`, `rollback`, `throttle` and `degrade` with `approval: none` are `response_irreversible_without_approval`; `suspend` with an approval other
+than `human`, or with `approval` omitted, is `response_suspend_without_human`. A standing grant (an owner-signed record, at most 30 days, outside TVL documents) never
+authorizes `suspend`.
+
+`suspend` is latched: resolution or withdrawal makes human `resume` eligible, never automatic. An installed
+`throttle` or `degrade` also remains until an authorized human `release`. Multiple throttles use the smallest
+`rate_floor`. `open_next_step` records a recommendation for whoever maintains the agent; acting on it needs
+separate authority and it changes no deployment by itself.
+
+**Events by monitor role**
+
+| Monitor role | Events |
+|---|---|
+| primary | `episode_opened`, `episode_continued`, `episode_open_for`, `episode_resolved`, `episode_withdrawn` |
+| primary, `customer_side` | plus `unit_violation` |
+| burn | `burn_breached` |
+| `recovery_time` obligation | `recovery_overdue`, `recovery_cancelled`, `recovery_recovered` |
+| `evidence_liveness` obligation | `stale`, `live_again` |
+| promotion | none |
+
+### Verdicts, states and reasons
+
+| Name | Values |
+|---|---|
+| runtime verdict | `MET`, `BREACHED`, `UNKNOWN(reason)` |
+| window reasons | `late_evaluation`, `revision_gap`, `insufficient`, `unplaceable`, `unresolved`, `inconclusive`, `sampling_biased`, `incomplete` |
+| recovery state | `RECOVERED` (MET), `OVERDUE` (BREACHED), `PENDING` (`UNKNOWN(pending)`), `CANCELLED` (`UNKNOWN(cancelled)`), `UNKNOWN(lifecycle_unavailable)` |
+| liveness state | `LIVE` (MET), `STALE` (BREACHED), `UNKNOWN(insufficient)`, `UNKNOWN(awaiting)` |
+| episode outcome | `resolved`, `withdrawn` |
+| promotion mapping | `MET` passes, `BREACHED` is `Reject`, `UNKNOWN` is `NoDecision` |
+
+`rate_bound` verdicts under `clopper_pearson_rational_v2` carry the declared false-alarm and confidence promises
+under the statistical model; unresolved evidence cannot strengthen either claim. `zero_tolerance` means one
+established violation breaches, while `MET` needs complete census coverage with at least `min_samples` units and
+none violating. An empty complete window is `UNKNOWN(insufficient)`.
+No guarantee is claimed for the floating-point method `clopper_pearson_exact_v1`: its verdicts are the hosting
+platform's computation, matched against test vectors, not proved, and the probability theorems do not cover it.
+
+Recovery uses the end of the closing window minus the end of the opening window. Wall-clock duration is reported
+beside it. Freshness at evaluation can still prevent closure; missing lifecycle evidence alone is not `OVERDUE`.
+Withdrawal before the obligation is decided gives `CANCELLED`; `RECOVERED`, `OVERDUE` and `CANCELLED` are terminal.
+
+**Release gate.** The evaluation harness supplies `monitor_outcomes` in the candidate bundle: `n` resolved
+units, `k` violating among them, optional `u` unresolved and `pl` unplaceable (both default 0). `tvl-ci-gate`
+evaluates a monitor only with `u = pl = 0`; otherwise it returns `UNKNOWN(engine_required)` and maps it to
+`NoDecision`. Zero tolerance also needs the harness's explicit `complete: true`, otherwise `UNKNOWN(incomplete)`.
+That attestation means the evaluation set was fully covered; counts alone do not prove it. The gate joins these
+results with the legacy result, `Reject` before `NoDecision` before `Promote`. A `rate_bound` promotion monitor
+uses standard exact binomial tests; at matched confidence its `MET` test corresponds to a chance-constraint pass
+(subject to floating-point ties in the legacy bound). A chance constraint rejects inconclusive evidence; a monitor
+maps it to `NoDecision`. Legacy modules keep their previous gate behaviour.
+
+### Companion documents
+
+| Document | Format tag | Used for |
+|---|---|---|
+| token map | `tvl-token-map/1` | `{ format, tokens: [{ namespace, local, hosted }] }`. Customer side. Gives each name an opaque reference. `tvl-compile-runtime --token-map`. |
+| checker registry | `tvl-checker-registry/1` | `{ format, checkers: [{ checker, labels }] }`. Customer side. Binds each `customer:<name>` to its closed, ordered label list. `tvl-compile-runtime --checkers`. |
+| compiled contract | `tvl-runtime-contract/1` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schema: `spec/grammar/tvl-runtime-contract.schema.json`. |
+| compiled local form | `tvl-runtime-local/1` | `runtime-local.json`, customer side. Schema: `spec/grammar/tvl-runtime-local.schema.json`. |
+| window report | `tvl-runtime-report/1` | produced by customer-side monitors. Schema: `spec/grammar/tvl-runtime-report.schema.json`. |
+| measurement bundle | `monitor_outcomes` | `monitor_outcomes.<promotion monitor name>: { n, k, [u], [pl], [complete] }` (integers >= 0; `complete` boolean) in the bundle given to `tvl-measure-validate` and `tvl-ci-gate`. Schema: `spec/grammar/tvl-measurement.schema.json`. |
+
+Token-map `namespace` values are `module`, `requirement`, `monitor`, `response`, `rule`, `environment`, `selector_ref`, `checker`, `state`. In every
+namespace except `checker` the `hosted` value matches `^[A-Za-z0-9_-]{1,128}$`; in `checker`, `local` is a customer checker id and `hosted` is
+`customer:` followed by 64 lowercase hex characters. The map must be one-to-one within a namespace.
+
+`tvl-compile-runtime DOCUMENT [--pack PACK.yml]... --emit-token-map-template` prints the required entries as
+local-only JSON with empty `hosted` values, including default environments. It mints no tokens and writes no
+compiled artefacts. Fill the placeholders before using the result with `--token-map`; template mode cannot be
+combined with `--token-map` or `--out-dir`.
+
+### Defaults at a glance
+
+| Item | Default |
+|---|---|
+| `applies_to` (module monitor) | `agent` |
+| `deployment_environment` | `production` |
+| `attribution` / `resolution` / `model` | `agent_key_exact_v1` / `terminal_status_v1` / `iid_bernoulli_within_window_v1` |
+| `sampling` on `customer_side` | census (every unit in scope) |
+| `precedence.mode` / `correlate_by` / protocol `unlisted` | `single_use` / `unit` / `reject` |
+| `notify.severity` | `critical` |
+| `approval` | `none` for `notify`, `open_next_step`, `block_action`, `halt_unit`; `human` for `optimize`, `rollback`, `throttle`, `degrade`; explicit `human` required for `suspend` |
+| `min_samples` (zero tolerance, promotion) | 1 |
+| `max_unresolved_fraction` (promotion `rate_bound`) | 0 |
+| `on_check_error` | none: you must choose |
+| any other statistical field (outside `backend_v1`) | none: omission is `runtime_invalid_profile` |
+
+### Version and compatibility
+
+Documents without these blocks gain no new diagnostic. An old reader rejects a 1.3 module because the root schema is closed. A tool that meets a 1.3
+construct it does not implement refuses with `unsupported_construct` and names the construct (`requirements`, `monitors`, `responses`, `tvl_pack`,
+`monitor_outcomes` or `runtime_report`); it never ignores or strips it. `tvl-check-structural`, `tvl-check-operational` and `tvl-config-validate` erase the
+three blocks from a module and check the rest; `tvl-ci-gate --policy` refuses any runtime block.

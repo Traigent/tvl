@@ -6,6 +6,8 @@ VS Code extension for [TVL (Tuned Variables Language)](https://tvl-lang.org), a 
 
 The extension is not published to the VS Code Marketplace or Open VSX. Build it from this repository and install the resulting `.vsix` file (see [Installation](#installation-from-source)).
 
+> **TVL 1.3 (draft) support:** Includes syntax highlighting, snippets, bundled JSON Schemas, and field-addressed diagnostics for TVL 1.3 draft runtime blocks (`requirements`, `monitors`, `responses`) and organisation floor packs (`tvl_pack`, RFC 0003 draft).
+
 ## Scope note
 
 Shared TVL grammar and language-configuration assets live in `editor_shared/vscode/` at the repository root. This package carries byte-identical copies in `syntaxes/tvl.tmLanguage.json` and `language-configuration.json`. After changing a shared asset, copy it into this package by hand:
@@ -42,27 +44,43 @@ To run the extension's own tests: `npm test`.
 
 ### Syntax Highlighting
 
-Full syntax highlighting for `.tvl.yml` and `.tvl.yaml` files:
+Full syntax highlighting for `.tvl.yml`, `.tvl.yaml`, `.pack.tvl.yml`, and `.pack.tvl.yaml` files:
 
-- **Keywords**: `tvl`, `tvars`, `constraints`, `objectives`
-- **Types**: `enum[str]`, `float`, `int`, `bool`
-- **Constraint operators**: `when`, `then`, `require`
-- **Directions**: `maximize`, `minimize`
+- **Top-level blocks**: `tvl`, `tvl_version`, `pack`, `tvars`, `cvars`, `policies`, `composites`, `constraints`, `objectives`, `promotion_policy`, `requirements`, `monitors`, `responses`
+- **TVL 1.3 requirement kinds & units**: `rate_bound`, `zero_tolerance`, `recovery_time`, `evidence_liveness`, `trace`, `invocation`, `episode`, `window`
+- **TVL 1.3 patterns & metrics**: `absence`, `bounded_existence`, `precedence`, `bounded_response`, `protocol`, `wall_clock_latency_ms`, `cost_usd`, `total_tokens`, `tool_calls`, `traigent.refusal.v1`
+- **TVL 1.3 trace & monitor events**: `unit_start`, `unit_end`, `tool_call`, `tool_result`, `model_call`, `handoff`, `error`, `authorization_granted`, `authorization_revoked`, `episode_opened`, `episode_continued`, `episode_open_for`, `episode_resolved`, `episode_withdrawn`, `recovery_overdue`, `recovery_cancelled`, `recovery_recovered`, `burn_breached`, `stale`, `live_again`, `unit_violation`
+- **TVL 1.3 response actions & approvals**: `notify`, `open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`, `block_action`, `halt_unit`, `none`, `standing`, `human`
+- **Types & operators**: `enum[str]`, `float`, `int`, `bool`, `when`, `then`, `require`, `maximize`, `minimize`
 
-### Validation
+### Snippets (TVL 1.3 Draft)
 
-Integrated validation using the TVL CLI tools:
+Built-in snippets for authoring TVL 1.3 runtime blocks and packs:
+
+| Prefix | Description |
+|--------|-------------|
+| `tvl-rate-bound` | `rate_bound` requirement + runtime monitor + `evidence_liveness` pair |
+| `tvl-zero-tolerance-guard` | `zero_tolerance` requirement + `customer_side` monitor + `evidence_liveness` pair + local guard (`block_action`) |
+| `tvl-recovery` | `recovery_time` requirement and `episodes` obligation monitor |
+| `tvl-promotion-monitor` | `promotion`-phase monitor on `evaluation_set` for release gating |
+| `tvl-responses-ladder` | `responses` escalation ladder (`notify`, `open_next_step`, `rollback`, human-approved `suspend`) |
+| `tvl-pack-floor` | `tvl_pack` organisation floor document with `tenant_floor` monitors and responses |
+
+### Bundled Schema Validation
+
+Bundled schemas in `schemas/` integrate with the YAML Language Server (`redhat.vscode-yaml`):
+
+- `*.tvl.yml` / `*.tvl.yaml` module files validate against `schemas/tvl.schema.json` (including `examples` and `x-enum` completion hints for closed TVL 1.3 enums)
+- `*.pack.tvl.yml` / `*.pack.tvl.yaml` (and `tvl_pack` documents with a root `pack` key) validate against `schemas/tvl-pack.schema.json`
+
+### CLI Validation and Linting
+
+Integrated validation using the TVL CLI tools (`tvl-validate` and `tvl-lint`):
 
 - **On-save validation**: Automatically validate TVL files when saved
 - **Manual validation**: Run "TVL: Validate Current File" command
-- **Linting**: Run "TVL: Lint Current File" for best practices
-
-### Error Highlighting
-
-Validation and lint issues appear as:
-- Errors in the Problems panel
-- Inline squiggles in the editor
-- Quick navigation to problem locations
+- **Linting**: Run "TVL: Lint Current File" for normative lint checks
+- **Field-addressed diagnostics**: Every schema and lint issue returned on exit code 2 is surfaced in the Problems panel with its diagnostic code and dotted field path (e.g., `requirements.0.max_rate: ...`)
 
 ## Requirements
 
@@ -95,55 +113,65 @@ tvl-validate --help
 | `TVL: Validate Current File` | Validate the current TVL file |
 | `TVL: Lint Current File` | Lint the current TVL file |
 
-## Example TVL File
+## Example TVL 1.3 File (Draft)
 
 This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`:
 
 ```yaml
 tvl:
   module: corp.support.rag_bot
+tvl_version: "1.3"
 
 environment:
-  snapshot_id: "2026-01-01T00:00:00Z"
-  bindings:
-    llm_gateway: us-east-1
-  context:
-    gateway_baseline_latency_ms: 180
+  snapshot_id: "2026-10-16T00:00:00Z"
 
 evaluation_set:
-  dataset: s3://datasets/support-tickets/dev.jsonl
-  seed: 2024
+  dataset: support_eval_v1
 
 tvars:
   - name: model
     type: enum[str]
     domain: ["gpt-4o", "gpt-4o-mini"]
 
-  - name: temperature
-    type: float
-    domain:
-      range: [0.0, 1.0]
-      resolution: 0.05
-
-constraints:
-  structural:
-    - when: model = "gpt-4o"
-      then: temperature <= 0.7
-
 objectives:
   - name: quality
-    metric_ref: metrics.quality.v1
     direction: maximize
-  - name: cost
-    metric_ref: metrics.cost.v1
-    direction: minimize
 
 promotion_policy:
   dominance: epsilon_pareto
   alpha: 0.05
   min_effect:
-    quality: 0.01
-    cost: 0.001
+    quality: 0.02
+
+requirements:
+  - name: latency_2s
+    kind: rate_bound
+    unit: trace
+    violation: { metric: wall_clock_latency_ms, exceeds: 2000 }
+    max_rate: 0.05
+  - name: latency_2s_live
+    kind: evidence_liveness
+    unit: window
+    of: latency_2s_prod
+    max_stale_windows: 4
+
+monitors:
+  - name: latency_2s_prod
+    requirement: latency_2s
+    phase: runtime
+    profile: backend_v1
+    evidence: { source: backend_trace_metadata }
+    decision: { method: clopper_pearson_exact_v1 }
+  - name: latency_2s_live_check
+    requirement: latency_2s_live
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: latency_alerts
+    rules:
+      - { id: warn_open, trigger: { monitor: latency_2s_prod, event: episode_opened }, do: notify, severity: warning }
 ```
 
 ## Links

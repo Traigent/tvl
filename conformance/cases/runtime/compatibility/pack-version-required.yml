@@ -1,0 +1,19 @@
+case_format: tvl-runtime-case/1
+family: compatibility
+description: pack version required
+spec_refs:
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#11.1
+input:
+  kind: lint
+  operation: validate
+expected:
+  diagnostics:
+  - code: runtime_version_required
+    severity: error
+  absent_diagnostics:
+  - declared_version_below_constructs
+pack:
+  pack:
+    module: test_pack
+  requirements: []
+  monitors: []

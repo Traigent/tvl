@@ -1,0 +1,80 @@
+# Scenario 18: A multi-step workflow agent may use more than 20 tool calls on at most 5 % of traces, and must never exceed 40 tool calls in any single trace (the 41st is halted).
+tvl:
+  module: examples.runtime13.workflow_tool_call_budget
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: workflow_tool_call_budget_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: tool_calls_soft
+    kind: rate_bound
+    unit: trace
+    violation: { metric: tool_calls, exceeds: 20 }
+    max_rate: 0.05
+  - name: tool_calls_hard
+    kind: zero_tolerance
+    unit: trace
+    violation: { pattern: bounded_existence, a: { event: tool_call }, max_count: 40 }
+  - name: tool_calls_soft_flowing
+    kind: evidence_liveness
+    unit: window
+    of: tool_calls_soft_prod
+    max_stale_windows: 3
+  - name: tool_calls_hard_flowing
+    kind: evidence_liveness
+    unit: window
+    of: tool_calls_hard_prod
+    max_stale_windows: 3
+
+monitors:
+  - name: tool_calls_soft_prod
+    requirement: tool_calls_soft
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 6, grace_minutes: 30 }
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      horizon_days: 30
+      min_samples: 100
+      max_unresolved_fraction: 0.05
+    episode: { closure_windows: 2, closure_max_age_hours: 24 }
+  - name: tool_calls_hard_prod
+    requirement: tool_calls_hard
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 6, grace_minutes: 30 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 24 }
+  - name: tool_calls_soft_flowing_check
+    requirement: tool_calls_soft_flowing
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+  - name: tool_calls_hard_flowing_check
+    requirement: tool_calls_hard_flowing
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: budget_guard
+    rules:
+      - { id: halt_runaway, trigger: { monitor: tool_calls_hard_prod, event: unit_violation }, do: halt_unit, on_check_error: allow }
+      - { id: warn_soft, trigger: { monitor: tool_calls_soft_prod, event: episode_opened }, do: notify, severity: warning }
+      - { id: warn_hard, trigger: { monitor: tool_calls_hard_prod, event: episode_opened }, do: notify, severity: critical }

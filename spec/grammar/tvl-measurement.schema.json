@@ -41,6 +41,24 @@
         "additionalProperties": true
       }
     },
+    "monitor_outcomes": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["n", "k"],
+        "properties": {
+          "n": { "type": "integer", "minimum": 0 },
+          "k": { "type": "integer", "minimum": 0 },
+          "u": { "type": "integer", "minimum": 0 },
+          "pl": { "type": "integer", "minimum": 0 },
+          "complete": { "type": "boolean" }
+        }
+      }
+    },
     "objectives": {
       "type": "object",
       "additionalProperties": {

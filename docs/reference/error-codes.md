@@ -787,9 +787,10 @@ These warnings indicate that the module uses features outside the formally verif
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (no errors) |
-| 1 | Runtime/internal error |
-| 2 | Validation errors or parse failures |
+| 0 | Success under the tool's contract (see the 1.3 tool table below) |
+| 2 | A reported issue, validation or parse failure, or an unsuccessful gate decision, as specified by the tool |
+
+TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diagnostic outcome.
 
 ---
 
@@ -910,3 +911,146 @@ These warnings indicate that the module uses features outside the formally verif
 | `unverifiable_registry_domain` | warning | Formal | Registry domain used |
 | `unverifiable_callable_type` | warning | Formal | Callable type used |
 | `inadequate_precision` | warning | Formal | Float precision too low |
+
+---
+
+## TVL 1.3 diagnostics
+
+These codes belong to the TVL 1.3 requirements, monitors and responses (see the
+[guide](../guides/requirements-monitors-responses.md) and the
+[language reference](language.md#tvl-13-requirements-monitors-responses)). TVL 1.3 is a draft; codes can still change.
+
+Every diagnostic has the same shape as the codes above: `{ code, message, path, severity }`. In text mode a line looks like
+`[runtime_window_out_of_range] monitors.0.window.tumbling_hours: tumbling_hours 5 is outside its allowed domain`, and `path` points at the key to fix. Severity is
+`error` unless marked `warning`. Warnings still make `tvl-validate` and `tvl-lint` exit 2.
+
+**Reported by** says which tool in this repository can produce the code:
+
+| Value | Tool |
+|---|---|
+| lint | `tvl-validate`, `tvl-lint` (and `tvl-ci-gate`, which runs the runtime lints first) |
+| compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
+| compile | `tvl-compile-runtime` |
+| gate | `tvl-measure-validate`, `tvl-ci-gate` |
+| platform | defined by the draft for the platform that registers or evaluates your contract; no tool in this repository produces it |
+
+!!! note "Message text"
+    Some tools print only the code, for example `Error: requirement_weaker_than_floor`, with no path. The code, not the wording, is the stable part.
+
+### Version and readers
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `unsupported_construct` | error | various tools | a tool met a 1.3 construct it does not implement (`requirements`, `monitors`, `responses`, `tvl_pack`, `monitor_outcomes`, `runtime_report`) and refused instead of ignoring it. The first construct found is named. | use a tool that supports the construct (for a pack: `tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`), or remove the construct for that tool |
+| `runtime_version_required` | error | lint | the document uses `requirements`, `monitors` or `responses`, or is a `tvl_pack`, and has no `tvl_version` | add `tvl_version: "1.3"` |
+| `declared_version_below_constructs` | error | lint | `tvl_version` is present but is not the string `"1.3"`; an unquoted `1.3` is a number | write `tvl_version: "1.3"` with quotes |
+| `runtime_unsupported_capability` | error | platform | the target platform has not enabled the monitor's kind, source, method or predicate class | change the declaration to something the platform supports, or ask the platform to enable it |
+| `response_action_unsupported` | error | platform | the target platform cannot carry out a rule's action | remove the rule or pick an action the platform supports |
+
+### Names and references
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `runtime_name_collision` | error | lint, compose | a duplicate name within the requirement, monitor or response namespace; a runtime name equal to a tvar, cvar, policy or composite name; or a pack name that clashes with a different module declaration | rename one of them |
+| `response_rule_id_duplicate` | error | lint | two rules of one response share an `id` | give each rule a unique `id` |
+| `runtime_missing_ref` | error | lint | `monitor.requirement`, `of` or `trigger.monitor` names nothing | fix the name or declare the missing item |
+| `runtime_ref_kind_mismatch` | error | lint | a reference points at the wrong kind of thing: `recovery_time.of` at a monitor with no episode, `evidence_liveness.of` at a monitor with no windows, or a `trigger.event` the monitor never emits | point at the right monitor, or pick an event that monitor emits (guide, section 7) |
+| `runtime_dependency_cycle` | error | lint | requirements and monitors refer to each other in a cycle | break the cycle: an obligation (`of`) must not depend on itself |
+
+### Kinds, profiles and values
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `runtime_unknown_kind` | error | lint, compile | a value outside a sealed list: a requirement kind, unit, pattern, metric, event type, status, checker id or label, source, method, model, sampling mode, attribution or resolution rule, profile, phase, trigger event, `correlate_by`, `unlisted`, `mode`, approval, severity or `on_check_error`. Also an unbound customer checker or label at compile time. | use a value from the reference table; check the spelling |
+| `response_unknown_action` | error | lint | `do` is not one of the nine actions; `record` is implicit and cannot be declared | use `notify`, `open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`, `block_action` or `halt_unit` |
+| `runtime_invalid_profile` | error | lint, compile | the combination of kind, source, phase and method is not allowed; a field is missing or forbidden for the monitor's role; a key of another variant is present; sampling is not allowed for the source; a stateful pattern has no `limits`; a selector field is on the wrong event; or a number cannot be read exactly | compare the monitor to the role table in the reference; the message names the role |
+| `runtime_legacy_profile_override` | error | lint | under `profile: backend_v1`, a field or value other than the frozen ones | remove the field, or drop `profile: backend_v1` and declare the monitor in full |
+| `runtime_rate_out_of_range` | error | lint | `max_rate` is not strictly between 0 and 1 | use a value such as `0.05` |
+| `runtime_confidence_out_of_range` | error | lint | `confidence` is not strictly between 0 and 1; under `backend_v1` it is not 0.90, 0.95 or 0.99 | pick an allowed value |
+| `runtime_window_out_of_range` | error | lint | `tumbling_hours` does not divide 24; under `backend_v1` it is not 1, 3, 6, 12 or 24 | use 1, 2, 3, 4, 6, 8, 12 or 24 |
+| `runtime_grace_out_of_range` | error | lint | `grace_minutes` is outside 0 to 360 | use 0 to 360 |
+| `runtime_min_samples_out_of_range` | error | lint | `min_samples` is outside 1 to 10,000,000 | use a value in range |
+| `runtime_unresolved_fraction_out_of_range` | error | lint | `max_unresolved_fraction` is outside 0 to 0.5 | use a value in range |
+| `runtime_false_alarm_budget_out_of_range` | error | lint | `false_alarm_budget` is not above 0 and at most 0.5 | use a value such as `0.05` |
+| `runtime_horizon_out_of_range` | error | lint | `horizon_days` is outside 1 to 365 | use a value in range |
+| `runtime_closure_windows_out_of_range` | error | lint | `closure_windows` is outside 1 to 24 | use a value in range |
+| `runtime_closure_age_out_of_range` | error | lint | `closure_max_age_hours` is outside 1 to 720 | use a value in range |
+| `runtime_exceeds_out_of_range` | error | lint | `exceeds` is outside its metric's domain: an integer >= 1 for latency, tokens and tool calls (1 to 600,000 under `backend_v1`), a decimal > 0 for cost | use a valid number |
+| `runtime_sampling_rate_out_of_range` | error | lint | a sampling `rate` is not strictly between 0 and 1 | use a value such as `0.1` |
+| `runtime_rate_floor_out_of_range` | error | lint | `rate_floor` is not strictly between 0 and 1 | use a value such as `0.5` |
+| `runtime_within_hours_out_of_range` | error | lint | `within_hours` is below 1 | use an integer >= 1 |
+| `runtime_max_stale_windows_out_of_range` | error | lint | `max_stale_windows` is below 1 | use an integer >= 1 |
+| `runtime_within_ms_out_of_range` | error | lint | `within_ms` is below 1 | use an integer >= 1 |
+| `runtime_max_count_out_of_range` | error | lint | `max_count` is below 0 | use an integer >= 0 |
+| `runtime_trigger_hours_out_of_range` | error | lint | `trigger.hours` is below 1 | use an integer >= 1 |
+| `runtime_repeat_after_hours_out_of_range` | error | lint | `repeat_after_hours` is below 1 | use an integer >= 1 |
+| `runtime_max_repeats_out_of_range` | error | lint | `max_repeats` is below 1 | use an integer >= 1 |
+| `runtime_max_active_obligations_out_of_range` | error | lint | `limits.max_active_obligations` is below 1 | use an integer >= 1 |
+| `runtime_max_tracked_correlations_out_of_range` | error | lint | `limits.max_tracked_correlations` is below 1 | use an integer >= 1 |
+| `runtime_burn_out_of_range` | error | lint | a burn monitor with `threshold_factor` <= 1, or with b times `max_rate` >= 1, or that can never breach at `min_samples` | choose b > 1 with b times `max_rate` < 1 and a `min_samples` that can breach |
+| `runtime_zero_tolerance_inexact` | error | lint | a `zero_tolerance` violation that is a metric or a checker rather than an exact pattern | use an exact pattern, or switch to `rate_bound` |
+| `runtime_zero_tolerance_incomplete` | error | lint | a `zero_tolerance` monitor declares `sampling`; a sampled window can never be complete, so `MET` would be unreachable | remove `sampling` |
+| `runtime_protocol_nondeterministic` | error | lint | a protocol has two transitions for one (state, event), an event matching two alphabet entries, an undeclared state or selector, or overlapping accepting and rejecting states | make the state machine deterministic and declare every state |
+| `runtime_tool_not_code_identifier` | error | lint | a selector `tool` is not a plain function or qualified name (a wildcard, a list item, a space) | name exactly one tool, such as `payments.charge` |
+| `runtime_content_on_backend_source` | error | lint | a checker predicate on `backend_trace_metadata`, or a content check assigned to hosted execution | run checkers on `customer_side` or `evaluation_set` evidence |
+
+A value of the wrong JSON type, for example a string where an integer is required, is `schema_error`, not an out-of-range code.
+
+### Statistics and power
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `runtime_met_unreachable_at_min_samples` | error (warning under `backend_v1`) | lint | even with zero bad units, a window of `min_samples` units can never be `MET` at this `max_rate` and `confidence`, so episodes could never close | raise `min_samples` to at least the size in the guide's table (299 for `max_rate` 0.01 at 0.95), loosen `max_rate`, or lower `confidence` |
+| `runtime_breach_unreachable_at_min_samples` | warning | lint | even with every unit bad, a window of `min_samples` units can never be `BREACHED` | raise `min_samples` |
+| `chance_constraint_shadowed` | warning | lint | a promotion monitor and a 1.2 `chance_constraints` entry share a name, so the chance constraint's `Reject` still wins | remove one of them |
+| `runtime_liveness_missing` | warning | lint | a primary monitor has no `evidence_liveness` requirement watching it | add an `evidence_liveness` requirement and a `source: windows` monitor for it |
+
+### Composition and schedule
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `closure_unreachable` | error | lint, compose | `closure_max_age_hours * 60` is less than `closure_windows * tumbling_hours * 60 + grace_minutes + 60`, so clean windows can never be fresh enough to close an episode (also checked on the composed result) | raise `closure_max_age_hours`, or shorten the window, grace or `closure_windows` |
+| `evaluation_schedule_mismatch` | error | compose | a module monitor and its floor, an overlay and its base, or two meet inputs differ in window length, grace, horizon or false-alarm budget | make the schedules identical |
+| `requirement_weaker_than_floor` | error | compose | the module's monitor or obligation bound is weaker than the pack floor on a composed field (higher `max_rate`, lower `confidence`, ...) | tighten your numbers to the floor or better |
+| `runtime_duplicate_key` | error | lint | two monitors have the same effective key (same predicate, source, environment, attribution, method and `threshold_factor`), or two monitors serve one obligation | keep one, or change what they measure; use a burn monitor for a second tier |
+| `recovery_deadline_impossible` | error | lint, compose | `within_hours` is less than `closure_windows * tumbling_hours`, so an episode could never close in time (equal is fine; also checked on the composed result) | raise `within_hours` or shorten the window or `closure_windows` |
+| `tenant_floor_outside_pack` | error | lint | a module monitor declares `applies_to: tenant_floor`, which only a pack may do | remove `applies_to`, or move the monitor into a `tvl_pack` |
+| `runtime_incompatible_replacement` | error | compose | an overlay, pack or meet changed an immutable part: predicate, population, source, environment, method, sampling, `threshold_factor`, `single_producer` or `limits` | change only tightenable numbers, or declare a new requirement |
+| `runtime_overlay_weakens` | error | compose | an overlay drops a base declaration or rule, loosens a number, lowers a notification severity, weakens an approval, or widens a repeat bound; the same for a module response against a same-named pack response | keep every base item and only tighten |
+
+### Projection and compile
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `runtime_unresolved_alias` | error | compile | a name has no entry in the token map, the token map is missing, unreadable or malformed, or an entry breaks the one-to-one rule. The message does not say which entry. | check that the map covers every module, requirement, monitor, response, rule, environment (including the default `production`), selector `ref`, protocol state and customer checker you use |
+| `runtime_unsafe_egress` | error | compile | the compiled hosted contract failed its own closed-schema self-check, or does not correspond to your module through the token map (for example a crossed or malformed reference) | check the token map entries; if the map is right, treat it as a toolchain bug. Nothing is written. |
+| `schema_error` | error | lint, compile | a document fails its JSON Schema: an unknown key, a wrong type, or a missing always-required key | see the message path; for a rule written with `on:` rename it `trigger` |
+
+### Responses
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `runtime_invalid_ladder` | error | lint | an action parameter is missing, not allowed for the action or ill-typed (`target` only on `rollback`, `fallback` only on `suspend` and `degrade`, `rate_floor` only on `throttle`, `severity` only on `notify`, `on_check_error` only on the guards, `max_repeats` without `repeat_after_hours`, a fingerprint that is not 64 lowercase hex characters); `trigger.hours` present without `episode_open_for`, or missing with it; an approval the action does not allow; or a remote service action on a terminal-scope event or `unit_violation` | compare the rule with the action and trigger tables in the reference; terminal events can notify, but cannot authorize a remote service action |
+| `response_suspend_without_human` | error | lint | `suspend` without an explicit `approval: human`, including an omitted approval | write `approval: human` explicitly |
+| `response_suspend_unconfirmed` | error | lint | `suspend` triggered by an event other than `episode_continued`, `episode_open_for` or `recovery_overdue` | trigger on one of those three events |
+| `response_irreversible_without_approval` | error | lint | `optimize`, `rollback`, `throttle` or `degrade` with `approval: none` | use `standing` or `human` |
+| `response_rollback_target_uncertified` | error | platform | a rollback `target` or degrade `fallback` fingerprint has no valid configuration-attributed certificate | use `last_certified` or a fingerprint that is certified |
+| `response_guard_not_enforceable` | error | lint | `block_action` or `halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | use a guard only on `absence`, `bounded_existence`, `precedence` or `protocol`, on `unit_violation` |
+| `response_on_check_error_missing` | error | lint | a guard without `on_check_error` | choose `block` (fail closed) or `allow` |
+| `response_rule_repeat_unbounded` | error | lint | an action other than `notify` repeats without `max_repeats` | add `max_repeats` |
+
+### Measurement and reports
+
+| Code | Severity | Reported by | What it means | What to do |
+|---|---|---|---|---|
+| `missing_monitor_counts` | readiness issue (exit 2) | gate | a promotion monitor has no `monitor_outcomes.<monitor name>` in the candidate bundle, or its `k` is greater than `n` | supply `{ n, k }` (and `complete: true` for a zero-tolerance monitor) |
+| `runtime_report_conservation` | error | platform | a window report breaks count conservation, or does not match its contract, the window grid or the sampling commitment | fix the producer of the report; the error repeats no input |
+
+### Exit codes of the 1.3 tools
+
+| Tool | 0 | 2 |
+|---|---|---|
+| `tvl-validate`, `tvl-lint` | no issue | any issue, warnings included |
+| `tvl-compose` | composed | any composition error or unreadable input |
+| `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
+| `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, not ready, or any error |

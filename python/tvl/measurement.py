@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict as Dict, List as List, Tuple as Tuple
+from typing import Any
 
 from .configuration import validate_configuration
-from .errors import ParseError, SchemaError
+from tvl.errors import ParseError, SchemaError
 from .promotion import SCIPY_AVAILABLE, evaluate_chance_constraint
 from .schema import measurement_validator
 from .yaml_safe import safe_load
@@ -16,6 +16,12 @@ def load_measurement(path: Path | str) -> dict[str, Any]:
         data = safe_load(p.read_text(encoding="utf-8"))
     except Exception as e:  # noqa: BLE001
         raise ParseError(str(e))
+
+    if isinstance(data, dict) and data.get("format") == "tvl-runtime-report/1":
+        err = SchemaError("unsupported_construct: runtime_report")
+        err.code = "unsupported_construct"  # type: ignore[attr-defined]
+        err.construct = "runtime_report"  # type: ignore[attr-defined]
+        raise err
 
     validator = measurement_validator()
     errors = list(validator.iter_errors(data))
@@ -34,6 +40,22 @@ def normalize_measurement_bundle(measurement: dict[str, Any]) -> tuple[dict[str,
     warnings: list[dict[str, Any]] = []
     normalized["objective_values"] = measurement.get("objective_values") or {}
     normalized["chance_outcomes"] = measurement.get("chance_outcomes") or {}
+
+    if "monitor_outcomes" in measurement and isinstance(measurement.get("monitor_outcomes"), dict):
+        norm_monitors: dict[str, dict[str, Any]] = {}
+        for m_name, m_data in measurement["monitor_outcomes"].items():
+            if not isinstance(m_data, dict):
+                continue
+            entry: dict[str, Any] = {
+                "n": int(m_data.get("n", 0)) if m_data.get("n") is not None else 0,
+                "k": int(m_data.get("k", 0)) if m_data.get("k") is not None else 0,
+                "u": int(m_data.get("u", 0)) if m_data.get("u") is not None else 0,
+                "pl": int(m_data.get("pl", 0)) if m_data.get("pl") is not None else 0,
+            }
+            if "complete" in m_data and isinstance(m_data["complete"], bool):
+                entry["complete"] = m_data["complete"]
+            norm_monitors[m_name] = entry
+        normalized["monitor_outcomes"] = norm_monitors
 
     legacy_objectives = measurement.get("objectives") or {}
     if legacy_objectives:
@@ -83,9 +105,11 @@ def _normalize_legacy_chance(
 def prepare_measurement_bundle(
     module: dict[str, Any],
     measurement: dict[str, Any],
+    *,
+    role: str = "candidate",
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     normalized, warnings = normalize_measurement_bundle(measurement)
-    readiness_issues = _evaluate_promotion_readiness(module, normalized)
+    readiness_issues = _evaluate_promotion_readiness(module, normalized, role=role)
     return normalized, warnings, readiness_issues
 
 
@@ -95,14 +119,18 @@ def validate_measurement(
     measurement: dict[str, Any],
 ) -> dict[str, Any]:
     config_report = validate_configuration(module, config)
-    normalized, warnings, readiness_issues = prepare_measurement_bundle(module, measurement)
+    normalized, warnings, readiness_issues = prepare_measurement_bundle(module, measurement, role="candidate")
 
     objectives_report = _evaluate_objectives(module, normalized)
     chance_report = _evaluate_chance(module, normalized)
+    promotion_monitors = [
+        m for m in (module.get("monitors") or [])
+        if isinstance(m, dict) and m.get("phase") == "promotion"
+    ]
 
     ok = config_report["ok"] and not objectives_report and not chance_report
 
-    return {
+    result: dict[str, Any] = {
         "ok": ok,
         "promotion_ready": not readiness_issues,
         "warnings": warnings,
@@ -111,6 +139,24 @@ def validate_measurement(
         "operational": objectives_report,
         "chance": chance_report,
     }
+    if promotion_monitors:
+        from .promotion_monitor import evaluate_promotion_monitor
+
+        reqs_by_name = {
+            r["name"]: r for r in (module.get("requirements") or [])
+            if isinstance(r, dict) and isinstance(r.get("name"), str)
+        }
+        mon_outcomes = normalized.get("monitor_outcomes") or {}
+        monitors_report: dict[str, Any] = {}
+        for mon in promotion_monitors:
+            m_name = mon.get("name")
+            req = reqs_by_name.get(mon.get("requirement", ""))
+            if isinstance(m_name, str) and req is not None and m_name in mon_outcomes:
+                outcome = mon_outcomes[m_name]
+                if 0 <= int(outcome.get("k", 0)) <= int(outcome.get("n", 0)):
+                    monitors_report[m_name] = evaluate_promotion_monitor(req, mon, outcome)
+        result["monitors"] = monitors_report
+    return result
 
 
 def _evaluate_objectives(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
@@ -248,7 +294,12 @@ def _chance_issue(constraint: dict[str, Any], chance_outcomes: dict[str, Any]) -
     return None
 
 
-def _evaluate_promotion_readiness(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
+def _evaluate_promotion_readiness(
+    module: dict[str, Any],
+    measurement: dict[str, Any],
+    *,
+    role: str = "candidate",
+) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     issues.extend(_calibration_issues(module))
     issues.extend(_module_mismatch_issues(module, measurement))
@@ -256,6 +307,7 @@ def _evaluate_promotion_readiness(module: dict[str, Any], measurement: dict[str,
     chance_outcomes = measurement.get("chance_outcomes", {}) or {}
     issues.extend(_objective_evidence_issues(module, objective_values))
     issues.extend(_chance_count_issues(module, chance_outcomes))
+    issues.extend(_monitor_count_issues(module, measurement, role=role))
     return issues
 
 
@@ -336,6 +388,45 @@ def _chance_count_issues(module: dict[str, Any], chance_outcomes: dict[str, Any]
                     ),
                 }
             )
+
+    return issues
+
+
+def _monitor_count_issues(
+    module: dict[str, Any],
+    measurement: dict[str, Any],
+    *,
+    role: str,
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    if role == "candidate":
+        monitor_outcomes = measurement.get("monitor_outcomes") or {}
+        for mon in module.get("monitors") or []:
+            if not isinstance(mon, dict) or mon.get("phase") != "promotion":
+                continue
+            m_name = mon.get("name")
+            if not isinstance(m_name, str):
+                continue
+            m_data = monitor_outcomes.get(m_name)
+            if (
+                not isinstance(m_data, dict)
+                or m_data.get("n") is None
+                or m_data.get("k") is None
+                or int(m_data["n"]) < 0
+                or int(m_data["k"]) < 0
+                or int(m_data["k"]) > int(m_data["n"])
+            ):
+                issues.append(
+                    {
+                        "monitor": m_name,
+                        "code": "missing_monitor_counts",
+                        "message": (
+                            f"Promotion gate requires candidate monitor_outcomes.{m_name} "
+                            "with 0 <= k <= n."
+                        ),
+                    }
+                )
+
     return issues
 
 

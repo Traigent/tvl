@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict as Dict, List as List, Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -222,7 +222,7 @@ def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file:
     except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
         error_msg = str(exc)
         if args.json:
-            error_payload = {
+            error_payload: dict[str, Any] = {
                 "schemaVersion": "1.0",
                 "kind": "PhaseResult",
                 "phase": "structural",
@@ -232,9 +232,15 @@ def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file:
                 "timestamp": _current_timestamp(),
                 "durationMs": 0,
             }
+            if getattr(exc, "code", None) == "unsupported_construct":
+                error_payload["code"] = "unsupported_construct"
+                error_payload["construct"] = getattr(exc, "construct", None)
             print(json.dumps(error_payload, indent=2))
         else:
-            print(f"Error loading module: {error_msg}", file=sys.stderr)
+            if getattr(exc, "code", None) == "unsupported_construct":
+                print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
+            else:
+                print(f"Error loading module: {error_msg}", file=sys.stderr)
         _remove_temp_file(temp_file)
         raise SystemExit(2)
 

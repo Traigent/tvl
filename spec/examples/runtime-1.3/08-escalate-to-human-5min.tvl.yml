@@ -1,0 +1,57 @@
+# Scenario 08: When the support agent flags a conversation as needing a human, a handoff event must follow within 5 minutes.
+tvl:
+  module: examples.runtime13.escalate_to_human_5min
+tvl_version: "1.3"
+environment:
+  snapshot_id: "2026-10-16T00:00:00Z"
+evaluation_set:
+  dataset: escalate_to_human_5min_eval
+tvars:
+  - name: model
+    type: enum[str]
+    domain: [m_small, m_large]
+objectives:
+  - name: quality
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+
+requirements:
+  - name: human_handoff_5min
+    kind: zero_tolerance
+    unit: trace
+    violation:
+      pattern: bounded_response
+      a: { event: tool_call, tool: support.flag_needs_human }
+      b: { event: handoff }
+      within_ms: 300000
+      correlate_by: unit
+  - name: handoff_check_live
+    kind: evidence_liveness
+    unit: window
+    of: human_handoff_5min_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: human_handoff_5min_prod
+    requirement: human_handoff_5min
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 120 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 72 }
+    limits: { max_active_obligations: 256, max_tracked_correlations: 1024 }
+  - name: handoff_check_live_check
+    requirement: handoff_check_live
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+
+responses:
+  - name: handoff_alerts
+    rules:
+      - { id: page, trigger: { monitor: human_handoff_5min_prod, event: episode_opened }, do: notify, severity: critical }
+      - { id: page_again, trigger: { monitor: human_handoff_5min_prod, event: episode_open_for, hours: 24 }, do: notify, severity: critical, repeat_after_hours: 24, max_repeats: 3 }

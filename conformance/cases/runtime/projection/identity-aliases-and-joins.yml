@@ -1,0 +1,104 @@
+case_format: tvl-runtime-case/1
+family: projection
+description: identity aliases and joins
+spec_refs:
+- formalization/tvl-formal-semantics.md#12.13
+module:
+  tvl:
+    module: CANARY_MODULE
+  tvl_version: '1.3'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: CANARY_REQUIREMENT
+    kind: rate_bound
+    unit: invocation
+    violation:
+      metric: wall_clock_latency_ms
+      exceeds: 2000
+    max_rate: 0.05
+  monitors:
+  - name: CANARY_MONITOR
+    requirement: CANARY_REQUIREMENT
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      attribution: agent_key_exact_v1
+      resolution: terminal_status_v1
+      sampling:
+        mode: head_sampled_declared
+        rate: 0.5
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+      horizon_days: 30
+      model: iid_bernoulli_within_window_v1
+    applies_to: agent
+    window:
+      tumbling_hours: 6
+      grace_minutes: 30
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 24
+  responses:
+  - name: CANARY_RESPONSE
+    rules:
+    - id: CANARY_RULE
+      trigger:
+        monitor: CANARY_MONITOR
+        event: episode_opened
+      do: notify
+      approval: none
+input:
+  kind: projection
+  token_map:
+  - namespace: module
+    local: CANARY_MODULE
+    hosted: opaque_module
+  - namespace: requirement
+    local: CANARY_REQUIREMENT
+    hosted: opaque_requirement
+  - namespace: monitor
+    local: CANARY_MONITOR
+    hosted: opaque_monitor
+  - namespace: response
+    local: CANARY_RESPONSE
+    hosted: opaque_response
+  - namespace: rule
+    local: CANARY_RULE
+    hosted: opaque_rule
+  - namespace: environment
+    local: production
+    hosted: opaque_environment
+expected:
+  projected_fields:
+    /declarations/tvl/module: opaque_module
+    /declarations/requirements/0/name: opaque_requirement
+    /declarations/monitors/0/name: opaque_monitor
+    /declarations/monitors/0/requirement: opaque_requirement
+    /declarations/monitors/0/evidence/deployment_environment: opaque_environment
+    /declarations/responses/0/name: opaque_response
+    /declarations/responses/0/rules/0/id: opaque_rule
+    /declarations/responses/0/rules/0/trigger/monitor: opaque_monitor
+  forbidden_substrings:
+  - CANARY_

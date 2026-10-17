@@ -1,0 +1,12 @@
+case_format: tvl-runtime-case/1
+family: promotion
+description: Invalid monitor verdicts are rejected even when another verdict breaches.
+spec_refs:
+- RFC 0003 promotion join
+module: {}
+input:
+  kind: join
+  legacy_decision: Promote
+  monitor_verdicts: [BREACHED, invalid]
+expected:
+  error: schema_error
