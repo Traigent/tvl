@@ -1,3 +1,4 @@
+# Major versions are upgraded by hand in a tested PR; security updates are separate and unaffected.
 # Weekly dependency updates.
 # Ecosystem names and options: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
 # Supported ecosystems (includes `uv` and `npm` with pnpm lockfiles):
@@ -9,7 +10,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       python-minor-patch:
         update-types: ["minor", "patch"]
@@ -19,7 +23,10 @@ updates:
     directory: "/website"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       website-minor-patch:
         update-types: ["minor", "patch"]
@@ -29,7 +36,10 @@ updates:
     directory: "/vscode-tvl"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       vscode-minor-patch:
         update-types: ["minor", "patch"]
@@ -38,7 +48,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       actions-minor-patch:
         update-types: ["minor", "patch"]
