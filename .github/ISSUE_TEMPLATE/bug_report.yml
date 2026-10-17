@@ -1,0 +1,59 @@
+name: Bug report
+description: A TVL tool gives a wrong result, crashes, or reports a confusing diagnostic.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not report security vulnerabilities here; use the private advisory form linked on the issue chooser (see SECURITY.md).
+  - type: input
+    id: tool
+    attributes:
+      label: Tool and version
+      description: For example `tvl-validate`, `tvl-lint`, `tvl-ci-gate`, or the VS Code extension. Give the version from `pip show tvl-spec` or the commit you built from.
+      placeholder: tvl-validate, tvl-spec 1.2.0
+    validations:
+      required: true
+  - type: textarea
+    id: module
+    attributes:
+      label: Input TVL module
+      description: The smallest module (or configuration/measurement file) that shows the problem. Do not paste secrets, credentials or customer data; redact them first.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or reproduction steps
+      description: The exact command you ran, or the editor actions that reproduce the problem.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected output
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual output
+      description: Include the full output and the exit code.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Required for Python tool reports; otherwise leave blank.
+      placeholder: "3.11.9"

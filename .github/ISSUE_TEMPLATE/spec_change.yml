@@ -1,0 +1,42 @@
+name: Spec change
+description: Propose a change to the TVL language, schemas or promotion contract.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Small clarifications can be raised here. A change to the meaning of the language needs an RFC; see `formalization/README.md`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not express, or what is ambiguous or wrong today? Give a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The change you suggest, including syntax and the diagnostics a tool should report.
+    validations:
+      required: true
+  - type: dropdown
+    id: compat
+    attributes:
+      label: Compatibility with TVL 1.2
+      options:
+        - Conservative extension (every valid 1.2 document keeps its meaning)
+        - Changes the meaning of valid 1.2 documents
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: compat-detail
+    attributes:
+      label: Compatibility details
+      description: Explain how existing 1.2 documents are affected, if at all.
+  - type: input
+    id: rfc
+    attributes:
+      label: RFC draft
+      description: Link to an RFC draft pull request, if you have one.

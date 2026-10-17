@@ -2,6 +2,8 @@
 
 All notable changes to the TVL spec, schema, tools, and SDK will be documented in this file.
 
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
 ### Changed
@@ -14,13 +16,18 @@ All notable changes to the TVL spec, schema, tools, and SDK will be documented i
 - Documented every diagnostic emitted by `tvl.lints` in `docs/reference/error-codes.md`, including the codes for `cvars`, `policies`, `require_calibration`, and `composites`.
 - Installation instructions now describe installing from a clone of this repository; the package is not published to a registry.
 
-## TVL 1.3 (draft) - unreleased
+### Added
+
+- Community health files: a rewritten contributing guide, security policy and Contributor Covenant code of conduct, governance, maintainers and support documents, issue forms and a pull request template, an RFC process with an RFC template, code owners, Dependabot configuration, and a `NOTICE` file.
+- README status badges and a short example that validates and lints a module.
+
+### TVL 1.3 (draft)
 
 TVL 1.3 is a draft and a conservative extension of 1.2: a module without the new blocks is read exactly as before, and no 1.1 or 1.2 document gains a diagnostic.
 
 TVL 1.3 adds language only. TVL defines what each requirement, monitor and response means and what each verdict promises, and its tools check, compose and compile these declarations. It evaluates no runtime evidence and executes no response: runtime verdicts come from an evaluator outside TVL (RFC 0003 §3.5). The only verdicts a TVL tool computes are those of the release gate, for promotion monitors whose counts contain no unresolved or unplaceable units.
 
-### Added
+#### Added
 
 - Three optional module blocks, `requirements`, `monitors` and `responses`, and a separate `tvl_pack` document for organisation floors. A module that uses any of them, and every pack, declares `tvl_version: "1.3"` (a string).
 - Four sealed requirement kinds: `rate_bound`, `zero_tolerance`, `recovery_time` and `evidence_liveness`.
@@ -37,12 +44,12 @@ TVL 1.3 adds language only. TVL defines what each requirement, monitor and respo
 - 23 example modules and packs in `spec/examples/runtime-1.3/`.
 - Documentation: the guide *Requirements, Monitors and Responses*, a TVL 1.3 section in the language reference, TVL 1.3 entries in the error code catalog, and book chapter 6 *Requirements in Production*.
 
-### Changed
+#### Changed
 
 - `tvl-validate` and `tvl-lint` treat a root mapping with `pack` and without `tvl` as a `tvl_pack`.
 - `tvl-check-structural`, `tvl-check-operational` and `tvl-config-validate` ignore the three runtime blocks in a module and refuse a pack with `unsupported_construct`; `tvl-ci-gate --policy` refuses any runtime block.
 
-### Not in 1.3
+#### Not in 1.3
 
 Sliding windows, anytime-valid sequential tests, per-user or cross-unit state, conditions on event arguments, boolean combinations of predicates, and routing of notifications. See *What TVL 1.3 cannot express* in the guide.
 

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/Traigent/tvl/discussions/categories/q-a
+    about: Questions and ideas go to GitHub Discussions; issues are for bugs and spec changes.
+  - name: Report a security vulnerability
+    url: https://github.com/Traigent/tvl/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue for them.
+  - name: TVL documentation
+    url: https://tvl-lang.org/specification
+    about: Read the specification and worked examples on tvl-lang.org, or the guides under docs/ in this repository.
