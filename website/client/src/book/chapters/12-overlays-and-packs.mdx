@@ -1,0 +1,90 @@
+---
+title: "Overlays and packs"
+slug: overlays-and-packs
+order: 12
+draft: true
+summary: "Ordinary overlays first, then organisation packs: how a stricter bound wins and how a conflicting composition is refused."
+---
+
+<h2 id="ch12-learn">What you'll learn</h2>
+
+- How an ordinary overlay tightens a module's production requirements, and never loosens them.
+- How a company states floors for every agent in a pack; what the tools refuse; what parsing or compiling a pack does not do.
+
+<h2 id="ch12-overlay">Overlays tighten</h2>
+
+For the busy season the team wants at most 3% slow replies, not 5%. They keep version 10 and write an overlay, a file that extends a module and replaces parts of it, which `tvl-compose` turns into a new module. An overlay may only extend a file in its own folder, so it sits next to version 10, in `ch11/`. Under `overrides` a list replaces the base list whole, so an overlay that supplies `requirements` must restate every base requirement by name; one left out counts as dropped (<Ref to="rfc-0003" section="section 9.1">RFC 0003</Ref>). The start, and the one changed entry:
+
+<Example file="ch11/strict.overlay.yml" checker="tvl-compose" expect="composed" title="The team's overlay of version 10" lines="3-7,25-29" />
+
+For the TVL 1.3 blocks, composition is tighten-only. `max_rate`, `max_unresolved_fraction`, `closure_max_age_hours`, `within_hours` and `max_stale_windows` may only go down; `confidence`, `min_samples` and `closure_windows` only up. A predicate, population, method or sampling may not change at all (`runtime_incompatible_replacement`), nor a schedule (`evaluation_schedule_mismatch`). Response rules survive with approvals no weaker, severities no lower and repeat limits (`max_repeats`) no larger (<Ref to="semantics" section="section 12.12">formal semantics</Ref>).
+
+<Predict question={<p>A second overlay, <code>ch11/loose.overlay.yml</code>, is identical except for <code>max_rate: 0.08</code>. What does <code>tvl-compose</code> do?</p>}>
+<p>It refuses: loosening a bound is a weakening, so it exits with status 2, writes nothing and reports `runtime_overlay_weakens` at `requirements.2.max_rate`.</p>
+</Predict>
+
+The strict overlay composes. Its output, with a two-line header added, becomes the next version of the bot: version 11, `ch12/support-bot.tvl.yml`, an ordinary module that `tvl-validate` accepts.
+
+<h2 id="ch12-pack">Packs: floors for every agent</h2>
+
+The company's rules for all its agents live in a <Term id="pack">pack</Term>: a separate `tvl_pack` document with requirements, monitors (each marked `applies_to: tenant_floor`, a company floor) and optional responses, and no tuned variables, objectives or evaluation set (<Ref to="rfc-0003" section="section 9.4">RFC 0003</Ref>). This one sets two floors, at most 4% slow replies and never a call to `crm.delete_customer`:
+
+<Example file="ch12/company-floors.pack.yml" checker="tvl-validate" title="The company's floors (a pack)" lines="7-16" />
+
+Composing with a pack pairs each floor monitor with the module monitor that checks the same thing: same predicate, unit, evidence source, environment and method. The module must already be at least as strict (`requirement_weaker_than_floor` otherwise); composition never tightens it for you. A floor with no counterpart is carried on its own, "floor-only". A module may add rules to a floor's response, never drop or weaken one. The three ways to combine bounds, side by side (the meet's refusal is conformance case `composition/individually-reachable-meet-unreachable.yml`):
+
+| | Overlay | Pack (`--pack`) | `tvl-compose --meet` |
+|---|---|---|---|
+| Who sets the bound | the overlay's author | the module; the pack is a floor under it | neither side: the stricter of the two |
+| A stricter bound | replaces the base | must already be in the module | wins |
+| A looser bound | refused | refused | loses; refused only if the result could no longer close an episode |
+| Example | 5% becomes 3% | 3% passes a 4% floor; 5% is refused | version 10 with the pack gives `max_rate: 0.04` |
+
+<TryIt>
+
+Compose version 10 with the pack, then the team's overlay with the pack:
+
+```bash
+tvl-compose spec/examples/book/ch11/support-bot.tvl.yml \
+  --pack spec/examples/book/ch12/company-floors.pack.yml --validate -o composed.tvl.yml
+```
+
+```text
+Error: requirement_weaker_than_floor at requirements.2.max_rate: requirement_weaker_than_floor
+```
+
+```bash
+tvl-compose spec/examples/book/ch11/strict.overlay.yml \
+  --pack spec/examples/book/ch12/company-floors.pack.yml --validate -o composed.tvl.yml
+```
+
+```text
+Composed: composed.tvl.yml
+```
+
+The first exits with status 2 and writes nothing; the second exits with 0. With `--format json` it lists `slow_replies_prod` and `latency_evidence_check` `merged` with their floors, and the two deletion monitors `floor_only`.
+
+</TryIt>
+
+<Misconception wrong="Committing the pack to the repository makes every agent follow it.">
+<p>Parsing a pack activates nothing. TVL has no import construct: supply packs explicitly with `--pack`. Production activation is outside this book (<Ref to="semantics" section="section 12.12">formal semantics</Ref>).</p>
+</Misconception>
+
+<h2 id="ch12-compile">Compiling turns nothing on</h2>
+
+`tvl-compile-runtime` checks a module, composes it with its packs and writes two closed files: `runtime-contract.json`, in which your requirement, monitor and rule names are replaced by references from a token map you keep (the contract carries references, not your names), and `runtime-local.json`, which stays with you. Tool names are kept, because they are code identifiers. It installs, enables or runs nothing (<Ref to="rfc-0003" section="section 11.5">RFC 0003</Ref>):
+
+```bash
+tvl-compile-runtime spec/examples/book/ch12/support-bot.tvl.yml \
+  --pack spec/examples/book/ch12/company-floors.pack.yml \
+  --token-map spec/examples/book/ch12/tokens.json --out-dir out
+```
+
+It prints `Compiled runtime contract:` and the contract's SHA-256 digest, the same on every run. The references in `ch12/tokens.json` are readable placeholders; real ones should be random. Version 10 does not compile with this pack: it fails with the same `requirement_weaker_than_floor`.
+
+<KeyTakeaways>
+  <ul>
+    <li>Overlays and packs only tighten: a looser bound, a changed identity or schedule, or a module weaker than a floor is refused.</li>
+    <li>Parsing a pack activates nothing, and compiling installs, enables or runs nothing.</li>
+  </ul>
+</KeyTakeaways>

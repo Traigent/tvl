@@ -1,0 +1,123 @@
+---
+title: "Pilot: a print-layout stress test"
+slug: pilot
+order: 0
+draft: true
+pilot: true
+summary: Placeholder words. This chapter exists to stress the web and print layouts.
+---
+
+<h2 id="sec-learn">What you'll learn</h2>
+
+This chapter is a rendering test, not teaching material. It carries every
+component the book needs, so a bad page break or a clipped line shows up before
+any real chapter is written. The words are placeholders.
+
+By the end you should see a long listing, a table, a diagram, an explorable
+with a print fallback, an animation shown as a frame sequence, and the boxes
+the real chapters use. Look at the <Term id="design-space">design space</Term>
+figure in <XRef to="sec-figure">the figure section</XRef>, then read
+<Ref to="rfc-0003" section="section 3.2">the monitor requirements in RFC 0003</Ref>
+for the authoritative wording.
+
+<h2 id="sec-listing">A long listing</h2>
+
+The support bot below is a real module from the repository. It is longer than
+sixty lines on purpose, so it has to split across pages without clipping any
+line. Each <Term id="tvar">tuned variable</Term> sits under `tvars`.
+
+<Example file="pilot/rag-support-bot.tvl.yml" checker="tvl-validate" title="The support bot" />
+
+A second file shows the other side: a contradiction that leaves no allowed
+design at all.
+
+<Example file="pilot/design-space-unsat.tvl.yml" checker="tvl-check-structural" title="A design space with no allowed design" />
+
+A plain fenced block is also styled, and a very long line must wrap rather than
+run off the page:
+
+```bash
+tvl-check-structural spec/examples/book/pilot/rag-support-bot.tvl.yml --json --candidate-file /path/to/a/candidate/configuration/that/has/a/deliberately/long/name/so/the/line/must/wrap.json
+```
+
+<h2 id="sec-table">A table</h2>
+
+| Predicate kind | What it asks | Example in plain words | Where it is defined |
+|---|---|---|---|
+| Absence | Something must never happen | No refund above the limit is approved | Formal semantics, section 12 |
+| Bounded existence | Something must happen within a count | At least one tool call per task | RFC 0003, section 3.2 |
+| Precedence | One event must come before another | A check runs before every payment | RFC 0003, section 3.3 |
+| Bounded response | A reply must follow within a window | Every escalation gets an answer in ten minutes | RFC 0003, section 3.4 |
+| Metric threshold | A rate stays on the right side of a bound | Fewer than five percent of answers cite nothing | RFC 0003, section 6.2 |
+
+<h2 id="sec-diagram">A diagram</h2>
+
+<Mermaid
+  alt="Flow from module to candidate configuration to evidence bundle to promotion decision."
+  caption="Figure 1. The life of a spec: a module yields candidate configurations, evidence is gathered for them, and a decision follows."
+  chart={`flowchart LR
+  M[Module] --> C[Candidate configuration]
+  C --> E[Evidence bundle]
+  E --> D{Decision}
+  D -->|enough evidence| P[Promote]
+  D -->|worse| R[Reject]
+  D -->|not enough| N[NoDecision]`}
+/>
+
+<h2 id="sec-figure">An animation, and what it becomes on paper</h2>
+
+<Figure
+  base="/book/media/design_space"
+  stem="design_space"
+  alt="A grid of fifteen agent designs, three models by five tool-call limits. Two structural rules cross out three cells, leaving twelve allowed."
+  caption="Figure 2. Rules over tuned variables cut the design space. Green cells stay allowed; crossed grey cells are excluded."
+  frames={[
+    { src: "frame-1.png", alt: "All fifteen cells are green.", caption: "Every combination of model and tool-call limit is a cell." },
+    { src: "frame-2.png", alt: "Two cells in the small-model row are crossed out.", caption: "Rule 1 crosses out small models with more than two tool calls." },
+    { src: "frame-3.png", alt: "Three cells are crossed out in total; twelve remain.", caption: "Rule 2 crosses out large models with no tool calls. Twelve designs remain." },
+  ]}
+/>
+
+<Widget
+  title="How much evidence is enough?"
+  caption="Figure 3. Slide the sample size. In print this becomes the table of four sample sizes."
+  fallback={
+    <table>
+      <thead><tr><th>Sample size n</th><th>What you can say</th></tr></thead>
+      <tbody>
+        <tr><td>10</td><td>far too few samples to say anything</td></tr>
+        <tr><td>50</td><td>enough for a rough impression only</td></tr>
+        <tr><td>200</td><td>enough for a cautious decision</td></tr>
+        <tr><td>800</td><td>enough for a confident decision</td></tr>
+      </tbody>
+    </table>
+  }
+>
+  <SampleSizeSlider />
+</Widget>
+
+<h2 id="sec-boxes">The boxes</h2>
+
+<Predict question={<p>If the structural rules above also said that a medium model needs at least two tool calls, how many designs would stay allowed?</p>}>
+  <p>Eleven. The medium row loses its zero and one cells, so one more cell is crossed out and twelve becomes eleven. Placeholder answer.</p>
+</Predict>
+
+<Misconception wrong="If no example violated the requirement, the requirement is met.">
+  Zero observed violations in a small sample can still be weak evidence. How much it proves depends on how many examples you looked at. Placeholder text.
+</Misconception>
+
+<Callout kind="warning" title="Careful">
+  Declaring an action is not permission to run it. Placeholder callout.
+</Callout>
+
+<TryIt>
+  Run the checker on the support bot and compare the result with the expected result shown under the listing.
+</TryIt>
+
+<KeyTakeaways>
+  <ul>
+    <li>Rules over tuned variables cut the design space before any evidence is gathered.</li>
+    <li>Every figure has alt text, a caption that states its point, and a print form.</li>
+    <li>The normative source is one click away, and pinned to a commit.</li>
+  </ul>
+</KeyTakeaways>

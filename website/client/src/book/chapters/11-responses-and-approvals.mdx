@@ -1,0 +1,59 @@
+---
+title: "Responses and approvals"
+slug: responses-and-approvals
+order: 11
+draft: true
+summary: "The response ladder and who must approve each step; declaring an action is not permission to run it, and permission is not running it."
+---
+
+<h2 id="ch11-learn">What you'll learn</h2>
+
+- The response ladder; the approval levels `none`, `standing` and `human`; why a suspension needs a person and stays after recovery.
+
+<h2 id="ch11-ladder">The ladder</h2>
+
+On a slow-reply breach the team wants to warn, open a next step, roll back after six hours, and stop taking tickets if recovery is overdue. A response is a named list of rules, each with an `id`, a `trigger` (a monitor and one of its events) and one action, `do`, from a sealed ladder ordered by impact on production (<Ref to="semantics" section="section 12.10">formal semantics</Ref>):
+
+<Mermaid
+  alt="A ladder of rungs from left to right. 0, record: every event, automatic. 1, notify: approval none. 2, open_next_step: none. 3, optimize or rollback: standing or human. 4, throttle or degrade: standing or human. 5, suspend: human, always. Separately, the local guards block_action and halt_unit: in process, before the effect, approval none."
+  caption="Figure 11.1. The response ladder; higher rungs affect production more. Under each, the least approval it needs."
+  chart={`%%{init: {"flowchart": {"rankSpacing": 18, "nodeSpacing": 10, "padding": 4}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart LR
+  R0["0 · record<br/>automatic"] --> R1["1 · notify<br/>none"] --> R2["2 · open_next_step<br/>none"] --> R3["3 · optimize, rollback<br/>standing or human"] --> R4["4 · throttle, degrade<br/>standing or human"] --> R5["5 · suspend<br/>human, always"]`}
+/>
+
+The actions mean: `notify`, an alert with a `severity`; `open_next_step`, a suggested next step for the maintainers; `optimize`, a bounded optimization whose candidate must pass the gate; `rollback`, a return to a certified configuration that is eligible then; `throttle`, admissions cut to `rate_floor` (a fraction) of normal; `degrade`, new work sent to a certified fallback; `suspend`, no new work, existing work finished under `static_unavailable` or `route_to_human`. The guards `block_action` and `halt_unit` suppress the violating event, or stop the unit, before the effect.
+
+<h2 id="ch11-approval">Who may decide</h2>
+
+- **`none`**, for `notify`, `open_next_step` and the guards: the contract itself permits the narrowly specified action without an additional standing grant or human approval; its other conditions still apply.
+- **`standing`**, for `optimize`, `rollback`, `throttle` and `degrade`: a <Term id="standing-grant">standing grant</Term>, owner-signed, outside TVL, limited in uses (and cost, for `optimize`), expiring within 30 days.
+- **`human`**, for the same four, and always for `suspend`: an authorized person approves each occurrence.
+
+A module cannot name an approver or contain a grant (<Ref to="rfc-0003" section="section 7.3">RFC 0003</Ref>), and a `rollback` with `approval: none` is rejected (`response_irreversible_without_approval`).
+
+**Declaring is not permitting, and permitting is not executing.** A response declares permitted reactions and required authority. Grants and human approvals live outside the module. Evaluating production evidence and carrying out permitted actions belong to an evaluator profile and platform outside TVL. Declaring, validating or compiling a response performs no action (<Ref to="semantics" section="sections 12.10 and 12.11">formal semantics</Ref>).
+
+Version 10 uses rungs 1, 2, 3 and 5:
+
+<Example file="ch11/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 10: the latency ladder" lines="216-234" />
+
+`episode_open_for` with `hours: 6` fires once if the episode is still open after six hours. Version 10's refund guard, `block_action` on `unit_violation`, has `on_check_error: block`, which has no default: a guard that cannot decide in time blocks the refund ("fails closed").
+
+<h2 id="ch11-suspend">Suspend: a person, and no automatic return</h2>
+
+Suspend, the top rung, needs `approval: human` per episode, even under a standing grant, and an event showing the trouble persisted: `episode_continued` (a further BREACHED window), `episode_open_for` or `recovery_overdue`, never `episode_opened` alone. It is latched: once the episode resolves or is withdrawn, a person may resume; nothing else lifts it (<Ref to="semantics" section="section 12.11">formal semantics</Ref>). Suspension stops new admissions and drains existing work; any window containing no units is UNKNOWN(insufficient), never MET: empty traffic cannot establish recovery or lift the suspension.
+
+<Predict question={<p>Predict, then run <code>tvl-validate</code> on <code>ch11/suspend-early.tvl.yml</code>: a suspend on <code>episode_opened</code>, under the rollback grant.</p>}>
+<p>Exit status 2 and two errors: <code>response_suspend_without_human</code> and <code>response_suspend_unconfirmed</code> (it needs an escalation event).</p>
+</Predict>
+
+<Misconception wrong="When the episode resolves, a throttle or rollback undoes itself.">
+<p>A throttle or degrade stays until an authorized person releases it. A rollback is a repair, not proof of recovery; undoing it is a new promotion (<Ref to="semantics" section="section 12.11">formal semantics</Ref>).</p>
+</Misconception>
+
+<KeyTakeaways>
+  <ul>
+    <li>One monitor event, one action from a sealed ladder. Repairs need a standing grant at least; suspend needs a person, and only a human resume lifts it. Declaring is not permitting.</li>
+  </ul>
+</KeyTakeaways>

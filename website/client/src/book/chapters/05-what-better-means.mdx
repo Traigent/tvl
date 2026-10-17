@@ -1,0 +1,123 @@
+---
+title: "What \"better\" means"
+slug: what-better-means
+order: 5
+draft: false
+summary: Objectives and their directions, the incumbent and the candidate, margins, and the rule "not worse on any objective, better on at least one". Plus bands, where good enough is a range.
+---
+
+<h2 id="ch5-learn">What you'll learn</h2>
+
+- How to say what you want to improve: objectives and their directions.
+- How TVL compares a candidate with the version that runs now, with a margin for each objective.
+- Why a band is an acceptability range that requires supporting evidence, not something to improve.
+
+<h2 id="ch5-objectives">Objectives and directions</h2>
+
+Your manager asks whether the new version of the bot is better. Better at what? Solving more tickets? Costing less? Both? Until that is written down, two people can look at the same numbers and disagree. In TVL you write it as a list of <Term id="objective">objectives</Term>. Here is version 4 of the support bot, with its objectives and promotion policy. Its knobs, the negotiated rules from chapter 4 and the environment snapshot stay as they were:
+
+<Example file="ch05/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 4: what better means" lines="50-69" />
+
+Each directed objective has a `name` and a `direction`: `maximize` for the share of tickets solved, `minimize` for the cost per ticket. The optional `metric_ref` names the metric definition your evaluation harness uses to compute the number. It is a stable name, not code (<Ref to="language" section="“Objectives”">language reference</Ref>). The third objective, `reply_tokens`, has a band instead of a direction; the last section of this chapter explains it.
+
+Two objectives can conflict. A large model may solve more tickets but cost more per ticket. Then neither design is simply better, and TVL does not add the objectives into one score to force a winner. It compares them one at a time. A design beats another only when it is at least as good on every objective and better on at least one. This is called <Term id="pareto">Pareto dominance</Term> (<Ref to="semantics" section="section 9.2">formal semantics</Ref>). The designs that nothing beats form the Pareto front: the best trade-offs on offer.
+
+For this illustration, treat every number in this chapter as an exact objective value. "Better" then means the margin rule of this chapter, ε-dominance of those values, not permission to promote. <ChapterLink n={6}>Chapter 6</ChapterLink> adds the evidence tests.
+
+<Figure
+  base="/book/media/better_with_margins"
+  stem="better_with_margins"
+  alt="A plot of designs, with resolution rate going up and cost per ticket going left. The designs that nothing beats are joined as a front. Then the view zooms in on the incumbent, draws a margin box around it, and places three candidates: one is better, one is a tie inside the box, and one falls behind on cost. Beneath the plot, a strip shows a band for reply length, with the target range 80 to 250 tokens."
+  caption="Figure 5.1. With two objectives, several designs may offer different trade-offs. A candidate is compared with the incumbent using a margin on each objective."
+  frames={[
+    { src: "frame-1.png", alt: "Twenty dots for designs. Up means more tickets solved; left means lower cost. The dots that no other dot beats on both axes are joined by a line, the front.", caption: "Here, several designs are unbeaten: improving one objective requires giving up something on the other." },
+    { src: "frame-2.png", alt: "The incumbent as a labelled point, with a dashed box around it: two margins wide on the cost axis and two margins tall on the resolution axis.", caption: "Around the incumbent, the margins mark differences too small to matter." },
+    { src: "frame-3.png", alt: "Candidate A sits above the box and within its cost edge: marked better with a check. Candidate C sits inside the box: marked tie. Candidate B sits far above the box but to the right of its cost edge: marked not better with a cross. A label reads: exact-value illustration; not promotion verdicts. Beneath the plot, a band strip marks the range 80 to 250 tokens: a confidence bar wholly inside it is labelled inside the band, and one that crosses its upper edge is labelled inconclusive, NoDecision.", caption: "A is better. C is a tie. B is far better on tickets but worse beyond the margin on cost, so it is not better." },
+  ]}
+/>
+
+<h2 id="ch5-incumbent">Incumbent and candidate</h2>
+
+Today the bot runs a medium model with a limit of two tool calls. That running configuration is the <Term id="incumbent">incumbent</Term>. You propose a change, a candidate configuration. TVL does not rank all designs. It asks one question at a time: should this candidate replace the incumbent? The <Term id="promotion-policy">promotion policy</Term>, `promotion_policy`, says how that comparison is made (<Ref to="language" section="“Promotion Policy”">language reference</Ref>).
+
+<h2 id="ch5-margins">Margins</h2>
+
+Measured numbers vary from run to run, and tiny differences rarely matter. So each directed objective gets a <Term id="margin">margin</Term> in `min_effect`, in the objective's own unit. The support bot uses 0.02 for the share of tickets solved (two percentage points) and $0.001 for the cost per ticket.
+
+A margin plays two roles. As a tolerance, it says how much worse the candidate may be and still count as <Term id="non-inferior">not worse</Term>. As a bar, it says by how much the candidate must win to count as <Term id="superior">better</Term>. Every directed objective needs a margin, and a margin is never negative.
+
+<TryIt>
+
+Validate a copy of version 4 that forgot the margin for cost:
+
+```bash
+tvl-validate spec/examples/book/ch05/missing-margin.tvl.yml
+```
+
+You should see:
+
+```text
+[missing_min_effect] promotion_policy.min_effect: promotion_policy.min_effect missing entry for 'cost_per_ticket_usd'
+```
+
+Run the same command on `ch05/support-bot.tvl.yml` and you get `Schema + lint checks passed.`
+
+</TryIt>
+
+<h2 id="ch5-rule">The rule: not worse on any, better on at least one</h2>
+
+Now put the margins to work. A candidate is better than the incumbent when two things hold together (<Ref to="semantics" section="section 9.3">formal semantics</Ref>):
+
+1. On **every** directed objective, it is not worse by more than the margin.
+2. On **at least one** directed objective, it is better by more than the margin.
+
+The incumbent solves 80% of tickets at $0.0120 per ticket. The margins are 0.02 and $0.001.
+
+<Predict question={<p>Candidate B solves 86% of tickets, six points more than the incumbent. What is the highest cost per ticket at which B still counts as better?</p>}>
+<p>$0.0130: the incumbent's $0.0120 plus the $0.001 margin. At that cost B is not worse beyond the margin, and its six-point gain is more than the 0.02 bar. B actually costs $0.0135, so it is not better.</p>
+</Predict>
+
+Here are three candidates side by side. "Change" is signed so that a plus always means better: for cost, a plus means cheaper.
+
+| Candidate | Solved | Change | Cost per ticket | Change | Not worse on all? | Better on one? | Better? |
+|---|---|---|---|---|---|---|---|
+| A | 83% | +0.03 | $0.0125 | −0.0005 | yes | yes, solved | **yes** |
+| B | 86% | +0.06 | $0.0135 | −0.0015 | no, cost | yes, solved | **no** |
+| C | 81% | +0.01 | $0.0118 | +0.0002 | yes | no | **no**, a tie |
+
+A shows the rule working as intended: a clear gain on tickets, and a cost increase small enough to accept. C is a tie, because both changes are inside the margins.
+
+**Why B's trade is refused.** B gains six points on tickets and pays $0.0015 more per ticket. Many teams would take that trade, but the rule does not, by design. Its "not worse" half, called <Term id="non-inferior">non-inferiority</Term>, refuses to trade a loss on one objective, beyond its margin, for gains on another. So a large win on one number can never hide a loss on another that nobody agreed to. If you would accept B's trade, declare it in the module. A wider cost margin, such as $0.002, makes B better; but since one margin plays both roles, a cost saving must then also exceed $0.002 to count as a win. If cost only has to stay inside a range, make it a band instead, as the next section shows: a band is checked on the candidate alone and is not compared at all (<Ref to="semantics" section="section 9.5">formal semantics</Ref>).
+
+Always compare a candidate with the incumbent that runs now. Each step may lose up to one margin on an objective, so the losses can add up. Say version 2 beat version 1, and then version 3 beat version 2, each step adding $0.0009 to the cost. Version 3 then costs $0.0018 more than version 1, beyond the margin. So do not conclude that version 3 beats version 1 (<Ref to="semantics" section="section 9.8">formal semantics</Ref>).
+
+<Callout kind="note" title="In symbols (optional)">
+<p>For objective <i>i</i>, subtract the incumbent's value from the candidate's. Flip the sign for objectives you minimize. Call the result <i>d<sub>i</sub></i>, so positive means better. With margins <i>ε<sub>i</sub></i>, ε-dominance requires <i>d<sub>i</sub></i> ≥ −<i>ε<sub>i</sub></i> for every objective and <i>d<sub>i</sub></i> &gt; <i>ε<sub>i</sub></i> for at least one.</p>
+</Callout>
+
+<h2 id="ch5-bands">Bands: good enough is a range</h2>
+
+Reply length is different. A reply that is too short feels curt, and one that is too long goes unread. You want the mean reply length to lie between 80 and 250 tokens. This does not require every reply to fall in that range. Inside the range, you have no preference. That is a <Term id="band">band</Term>: in version 4 it is the `reply_tokens` objective, with a `target` of `[80, 250]`, the test `TOST` and its own `alpha`. A band has no direction and needs no margin (<Ref to="language" section="“Banded Objectives”">language reference</Ref>).
+
+A band checks the candidate alone; the incumbent is not involved (<Ref to="semantics" section="sections 9.5 and 9.6">formal semantics</Ref>). It has three outcomes:
+
+- A measured mean outside the band causes rejection.
+- A mean inside the band passes only when the evidence establishes equivalence using <Term id="tost">TOST</Term>, the two one-sided tests explained in <ChapterLink n={6} />.
+- Otherwise the band remains inconclusive, producing NoDecision unless another check requires rejection.
+
+<Misconception wrong="Inside the band, a reply length nearer the middle is better.">
+<p>A band gives no preference among mean values inside its target range. There is no better or worse inside it, so a candidate gains nothing by moving towards the middle. If you do prefer shorter replies, that is a directed objective (`minimize`), not a band.</p>
+</Misconception>
+
+<h2 id="ch5-evidence">From numbers to evidence</h2>
+
+So far every measurement was one exact number. Real measurements are noisy. A gain of three points on 200 tickets may be luck, so the evaluation must show "not worse" and "better" with evidence. The promotion policy's <Term id="alpha">`alpha`</Term> sets the significance level for its statistical tests. It is not the probability that this candidate is better. Chance constraints add hard limits on how often something may go wrong. <ChapterLink n={6}>Chapter 6</ChapterLink> covers both, and the three outcomes of the promotion decision: Promote (the evidence supports replacement; your deployment process performs it), Reject (the candidate must not replace the incumbent), and NoDecision (the evidence does not settle the question).
+
+<KeyTakeaways>
+  <ul>
+    <li>Objectives say what to improve and in which direction. TVL compares them one at a time and never adds them into one score.</li>
+    <li>A candidate is compared with the incumbent that runs now. Each directed objective has a margin in `min_effect`.</li>
+    <li>A candidate is better when it is not worse by more than the margin on every objective, and better by more than the margin on at least one. A loss beyond a margin is never traded for gains elsewhere; widen the margin or use a band if you want that trade.</li>
+    <li>A band is an acceptability range that requires supporting evidence, checked on the candidate alone. Inside it, nothing is better or worse.</li>
+  </ul>
+</KeyTakeaways>

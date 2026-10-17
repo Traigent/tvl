@@ -1,0 +1,331 @@
+/* The TVL book. Scoped to .book-root so the rest of the site is untouched.
+   Fonts are self-hosted (SIL OFL 1.1, see /fonts/<family>/OFL.txt). */
+
+@font-face {
+  font-family: "Book Serif";
+  src: url("/fonts/source-serif-4/SourceSerif4-Variable.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Book Serif";
+  src: url("/fonts/source-serif-4/SourceSerif4-Italic-Variable.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Book Sans";
+  src: url("/fonts/inter/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Book Mono";
+  src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Colour meaning is fixed and shared with Manim: book/manim/palette.py defines
+   the same hex values. A test (tests/test_book_media.py) keeps them in step. */
+.book-root {
+  --book-bg: #ffffff;
+  --book-fg: #1b1d22;
+  --book-muted: #5a6070;
+  --book-line: #d9dce3;
+  --book-panel: #f4f5f8;
+  --book-link: #1d4ed8;
+  --book-allowed: #1e8e66;
+  --book-excluded: #6b7280;
+  --book-evidence: #2563eb;
+  --book-breach: #c62828;
+  --book-unknown: #b7791f;
+  --book-code-bg: #f6f7f9;
+  --book-code-fg: #1b1d22;
+  /* Syntax colours, each at least 4.5:1 on --book-code-bg (WCAG AA); ratios in the commit notes. */
+  --book-code-comment: #5a6070;
+  --book-code-key: #1d4ed8;
+  --book-code-string: #136b4c;
+  --book-code-number: #8a5a0a;
+  --book-code-punct: #4b5263;
+  --book-serif: "Book Serif", Georgia, serif;
+  --book-sans: "Book Sans", system-ui, sans-serif;
+  --book-mono: "Book Mono", ui-monospace, monospace;
+  color: var(--book-fg);
+  font-family: var(--book-serif);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+.dark .book-root:not(.book-print) {
+  --book-bg: #0f1115;
+  --book-fg: #e6e8ee;
+  --book-muted: #a3a9b8;
+  --book-line: #2c313c;
+  --book-panel: #181b22;
+  --book-link: #8ab4ff;
+  --book-allowed: #3fb68b;
+  --book-excluded: #8a8f98;
+  --book-evidence: #4c8dff;
+  --book-breach: #e5534b;
+  --book-unknown: #e3a33b;
+  --book-code-bg: #14171d;
+  --book-code-fg: #e6e8ee;
+  --book-code-comment: #a3a9b8;
+  --book-code-key: #8ab4ff;
+  --book-code-string: #4cc79a;
+  --book-code-number: #e3a33b;
+  --book-code-punct: #a3a9b8;
+}
+
+/* Minimal reset for the print route, which is styled by this file alone.
+   It comes first so the book rules below win at equal specificity. */
+.book-print, .book-print * { box-sizing: border-box; }
+.book-print h1, .book-print h2, .book-print h3, .book-print p, .book-print ul, .book-print ol, .book-print figure, .book-print pre { margin: 0; }
+.book-print img { display: block; max-width: 100%; height: auto; }
+.book-print table { border-collapse: collapse; }
+.book-print button { display: none; }
+
+.book-shell { background: var(--book-bg); }
+.book-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; padding: 0.75rem 1rem; max-width: 72rem; margin: 0 auto; font-family: var(--book-sans); }
+.book-btn { font: 500 0.85rem var(--book-sans); border: 1px solid var(--book-line); background: var(--book-panel); color: var(--book-fg); border-radius: 0.5rem; padding: 0.4rem 0.8rem; cursor: pointer; text-decoration: none; }
+.book-btn:hover { border-color: var(--book-link); }
+.book-menu-btn { display: none; }
+.book-columns { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: 2rem; max-width: 72rem; margin: 0 auto; padding: 0 1rem 4rem; }
+.book-sidebar { font-family: var(--book-sans); font-size: 0.9rem; position: sticky; top: 5rem; align-self: start; max-height: calc(100vh - 6rem); overflow: auto; }
+.book-sidebar-title { display: block; font: 700 1.05rem var(--book-sans); margin-bottom: 0.75rem; color: var(--book-fg); }
+.book-sidebar ol { list-style: none; padding: 0; margin: 0; }
+.book-sidebar li { padding: 0.3rem 0; }
+.book-sidebar a { color: var(--book-muted); text-decoration: none; }
+.book-sidebar a:hover, .book-sidebar a.is-current { color: var(--book-fg); font-weight: 600; }
+.book-main { min-width: 0; max-width: 44rem; }
+.book-progress { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60; background: transparent; }
+.book-progress > div { height: 100%; background: var(--book-evidence, #2563eb); }
+.book-badge { display: inline-block; font: 600 0.7rem var(--book-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--book-unknown); border: 1px solid var(--book-unknown); border-radius: 999px; padding: 0.05rem 0.5rem; margin-left: 0.5rem; vertical-align: middle; }
+.book-h1 { font: 700 2.2rem/1.2 var(--book-serif) !important; letter-spacing: -0.01em; margin: 0 0 1rem; }
+.book-lede { font-size: 1.2rem; color: var(--book-muted); }
+.book-toc { list-style: none; padding-left: 0; }
+.book-chapter-num { font: 600 0.8rem var(--book-sans); text-transform: uppercase; letter-spacing: 0.1em; color: var(--book-muted); margin: 0 0 0.3rem; }
+.book-toc li { padding: 0.5rem 0; }
+.book-toc-title { font: 600 1.1rem var(--book-serif); }
+.book-toc-sum { color: var(--book-muted); font-size: 0.95rem; }
+.book-pager { display: flex; justify-content: space-between; gap: 1rem; max-width: 72rem; margin: 0 auto; padding: 1rem; font-family: var(--book-sans); border-top: 1px solid var(--book-line); }
+
+.book-root h2 { font: 700 1.5rem/1.3 var(--book-serif) !important; letter-spacing: 0; margin: 2rem 0 0.75rem; }
+.book-root h3 { font: 600 1.2rem/1.35 var(--book-serif) !important; letter-spacing: 0; margin: 1.5rem 0 0.5rem; }
+.book-root p { margin: 0.8rem 0; }
+.book-root a { color: var(--book-link); }
+.book-root :not(pre) > code { font: 0.88em var(--book-mono); background: var(--book-panel); padding: 0.05em 0.3em; border-radius: 0.25rem; }
+.book-root ul, .book-root ol { padding-left: 1.4rem; margin: 0.8rem 0; }
+.book-root ul { list-style: disc; }
+.book-root ol { list-style: decimal; }
+.book-root ol.book-toc, .book-root .book-sidebar ol, .book-root ol.book-planned-list, .book-print .book-contents ol { list-style: none; }
+
+.book-code { position: relative; margin: 1rem 0; }
+.book-code pre { background: var(--book-code-bg); color: var(--book-code-fg); border: 1px solid var(--book-line); border-radius: 0.5rem; padding: 0.9rem 1rem; overflow-x: auto; font: 0.8rem/1.5 var(--book-mono); margin: 0; }
+.book-code .cl { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.book-code pre code { font: inherit; background: none; padding: 0; color: inherit; }
+.book-copy { position: absolute; top: 0.4rem; right: 0.5rem; font: 500 0.7rem var(--book-sans); border: 1px solid var(--book-line); background: var(--book-panel); color: var(--book-fg); border-radius: 0.3rem; padding: 0.15rem 0.5rem; cursor: pointer; }
+.book-root .token.comment { color: var(--book-code-comment); }
+.book-root .token.key, .book-root .token.atrule, .book-root .token.keyword { color: var(--book-code-key); }
+.book-root .token.string, .book-root .token.important { color: var(--book-code-string); }
+.book-root .token.number, .book-root .token.boolean { color: var(--book-code-number); }
+.book-root .token.punctuation { color: var(--book-code-punct); }
+
+.book-example { margin: 1.5rem 0; }
+.book-example-title { font: 0.9rem var(--book-sans); margin-bottom: 0.3rem; }
+.book-path { font: 0.78rem var(--book-mono); color: var(--book-muted); }
+.book-example-result { font: 0.88rem/1.5 var(--book-sans); border-left: 3px solid var(--book-allowed); padding: 0.4rem 0.8rem; background: var(--book-panel); border-radius: 0 0.4rem 0.4rem 0; }
+.book-label { font-weight: 700; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; color: var(--book-muted); margin-right: 0.4rem; }
+
+.book-figure, .book-widget { margin: 1.5rem 0; }
+.book-figure video { width: 100%; border-radius: 0.5rem; border: 1px solid var(--book-line); background: #0f1115; display: block; }
+.book-figure figcaption, .book-widget figcaption { font: 0.88rem/1.5 var(--book-sans); color: var(--book-muted); margin-top: 0.4rem; }
+.book-play, .book-reveal { font: 500 0.82rem var(--book-sans); border: 1px solid var(--book-line); background: var(--book-panel); color: var(--book-fg); border-radius: 0.4rem; padding: 0.3rem 0.7rem; cursor: pointer; margin-top: 0.4rem; }
+.book-mermaid [role="img"] { display: flex; justify-content: center; overflow-x: auto; }
+.book-mermaid svg { max-width: 100%; height: auto; }
+.book-widget { border: 1px solid var(--book-line); border-radius: 0.6rem; padding: 0.8rem 1rem; background: var(--book-panel); font-family: var(--book-sans); }
+.book-widget-title { font: 700 0.75rem var(--book-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--book-muted); margin-bottom: 0.5rem; }
+.book-frame-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.book-frame img { width: 100%; border: 1px solid var(--book-line); display: block; }
+.book-frame-cap { font: 0.78rem/1.4 var(--book-sans); margin-top: 0.25rem; }
+
+.book-callout { border: 1px solid var(--book-line); border-left-width: 4px; border-radius: 0.4rem; padding: 0.6rem 1rem; margin: 1.2rem 0; background: var(--book-panel); font-size: 0.97rem; }
+.book-box-title { font: 700 0.72rem var(--book-sans); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; }
+.book-callout p { margin: 0.4rem 0; }
+.book-callout-note { border-left-color: var(--book-evidence); }
+.book-callout-warning { border-left-color: var(--book-breach); }
+.book-callout-tip, .book-tryit { border-left-color: var(--book-allowed); }
+.book-takeaways { border-left-color: var(--book-allowed); }
+.book-predict { border-left-color: var(--book-unknown); }
+.book-misconception { border-left-color: var(--book-breach); }
+.book-wrong { font-style: italic; }
+.book-term { text-decoration: underline dotted; cursor: help; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: inherit; }
+button.book-term:focus-visible { outline: 2px solid var(--book-link); outline-offset: 2px; border-radius: 2px; }
+.book-chapref-planned { color: var(--book-muted); }
+.book-sidebar-sub { font: 700 0.75rem var(--book-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--book-muted); margin: 1rem 0 0.25rem; }
+.book-planned-nav span { color: var(--book-muted); opacity: 0.8; }
+.book-cover { margin: 0 0 2rem; }
+.book-cover-motif { display: block; width: 100%; max-width: 22rem; height: auto; margin: 0 0 1.25rem; }
+.book-cover .book-h1 { margin-bottom: 0.5rem; }
+.book-edition { font: 600 0.9rem var(--book-sans); color: var(--book-unknown); margin: 0.5rem 0 0; }
+.book-planned-contents h2 { font-size: 1.15rem !important; }
+.book-toc-planned li { color: var(--book-muted); opacity: 0.85; }
+.book-planned-list { list-style: none; padding: 0; }
+.book-planned-list li { margin: 0.6rem 0; }
+.book-glossary-letter { font: 700 1.3rem var(--book-serif) !important; border-bottom: 1px solid var(--book-line); margin: 1.5rem 0 0.5rem !important; }
+.book-glossary dl { margin: 0; }
+.book-glossary-entry { margin: 0.5rem 0 0.8rem; scroll-margin-top: 5rem; }
+.book-glossary dt { font: 700 0.95rem var(--book-sans); }
+.book-glossary dd { margin: 0.1rem 0 0; }
+.book-term-pop { font-family: "Book Sans", system-ui, sans-serif; }
+.book-ref-url { font: 0.75em var(--book-mono); color: var(--book-muted); overflow-wrap: anywhere; }
+.book-table { overflow-x: auto; margin: 1.2rem 0; }
+.book-root table { border-collapse: collapse; width: 100%; font: 0.9rem/1.45 var(--book-sans); }
+.book-root th, .book-root td { border: 1px solid var(--book-line); padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+.book-root th { background: var(--book-panel); }
+
+@media (max-width: 52rem) {
+  .book-columns { grid-template-columns: minmax(0, 1fr); }
+  .book-menu-btn { display: inline-block; }
+  .book-sidebar { display: none; position: static; max-height: none; }
+  .book-sidebar.is-open { display: block; }
+  .book-frame-row { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .book-figure video { animation: none; }
+}
+
+/* ---------------- Print route ---------------- */
+.book-print { background: #fff; font-size: 10.5pt; line-height: 1.5; }
+.book-print .book-copy, .book-print .book-play { display: none; }
+
+.book-titlepage { break-after: page; padding-top: 38mm; }
+.book-titlepage .book-cover-motif { width: 120mm; max-width: 100%; margin: 0 0 14mm; }
+.book-titlepage .book-edition { font-size: 11pt; margin-top: 8mm; }
+.book-kicker { font: 600 10pt var(--book-sans); text-transform: uppercase; letter-spacing: 0.12em; color: var(--book-muted); }
+.book-title { font: 700 40pt/1.1 var(--book-serif) !important; margin: 0.3em 0 0.1em; }
+.book-subtitle { font: 400 16pt var(--book-serif); color: var(--book-muted); }
+.book-meta { font: 8pt/1.5 var(--book-sans); color: var(--book-muted); margin-top: 28mm; }
+.book-contents { break-after: page; }
+.book-contents-title { font: 700 22pt var(--book-serif) !important; margin-bottom: 8mm; }
+/* Running headers use content() of hidden spans: Paged.js does not honour literal strings in string-set. */
+.run-title { string-set: chapter content(text); }
+.run-mark { string-set: mark content(text); display: block; height: 0; overflow: hidden; font-size: 0; line-height: 0; }
+.book-contents ol { list-style: none; padding: 0; }
+.book-contents li { padding: 1.5mm 0; font: 11pt var(--book-serif);  border-bottom: 1px dotted var(--book-line); }
+.book-contents a { color: var(--book-fg); text-decoration: none; }
+.book-contents a { display: flex; justify-content: space-between; }
+.book-contents a::after { content: target-counter(attr(href url), page); }
+.book-chapter { break-before: page; }
+.chapter-title { font: 700 24pt/1.2 var(--book-serif) !important; margin: 0 0 6mm; }
+.book-print .book-chapter-num { font-size: 9pt; margin-bottom: 1.5mm; }
+.book-draft-note { font: italic 9.5pt var(--book-sans); color: var(--book-unknown); }
+.book-print h2, .book-print h3 { break-after: avoid; }
+.book-print p { orphans: 3; widows: 3; }
+.book-print .book-example-title { break-after: avoid; }
+.book-print .book-example-result { break-inside: avoid; }
+.book-print figure:not(.book-example), .book-print .book-callout, .book-print .book-widget, .book-print tr, .book-print .book-frame { break-inside: avoid; }
+/* A box never opens at a page bottom with nothing in it: its title keeps with
+   the first line of its body, and a lead-in paragraph keeps with what it introduces. */
+.book-print .book-callout > .book-box-title { break-after: avoid; }
+.book-print .book-callout > div:last-child { break-inside: avoid; }
+.book-print p:has(+ .book-table), .book-print p:has(+ .book-code), .book-print p:has(+ .book-example) { break-after: avoid; }
+/* A short list in the running text (three rules, three outcomes) stays on one page,
+   with the sentence that introduces it. */
+.book-print .book-chapter > ol:not(.book-planned-list), .book-print .book-chapter > ul { break-inside: avoid; }
+.book-print p:has(+ ol), .book-print p:has(+ ul) { break-after: avoid; }
+/* A cited source's name and its marker, such as "language reference [1]", stay on one line. */
+.book-print .book-refname { white-space: nowrap; }
+/* A short example stays whole with its result strip; a long listing may split. */
+.book-print .book-example:not(.book-example-long) { break-inside: avoid; }
+.book-print .book-example-long .book-code-long { break-inside: auto; }
+.book-print .book-code pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; overflow: visible; font-size: 7.6pt; line-height: 1.4; }
+/* A printed line breaks only at a space: each space-free word (up to 96 characters) is
+   kept whole, so a flag such as --json or a path is never split and stays copy-pasteable.
+   A wrapped line continues indented. */
+.book-print .nw { white-space: nowrap; }
+.book-print .book-code .cl { padding-left: 2ch; text-indent: -2ch; }
+.book-print .book-code-long { break-inside: auto; }
+.book-print .book-table { overflow: visible; break-inside: avoid; }
+.book-print table { font-size: 8.6pt; table-layout: fixed; }
+.book-print td, .book-print th { overflow-wrap: anywhere; padding: 1mm 1.8mm; }
+.book-print .book-xref::after { content: " (p. " target-counter(attr(href url), page) ")"; color: var(--book-muted); font-size: 0.9em; }
+.book-print a { color: var(--book-fg); text-decoration: none; }
+.book-print .book-mermaid svg { max-height: 118mm; }
+.book-answers { break-before: avoid; border-top: 1px solid var(--book-line); margin-top: 6mm; }
+.book-answers-title { font-size: 14pt !important; }
+/* Print references: the prose carries a marker such as [3]; each chapter ends
+   with the numbered list of its sources and their full pinned URLs. */
+.book-refmark { color: var(--book-muted); font-size: 0.9em; white-space: nowrap; }
+/* The reference list is compact and may follow the answers on the same page, or continue
+   on the next one between entries, so a chapter does not end on a near-empty page. */
+.book-references { border-top: 1px solid var(--book-line); margin-top: 5mm; }
+.book-references-title { font-size: 12pt !important; }
+.book-references-note { font: italic 7.8pt/1.35 var(--book-sans); color: var(--book-muted); break-after: avoid; margin: 0; }
+.book-references ol { list-style: none; padding: 0; margin: 1.5mm 0 0; }
+.book-references li { display: grid; grid-template-columns: 7mm minmax(0, 1fr); font: 7.8pt/1.35 var(--book-sans); margin-bottom: 1mm; break-inside: avoid; }
+.book-references .book-ref-url { font-size: 6.8pt; }
+
+@page {
+  size: 210mm 297mm;
+  margin: 22mm 18mm 24mm 18mm;
+  /* first-except: no chapter title in the header of the page where the chapter opens (the
+     title is there already). The draft marker stays on every page of a draft chapter. */
+  @top-left { content: string(chapter, first-except); font: 8.5pt "Book Sans", sans-serif; color: #5a6070; }
+  @top-right { content: string(mark); font: 600 8.5pt "Book Sans", sans-serif; color: #b7791f; }
+  @bottom-center { content: counter(page); font: 9pt "Book Sans", sans-serif; color: #5a6070; }
+}
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-center { content: none; }
+}
+
+/* Print: frames sit two to a row (each about 48% of the text width), so a
+   three-frame sequence takes about half an A4 page; answers do not split. */
+.book-print .book-frame-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm 6mm; }
+.book-print .book-frame { display: block; }
+.book-print .book-frame-cap { font-size: 8pt; line-height: 1.35; margin-top: 1mm; }
+.book-print .book-answers li { break-inside: avoid; }
+/* Answers are labelled "Answer 6.2", not numbered 1, 2, so a label is unique in the book. */
+.book-answers-list { list-style: none; padding-left: 0; }
+.book-answer-label { float: left; margin-right: 0.35em; }
+.book-answers-list li { overflow: hidden; }
+/* End-of-chapter apparatus (answers, references) is set a little smaller than the text. */
+.book-print .book-answers { font-size: 9.5pt; line-height: 1.45; }
+.book-print .book-answers li { margin-bottom: 1.5mm; }
+.book-print .book-answers-title { font-size: 12pt !important; }
+.book-print .book-answers-title, .book-print .book-references-title { margin: 3mm 0 1.5mm !important; }
+/* Long boxes may continue on the next page rather than leave a gap; short code
+   blocks (commands, tool output) stay whole. */
+.book-print .book-box-title { break-after: avoid; }
+.book-print .book-code:not(.book-code-long) { break-inside: avoid; }
+
+/* Planned chapters in the printed contents, and the glossary. */
+.book-contents-planned { margin-top: 8mm; color: var(--book-muted); break-inside: avoid; }
+.book-contents-planned-title { font: 700 12pt var(--book-serif) !important; margin: 0 0 1.5mm; }
+.book-contents-planned p { font: italic 9pt var(--book-sans); margin: 0 0 2mm; }
+.book-contents-planned li { font: 10pt var(--book-serif); padding: 1mm 0; color: #8a8f98; border: 0; }
+.book-print .book-term-first::after { content: "g"; font: 600 6pt var(--book-sans); vertical-align: super; color: var(--book-muted); margin-left: 0.1em; }
+.book-print .book-glossary-entry { break-inside: avoid; margin: 1.5mm 0 2.5mm; }
+.book-print .book-glossary-letter { font-size: 13pt !important; margin: 5mm 0 2mm !important; break-after: avoid; }
+.book-print .book-glossary dt { font-size: 9.5pt; }
+.book-print .book-glossary dd { font-size: 9.5pt; }
+.book-print .book-planned-list li { break-inside: avoid; }
+
+
+/* Code is shown exactly as typed. The code font's ligatures would draw ">=" as
+   one glyph and respace "://", which misleads anyone copying a line, so they
+   are off everywhere a monospace font is used, on screen and in print. */
+.book-root pre,
+.book-root code,
+.book-root :not(pre) > code,
+.book-root .book-path,
+.book-root .book-ref-url {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}

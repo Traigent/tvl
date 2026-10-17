@@ -9,6 +9,9 @@ Covered paths in this repository:
 - `formalization/`
 - `tvl_book/website_content/`
 - `website/client/public/docs/`
+- `website/client/src/book/**/*.mdx` (book prose)
+- `website/client/public/book/media/**` (book figures and rendered animations)
+- `website/dist/public/book/tvl-book.pdf` (the built book PDF; not tracked, listed so the licence travels with the file)
 
 You are free to share and adapt this material for any purpose, including
 commercial use, provided that you give appropriate credit, provide a link to

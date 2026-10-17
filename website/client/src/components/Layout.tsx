@@ -15,7 +15,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: "Home", href: "/" },
     { name: "Specification", href: "/specification" },
     { name: "Examples", href: "/examples" },
-    { name: "Book (TBD)", href: "/book" },
+    { name: "Book", href: "/book" },
   ];
 
   const isActive = (href: string) => {
@@ -111,7 +111,7 @@ export default function Layout({ children }: LayoutProps) {
                 </li>
                 <li>
                   <Link href="/book" className="text-muted-foreground hover:text-foreground transition-colors">
-                    Book (TBD)
+                    Book
                   </Link>
                 </li>
                 <li>

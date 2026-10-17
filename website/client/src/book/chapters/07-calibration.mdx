@@ -1,0 +1,188 @@
+---
+title: "Values you calibrate"
+slug: calibration
+order: 7
+draft: false
+summary: "Calibrated values are fitted from separate calibration evidence, carry a certificate that can go stale, and refuse a fallback winner in strict mode."
+---
+
+<h2 id="ch7-learn">What you'll learn</h2>
+
+- How a value you calibrate differs from one you tune, and how a module declares it.
+- Why calibration needs its own tickets, what a certificate records, and what makes it stale.
+- What happens when calibration abstains, and why a strict evidence mode never falls back to the best score.
+- What the tools and the proofs do not cover for calibrated values, as chapter 3 promised.
+
+<Callout kind="warning" title="What you can do today">
+  <p>Today's reference tools cannot promote a module that requires calibration: <code>tvl-ci-gate</code> refuses to decide. You can declare cvars and validate the module; fitting values and keeping and checking certificates happen outside TVL, in your runtime.</p>
+</Callout>
+
+<h2 id="ch7-knob">A knob you do not search</h2>
+
+Some tickets are harder than the bot can handle. The team adds a safety net: the bot samples its reply several times and lets the samples vote. The <Term id="vote-margin">vote margin</Term> says how clearly one answer won. TVL leaves its formula to your runtime; a common one is the winner's share of the votes minus the runner-up's. With 5 samples, 4 votes for one answer and 1 for another give 4/5 − 1/5 = 0.6, and 5 identical replies give 1. When the margin is below a threshold, the bot hands the ticket to the large model.
+
+Which threshold? The right one depends on the other knobs. A small model at temperature 0.7 is likely to agree with itself less often than a medium one at 0.2, so a threshold that suits one may be wrong for the other. Every time the search proposes new values, the threshold must be fitted again, from evidence. TVL 1.1 calls such a value a <Term id="cvar">calibrated variable</Term>, or cvar: it is fitted, never searched (<Ref to="rfc-0001" section="section 1">RFC 0001</Ref>). An <Term id="rfc">RFC</Term> ("request for comments") is a design document that defines part of TVL. Calibrating here means fitting a value from evidence, not the machine-learning sense of matching confidence scores to frequencies.
+
+Every value in a configuration has exactly one of three bindings (<Ref to="rfc-0001" section="section 3.1">RFC 0001</Ref>):
+
+| Binding | Who sets it | Where it is declared | In the support bot |
+|---|---|---|---|
+| Tuned | your search | `tvars` | the model, temperature and two more |
+| Fixed | your runtime | nowhere in the module | a request timeout |
+| Calibrated | a calibrator, from evidence | `cvars` | `escalation_threshold` |
+
+A <Term id="fixed-value">fixed value</Term> is never searched and never declared; it only must not reuse a declared name (<Ref to="rfc-0001" section="section 3.4, R3">RFC 0001</Ref>).
+
+<Mermaid
+  alt="A flow diagram from left to right. Your search proposes the tuned values. The tuned values, through their declared parents the model and the temperature, and the calibration tickets both feed the calibrator. The calibrator fits the escalation threshold and issues its certificate. The tuned values, the threshold and the fixed values from your runtime form the resolved configuration, which is measured on the evaluation set, a separate set of tickets."
+  caption="Figure 7.1. Three ways a value enters a configuration. For the tuned values of its declared parents, a calibrator fits the threshold on its own tickets and issues a certificate. The result is measured on the evaluation set, which the calibrator never saw."
+  chart={`%%{init: {"flowchart": {"rankSpacing": 30, "nodeSpacing": 16, "padding": 6}, "themeVariables": {"fontSize": "17px"}}}%%
+flowchart LR
+  T["Tuned values<br/>(your search)"] -->|"declared<br/>parents"| K[Calibrator]
+  CT[("Calibration<br/>tickets")] --> K
+  K --> V["threshold and<br/>certificate"]
+  T --> R["Resolved<br/>configuration"]
+  V --> R
+  F["Fixed values<br/>(your runtime)"] --> R
+  R -->|"measured on"| E[("Evaluation<br/>set")]`}
+/>
+
+<h2 id="ch7-declare">Declaring a calibrated value</h2>
+
+Version 6 adds two blocks to version 5, and one entry to its promotion policy:
+
+<Example file="ch07/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 6: a calibrated threshold" lines="36-54,95-97" />
+
+The `cvars` entry declares the threshold. Its `type` is `bool`, `int`, `float` or an `enum` (<Ref to="error-codes" section="“unsupported_cvar_type”">error code catalog</Ref>). Its `domain` is a <Term id="validity-domain">validity domain</Term>: a check on the fitted value, not a list to search, so a float range needs no resolution. Under `calibration`, only `source` is required; it names the calibration evidence. The optional `signal` names the score, and `calibrator` names your fitting procedure. TVL specifies what that procedure must deliver, a value or an honest abstention, not how it fits (<Ref to="rfc-0001" section="sections 3.3 and 3.4">RFC 0001</Ref>). `depends_on` lists the threshold's tuned parents. It does not shrink the set of allowed designs; its only effect is on freshness, explained below.
+
+The `policies` block declares a named <Term id="policy">policy</Term>, an instruction for how the bot runs. Despite the shared word, it is unrelated to `promotion_policy`. The strategy `cascade` runs its <Term id="stage">stages</Term> in order. A stage is a name your runtime resolves, such as a model with its prompt; in this book, "stage" means only that. Each gate between two stages names a cvar, and the cascade escalates exactly when the vote margin is below it. Policies change how the bot runs, never which designs are allowed or how candidates compare (<Ref to="rfc-0001" section="section 3.8">RFC 0001</Ref>). Finally, `require_calibration` puts promotion in a strict evidence mode: no Promote without a valid certificate.
+
+<Predict question={<p>Version 6 now has five knobs: four tuned and one calibrated. <code>tvl-check-structural</code> prints one allowed design as a witness. Will the witness include a value for <code>escalation_threshold</code>?</p>}>
+<p>No. A cvar never enters the rules or the search space, so the solver sees only the four tuned variables, and a witness assigns exactly those (<Ref to="rfc-0001" section="sections 3.2 and 4, P5">RFC 0001</Ref>).</p>
+</Predict>
+
+<TryIt>
+
+```bash
+tvl-validate spec/examples/book/ch07/support-bot.tvl.yml
+tvl-check-structural spec/examples/book/ch07/support-bot.tvl.yml
+```
+
+One possible output is shown below; yours may differ.
+
+```text
+Schema + lint checks passed.
+Structural constraints satisfiable.
+  max_tool_calls: 4
+  model: medium
+  temperature: 0.5
+  use_retrieval: False
+```
+
+A candidate configuration cannot set the threshold either. `ch07/candidate-sets-threshold.yml` assigns the four knobs and `escalation_threshold: 0.4`; `tvl-config-validate` rejects it and exits with status 5:
+
+```text
+Configuration validation failed:
+[domain] escalation_threshold: Assignment provided for unknown TVAR 'escalation_threshold'
+```
+
+</TryIt>
+
+<Misconception wrong="The threshold must stay at or below 0.5, so I add a rule: escalation_threshold <= 0.5.">
+<p>Rules may mention only tuned variables, so the validator rejects this one. To bound a calibrated value, narrow its validity domain to `range: [0.0, 0.5]`. A fitted value outside the domain is then rejected when the configuration is built (<Ref to="rfc-0001" section="section 3.4, R5">RFC 0001</Ref>).</p>
+<p>Here is what <code>tvl-validate</code> says about <code>ch07/threshold-in-rule.tvl.yml</code>, which adds that rule:</p>
+</Misconception>
+
+```text
+[cvar_in_structural_constraint] constraints.structural.2.expr.literal.0.0: Structural constraint references CVAR 'escalation_threshold' — calibrated variables are governed but not searched; substitute as a constant if intended
+```
+
+<h2 id="ch7-separate">Calibration needs its own tickets</h2>
+
+Chapter 6 showed why a score on tickets you fitted to flatters you. The same holds for a calibrator: judged on the tickets its threshold was fitted on, the cascade would look better than it is. So the <Term id="calibration-evidence">calibration evidence</Term> must not overlap the evaluation set. If it does, the configuration is rejected (<Ref to="rfc-0001" section="section 3.4, R7, and section 5">RFC 0001</Ref>). The source name in version 6 is illustrative: the book's project has no calibration tickets.
+
+Too few calibration tickets are rejected too (<Ref to="rfc-0001" section="section 3.4, R8">RFC 0001</Ref>). With <Term id="epsilon">ε</Term> (epsilon) the share of errors a target allows, such as "the small model is wrong on at most 5% of the tickets it keeps", and <Term id="ceiling">⌈x⌉</Term> meaning x rounded up, fewer than ⌈1/ε⌉ − 1 tickets are rejected. For 5%, ⌈1/0.05⌉ − 1 = 20 − 1 = 19: 19 tickets are accepted, and 18 are refused. Why 19? With n tickets, the finest error share a fitted threshold can promise is 1 in n + 1, and 1 in 20 is 5%. Yet 19 is a floor, not enough: 19 tickets with no error at all show, at 95% confidence, only that the error share is below 14.6%. Today's tools enforce neither rule: they load no tickets at all. Your runtime must enforce both.
+
+<h2 id="ch7-certificate">Certificates, and what makes them stale</h2>
+
+A fitted value comes with a <Term id="certificate">certificate</Term>, which binds one value of one cvar to the context it was fitted in. It holds the cvar's name and type, a hash of the value, the target, the evidence count, a hash of the context, and a decision: `CERTIFIED`, `NO_DECISION` or `BEST_EFFORT_UNCERTIFIED`. A hash is a fingerprint: change any input, and it changes (<Ref to="rfc-0001" section="section 3.5">RFC 0001</Ref>).
+
+The context has a core that is always hashed and that no module can switch off: the cvar's name, its declared parents' values, the calibration source, the signal's definition, the calibrator's name, version and settings, a hash and count of the calibration tickets, the split names, the target and the context format's version. A module may add extension keys in `hash_covered_context`, such as model versions; version 6 does. A certificate is valid only when its decision is `CERTIFIED` and everything it records still matches the current context. It is <Term id="stale">stale</Term> when the context has changed, for example a parent's value. RFC 0001 files every failed check, a changed context, a decision other than `CERTIFIED` or a missing certificate, under one rejection, `stale_certificate` (R6), and a configuration that needs the certificate is rejected (<Ref to="rfc-0001" section="sections 3.4, R6, and 3.5">RFC 0001</Ref>). The table in the next section lists every case. `NO_DECISION` is a certificate's decision about one value. It is not chapter 6's NoDecision, which is the promotion gate's decision about a candidate.
+
+<Predict question={<p>Version 6 holds a certificate for its threshold. Which of these changes make it stale? (a) The temperature goes from 0.2 to 0.3. (b) Retrieval is switched on. (c) The provider ships a new version of the small model under the same name.</p>}>
+<p>(a) and (c). The temperature is a declared parent, so its value is in the core. Model versions are in version 6's extension keys. Retrieval is not a declared parent, so the hash does not change and the certificate stays fresh, even though retrieval may change how often the samples agree. A certificate notices only what its context covers (<Ref to="rfc-0001" section="section 5, assumption 4">RFC 0001</Ref>). Chapter 8 shows how TVL 1.2 makes this gap visible.</p>
+</Predict>
+
+<h2 id="ch7-strict">Abstention and strict mode</h2>
+
+A calibrator may also <Term id="abstention">abstain</Term>: return no value, for example when no threshold meets its target. That is an honest answer, reported as `no_decision` (<Ref to="rfc-0001" section="section 3.4">RFC 0001</Ref>). A module is in a <Term id="strict-mode">strict evidence mode</Term> when it sets `require_calibration`, in its promotion policy or on a cvar; declares any chance constraint; targets a guaranteed selection in its operational profile; or uses a cvar whose target is backed by a certificate (<Ref to="rfc-0001" section="section 3.6">RFC 0001</Ref>). So version 5 was strict already, through its limit on slow replies; with no cvar, it needed no certificate. In a strict mode, too few tickets, a failed certificate check, an abstention, or an error while checking the evidence each mean no promotion. The outcome is "no certified selection", never the candidate with the best score. Outside strict modes, RFC 0001 permits a declared fixed fallback and requires its use to be recorded. The current module schema provides no field for declaring that fallback.
+
+<TryIt>
+
+Chapter 6's slo-pass bundles earn a Promote under version 5. Check the candidate's bundle against version 6:
+
+```bash
+tvl-measure-validate spec/examples/book/ch07/support-bot.tvl.yml \
+  book/support-bot/configs/promote-candidate.yml \
+  book/support-bot/bundles/slo-pass/seed-0/candidate.synthetic.measure.yml
+```
+
+You should see:
+
+```text
+Configuration + measurement bundle satisfy structural, operational, and chance requirements.
+Promotion-ready: no
+- Promotion readiness issues:
+    {'code': 'calibration_evidence_unsupported', 'message': 'This module requires calibration certificates, but the current measurement bundle and tvl-ci-gate contract cannot validate them.'}
+```
+
+</TryIt>
+
+Today's tools cannot validate certificates: an evidence bundle has no field for one, and a bundle that adds one fails validation. So the bundle is valid but not promotion-ready, even though `tvl-measure-validate` exits with status 0. Now ask the gate:
+
+```bash
+tvl-ci-gate spec/examples/book/ch07/support-bot.tvl.yml \
+  book/support-bot/bundles/slo-pass/seed-0/incumbent.synthetic.measure.yml \
+  book/support-bot/bundles/slo-pass/seed-0/candidate.synthetic.measure.yml
+```
+
+It prints `"error": "Measurement bundles are not promotion-ready."`, lists this issue for each bundle, and exits with status 2, with no decision at all. It does not fall back to judging the objectives, on which the candidate is superior. This refusal does not cover every strict-mode trigger yet: the tools refuse only when a module requires calibration explicitly, in its promotion policy or on a cvar. Under any trigger, your runtime must still check the certificates.
+
+Every case, what RFC 0001 says, and what `tvl-ci-gate` does today with version 6 (version 5 for the last row):
+
+| Situation | Certificate decision | RFC 0001 | Gate today | Exit status |
+|---|---|---|---|---|
+| Valid certificate | `CERTIFIED`, context matches | value may be used | refuses | 2 |
+| Stale certificate | may read `CERTIFIED`; context changed | R6, `stale_certificate` | refuses | 2 |
+| Not certified | `NO_DECISION` or `BEST_EFFORT_UNCERTIFIED` | R6: validity needs `CERTIFIED` | refuses | 2 |
+| Missing certificate | none | R6 | refuses | 2 |
+| Calibrator abstained | none: no value fitted | `no_decision`, not R6 or R8 | refuses | 2 |
+| Too few tickets | none: fit rejected | R8 | refuses | 2 |
+| Calibrator error | none | a gate exception | refuses | 2 |
+| Not required | none needed | none needed | decides, as in chapter 6 | 0 if Promote, else 2 |
+
+"Refuses" means the bundles are not promotion-ready and there is no decision. The first seven rows get the same answer because no bundle can say which of them happened: for a module that requires calibration, the gate refuses whatever the evidence says.
+
+<h2 id="ch7-limits">What the guarantees cover</h2>
+
+Chapter 3 promised the limits. Tests check that cvars and policies never change a module's SAT answer, and check the rejection rules, certificate validity and the strict rule on small examples (<Ref to="rfc-0001" section="sections 4 and 6">RFC 0001</Ref>). Not covered:
+
+<div className="book-limits">
+
+- **Proofs.** The machine-checked proofs predate cvars and policies, so they say nothing about a module that uses them, and, unlike for a registry, no lint warns you yet (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
+- **Tools.** The public tools check declarations only: they neither fit values nor check certificates, cannot promote a module that requires calibration, and do not yet enforce every strict-mode trigger.
+- **Your runtime's job.** Separate tickets, the ticket floor and certificate checks are yours to enforce.
+- **Assumptions.** All of it assumes separate calibration and evaluation tickets and stable ticket hashes (<Ref to="rfc-0001" section="section 5">RFC 0001</Ref>).
+- **Undeclared influences.** A certificate notices only what its context covers: an undeclared influence, such as retrieval in version 6, never makes it stale.
+- **Results.** A certificate claims only that the declared procedure ran on the declared evidence in the hashed context. Its statistical target concerns the component the cvar controls, such as how often the small model is right on the tickets it keeps, and needs calibration tickets like production traffic. It says nothing about resolution rate or cost: a certified selection is two separate facts, a promotion win and a valid certificate for every cvar used (<Ref to="rfc-0001" section="sections 3.5 and 5">RFC 0001</Ref>).
+
+</div>
+
+<KeyTakeaways>
+  <ul>
+    <li>A tuned value is searched, a fixed value comes from your runtime, and a cvar is fitted from calibration evidence for each choice of its declared parents.</li>
+    <li>Cvars never enter the rules or the search. Bound a cvar with its validity domain, not with a rule. Calibration tickets must not overlap the evaluation set, and too few are rejected.</li>
+    <li>A certificate binds one value to a hashed context. A new value of a declared parent, or of any covered key, makes it stale. An undeclared influence does not.</li>
+    <li>In a strict evidence mode, a failed certificate check, an abstention or too little evidence means no promotion, never a fallback to the best score. Today's tools cannot validate certificates. Version 6 explicitly requires them, so its gate refuses to decide. This refusal does not cover every strict-mode trigger yet.</li>
+  </ul>
+</KeyTakeaways>

@@ -7,9 +7,19 @@ import path from "path";
 import { defineConfig } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 import remarkGfm from "remark-gfm";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkMdxFrontmatter from "remark-mdx-frontmatter";
+// The book's source commit, by the same rule the PDF build stamps on the print route.
+import { sourceCommit } from "./scripts/book_lib.mjs";
 
 const plugins = [
-  mdx({ remarkPlugins: [remarkGfm] }),
+  mdx({
+    remarkPlugins: [
+      remarkFrontmatter,
+      [remarkMdxFrontmatter, { name: "frontmatter" }],
+      remarkGfm,
+    ],
+  }),
   react(),
   tailwindcss(),
   jsxLocPlugin(),
@@ -18,6 +28,9 @@ const plugins = [
 
 export default defineConfig({
   plugins,
+  define: {
+    __BOOK_COMMIT__: JSON.stringify(sourceCommit()),
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

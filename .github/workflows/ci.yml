@@ -66,3 +66,17 @@ jobs:
       - name: Build website
         working-directory: website
         run: pnpm run build
+
+      - name: Install Playwright Chromium
+        working-directory: website
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build book PDF
+        working-directory: website
+        env:
+          BOOK_PILOT: "0"
+        run: pnpm book:pdf
+
+      - name: Check book PDF
+        working-directory: website
+        run: pnpm book:check

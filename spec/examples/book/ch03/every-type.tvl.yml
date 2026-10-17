@@ -1,0 +1,58 @@
+# One tuned variable of each type, for the reference table in chapter 3.
+# The last one is registry-backed, so the linter warns that it lies
+# outside the formally verified subset.
+tvl:
+  module: book.types_tour
+
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+
+evaluation_set:
+  dataset: datasets/support-tickets-v1.jsonl
+
+tvars:
+  - name: use_retrieval
+    type: bool
+    domain: [true, false]
+  - name: max_tool_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 4, 8]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: model
+    type: enum[str]
+    domain: ["small", "medium", "large"]
+  - name: retrieval_k
+    type: int
+    domain:
+      range: [1, 8]
+  - name: chunking
+    type: tuple[int, int]
+    domain:
+      components:
+        - [256, 512]
+        - [0, 64]
+  - name: reranker
+    type: callable[RerankerProto]
+    domain:
+      registry: book.rerankers
+
+constraints:
+  structural:
+    - when: use_retrieval = false
+      then: retrieval_k = 1
+    - expr: chunking in {(256, 0), (512, 64)}
+
+objectives:
+  - name: resolution_rate
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    resolution_rate: 0.02

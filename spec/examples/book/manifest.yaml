@@ -1,0 +1,321 @@
+# Book example manifest. Each entry names a file under spec/examples/book/, the
+# result a public checker must report for it, and the checker. The book never
+# claims a result that is not listed here. tests/test_book_examples.py runs it.
+# A path that starts with "book/" is relative to the repository root instead: the
+# runnable project's committed bundles and configurations (book/support-bot/).
+#
+# expect, by checker:
+#   tvl-validate, tvl-lint        valid | lint:<CODE>
+#   tvl-check-structural          sat | unsat
+#   tvl-check-operational         pass | fail:<CODE>
+#   tvl-config-validate           pass | fail:<CODE>   (also needs module: <file>)
+#   tvl-measure-validate          valid | fail:<CODE> | not_ready:<CODE>
+#                                 (also needs module: and config: <file>; not_ready means the
+#                                 bundle is valid but the gate cannot use it: exit 0, ok true,
+#                                 promotion_ready false, with CODE among the readiness issues)
+examples:
+  - file: pilot/rag-support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: The support bot used throughout the book; passes schema and lints.
+  - file: pilot/rag-support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: At least one configuration satisfies the structural rules.
+  - file: pilot/design-space-unsat.tvl.yml
+    expect: unsat
+    checker: tvl-check-structural
+    note: Two rules on max_calls contradict each other, so no configuration is allowed.
+  - file: pilot/budget-invalid.tvl.yml
+    expect: lint:invalid_max_trials
+    checker: tvl-lint
+    note: A lint rejects a non-positive trial budget.
+
+  # Chapter 1: rules from three places, gathered into one file.
+  - file: ch01/scattered-rules.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: The file is well formed; validation does not decide satisfiability.
+  - file: ch01/scattered-rules.tvl.yml
+    expect: unsat
+    checker: tvl-check-structural
+    note: The three rules cannot all hold, so no design is allowed.
+
+  # Chapter 2: the support bot, version 1, and two candidate configurations.
+  - file: ch02/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: The smallest complete support bot.
+  - file: ch02/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: At least one design is allowed (13 of the 15 are).
+  - file: ch02/candidate-medium-2.yml
+    module: ch02/support-bot.tvl.yml
+    expect: pass
+    checker: tvl-config-validate
+    note: A medium model with two tool calls breaks no rule.
+  - file: ch02/candidate-small-4.yml
+    module: ch02/support-bot.tvl.yml
+    expect: fail:constraint_failed
+    checker: tvl-config-validate
+    note: A small model may make at most two tool calls.
+  - file: ch02/evidence-preview.yml
+    module: ch02/support-bot.tvl.yml
+    config: ch02/candidate-medium-2.yml
+    expect: valid
+    checker: tvl-measure-validate
+    note: A preview with made-up numbers, in the shape the promotion tools read.
+
+  # Chapter 3: four knobs, four types; and one variable of each type.
+  - file: ch03/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Four knobs of four types make 330 raw combinations, before applying constraints; the small-model rule from version 1 still applies.
+  - file: ch03/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: The small-model rule allows 286 of the 330 raw combinations.
+  - file: ch03/candidate-temperature-025.yml
+    module: ch03/support-bot.tvl.yml
+    expect: fail:domain_violation
+    checker: tvl-config-validate
+    note: 0.25 is not on the grid 0.0, 0.1, ..., 1.0, so it is outside the domain.
+  - file: ch03/every-type.tvl.yml
+    expect: lint:unverifiable_callable_type
+    checker: tvl-validate
+    note: A callable type is outside the formally verified subset (a warning).
+  - file: ch03/every-type.tvl.yml
+    expect: lint:unverifiable_registry_domain
+    checker: tvl-validate
+    note: A registry domain is outside the formally verified subset (a warning).
+
+  # Chapter 4: structural rules, the environment snapshot, and three failures.
+  - file: ch04/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+  - file: ch04/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: The two rules leave 12 of every 15 model and tool-call pairs.
+  - file: ch04/support-bot.tvl.yml
+    expect: pass
+    checker: tvl-check-operational
+    note: The snapshot meets both environment conditions.
+  - file: ch04/support-bot-unsat.tvl.yml
+    expect: unsat
+    checker: tvl-check-structural
+    note: Retrieval on, temperature at most 0.3 and at least 0.5 cannot all hold.
+  - file: ch04/support-bot-resolved.tvl.yml
+    expect: valid
+    checker: tvl-validate
+  - file: ch04/support-bot-resolved.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: The negotiated rules leave 120 of the 330 designs.
+  - file: ch04/support-bot-resolved.tvl.yml
+    expect: pass
+    checker: tvl-check-operational
+    note: The snapshot meets both environment conditions.
+  - file: ch04/busy-gateway.tvl.yml
+    expect: fail:derived_constraint_violation
+    checker: tvl-check-operational
+    note: The gateway latency in this snapshot is above the 300 ms condition.
+  - file: ch04/busy-gateway.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: The environment does not change which designs the rules allow.
+  - file: ch04/busy-gateway.tvl.yml
+    expect: valid
+    checker: tvl-validate
+  - file: ch04/derived-on-outcome.tvl.yml
+    expect: lint:derived_invalid_symbol_reference
+    checker: tvl-validate
+    note: Environment conditions may read only env.context facts, never measured outcomes.
+
+  # Chapter 5: objectives, margins and a band, on top of the negotiated rules.
+  - file: ch05/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Two directed objectives with margins, and one banded objective.
+  - file: ch05/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+  - file: ch05/support-bot.tvl.yml
+    expect: pass
+    checker: tvl-check-operational
+  - file: ch05/missing-margin.tvl.yml
+    expect: lint:missing_min_effect
+    checker: tvl-validate
+    note: Every directed objective needs a margin in min_effect.
+
+  # Chapter 6: real bundles from the runnable project, and a chance constraint.
+  - file: book/support-bot/bundles/promote/seed-0/candidate.synthetic.measure.yml
+    module: ch05/support-bot.tvl.yml
+    config: book/support-bot/configs/promote-candidate.yml
+    expect: valid
+    checker: tvl-measure-validate
+    note: SYNTHETIC; written by book/support-bot/evaluate.py from the simulator.
+  - file: ch06/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Version 4 plus an explicit adjustment and one chance constraint.
+  - file: ch06/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+  - file: ch06/support-bot.tvl.yml
+    expect: pass
+    checker: tvl-check-operational
+  - file: book/support-bot/bundles/slo-pass/seed-0/candidate.synthetic.measure.yml
+    module: ch06/support-bot.tvl.yml
+    config: book/support-bot/configs/promote-candidate.yml
+    expect: valid
+    checker: tvl-measure-validate
+    note: SYNTHETIC; 0 slow replies in 140 trials, upper bound 0.0212.
+  - file: book/support-bot/bundles/slo-few/seed-0/candidate.synthetic.measure.yml
+    module: ch06/support-bot.tvl.yml
+    config: book/support-bot/configs/promote-candidate.yml
+    expect: fail:chance_violation
+    checker: tvl-measure-validate
+    note: SYNTHETIC; 0 slow replies in 50 trials, but the upper bound 0.0582 is above 0.05.
+
+  # Chapter 7: one calibrated value, the escalation threshold, used by a cascade policy.
+  - file: ch07/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Version 5 plus a cvar, a cascade policy and strict calibration.
+  - file: ch07/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: The witness assigns the four tuned variables only; the calibrated value is not searched.
+  - file: ch07/support-bot.tvl.yml
+    expect: pass
+    checker: tvl-check-operational
+  - file: ch07/threshold-in-rule.tvl.yml
+    expect: lint:cvar_in_structural_constraint
+    checker: tvl-validate
+    note: A structural rule may not mention a calibrated variable.
+  - file: ch07/candidate-sets-threshold.yml
+    module: ch07/support-bot.tvl.yml
+    expect: fail:unknown_assignment
+    checker: tvl-config-validate
+    note: A configuration assigns tuned variables only; it cannot set the calibrated value.
+  - file: book/support-bot/bundles/slo-pass/seed-0/candidate.synthetic.measure.yml
+    module: ch07/support-bot.tvl.yml
+    config: book/support-bot/configs/promote-candidate.yml
+    expect: not_ready:calibration_evidence_unsupported
+    checker: tvl-measure-validate
+    note: SYNTHETIC; the same bundle chapter 6 promotes. The module requires calibration certificates, which the reference tools cannot check, so the gate may not use it.
+
+  # Chapter 8: the escalation policy as a composite cascade, nested in a loop.
+  - file: ch08/support-bot-gap.tvl.yml
+    expect: lint:missing_composite_parent
+    checker: tvl-validate
+    note: The first arm declares four tuned knobs; the threshold depends on only two of them.
+  - file: ch08/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: The threshold depends on every knob of the arm its gate observes.
+  - file: ch08/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: Composites never enter the rules or the search space.
+  - file: ch08/candidate-small-first.yml
+    module: ch08/support-bot.tvl.yml
+    expect: pass
+    checker: tvl-config-validate
+    note: The small model first; a candidate still assigns only the five tuned variables.
+  - file: ch08/pre-cascade.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: A router picks one arm before any arm runs; the threshold is fitted to the score its gate reads.
+  - file: ch08/fourth-kind.tvl.yml
+    expect: lint:unknown_composite_kind
+    checker: tvl-validate
+    note: The three constructors are sealed; a fourth kind is rejected.
+
+  # Chapters 9 to 12 describe the TVL 1.3 draft.
+  # Further checkers for them:
+  #   tvl-compose           composed | reject:<CODE>   (optional pack: <file>; run with --validate)
+  #   tvl-compile-runtime   compiled | fail:<CODE>     (token_map: <json file>; optional pack: <file>)
+  #   tvl-ci-gate           Promote | Reject | NoDecision   (module: and incumbent: <file>; file is the candidate bundle)
+
+  # Chapter 9: version 8, four production requirements.
+  - file: ch09/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Version 7 plus four requirements; a requirement alone checks nothing until a monitor names it (chapter 10).
+  - file: ch09/support-bot.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: Requirements never enter the rules or the search space.
+  - file: ch09/refund-amount.tvl.yml
+    expect: lint:schema_error
+    checker: tvl-validate
+    note: A selector has only event, tool, status and ref; it cannot read a refund's amount.
+
+  # Chapter 10: version 9, monitors; and the release gate on promotion monitors.
+  - file: ch10/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Two promotion monitors, two runtime monitors, a recovery promise and two liveness checks.
+  - file: ch10/gate-demo.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Version 5 plus version 9's two promotion monitors, so that today's gate can decide.
+  - file: ch10/candidate-140.synthetic.measure.yml
+    module: ch10/gate-demo.tvl.yml
+    incumbent: book/support-bot/bundles/slo-pass/seed-0/incumbent.synthetic.measure.yml
+    expect: Promote
+    checker: tvl-ci-gate
+    note: SYNTHETIC; both monitors MET on complete counts, and the 1.2 gate promotes.
+  - file: ch10/candidate-50.synthetic.measure.yml
+    module: ch10/gate-demo.tvl.yml
+    incumbent: book/support-bot/bundles/slo-few/seed-0/incumbent.synthetic.measure.yml
+    expect: Reject
+    checker: tvl-ci-gate
+    note: SYNTHETIC; 0 slow replies in 50. The monitor says UNKNOWN(inconclusive); the chance constraint rejects, and Reject wins.
+
+  # Chapter 11: version 10, responses.
+  - file: ch11/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: A response ladder for slow replies and a local guard for refunds.
+  - file: ch11/suspend-early.tvl.yml
+    expect: lint:response_suspend_unconfirmed
+    checker: tvl-validate
+    note: Suspend needs a human, and an event that shows the trouble persisted.
+
+  # Chapter 12: overlays first, then a company pack.
+  - file: ch11/strict.overlay.yml
+    expect: composed
+    checker: tvl-compose
+    note: The overlay tightens slow_replies from 5% to 3%; everything else is restated unchanged.
+  - file: ch11/loose.overlay.yml
+    expect: reject:runtime_overlay_weakens
+    checker: tvl-compose
+    note: An overlay may only tighten; loosening 5% to 8% is refused.
+  - file: ch11/support-bot.tvl.yml
+    pack: ch12/company-floors.pack.yml
+    expect: reject:requirement_weaker_than_floor
+    checker: tvl-compose
+    note: Version 10 promises 5%; the company floor asks for 4%.
+  - file: ch11/strict.overlay.yml
+    pack: ch12/company-floors.pack.yml
+    expect: composed
+    checker: tvl-compose
+    note: With the overlay (3%) the module meets the floor (4%); the deletion floor is carried on its own.
+  - file: ch12/company-floors.pack.yml
+    expect: valid
+    checker: tvl-validate
+    note: A pack has no tuned variables, objectives or evaluation set.
+  - file: ch12/support-bot.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: Version 11, the overlay's composed output; it validates as an ordinary module.
+  - file: ch12/support-bot.tvl.yml
+    pack: ch12/company-floors.pack.yml
+    token_map: ch12/tokens.json
+    expect: compiled
+    checker: tvl-compile-runtime
+    note: Writes two closed files; compiling installs, enables or runs nothing.

@@ -1,0 +1,11 @@
+# The candidate the team wants to try (chapter 8): the small model answers first, and the
+# cascade escalates the tickets it is unsure of to the large model. Only the five tuned
+# variables are assigned: the composites and the threshold are not search variables.
+config_id: support-bot.small-first
+module_id: book.support_bot
+assignments:
+  model: small
+  max_tool_calls: 2
+  temperature: 0.2
+  use_retrieval: true
+  samples: 5

@@ -1,0 +1,10 @@
+# A candidate that tries to set the calibrated value (chapter 7). A configuration assigns
+# tuned variables only: the threshold is fitted, never chosen, so this is rejected.
+config_id: support-bot.sets-threshold
+module_id: book.support_bot
+assignments:
+  model: medium
+  max_tool_calls: 2
+  temperature: 0.2
+  use_retrieval: true
+  escalation_threshold: 0.4

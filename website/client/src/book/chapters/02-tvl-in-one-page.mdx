@@ -1,0 +1,148 @@
+---
+title: "TVL in one page"
+slug: tvl-in-one-page
+order: 2
+draft: false
+summary: The support bot as a TVL module, how to install the tools and run a first check, and the path from module to candidate to evidence to a promotion decision.
+---
+
+<h2 id="ch2-learn">What you'll learn</h2>
+
+- How to install the TVL tools from a clone of the repository, at the commit this book was tested with.
+- The parts of a TVL module, read top to bottom on the support bot, and your first checks.
+- The four steps from a spec to production: the module, a candidate configuration, an evidence bundle and a promotion decision, and how they map onto your own agent.
+
+<h2 id="ch2-install">Install the tools</h2>
+
+The TVL tools are a Python package, installed from a clone of the repository (<Ref to="getting-started">getting started</Ref>). You need Python 3.10 or newer, git and a terminal. The commands are written for bash or zsh on Linux or macOS; on Windows, use WSL. A virtual environment keeps the tools apart from the rest of your system:
+
+<TestedRef language="bash" code={`git clone https://github.com/Traigent/tvl.git
+cd tvl
+git checkout {ref}
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .`} />
+
+The book was tested at this commit; newer versions may print slightly different output. The commands put tools named `tvl-...` on your path. Run every command in this book from the `tvl` folder, the root of the repository. Chapters 1 to 8 use six of the tools: `tvl-validate`, `tvl-check-structural`, `tvl-check-operational`, `tvl-config-validate`, `tvl-measure-validate` and `tvl-ci-gate`. Chapters 9 to 12 add `tvl-compose` and `tvl-compile-runtime`. Chapter 6 also runs the Python scripts of the book's support-bot project.
+
+<h2 id="ch2-module">The support bot as a module</h2>
+
+You want to compare three models and five tool-call limits for the support bot. You must keep the rule from the config file: a small-model configuration has a tool-call limit of at most two. And before anyone runs a test, you want to agree on what "better" means. All of that fits in one TVL module.
+
+Here is the whole module, version 1 of the bot. Each later chapter adds a version, so version N appears in chapter N + 1:
+
+<Example file="ch02/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 1" />
+
+TVL files are YAML. Read this one top to bottom, one part at a time:
+
+| Part | What it says here | More in |
+|---|---|---|
+| `tvl.module` | the name of this module: `book.support_bot` | |
+| `environment` | the date of the outside world this study assumes | <ChapterLink n={4}>Chapter 4</ChapterLink> |
+| `evaluation_set` | which tickets supply the evidence, and a random `seed` that makes sampling repeatable | <ChapterLink n={6}>Chapter 6</ChapterLink> |
+| `tvars` | what may change: the model (3 values) and the tool-call limit (5 values) | <ChapterLink n={3}>Chapter 3</ChapterLink> |
+| `constraints` | what is allowed: a small-model configuration has a tool-call limit of at most two | <ChapterLink n={4}>Chapter 4</ChapterLink> |
+| `objectives` | what to improve: solve more tickets, spend less per ticket | <ChapterLink n={5}>Chapter 5</ChapterLink> |
+| `promotion_policy` | what evidence a new version needs before it may replace the running one | <ChapterLink n={5}>Chapters 5</ChapterLink> and 6 |
+
+Six of these parts are required: `tvl`, `environment`, `evaluation_set`, `tvars`, `objectives` and `promotion_policy`. Only `constraints` is optional (<Ref to="language" section="“A Small RAG Agent”">language reference</Ref>). The `evaluation_set` names a dataset, `datasets/support-tickets-v1.jsonl`. This dataset name is illustrative; these checks do not load tickets or run an agent.
+
+Each `tvars` entry is a <Term id="tvar">tuned variable</Term>: a knob of your agent with a name, a type and the values it may take. Every combination of values is one possible design, and together they form the <Term id="design-space">design space</Term>.
+
+<Term id="promotion">Promotion</Term> is the decision to let a new version replace the one that runs now, which TVL calls the <Term id="incumbent">incumbent</Term>. TVL makes the decision from evidence; your own deployment process performs any replacement. Here the promotion policy has three fields. `dominance: epsilon_pareto` names the comparison rule, <Term id="epsilon-pareto">ε-Pareto dominance</Term>: a candidate must not be worse than the incumbent on any objective by more than a margin, and must be better by more than the margin on at least one. `min_effect` holds those margins. <ChapterLink n={5}>Chapter 5</ChapterLink> explains both. <Term id="alpha">`alpha`</Term> is the significance level of the statistical tests in <ChapterLink n={6} />; you can ignore it until then (<Ref to="language" section="“Promotion Policy”">language reference</Ref>).
+
+The rule under `constraints` reads: when the model is small, the tool-call limit must be at most two. <ChapterLink n={4}>Chapter 4</ChapterLink> explains rules in full.
+
+<Predict question={<p>The module allows three models and five tool-call limits, under that one rule. How many of the 15 designs does it allow?</p>}>
+<p>Thirteen. The rule removes the two small-model designs with limits of 4 and 8. The other 13 obey it.</p>
+</Predict>
+
+<TryIt>
+
+Run your first two checks on this module, from the root of the repository:
+
+```bash
+tvl-validate spec/examples/book/ch02/support-bot.tvl.yml
+tvl-check-structural spec/examples/book/ch02/support-bot.tvl.yml
+```
+
+One possible output is shown below; yours may differ.
+
+```text
+Schema + lint checks passed.
+Structural constraints satisfiable.
+  max_tool_calls: 4
+  model: medium
+```
+
+The first line says the file has the right shape and no common mistakes. The rest says at least one design obeys the rules, and prints one such design as proof, here a medium model with a limit of four tool calls. TVL calls that design a <Term id="witness">witness</Term>. The solver may pick a different allowed design on your machine; any allowed design is a valid witness.
+
+</TryIt>
+
+<h2 id="ch2-checks">Three checks, three questions</h2>
+
+Each checker answers a different question about the same file (<Ref to="language" section="“What The Verifiers Are Checking”">language reference</Ref>).
+
+| Command | The question it answers | For the support bot |
+|---|---|---|
+| `tvl-validate` | Is the file well formed? It checks the file against the schema and runs the <Term id="lint">lints</Term>. | yes |
+| `tvl-check-structural` | Does at least one design obey every rule? | yes (SAT), with a witness |
+| `tvl-check-operational` | Does the environment snapshot meet the module's environment conditions? | yes; this module sets none yet |
+
+<Misconception wrong="tvl-validate passed, so at least one design is allowed.">
+<p>`tvl-validate` checks the shape of the file and common mistakes. It does not decide whether the rules can all hold; `tvl-check-structural` does. The three clashing rules from <ChapterLink n={1} /> pass `tvl-validate`, and `tvl-check-structural` reports them UNSAT.</p>
+</Misconception>
+
+<h2 id="ch2-life">The life of a spec: four steps</h2>
+
+A module on its own changes nothing. On the way to production it meets three more things.
+
+<Mermaid
+  alt="Flow from top to bottom. You write the module. Your optimizer proposes a candidate configuration. Your evaluator measures it, producing the candidate's evidence bundle. The tvl-ci-gate tool decides, taking that bundle and the incumbent's evidence bundle as its two inputs. Your deployment then acts on the decision."
+  caption="Figure 2.1. The life of a spec, and who does each step. A module allows designs. You propose one design as a candidate. Running it on the evaluation set gives an evidence bundle. The promotion decision compares the candidate's bundle with the incumbent's, and says whether the evidence supports replacing the incumbent. Your own deployment process performs any replacement."
+  chart={`%%{init: {"flowchart": {"rankSpacing": 26, "nodeSpacing": 40, "padding": 6}}}%%
+flowchart TD
+  W([You]) -->|"you write"| M[Module]
+  M -->|"your optimizer proposes"| C[Candidate<br/>configuration]
+  C -->|"your evaluator measures"| E[Candidate<br/>evidence bundle]
+  E -->|"tvl-ci-gate decides"| D[Promotion<br/>decision]
+  I[Incumbent<br/>evidence bundle] --> D
+  D -->|"your deployment acts"| P([Deployment])`}
+/>
+
+<Callout kind="note" title="How this maps to your own agent">
+  <ul>
+    <li>Your agent's settings, such as its model and its tool-call limit, become the `assignments` of a candidate configuration.</li>
+    <li>Your evaluator's outputs become an evidence bundle.</li>
+    <li>Your CI runs the checks and the gate, `tvl-ci-gate`, on each proposed change.</li>
+    <li>Your deployment acts on the decision. TVL decides; it never deploys.</li>
+  </ul>
+  <p>The module is one YAML file kept next to your agent's code, and the tools accept any path. <ChapterLink n={13}>Chapter 13</ChapterLink> covers the details.</p>
+</Callout>
+
+A <Term id="candidate-configuration">candidate configuration</Term> is one design you want to try: a value for every tuned variable. You propose it, by hand or with any search tool you like; TVL itself does not search. Here is one, in its own small file:
+
+<Example file="ch02/candidate-medium-2.yml" title="A candidate configuration" />
+
+`tvl-config-validate` checks a candidate against its module, as shown under the listing. This one passes. A candidate with a small model and a limit of four tool calls (`ch02/candidate-small-4.yml`) breaks the rule, and the check says so and exits with status 5:
+
+```text
+Configuration validation failed:
+[constraint #0] constraint_failed: Structural constraint violated
+```
+
+An <Term id="evidence-bundle">evidence bundle</Term> records measurements for a configuration and identifies its module and configuration. For each objective, it supplies raw samples or a mean, standard deviation and sample size. For each declared chance constraint, a limit on how often something may go wrong (<ChapterLink n={6} />), it supplies violation and trial counts (<Ref to="promotion-evidence" section="“Canonical measurement bundle”">promotion evidence contract</Ref>).
+
+The support bot declares no chance constraints yet, so this preview for the medium-2 candidate holds only objective values:
+
+<Example file="ch02/evidence-preview.yml" checker="tvl-measure-validate" title="An evidence bundle (a preview; chapter 6 builds real ones)" />
+
+`tvl-measure-validate` checks a bundle against its module and candidate, as shown under the listing. TVL does not run your agent: your own evaluation harness runs it on the <Term id="evaluation-set">evaluation set</Term> and writes the bundle. `tvl-ci-gate` then compares the two bundles; <ChapterLink n={6} /> shows how it decides.
+
+<KeyTakeaways>
+  <ul>
+    <li>A module is one YAML file with six required parts: `tvl`, `environment`, `evaluation_set`, `tvars`, `objectives` and `promotion_policy`. `constraints` is optional.</li>
+    <li>Install the tools with `python -m pip install -e .` from a clone, at the tested commit. `tvl-validate` checks the shape; `tvl-check-structural` checks that at least one design is allowed.</li>
+    <li>A spec moves from module, to candidate configuration, to evidence bundle, to a promotion decision. Your own deployment acts on the decision.</li>
+  </ul>
+</KeyTakeaways>

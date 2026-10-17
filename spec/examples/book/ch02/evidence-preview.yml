@@ -1,0 +1,14 @@
+# A preview of an evidence bundle: measurements for one candidate.
+# The numbers are made up; chapter 6 builds real bundles.
+bundle_id: support-bot.medium-2.preview
+config_id: support-bot.medium-2
+module_id: book.support_bot
+objective_values:
+  resolution_rate:              # share of tickets solved
+    mean: 0.81
+    std: 0.39
+    n: 200
+  cost_per_ticket_usd:          # dollars per ticket
+    mean: 0.0118
+    std: 0.0021
+    n: 200

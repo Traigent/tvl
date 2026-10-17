@@ -1,0 +1,63 @@
+# A common mistake: a measured outcome written as an environment condition.
+# The linter rejects it.
+tvl:
+  module: book.support_bot
+
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+  bindings:                     # what was in use; pinned, never computed with
+    llm_gateway: eu-west-1
+    help_center_index: help-articles-2026-09
+  context:                      # numeric facts about the environment
+    gateway_baseline_latency_ms: 180
+    gateway_rpm_limit: 600
+    gateway_rpm_current_load: 420
+
+evaluation_set:
+  dataset: datasets/support-tickets-v1.jsonl
+  seed: 7
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["small", "medium", "large"]
+  - name: max_tool_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 4, 8]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: use_retrieval
+    type: bool
+    domain: [true, false]
+
+constraints:
+  structural:                   # rules over the knobs
+    - when: model = "small"     # small models loop on long tool chains
+      then: max_tool_calls <= 2
+    - when: model = "large"     # large models must check, not guess
+      then: max_tool_calls >= 1
+    - when: use_retrieval = true          # grounding: with articles, quote them
+      then: temperature <= 0.3
+    - when: use_retrieval = false         # brand team: without articles, sound warm
+      then: temperature >= 0.5
+  derived:                      # conditions on the environment snapshot
+    - require: env.context.gateway_baseline_latency_ms <= 300
+    - require: reply_latency_p95_ms <= 2000   # wrong: this is measured, not a fact
+    - require: env.context.gateway_rpm_limit - env.context.gateway_rpm_current_load >= 100
+
+objectives:
+  - name: resolution_rate
+    direction: maximize
+  - name: cost_per_ticket_usd
+    direction: minimize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    resolution_rate: 0.02
+    cost_per_ticket_usd: 0.001

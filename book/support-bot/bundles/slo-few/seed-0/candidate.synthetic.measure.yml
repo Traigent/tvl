@@ -1,0 +1,29 @@
+# SYNTHETIC evidence bundle, written by book/support-bot/evaluate.py from the
+# simulator in bot.py. Not a measurement of any real bot or model.
+bundle_id: support-bot.slo-few.candidate
+config_id: support-bot.promote-candidate
+module_id: book.support_bot
+objective_values:
+  resolution_rate:
+    samples: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+      1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0,
+      1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0]
+    paired: true
+  cost_per_ticket_usd:
+    samples: [0.010149, 0.009907, 0.009843, 0.009475, 0.008212, 0.008185, 0.008963, 0.00967, 0.010976,
+      0.010422, 0.01117, 0.009634, 0.00924, 0.008731, 0.009459, 0.009584, 0.009284, 0.010227, 0.010799,
+      0.011049, 0.010893, 0.0095, 0.010172, 0.009079, 0.009583, 0.009651, 0.011078, 0.010507, 0.008959,
+      0.010832, 0.009117, 0.009191, 0.010186, 0.008851, 0.009249, 0.010201, 0.007631, 0.010881, 0.010466,
+      0.01017, 0.008409, 0.010616, 0.008382, 0.010464, 0.010102, 0.010127, 0.009647, 0.008718, 0.008936,
+      0.008098]
+    paired: true
+  reply_tokens:
+    samples: [165.2, 213.6, 208.1, 276.8, 180.4, 195.1, 156.4, 209.2, 142.6, 266.1, 214.0, 267.3, 207.5,
+      217.9, 153.8, 208.1, 237.0, 216.4, 192.0, 207.6, 201.3, 128.8, 183.5, 193.3, 185.7, 249.2, 228.8,
+      211.4, 137.5, 249.1, 181.7, 231.8, 259.2, 172.3, 237.0, 228.2, 182.4, 259.8, 169.1, 230.8, 222.3,
+      100.7, 161.2, 258.4, 213.2, 213.0, 231.4, 204.3, 208.7, 121.7]
+    paired: true
+chance_outcomes:
+  reply_latency_slo: {violations: 0, trials: 50}
+summary: {synthetic: true, note: 'SYNTHETIC: produced by the simulator book/support-bot/bot.py on synthetic
+    tickets. Not a measurement of any real bot or model.', seed: 0, split: eval, n_tickets: 50, ticket_ids_sha256: 471dffbce1320855}

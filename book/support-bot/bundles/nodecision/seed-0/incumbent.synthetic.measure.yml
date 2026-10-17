@@ -1,0 +1,19 @@
+# SYNTHETIC evidence bundle, written by book/support-bot/evaluate.py from the
+# simulator in bot.py. Not a measurement of any real bot or model.
+bundle_id: support-bot.nodecision.incumbent
+config_id: support-bot.nodecision-incumbent
+module_id: book.support_bot
+objective_values:
+  resolution_rate:
+    samples: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0]
+    paired: true
+  cost_per_ticket_usd:
+    samples: [0.00922, 0.008818, 0.007921, 0.008673, 0.009358, 0.008966, 0.008641, 0.009225, 0.010252,
+      0.01031, 0.008872, 0.010126, 0.009466, 0.008112, 0.009402, 0.009304]
+    paired: true
+  reply_tokens:
+    samples: [140.6, 203.8, 147.1, 108.4, 161.2, 194.3, 164.0, 86.6, 152.6, 155.8, 105.2, 186.8, 157.8,
+      113.2, 140.2, 85.1]
+    paired: true
+summary: {synthetic: true, note: 'SYNTHETIC: produced by the simulator book/support-bot/bot.py on synthetic
+    tickets. Not a measurement of any real bot or model.', seed: 0, split: eval, n_tickets: 16, ticket_ids_sha256: 73ac67767a41eff9}

@@ -1,0 +1,98 @@
+# A pre cascade (chapter 8): a router. A score of the ticket picks one arm before any
+# arm runs; the small model answers when the score reaches the threshold.
+tvl:
+  module: book.support_bot
+
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+  bindings:
+    llm_gateway: eu-west-1
+    help_center_index: help-articles-2026-09
+  context:
+    gateway_baseline_latency_ms: 180
+    gateway_rpm_limit: 600
+    gateway_rpm_current_load: 420
+
+evaluation_set:                       # SYNTHETIC: the 140 "eval" tickets of book/support-bot
+  dataset: book.support-bot.tickets.eval.v1
+  seed: 0                               # the seed of the book's reference runs
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["small", "medium", "large"]
+  - name: max_tool_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 4, 8]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: use_retrieval
+    type: bool
+    domain: [true, false]
+
+cvars:
+  - name: routing_threshold               # fitted from calibration tickets, never searched
+    type: float
+    domain:
+      range: [0.0, 1.0]
+    calibration:
+      source: support_bot.calibration_tickets.v1   # illustrative
+      signal: ticket_simplicity           # the score the gate reads
+      depends_on: []                      # the arms declare no tuned knobs
+
+composites:
+  - name: router
+    kind: cascade
+    placement: pre                        # pick one arm before any arm runs
+    arms: [small_model, large_model]      # the last arm is the fallback
+    gates:
+      - kind: signal_below                # a score below the threshold passes the ticket on
+        threshold: routing_threshold
+        signal: { signal: ticket_simplicity }
+
+constraints:
+  structural:
+    - when: model = "small"
+      then: max_tool_calls <= 2
+    - when: model = "large"
+      then: max_tool_calls >= 1
+    - when: use_retrieval = true          # grounding: with articles, quote them
+      then: temperature <= 0.3
+    - when: use_retrieval = false         # brand team: without articles, sound warm
+      then: temperature >= 0.5
+  derived:
+    - require: env.context.gateway_baseline_latency_ms <= 300
+    - require: env.context.gateway_rpm_limit - env.context.gateway_rpm_current_load >= 100
+
+objectives:
+  - name: resolution_rate                       # share of tickets solved
+    metric_ref: metrics.support.resolution_rate.v1
+    direction: maximize
+  - name: cost_per_ticket_usd                   # model and tool spend per ticket
+    metric_ref: metrics.support.cost_per_ticket_usd.v1
+    direction: minimize
+  - name: reply_tokens                          # length of a reply: a band, not a direction
+    metric_ref: metrics.support.reply_tokens.v1
+    band:
+      target: [80, 250]
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:                                   # one margin per directed objective
+    resolution_rate: 0.02
+    cost_per_ticket_usd: 0.001
+  adjust: holm                                  # multiple-testing adjustment, stated explicitly
+  chance_constraints:
+    - name: reply_latency_slo                   # the event: a slow reply (the evaluator defines it)
+      threshold: 0.05                           # at most 5% of replies may be slow,
+      confidence: 0.95                          # shown by a 95% upper confidence bound
+  require_calibration:                          # strict: no promotion without a valid certificate
+    enabled: true
+    hash_covered_context: [model_versions]

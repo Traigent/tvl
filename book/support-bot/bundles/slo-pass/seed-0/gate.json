@@ -1,0 +1,83 @@
+{
+  "ok": true,
+  "decision": "Promote",
+  "warnings": [],
+  "evidence": {
+    "per_objective": {
+      "resolution_rate": {
+        "test_type": "paired",
+        "n_incumbent": 140,
+        "n_candidate": 140,
+        "mean_incumbent": 0.5785714285714286,
+        "mean_candidate": 0.6714285714285714,
+        "delta": 0.09285714285714275,
+        "std_pooled": 0.3150066476728847,
+        "t_statistic": 4.239096959813145,
+        "df": 139,
+        "p_value_noninf": 2.033767789133556e-05,
+        "p_value_super": 0.003509125848550898,
+        "p_value_inferior": 0.9999796623221087,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 0.003509125848550898,
+        "adjusted_p_inferior": 1.0,
+        "epsilon": 0.02,
+        "verdict": "superior"
+      },
+      "cost_per_ticket_usd": {
+        "test_type": "paired",
+        "n_incumbent": 140,
+        "n_candidate": 140,
+        "mean_incumbent": 0.024086535714285713,
+        "mean_candidate": 0.009673657142857143,
+        "delta": -0.01441287857142857,
+        "std_pooled": 0.0011872882376448202,
+        "t_statistic": 153.60013924954873,
+        "df": 139,
+        "p_value_noninf": 1e-300,
+        "p_value_super": 1e-300,
+        "p_value_inferior": 1.0,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 2e-300,
+        "adjusted_p_inferior": 1.0,
+        "epsilon": 0.001,
+        "verdict": "superior"
+      },
+      "reply_tokens": {
+        "test_type": "tost",
+        "n": 140,
+        "mean": 200.68857142857144,
+        "std": 41.817152664155735,
+        "ci_lower": 194.8363346489355,
+        "ci_upper": 206.54080820820738,
+        "band_lower": 80.0,
+        "band_upper": 250.0,
+        "p_value_lower": 1e-300,
+        "p_value_upper": 1e-300,
+        "verdict": "in_band"
+      }
+    },
+    "chance_constraints": {
+      "reply_latency_slo": {
+        "violations": 0,
+        "trials": 140,
+        "observed_rate": 0.0,
+        "ci_lower": 0.0,
+        "ci_upper": 0.021170772844868804,
+        "threshold": 0.05,
+        "confidence": 0.95,
+        "verdict": "pass",
+        "reason": ""
+      }
+    },
+    "summary": {
+      "all_noninferior": true,
+      "any_superior": true,
+      "all_bands_pass": true,
+      "any_band_out_of_band": false,
+      "all_chance_pass": true,
+      "adjustment_method": "holm",
+      "fdr_controlled_at": null,
+      "decision_reason": "All non-inferiority tests pass; superior on: resolution_rate, cost_per_ticket_usd"
+    }
+  }
+}

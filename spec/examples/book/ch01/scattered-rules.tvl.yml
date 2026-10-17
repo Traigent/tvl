@@ -1,0 +1,42 @@
+# Three rules about the support bot. Each was written in a different place,
+# and each is sensible on its own. Gathered into one file, they meet for the
+# first time.
+tvl:
+  module: book.support_bot.scattered
+
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+
+evaluation_set:
+  dataset: datasets/support-tickets-v1.jsonl
+  seed: 7
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["small", "medium", "large"]
+  - name: max_tool_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 4, 8]
+
+constraints:
+  structural:
+    # From the launch checklist: use the small model, to save money.
+    - expr: model = "small"
+    # From the config file: small models loop, so cap their tool calls.
+    - when: model = "small"
+      then: max_tool_calls <= 2
+    # From the prompt: leave room to look up the order, the payment,
+    # the shipment and the refund.
+    - expr: max_tool_calls >= 4
+
+objectives:
+  - name: resolution_rate
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    resolution_rate: 0.02

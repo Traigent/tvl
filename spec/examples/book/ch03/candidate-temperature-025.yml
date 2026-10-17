@@ -1,0 +1,8 @@
+# A candidate whose temperature falls between two grid points.
+config_id: support-bot.temperature-025
+module_id: book.support_bot
+assignments:
+  model: medium
+  max_tool_calls: 2
+  temperature: 0.25
+  use_retrieval: true

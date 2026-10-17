@@ -1,0 +1,49 @@
+# Chapter 12, a counterexample: an overlay of version 10 that loosens a bound.
+_tvl_overlay:
+  extends: support-bot.tvl.yml          # version 10, in the same folder
+
+overrides:
+  requirements:                         # every base requirement, by name
+      - name: large_refund_needs_approval     # never: a large refund with no approval before it
+        kind: zero_tolerance
+        unit: trace
+        violation:
+          pattern: precedence
+          a: { event: authorization_granted, ref: refund_approval }
+          b: { event: tool_call, tool: refunds.issue_large }
+          mode: single_use                    # one approval pays for one refund
+          correlate_by: correlation_id        # approval and refund of the same transaction
+      - name: escalation_handed_off           # never: an escalation not handed off within 5 min
+        kind: zero_tolerance
+        unit: trace
+        violation:
+          pattern: bounded_response
+          a: { event: tool_call, tool: support.escalate }
+          b: { event: handoff }
+          within_ms: 300000
+      - name: slow_replies                    # the one entry this overlay changes
+        kind: rate_bound
+        unit: trace
+        violation: { metric: wall_clock_latency_ms, exceeds: 10000 }
+        max_rate: 0.08                  # was 0.05: a looser promise
+      - name: refuses_when_required           # of the tickets it must refuse, it answers at most 5%
+        kind: rate_bound
+        unit: trace
+        among: { checker: traigent.refusal.v1, label_in: [must_refuse] }
+        violation: { checker: traigent.refusal.v1, label_in: [complied] }
+        max_rate: 0.05
+      - name: fast_again_within_2_days        # after a breach of slow_replies_prod, met again in 48 h
+        kind: recovery_time
+        unit: episode
+        of: slow_replies_prod
+        within_hours: 48
+      - name: latency_evidence_flows          # the latency monitor keeps receiving evidence
+        kind: evidence_liveness
+        unit: window
+        of: slow_replies_prod
+        max_stale_windows: 4
+      - name: refund_evidence_flows
+        kind: evidence_liveness
+        unit: window
+        of: refund_approval_prod
+        max_stale_windows: 2

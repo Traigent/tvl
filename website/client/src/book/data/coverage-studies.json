@@ -1,0 +1,431 @@
+{
+ "_note": "SIMULATED studies, written by book/support-bot/confidence.py coverage --json-out. Not measurements.",
+ "true_rate": 0.035,
+ "trials": 140,
+ "confidence": 0.95,
+ "covered": 58,
+ "studies": [
+  {
+   "study": 1,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 2,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 3,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 4,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 5,
+   "violations": 2,
+   "trials": 140,
+   "upper_bound": 0.04428,
+   "covers": true
+  },
+  {
+   "study": 6,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 7,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 8,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 9,
+   "violations": 7,
+   "trials": 140,
+   "upper_bound": 0.09186,
+   "covers": true
+  },
+  {
+   "study": 10,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 11,
+   "violations": 8,
+   "trials": 140,
+   "upper_bound": 0.10074,
+   "covers": true
+  },
+  {
+   "study": 12,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 13,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 14,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 15,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 16,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 17,
+   "violations": 8,
+   "trials": 140,
+   "upper_bound": 0.10074,
+   "covers": true
+  },
+  {
+   "study": 18,
+   "violations": 7,
+   "trials": 140,
+   "upper_bound": 0.09186,
+   "covers": true
+  },
+  {
+   "study": 19,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 20,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 21,
+   "violations": 2,
+   "trials": 140,
+   "upper_bound": 0.04428,
+   "covers": true
+  },
+  {
+   "study": 22,
+   "violations": 7,
+   "trials": 140,
+   "upper_bound": 0.09186,
+   "covers": true
+  },
+  {
+   "study": 23,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 24,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 25,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 26,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 27,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 28,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 29,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 30,
+   "violations": 10,
+   "trials": 140,
+   "upper_bound": 0.11815,
+   "covers": true
+  },
+  {
+   "study": 31,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 32,
+   "violations": 2,
+   "trials": 140,
+   "upper_bound": 0.04428,
+   "covers": true
+  },
+  {
+   "study": 33,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 34,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 35,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 36,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 37,
+   "violations": 2,
+   "trials": 140,
+   "upper_bound": 0.04428,
+   "covers": true
+  },
+  {
+   "study": 38,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 39,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 40,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 41,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 42,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 43,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 44,
+   "violations": 8,
+   "trials": 140,
+   "upper_bound": 0.10074,
+   "covers": true
+  },
+  {
+   "study": 45,
+   "violations": 6,
+   "trials": 140,
+   "upper_bound": 0.08283,
+   "covers": true
+  },
+  {
+   "study": 46,
+   "violations": 11,
+   "trials": 140,
+   "upper_bound": 0.1267,
+   "covers": true
+  },
+  {
+   "study": 47,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 48,
+   "violations": 2,
+   "trials": 140,
+   "upper_bound": 0.04428,
+   "covers": true
+  },
+  {
+   "study": 49,
+   "violations": 2,
+   "trials": 140,
+   "upper_bound": 0.04428,
+   "covers": true
+  },
+  {
+   "study": 50,
+   "violations": 7,
+   "trials": 140,
+   "upper_bound": 0.09186,
+   "covers": true
+  },
+  {
+   "study": 51,
+   "violations": 10,
+   "trials": 140,
+   "upper_bound": 0.11815,
+   "covers": true
+  },
+  {
+   "study": 52,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 53,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 54,
+   "violations": 1,
+   "trials": 140,
+   "upper_bound": 0.03344,
+   "covers": false
+  },
+  {
+   "study": 55,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 56,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 57,
+   "violations": 3,
+   "trials": 140,
+   "upper_bound": 0.05445,
+   "covers": true
+  },
+  {
+   "study": 58,
+   "violations": 5,
+   "trials": 140,
+   "upper_bound": 0.07362,
+   "covers": true
+  },
+  {
+   "study": 59,
+   "violations": 4,
+   "trials": 140,
+   "upper_bound": 0.06419,
+   "covers": true
+  },
+  {
+   "study": 60,
+   "violations": 1,
+   "trials": 140,
+   "upper_bound": 0.03344,
+   "covers": false
+  }
+ ],
+ "many_studies": 10000,
+ "many_covered": 9581
+}

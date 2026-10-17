@@ -1,0 +1,136 @@
+---
+title: "Monitors and verdicts"
+slug: monitors-and-verdicts
+order: 10
+draft: true
+summary: "What the three verdicts MET, BREACHED and UNKNOWN each promise, how windows work, why empty traffic is never MET, and how promotion monitors join the release gate."
+---
+
+<h2 id="ch10-learn">What you'll learn</h2>
+
+- How a monitor binds a requirement to evidence, and what MET, BREACHED and UNKNOWN(reason) each promise.
+- How the release gate decides promotion monitors, on real runs, and how they differ from chance constraints.
+
+<h2 id="ch10-monitor">A monitor binds evidence</h2>
+
+TVL defines what each verdict promises. Production verdicts come from an <Term id="evaluator-profile">evaluator profile</Term> outside TVL, which must keep those promises; TVL's own tools decide only promotion monitors, from complete counts. A <Term id="monitor">monitor</Term> says which evidence checks one requirement, and how (<Ref to="rfc-0003" section="sections 3.2 and 4.5">RFC 0003</Ref>). Version 9 gives `slow_replies` two: `slow_replies_gate` judges the candidate once on the evaluation set (`phase: promotion`), and `slow_replies_prod` judges live traffic (`phase: runtime`):
+
+<Example file="ch10/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 9: the runtime monitor" lines="178-190" />
+
+A runtime monitor judges <Term id="window">windows</Term>: back-to-back, never-overlapping ("tumbling") stretches of `tumbling_hours`, aligned to UTC midnight; evidence arriving within `grace_minutes` after a window ends still counts. `confidence` is how sure the counts must make you before saying MET; `false_alarm_budget` is the chance you accept of even one false BREACHED in `horizon_days`; `min_samples` is the fewest units a window needs; `max_unresolved_fraction` is the largest share you tolerate as unclassifiable. Outside the frozen hosted profile no statistical field has a default: leave one out, and the validator says `runtime_invalid_profile`. Version 9 also monitors refunds (zero tolerance), the recovery promise and liveness; escalation and refusal are stated but not monitored.
+
+<h2 id="ch10-verdicts">Three verdicts, three promises</h2>
+
+These steps describe rate bounds using `clopper_pearson_rational_v2`. Zero tolerance instead requires complete coverage for MET and an established violation for BREACHED. The hosted floating-point method has no claimed probability bound (<Ref to="semantics" section="section 12.6">formal semantics</Ref>).
+
+1. You ensure that units go wrong independently, at one rate per window (the simple case of the general condition); that selection does not depend on whether a unit went wrong; and that the checker's labels are right.
+2. **MET** says the evidence shows the requirement holds. If the bot is truly at or above `max_rate`, any one window is MET with probability at most 1 − `confidence`.
+3. **BREACHED** says the evidence shows it is violated. If the bot is truly within `max_rate`, the chance of even one false BREACHED in `horizon_days` is at most `false_alarm_budget`.
+4. **UNKNOWN(reason)** claims neither; a reason from a closed list says why (table below). Units that could not be classified never make a verdict stronger. **Absence of evidence is never MET.**
+
+The budget is shared: 30 days of 6-hour windows are 120 windows, each with 1/120 of 0.05. With every unit classified, the exact method draws these lines. MET stops at 4 of 200, well under 5%, because MET must show the rate is below 5% with 95% confidence:
+
+| Units in the window | BREACHED from | MET up to |
+|---|---|---|
+| 200 | 23 slow | 4 slow |
+| 1,000 | 75 slow | 38 slow |
+
+In between, UNKNOWN(inconclusive); more traffic narrows that band.
+
+<WindowStrip
+  alt="Eight 6-hour windows in a row, each a box with its counts and verdict. W1: 4 of 240 slow, MET. W2: 9 of 260, UNKNOWN inconclusive. W3: 25 of 230, BREACHED. W4: 31 of 250, BREACHED. W5: 2 of 120, UNKNOWN insufficient. W6: 3 of 220, MET. W7: 2 of 210, MET. W8: 5 of 240, MET. A red bracket spans W3 to W7, labelled: episode, opens at W3, the first BREACHED window; resolves after 2 MET windows in a row. A dashed bracket runs from the end of W3 to the end of W7, labelled: recovery, W7 ends 24 h after W3 ends, within the 48 h promise: RECOVERED."
+  caption="Figure 10.1. An illustrative two days of slow_replies_prod (invented counts, every unit classified, every window decided on time). The verdicts are those of the exact-rational method for these counts. W3 opens an episode; W5 has too few units to say anything; W6 and W7 close it. The recovery clock runs in window time, from the end of W3 to the end of W7."
+  cells={[
+    { label: "W1", n: 240, k: 4, verdict: "MET", tone: "evidence" },
+    { label: "W2", n: 260, k: 9, verdict: "inconclusive", tone: "unknown" },
+    { label: "W3", n: 230, k: 25, verdict: "BREACHED", tone: "breach" },
+    { label: "W4", n: 250, k: 31, verdict: "BREACHED", tone: "breach" },
+    { label: "W5", n: 120, k: 2, verdict: "insufficient", tone: "unknown" },
+    { label: "W6", n: 220, k: 3, verdict: "MET", tone: "evidence" },
+    { label: "W7", n: 210, k: 2, verdict: "MET", tone: "evidence" },
+    { label: "W8", n: 240, k: 5, verdict: "MET", tone: "evidence" },
+  ]}
+  episode={[2, 6]}
+  deadline={{ at: 6, label: "recovery (dashed): W7 ends 24 h after W3 ends, within the 48 h promise: RECOVERED" }}
+/>
+
+<Misconception wrong="Traffic is thin at night, so I set min_samples: 58.">
+<p>Chapter 6: zero slow replies in 58 trials cannot show a 5% bound at 95% confidence. Larger windows can still establish MET and close an episode: `min_samples` is a lower bound, not a window-size limit. TVL requires MET to be reachable at the configured minimum, so version 9 fails validation at 58 (exit status 2, `runtime_met_unreachable_at_min_samples`: "Monitor cannot establish MET at decision.min_samples") and passes at 59. If traffic is too thin, lengthen the window.</p>
+</Misconception>
+
+<h2 id="ch10-zero">Zero tolerance needs complete coverage</h2>
+
+One established violation makes a zero-tolerance window BREACHED, at any size. MET needs the window's population completely covered: every unit selected (no sampling), accounted for, classified and placed, every history complete, at least `min_samples` units, none violating. Otherwise the window is UNKNOWN with the applicable reason, including `insufficient` for too few units and `incomplete` for missing coverage. An empty window is UNKNOWN(`insufficient`), never MET: no traffic must not look like no violations (<Ref to="semantics" section="section 12.6">formal semantics</Ref>).
+
+What an UNKNOWN tells you, and what you can change (three more, for late decisions, profile revisions and biased sampling, are in the formal semantics):
+
+| Reason | What it means | What you can do |
+|---|---|---|
+| `insufficient` | fewer units than `min_samples`, or none | lengthen the window |
+| `inconclusive` | counts neither clearly good nor clearly bad | lengthen the window: more units |
+| `unresolved` | too many units could not be classified | supply what the checker needs |
+| `unplaceable` | too many units have no known start time | record every unit's start time |
+| `incomplete` | zero tolerance: no violation, coverage incomplete | supply complete coverage, no sampling |
+| `engine_required` | release gate: `u` or `pl` above 0 | resolve those units |
+
+<h2 id="ch10-promotion">Promotion evidence, production evidence</h2>
+
+A promotion monitor judges the candidate once, on the evaluation set. The evaluation harness writes its counts into the candidate's bundle under `monitor_outcomes`: `n` resolved units, `k` of them violating, and optionally `u` unresolved, `pl` unplaceable (start time unknown) and `complete`. Only the harness knows whether it ran the whole set, so zero tolerance needs `complete: true`; TVL never infers it (<Ref to="rfc-0003" section="section 11.4.2">RFC 0003</Ref>). Promotion and production verdicts are about separate populations: a promotion MET says nothing about next week, and a production BREACHED does not undo a promotion.
+
+The gate joins promotion monitors with chapter 6's decision: BREACHED becomes Reject, UNKNOWN becomes NoDecision, MET passes, and any Reject wins (<Ref to="semantics" section="section 12.7">formal semantics</Ref>). Without promotion monitors it gates exactly as before. The public release gate does not interpret unresolved or unplaceable units, so it decides a monitor only when there are none; otherwise it returns UNKNOWN(`engine_required`), a NoDecision, even if a violation was counted.
+
+Today's gate cannot promote version 9, which requires calibration (chapter 7), so `ch10/gate-demo.tvl.yml` attaches its two promotion monitors to version 5. The candidate is chapter 6's slo-pass bundle plus the harness's counts:
+
+<Example file="ch10/candidate-140.synthetic.measure.yml" checker="tvl-ci-gate" title="Counts for the promotion monitors (SYNTHETIC)" lines="52-54" />
+
+<Predict question={<p>Remove <code>complete: true</code> from the refund counts: 140 clean tickets. What does the gate decide?</p>}>
+<p>NoDecision. Without the harness's attestation the zero-tolerance monitor is UNKNOWN(<code>incomplete</code>): clean counts alone never show that nothing was missed.</p>
+</Predict>
+
+Real runs of `tvl-ci-gate`, changing only `refund_approval_gate`'s counts in a copy of the bundle:
+
+| `refund_approval_gate` counts | Monitor verdict | Decision, exit |
+|---|---|---|
+| `n: 140, k: 0, complete: true` | MET | Promote, 0 |
+| `n: 140, k: 0` | UNKNOWN(incomplete) | NoDecision, 2 |
+| `n: 0, k: 0, complete: true` | UNKNOWN(insufficient) | NoDecision, 2 |
+| `n: 140, k: 1, complete: true` | BREACHED | Reject, 2 |
+| `n: 138, k: 0, u: 2, complete: true` | UNKNOWN(engine_required) | NoDecision, 2 |
+| `n: 138, k: 1, u: 2, complete: true` | UNKNOWN(engine_required) | NoDecision, 2 |
+
+As in chapter 6, the gate exits 0 only for Promote. Reject and every NoDecision, including each one an UNKNOWN causes, exit 2, so a CI step that continues only on 0 never promotes on doubt. Read `decision` from `--json` to tell them apart.
+
+<h2 id="ch10-chance">Chance constraint or promotion monitor?</h2>
+
+In exact arithmetic, at matched confidence and with fully resolved counts, a chance-constraint pass is exactly a rate monitor's MET test on the same counts. The public chance constraint computes its bound in floating point, so the implementations can disagree at exact ties (<Ref to="semantics" section="section 12.7">formal semantics</Ref>). They differ in failure. The chance constraint says "show that it holds, or Reject"; the monitor says "show that it holds, show that it is broken, or say UNKNOWN", and only a shown breach rejects.
+
+Chapter 6's 50-ticket candidate (`ch10/candidate-50.synthetic.measure.yml`) shows the difference. Zero slow replies in 50 sounds good, but 50 tickets are too few to show a 5% bound at 95% confidence (that takes 59), and they show no breach either. So the gate's `--json` report gives `slow_replies_gate` UNKNOWN(inconclusive), which on its own would be NoDecision, while the chance constraint, not shown to hold, says Reject. Any Reject wins: the decision is `Reject`.
+
+**Two methods.** `clopper_pearson_exact_v1`, only for the frozen hosted latency profile `backend_v1`, runs the rational method's tests in floating point, with no claimed probability bound; near a tie the two can disagree (<Ref to="semantics" section="sections 12.6 and 12.14">formal semantics</Ref>).
+
+<TryIt>
+
+```bash
+tvl-ci-gate spec/examples/book/ch10/gate-demo.tvl.yml \
+  book/support-bot/bundles/slo-pass/seed-0/incumbent.synthetic.measure.yml \
+  spec/examples/book/ch10/candidate-140.synthetic.measure.yml
+```
+
+The first two lines it prints:
+
+```text
+Decision: Promote
+Reason: All non-inferiority tests pass; at least one objective is superior
+```
+
+The exit status is 0. Then copy the bundle, delete `complete: true`, and run the gate on the copy: NoDecision, exit 2.
+
+</TryIt>
+
+<KeyTakeaways>
+  <ul>
+    <li>Exact-rational rate verdicts carry stated error bounds under a stated model. Zero-tolerance verdicts carry coverage and violation claims. UNKNOWN explains why neither applicable claim was established.</li>
+    <li>No evidence is never MET. Zero-tolerance promotion needs `complete: true`.</li>
+    <li>The release gate decides promotion monitors only without unresolved or unplaceable units; otherwise UNKNOWN(engine_required), a NoDecision. Any Reject wins.</li>
+  </ul>
+</KeyTakeaways>

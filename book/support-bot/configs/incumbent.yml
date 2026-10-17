@@ -1,0 +1,8 @@
+# SYNTHETIC-evaluation configuration for the book's support-bot project.
+config_id: support-bot.incumbent
+module_id: book.support_bot
+assignments:
+  model: large
+  max_tool_calls: 1
+  temperature: 0.7
+  use_retrieval: false
