@@ -1,0 +1,10 @@
+# Chapter 13: a complete evidence bundle for the starter module, as your evaluator writes it.
+# The ten values are made up to show the shape; they are not a measurement.
+bundle_id: my_agent.incumbent.run-1
+config_id: my_agent.incumbent
+module_id: my_team.my_agent
+objective_values:
+  task_success_rate:
+    samples: [1, 0, 1, 1, 0, 1, 1, 1, 0, 1]  # one value per example: 1 solved, 0 not
+    paired: true
+summary: {eval_set: evals/my-eval-set.jsonl, examples: 10}

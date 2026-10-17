@@ -1,0 +1,19 @@
+# A starter module (chapter 13): copy it next to your agent, rename it, grow it.
+tvl:
+  module: my_team.my_agent
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+evaluation_set:
+  dataset: evals/my-eval-set.jsonl
+  seed: 1
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["model-a", "model-b"]
+objectives:
+  - name: task_success_rate
+    direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect: {task_success_rate: 0.02}

@@ -48,7 +48,16 @@ for (const t of report.plannedChapters ?? []) {
 if ((report.plannedChapters ?? []).length && !/Planned chapters/.test(text)) fail('contents has no "Planned chapters" heading');
 // The edition line names the last written chapter, from the same chapter list the build used.
 const lastWritten = Math.max(0, ...chaptersForBuild(report.pilot).filter((c) => c.order >= 1 && c.order < 90).map((c) => c.order));
-if (!new RegExp(`Work in progress\\s+\\S\\s+chapters 1\\S${lastWritten} of \\d+`).test(text)) fail(`cover has no edition line (Work in progress, chapters 1-${lastWritten} of M)`);
+// While chapters are planned: "Work in progress — chapters 1–N of M". With none planned, the
+// complete-edition line, which also says that the draft chapters are draft.
+const drafts = chaptersForBuild(report.pilot).filter((c) => c.draft && c.order >= 1 && c.order < 90).map((c) => c.order);
+if ((report.plannedChapters ?? []).length) {
+  if (!new RegExp(`Work in progress\\s+\\S\\s+chapters 1\\S${lastWritten} of \\d+`).test(text)) fail(`cover has no edition line (Work in progress, chapters 1-${lastWritten} of M)`);
+} else {
+  if (!new RegExp(`Complete edition\\s+\\S\\s+chapters 1\\S${lastWritten}\\b`).test(text)) fail(`cover has no edition line (Complete edition, chapters 1-${lastWritten})`);
+  if (drafts.length && !new RegExp(`TVL 1\\.3 chapters are draft \\(${Math.min(...drafts)}\\S${Math.max(...drafts)}\\)`).test(text)) fail("cover does not say which chapters are draft");
+  if (/Work in progress|Planned chapters/.test(text)) fail("a complete edition still says work in progress or lists planned chapters");
+}
 
 // 2c. the install instructions pin the commit the book was tested at (<TestedRef/>)
 if (!/^[0-9a-f]{40}$/.test(String(report.commit))) fail(`the build has no source commit (got "${report.commit}")`);

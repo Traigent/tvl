@@ -5,7 +5,7 @@ import { allChapters, lastWrittenChapter, plannedChapters } from "../chapters";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePrint, useChapter } from "../context";
 import { glossary } from "../glossary";
-import { PINNED_COMMIT, pinnedUrl, SOURCES, type SourceKey } from "../sources";
+import { atPinnedCommit, PINNED_COMMIT, pinnedUrl, SOURCES, type SourceKey } from "../sources";
 
 export function Callout({ kind = "note", title, children }: { kind?: "note" | "warning" | "tip"; title?: string; children: ReactNode }) {
   const label = title ?? (kind === "warning" ? "Careful" : kind === "tip" ? "Tip" : "Note");
@@ -337,7 +337,9 @@ export function ChapterReferences() {
     <section className="book-references">
       <h2 className="book-references-title">References</h2>
       <p className="book-references-note">
-        {`Optional reading: the sources this chapter cites, pinned to commit ${PINNED_COMMIT.slice(0, 12)}.`}
+        {chapter.refs.every((r) => atPinnedCommit(r.to as SourceKey))
+          ? `Optional reading: the sources this chapter cites, pinned to commit ${PINNED_COMMIT.slice(0, 12)}.`
+          : "Optional reading: the sources this chapter cites. Each file link names the commit it is pinned to."}
       </p>
       <ol>
         {chapter.refs.map((r, i) => {

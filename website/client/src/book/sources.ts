@@ -22,10 +22,33 @@ export const SOURCES = {
   "constraint-language": { label: "Constraint language reference", path: "docs/reference/constraint-language.md" },
   "error-codes": { label: "Error code catalog", path: "docs/reference/error-codes.md" },
   schema: { label: "TVL JSON Schema", path: "spec/grammar/tvl.schema.json" },
-} as const;
+  conformance: { label: "Conformance suite", path: "conformance/README.md" },
+  // The RFC process was added to the contributing guide after PINNED_COMMIT, so this one
+  // link is pinned to a later commit of main that has it.
+  contributing: { label: "Contributing guide", path: "CONTRIBUTING.md", commit: "acfd1ccfaf44356427cbbcca01a8dbdafaa9fd50" },
+  // Discussions are a live forum, not a file: there is no commit to pin.
+  discussions: { label: "GitHub Discussions", url: "https://github.com/Traigent/tvl/discussions" },
+} as const satisfies Record<string, Source>;
+
+interface Source {
+  label: string;
+  /** A file in the repository, linked at PINNED_COMMIT or at its own `commit`. */
+  path?: string;
+  commit?: string;
+  /** A page that is not a file, linked as it is. */
+  url?: string;
+}
 
 export type SourceKey = keyof typeof SOURCES;
 
 export function pinnedUrl(key: SourceKey): string {
-  return `https://github.com/Traigent/tvl/blob/${PINNED_COMMIT}/${SOURCES[key].path}`;
+  const src: Source = SOURCES[key];
+  if (src.url) return src.url;
+  return `https://github.com/Traigent/tvl/blob/${src.commit ?? PINNED_COMMIT}/${src.path}`;
+}
+
+/** True when a source is linked at the book's PINNED_COMMIT. */
+export function atPinnedCommit(key: SourceKey): boolean {
+  const src: Source = SOURCES[key];
+  return !src.url && !src.commit;
 }

@@ -80,7 +80,15 @@ export function totalChapters(): number {
   return Math.max(0, ...allChapters.filter((c) => !c.pilot && c.order < 90).map((c) => c.order));
 }
 
-/** "Work in progress — chapters 1–8 of 13". */
+/**
+ * "Work in progress — chapters 1–8 of 13" while chapters are planned; once every chapter
+ * is written, "Complete edition — chapters 1–13 · TVL 1.3 chapters are draft (9–12)".
+ */
 export function editionLine(): string {
-  return `Work in progress — chapters 1–${lastWrittenChapter()} of ${totalChapters()}`;
+  const last = lastWrittenChapter();
+  const total = totalChapters();
+  if (plannedChapters().length > 0 || last < total) return `Work in progress — chapters 1–${last} of ${total}`;
+  const drafts = allChapters.filter((c) => c.draft && !c.pilot && c.order >= 1 && c.order < 90).map((c) => c.order);
+  const draftNote = drafts.length ? ` · TVL 1.3 chapters are draft (${Math.min(...drafts)}–${Math.max(...drafts)})` : "";
+  return `Complete edition — chapters 1–${total}${draftNote}`;
 }
