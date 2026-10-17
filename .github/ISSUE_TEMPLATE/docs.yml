@@ -1,0 +1,21 @@
+name: Documentation
+description: Something in the documentation is missing, unclear or wrong.
+labels: ["documentation"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or file
+      description: A link to the page on tvl-lang.org or the path in this repository.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix

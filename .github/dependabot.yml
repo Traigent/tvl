@@ -1,0 +1,44 @@
+# Weekly dependency updates.
+# Ecosystem names and options: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+# Supported ecosystems (includes `uv` and `npm` with pnpm lockfiles):
+# https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories
+version: 2
+updates:
+  # Root Python project: pyproject.toml plus the committed uv.lock.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # Website (pnpm-lock.yaml).
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      website-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # VS Code extension (package-lock.json).
+  - package-ecosystem: "npm"
+    directory: "/vscode-tvl"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      vscode-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]

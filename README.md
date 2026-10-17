@@ -1,10 +1,64 @@
 # TVL — an AI agent requirements specification language
 
+[![CI](https://github.com/Traigent/tvl/actions/workflows/ci.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Traigent/tvl/actions/workflows/codeql.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/codeql.yml)
+[![Lean proofs](https://github.com/Traigent/tvl/actions/workflows/lean-proofs.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/lean-proofs.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Spec: 1.2 · 1.3 draft](https://img.shields.io/badge/spec-1.2%20%C2%B7%201.3%20draft-informational.svg)](CHANGELOG.md)
+
 **Tuned Variables Language (TVL)** is a typed, machine-checkable language for specifying what an AI agent must achieve, what parts of its design may vary, and what evidence is required before a candidate may be accepted.
 
 AI agent requirements are often scattered across prompts, configuration files, evaluation scripts, dashboards, and release checklists. That makes it hard to answer basic questions: Which agent designs are allowed? Which properties are required? Which evaluation set and metrics define success? What evidence supports a release or certification claim?
 
 TVL puts those requirements in one reviewable specification. It describes an **agent design space**, rather than prescribing the code or optimization algorithm used to build one agent.
+
+## A 30-second example
+
+Save this as `support-bot.tvl.yml`. It declares two allowed agent choices, one rule relating them, one objective, and the promotion policy:
+
+```yaml
+tvl:
+  module: example.support_bot
+tvl_version: "1.2"
+
+environment:
+  snapshot_id: "2026-01-01T00:00:00Z"
+
+evaluation_set:
+  dataset: "test://support-bot"
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["small", "large"]
+  - name: max_tool_calls
+    type: int
+    domain:
+      range: [0, 5]
+
+constraints:
+  structural:
+    - when: model = 'small'
+      then: max_tool_calls <= 3
+
+objectives:
+  - name: resolution_rate
+    metric_ref: metrics.resolution_rate.v1
+    direction: maximize
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    resolution_rate: 0.01
+```
+
+From a clone of this repository (see [Quick start](#quick-start) to install), check it:
+
+```bash
+tvl-validate support-bot.tvl.yml   # prints: Schema + lint checks passed.
+tvl-lint support-bot.tvl.yml       # prints: Lint checks passed.
+```
 
 ## The problem TVL solves
 
@@ -63,6 +117,8 @@ TVL states what these declarations mean and what each verdict promises; its tool
 Install the Python package and CLI tools from the repository root:
 
 ```bash
+git clone https://github.com/Traigent/tvl.git
+cd tvl
 python -m pip install -e ".[dev]"
 ```
 
@@ -108,8 +164,14 @@ TVL standardizes what a conforming module means and what a verifier must check. 
 - Code, schemas, validators, CLI tools, editor support, tests, executable examples, and the website application are licensed under Apache-2.0 in [LICENSE](LICENSE), unless a subdirectory provides its own license file.
 - Authored documentation, formalization notes, and learning content are licensed under CC-BY-4.0 as described in [LICENSE-content](LICENSE-content).
 
+## Community
+
+- [Contributing](CONTRIBUTING.md) · [RFC process](formalization/README.md) · [Governance](GOVERNANCE.md) · [Maintainers](MAINTAINERS.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md) · [Security policy](SECURITY.md) · [Support](SUPPORT.md)
+
 ## Links
 
 - Website: <https://tvl-lang.org>
 - Documentation: <https://tvl-lang.org/specification>
+- Discussions: <https://github.com/Traigent/tvl/discussions>
 - Issues: <https://github.com/Traigent/tvl/issues>
