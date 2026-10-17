@@ -1,6 +1,7 @@
 """Keep comprehensive CodeQL coverage active without silent scan guards."""
 
 import copy
+import re
 from pathlib import Path
 
 import pytest
@@ -8,12 +9,27 @@ import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/codeql.yml"
 LANGUAGES = ["python", "javascript-typescript", "actions"]
-CODEQL_PIN = "24c54180a607b1449ed407dd24f251e4e9147c8d"
+CHECKOUT_RE = re.compile(r"^actions/checkout@[0-9a-f]{40}$")
+CODEQL_RE = re.compile(r"^github/codeql-action/(init|analyze)@[0-9a-f]{40}$")
+VERSION_COMMENT_RE = re.compile(r"#\s*v\d+(\.\d+){0,2}\b")
 
 
 def _workflow():
     # BaseLoader preserves GitHub Actions' on key instead of YAML 1.1's bool.
     return yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def _assert_version_comment(uses):
+    # Comments are lost in the parsed dict, so read the raw workflow text.
+    lines = [
+        line
+        for line in WORKFLOW.read_text(encoding="utf-8").splitlines()
+        if uses in line
+    ]
+    assert lines, f"{uses} not found in workflow source"
+    assert all(
+        VERSION_COMMENT_RE.search(line.split(uses, 1)[1]) for line in lines
+    ), f"{uses} needs a same-line # v<version> comment"
 
 
 def _assert_scan_contract(workflow):
@@ -42,17 +58,25 @@ def _assert_scan_contract(workflow):
     steps = job["steps"]
     assert len(steps) == 3
     checkout, init, analyze = steps
-    assert (
-        checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-    )
+    assert CHECKOUT_RE.match(
+        checkout["uses"]
+    ), "checkout must be pinned to a full commit SHA"
+    _assert_version_comment(checkout["uses"])
     assert checkout["with"] == {"persist-credentials": "false"}
-    assert init["uses"] == "github/codeql-action/init@" + CODEQL_PIN
+    assert CODEQL_RE.match(init["uses"]), "init must be pinned to a full commit SHA"
     assert init["with"] == {
         "languages": "${{ matrix.language }}",
         "build-mode": "${{ matrix.build-mode }}",
         "queries": "security-and-quality",
     }, "every event and language must select security-and-quality without filters"
-    assert analyze["uses"] == "github/codeql-action/analyze@" + CODEQL_PIN
+    assert CODEQL_RE.match(
+        analyze["uses"]
+    ), "analyze must be pinned to a full commit SHA"
+    assert (
+        init["uses"].split("@")[1] == analyze["uses"].split("@")[1]
+    ), "CodeQL init and analyze must share one pin"
+    _assert_version_comment(init["uses"])
+    _assert_version_comment(analyze["uses"])
     for step in steps:
         assert "if" not in step, "scan steps must be unguarded"
         assert step.get("continue-on-error", "false") == "false"
