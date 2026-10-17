@@ -1,7 +1,9 @@
 (* TVL — Abstract syntax oriented EBNF *)
 (* Formal specification for Tuned Variables Language *)
 
-module        = header, environment, evaluation_set, tvars, [ cvars ], constraints, objectives, promotion_policy, [ policies ], [ composites ], [exploration] ;
+module        = header, environment, evaluation_set, tvars, [ cvars ], [ constraints ], objectives, promotion_policy, [ policies ], [ composites ], [ requirements ], [ monitors ], [ responses ], [exploration] ;
+tvl_pack      = "tvl_version", ":", "\"1.3\"", ",", "pack", ":", "{", "module", ":", ident, "}", ",",
+                requirements, ",", pack_monitors, [ ",", responses ] ;                   (* D3 = A *)
 
 header        = "tvl", ":", "{", "module", ":", ident, [",", "validation", ":", validation_opts], "}", [ "tvl_version", ":", string ] ;
 validation_opts = "{", [ "skip_budget_checks", ":", boolean ], [ ",", "skip_cost_estimation", ":", boolean ], "}" ;
@@ -116,6 +118,96 @@ stop_decl     = "{", "kind", ":", stop_kind,
                 [ ",", "signal", ":", signal_surface ], (* REQUIRED iff signal_accept; inputs ⊆ state_keys *)
                 [ ",", "predicate", ":", ident ], "}" ; (* REQUIRED iff external_accept; opaque, outside P8 *)
 stop_kind     = "signal_accept" | "external_accept" | "exhausted" ;  (* v1 registry *)
+
+(* TVL 1.3 (RFC 0003 §4.1) — runtime requirements, monitors, and responses.
+   The catalogue is sealed; shape-versus-registry layering matches RFC 0001/0002. *)
+requirements  = "requirements", ":", "[", [ req_decl, { ",", req_decl } ], "]" ;
+req_decl      = rate_req | zero_req | recovery_req | liveness_req ;                      (* SEALED *)
+rate_req      = "{", "name", ":", runtime_ident, ",", "kind", ":", "rate_bound", ",", "unit", ":", unit_kind,
+                [ ",", "among", ":", pred ], ",", "violation", ":", pred, ",", "max_rate", ":", number, "}" ;
+zero_req      = "{", "name", ":", runtime_ident, ",", "kind", ":", "zero_tolerance", ",", "unit", ":", unit_kind,
+                [ ",", "among", ":", pred ], ",", "violation", ":", exact_pred, "}" ;
+recovery_req  = "{", "name", ":", runtime_ident, ",", "kind", ":", "recovery_time", ",", "unit", ":", "episode",
+                ",", "of", ":", runtime_ident, ",", "within_hours", ":", integer, "}" ;
+liveness_req  = "{", "name", ":", runtime_ident, ",", "kind", ":", "evidence_liveness", ",", "unit", ":", "window",
+                ",", "of", ":", runtime_ident, ",", "max_stale_windows", ":", integer, "}" ;
+unit_kind     = "trace" | "invocation" ;
+pred          = metric_pred | exact_pred | checker_pred ;
+exact_pred    = "{", "pattern", ":", "absence", ",", "a", ":", sel, "}"
+              | "{", "pattern", ":", "bounded_existence", ",", "a", ":", sel, ",", "max_count", ":", integer, "}"
+              | "{", "pattern", ":", "precedence", ",", "a", ":", sel, ",", "b", ":", sel,
+                [ ",", "mode", ":", ( "single_use" | "reusable" ) ],
+                [ ",", "correlate_by", ":", corr ], "}"
+              | "{", "pattern", ":", "bounded_response", ",", "a", ":", sel, ",", "b", ":", sel,
+                ",", "within_ms", ":", integer, [ ",", "correlate_by", ":", corr ], "}"
+              | "{", "pattern", ":", "protocol", ",", "alphabet", ":", "[", sel, { ",", sel }, "]",
+                ",", "states", ":", "[", runtime_ident, { ",", runtime_ident }, "]",
+                ",", "start", ":", runtime_ident,
+                ",", "transitions", ":", "[", [ transition, { ",", transition } ], "]",
+                ",", "accepting", ":", "[", [ runtime_ident, { ",", runtime_ident } ], "]",
+                ",", "rejecting", ":", "[", [ runtime_ident, { ",", runtime_ident } ], "]",
+                [ ",", "unlisted", ":", ( "reject" | "ignore" ) ], "}" ;
+transition    = "{", "from", ":", runtime_ident, ",", "when", ":", sel, ",", "to", ":", runtime_ident, "}" ; (* C8 *)
+corr          = "unit" | "correlation_id" | "tool_call_id" ;
+metric_pred   = "{", "metric", ":", ( "wall_clock_latency_ms" | "cost_usd" | "total_tokens" | "tool_calls" ),
+                ",", "exceeds", ":", number, "}" ;
+checker_pred  = "{", "checker", ":", checker_id, ",", "label_in", ":", "[", runtime_ident, { ",", runtime_ident }, "]", "}" ;
+checker_id    = "traigent.refusal.v1" | customer_checker_id ;
+sel           = "{", "event", ":", event_type, [ ",", "tool", ":", ident ],
+                [ ",", "status", ":", status ], [ ",", "ref", ":", runtime_ident ], "}" ;
+event_type    = "unit_start" | "unit_end" | "tool_call" | "tool_result" | "model_call" | "handoff" | "error"
+              | "authorization_granted" | "authorization_revoked" ;
+status        = "running" | "completed" | "failed" | "rejected" ;
+
+monitors      = "monitors", ":", "[", [ mon_decl, { ",", mon_decl } ], "]" ;
+pack_monitors = "monitors", ":", "[", [ pack_mon_decl, { ",", pack_mon_decl } ], "]" ;
+mon_decl      = "{", mon_fields, [ ",", "applies_to", ":", "agent" ], "}" ;
+pack_mon_decl = "{", mon_fields, ",", "applies_to", ":", "tenant_floor", "}" ;
+mon_fields    = "name", ":", runtime_ident, ",", "requirement", ":", runtime_ident,
+                ",", "phase", ":", ( "promotion" | "runtime" ), [ ",", "profile", ":", "backend_v1" ],
+                ",", "evidence", ":", evidence_spec, [ ",", "window", ":", window_spec ],
+                ",", "decision", ":", decision_spec, [ ",", "episode", ":", episode_spec ],
+                [ ",", "limits", ":", limits_spec ], [ ",", "single_producer", ":", boolean ] ;
+evidence_spec = "{", "source", ":", ( "backend_trace_metadata" | "customer_side" | "evaluation_set" | "episodes" | "windows" ),
+                [ ",", "deployment_environment", ":", string ],
+                [ ",", "attribution", ":", "agent_key_exact_v1" ],
+                [ ",", "resolution", ":", "terminal_status_v1" ],
+                [ ",", "sampling", ":", sampling_spec ], "}" ;
+sampling_spec = "unverified"
+              | "{", "mode", ":", ( "head_sampled_declared" | "hash_bernoulli_committed_v1" ), ",", "rate", ":", number, "}" ;
+window_spec   = "{", "tumbling_hours", ":", integer, ",", "grace_minutes", ":", integer, "}" ;
+decision_spec = "{", "method", ":", ( "clopper_pearson_exact_v1" | "clopper_pearson_rational_v2" | "exact_count_v1" ),
+                [ ",", "model", ":", "iid_bernoulli_within_window_v1" ],
+                [ ",", "confidence", ":", number ],
+                [ ",", "false_alarm_budget", ":", number ],
+                [ ",", "horizon_days", ":", integer ],
+                [ ",", "min_samples", ":", integer ],
+                [ ",", "max_unresolved_fraction", ":", number ],
+                [ ",", "threshold_factor", ":", number ], "}" ;
+episode_spec  = "{", "closure_windows", ":", integer, ",", "closure_max_age_hours", ":", integer, "}" ;
+limits_spec   = "{", [ "max_active_obligations", ":", integer ], [ ",", "max_tracked_correlations", ":", integer ], "}" ;
+
+responses     = "responses", ":", "[", [ resp_decl, { ",", resp_decl } ], "]" ;
+resp_decl     = "{", "name", ":", runtime_ident, ",", "rules", ":", "[", [ rule_decl, { ",", rule_decl } ], "]", "}" ;
+rule_decl     = "{", "id", ":", runtime_ident, ",", "trigger", ":", trigger_spec, ",", "do", ":", action_kind,
+                [ ",", "approval", ":", ( "none" | "standing" | "human" ) ],
+                [ ",", "target", ":", ( "last_certified" | fingerprint ) ],
+                [ ",", "severity", ":", severity ],
+                [ ",", "fallback", ":", ( "static_unavailable" | "route_to_human" | fingerprint ) ],
+                [ ",", "rate_floor", ":", number ],
+                [ ",", "repeat_after_hours", ":", integer ],
+                [ ",", "max_repeats", ":", integer ],
+                [ ",", "on_check_error", ":", ( "block" | "allow" ) ], "}" ;            (* C1 *)
+trigger_spec  = "{", "monitor", ":", runtime_ident, ",", "event", ":", event_name, [ ",", "hours", ":", integer ], "}" ;
+event_name    = "episode_opened" | "episode_continued" | "episode_open_for" | "episode_resolved" | "episode_withdrawn"
+              | "recovery_overdue" | "recovery_cancelled" | "recovery_recovered" | "burn_breached"
+              | "stale" | "live_again" | "unit_violation" ;
+action_kind   = "notify" | "open_next_step" | "optimize" | "rollback" | "throttle" | "degrade" | "suspend"
+              | "block_action" | "halt_unit" ;                                           (* SEALED *)
+severity      = "info" | "warning" | "critical" ;
+runtime_ident = ? plain identifier (no dots): [A-Za-z_][A-Za-z0-9_]* ? ;
+customer_checker_id = ? customer checker identifier: customer:[A-Za-z_][A-Za-z0-9_]* ? ;
+fingerprint   = ? 64 lowercase hexadecimal characters: [0-9a-f]{64} ? ;
 
 (* Type grammar - complete specification *)
 type          = base_type | compound_type ;
