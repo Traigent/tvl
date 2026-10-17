@@ -1,6 +1,6 @@
 # Phase 7 (RFC 0002): a COMPOSITE-tagged arm may carry ONLY the 'composite'
 # key (§3.9 ArmSurface) — tuned_params belongs to stage arms.
-# Expected: invalid_arm_shape (codex P4 round-1 mutation probe).
+# Expected: invalid_arm_shape (mutation probe).
 tvl:
   module: corp.validation.p7
 environment:

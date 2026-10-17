@@ -25,5 +25,4 @@ every fixture below produces exactly its expected diagnostic.
 Dynamic semantics (resolver rejections R1–R8, certificate subject/freshness
 validity, strict-promotion fail-closed, cascade execution) are not expressible
 as static module fixtures; they are verified by the small-scope model suite in
-`tests/model_checking/` and, for the runtime, by the SDK features
-(`FR-SDK-KNOBS-CVARS-V1`, `FR-SDK-FAIL-CLOSED-PROMOTION-V1`).
+`tests/model_checking/` and, for the runtime, by the SDK's own tests.

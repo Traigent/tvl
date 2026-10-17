@@ -305,8 +305,7 @@ def test_r9_unreachable_without_composites_conservativity():
     assert R9_INVALID_CARDINALITY_VALUE not in res_ok.rejections
 
 
-def test_r5_type_conformance(  # codex fresh-round finding 2
-):
+def test_r5_type_conformance():
     """A float CVAR whose calibrator returns a non-float value rejects as R5
     even with NO validity domain declared (RFC R5: 'domain OR TYPE')."""
     module = Module(

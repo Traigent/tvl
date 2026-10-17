@@ -9,6 +9,9 @@ rules feel grounded instead of abstract.
 If you are new to TVL, start with the example below and read it top to bottom once before diving into the rest of the
 sections.
 
+!!! note "Language version"
+    This reference describes the core constructs of TVL, which is currently at version **1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002). Both are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
+
 ## A Small RAG Agent
 
 The following example shows a simple RAG question-answering agent for a campus FAQ system. The agent retrieves a few

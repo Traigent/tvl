@@ -850,7 +850,7 @@ def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
         has_composite = "composite" in arm
         # §3.9 ArmSurface: the stage form allows {stage, tuned_params?}; the
         # nesting form allows {composite} ONLY — tuned_params on a
-        # composite-tagged arm is a closure bypass (codex P4 round 1).
+        # composite-tagged arm is a closure bypass.
         allowed = {"stage", "tuned_params"} if has_stage and not has_composite else {"composite"}
         unknown = set(arm) - allowed
         if unknown or (has_stage and has_composite) or not (has_stage or has_composite):
@@ -1160,8 +1160,7 @@ def _check_signal_use(
         return (False, signal_name if isinstance(signal_name, str) else None, ())
     # §3.9 SignalSurface: inputs is Ident* — a non-string or non-Ident
     # element REJECTS (silent filtering would also suppress
-    # unbound_signal_inputs by emptying the effective list — codex P4
-    # round 1).
+    # unbound_signal_inputs by emptying the effective list).
     bad_inputs = [
         i for i in inputs
         if not isinstance(i, str) or not _NORMATIVE_IDENT_RE.match(i)

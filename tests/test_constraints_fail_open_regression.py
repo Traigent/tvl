@@ -1,6 +1,6 @@
 """Regression tests for fail-open defects in the assignment-constraint path.
 
-Re-cut of PR #42 (IsraelTraigent, ``cl/b4-tvl-bugs-37``) on top of the #51
+Re-cut of PR #42 on top of the #51
 identifier-hardening fix (PR #53 / commit 805f557), which landed on ``main``
 after #42 was opened and tightened the same ``_LITERAL_RE`` line #42 touches.
 #42's diff re-loosened the identifier group back to the pre-#51 permissive

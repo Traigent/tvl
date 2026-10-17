@@ -54,8 +54,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./images/icon.png",
-          "dark": "./images/icon.png"
+          "light": "./images/icon.svg",
+          "dark": "./images/icon.svg"
         }
       }
     ],
@@ -99,7 +99,6 @@
     ]
   },
   "scripts": {
-    "sync:shared": "python3 ../../scripts/sync_vscode_tvl_assets.py",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "test": "npm run compile && node --test test/*.test.js",

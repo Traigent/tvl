@@ -6,7 +6,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const distPublicDir = path.join(projectRoot, "dist", "public");
-const manifestPath = path.join(projectRoot, "client", "src", "generated", "book", "manifest.json");
 const siteOrigin = "https://tvl-lang.org";
 
 const routeMeta = new Map([
@@ -101,34 +100,6 @@ const routeMeta = new Map([
   ],
 ]);
 
-async function readBookRoutes() {
-  const manifestRaw = await fs.readFile(manifestPath, "utf8");
-  const manifest = JSON.parse(manifestRaw);
-
-  const routes = new Set([
-    "/book",
-    "/book/materials",
-    "/book/patterns",
-  ]);
-
-  for (const material of manifest.materials ?? []) {
-    routes.add(`/book/materials/${material.slug}`);
-  }
-
-  for (const pattern of manifest.patterns ?? []) {
-    routes.add(`/book/patterns/${pattern.slug}`);
-  }
-
-  for (const chapter of manifest.chapters ?? []) {
-    routes.add(`/book/chapter/${chapter.slug}`);
-    for (const section of chapter.sections ?? []) {
-      routes.add(section.route);
-    }
-  }
-
-  return routes;
-}
-
 async function writeRouteIndex(route, html) {
   if (route === "/") {
     return;
@@ -200,32 +171,48 @@ function applyRouteMeta(route, html) {
   return routeHtml;
 }
 
+// Routes that are indexed by search engines and listed in sitemap.xml. `/book`
+// is exported as a placeholder page but is marked noindex, so it is not listed.
+const indexableRoutes = [
+  "/",
+  "/specification",
+  "/specification/agent-requirements",
+  "/specification/language-reference",
+  "/specification/verification-reference",
+  "/specification/constraint-language",
+  "/specification/schema-reference",
+  "/specification/json-schema",
+  "/specification/ebnf-grammar",
+  "/examples",
+  "/github",
+];
+
+function buildSitemap(lastmod) {
+  const urls = indexableRoutes
+    .map(
+      (route) =>
+        `  <url>\n    <loc>${siteOrigin}${route === "/" ? "/" : route}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>`,
+    )
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}
+
 async function main() {
   const indexPath = path.join(distPublicDir, "index.html");
   const indexHtml = await fs.readFile(indexPath, "utf8");
 
-  const staticRoutes = new Set([
-    "/specification",
-    "/specification/agent-requirements",
-    "/specification/json-schema",
-    "/specification/ebnf-grammar",
-    "/specification/language-reference",
-    "/specification/verification-reference",
-    "/specification/constraint-language",
-    "/specification/schema-reference",
-    "/examples",
-    "/github",
-    "/book",
-  ]);
+  // Every client-side route is exported as its own index.html. Anything else is
+  // a real 404: `client/public/404.html` is a static page that does not depend
+  // on the SPA bundle, and the CDN must serve it with a 404 status (see
+  // DEPLOYMENT.md). Do not overwrite it with a copy of the SPA entry point.
+  const staticRoutes = new Set([...indexableRoutes, "/book"]);
 
-  const bookRoutes = await readBookRoutes();
-  const allRoutes = new Set([...staticRoutes, ...bookRoutes]);
-
-  await fs.writeFile(path.join(distPublicDir, "404.html"), indexHtml);
-
-  for (const route of allRoutes) {
+  for (const route of staticRoutes) {
     await writeRouteIndex(route, indexHtml);
   }
+
+  const lastmod = new Date().toISOString().slice(0, 10);
+  await fs.writeFile(path.join(distPublicDir, "sitemap.xml"), buildSitemap(lastmod));
 }
 
 main().catch((error) => {

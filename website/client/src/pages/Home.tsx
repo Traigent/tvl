@@ -14,7 +14,7 @@ import { FileText, BookOpen, Code2, Zap, Shield, Layers, Clock3, Github } from "
 
 const QUICK_HOOK_TVL = `tvl:
   module: corp.support.rag_agent
-tvl_version: "1.0"
+tvl_version: "1.2"
 
 environment:
   snapshot_id: "2026-09-05T00:00:00Z"

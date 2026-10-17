@@ -21,7 +21,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=Path("tvl_book/website_content/microsims/orientation-rag-circuit/microsim_presets.json"),
-        help="Destination JSON file (defaults to the book's MicroSim location).",
+        help="Destination JSON file (defaults to the bundled Orientation RAG MicroSim presets file).",
     )
     parser.add_argument(
         "--dry-run",

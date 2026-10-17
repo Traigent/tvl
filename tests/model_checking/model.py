@@ -4,11 +4,9 @@ This is a MODEL, not the implementation: types are tiny, value spaces are
 finite, and the semantics transcribe the RFC clauses one-to-one so that
 property checks read like the spec.
 
-PINNED RFC REVISION: Draft v4, branch feature/cvars-policies-rfc, commit
-b036485 (cross-model review round-4 ACCEPT). Section references are to
-formalization/rfc-0001-knob-bindings-cvars-policies.md at that revision —
-the RFC lives on its own branch per the one-branch-per-packet rule, so the
-pin is by SHA, not by merge.
+PINNED RFC REVISION: Draft v4 of
+formalization/rfc-0001-knob-bindings-cvars-policies.md (accepted 2026-06-05).
+Section references are to that revision.
 """
 
 from __future__ import annotations

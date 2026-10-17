@@ -63,6 +63,10 @@ tvl-check-structural spec/examples/rag-support-bot.tvl.yml
 tvl-check-operational spec/examples/rag-support-bot.tvl.yml
 ```
 
+## Language version
+
+The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and the strict `promotion_policy.require_calibration` mode ([RFC 0001](formalization/rfc-0001-knob-bindings-cvars-policies.md)); TVL 1.2 added `composites` ([RFC 0002](formalization/rfc-0002-composite-knobs.md)). Both are conservative extensions: a module that uses none of these constructs (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The user guides focus on the core constructs; every diagnostic the validators emit, including those for the 1.1 and 1.2 constructs, is listed in the [error code catalog](docs/reference/error-codes.md). See the [changelog](CHANGELOG.md) for details.
+
 ## Repository map
 
 - `spec/` — normative grammar, schemas, examples, and promotion contracts
@@ -90,7 +94,7 @@ TVL standardizes what a conforming module means and what a verifier must check. 
 ## License
 
 - Code, schemas, validators, CLI tools, editor support, tests, executable examples, and the website application are licensed under Apache-2.0 in [LICENSE](LICENSE), unless a subdirectory provides its own license file.
-- Authored documentation, website/book learning content, formalization notes, figures, and the specification PDF are licensed under CC-BY-4.0 as described in [LICENSE-content](LICENSE-content).
+- Authored documentation, formalization notes, and learning content are licensed under CC-BY-4.0 as described in [LICENSE-content](LICENSE-content).
 
 ## Links
 

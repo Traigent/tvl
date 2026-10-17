@@ -44,6 +44,9 @@ TVL is the contract boundary for governed adaptation in AI agents. A TVL module 
 *   **Acceptance governance**: `epsilon_pareto`, `min_effect`, `adjust`, and `chance_constraints`
 The public language contract defines what these requirements mean. Search algorithms, candidate scheduling, sample allocation, and internal solver representations remain implementation choices.
 
+!!! note "Language version"
+    The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002). Both are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. These guides focus on the core constructs; the RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](reference/error-codes.md).
+
 ## A Valid TVL Example
 
 The example below mirrors the canonical `rag-support-bot.tvl.yml` module shipped in `spec/examples`:
@@ -123,44 +126,19 @@ Callable and registry-backed domains are supported by the current tooling, but t
 
 ## What a formal agent specification enables
 
-TVL is the specification layer. It defines **what** may vary, **what** must hold, and **what** counts as improvement. That enables a full tooling stack on top.
-
-### Tool-independent candidate selection
-
-<figure markdown>
-  ![Example candidate-selection implementation](assets/demos/optimization.svg){ loading=lazy }
-  <figcaption>This is one possible implementation that consumes the declared agent design space; it is not part of the TVL language contract.</figcaption>
-</figure>
-
-### Spec Validation
-
-<figure markdown>
-  ![TVL Validation Demo](assets/demos/validate.svg){ loading=lazy }
-  <figcaption>Validate schema, types, policy fields, and operational assumptions before rollout.</figcaption>
-</figure>
-
-### Constraint Satisfiability
-
-<figure markdown>
-  ![TVL Constraints Demo](assets/demos/constraints.svg){ loading=lazy }
-  <figcaption>Check structural feasibility with SAT/SMT tooling before any expensive evaluation run begins.</figcaption>
-</figure>
+TVL is the specification layer. It defines **what** may vary, **what** must hold, and **what** counts as improvement. That enables a full tooling stack on top: validators, structural feasibility checks, CI gates, optimizers, and evaluators can all consume the same declared contract. The commands in [Get Started](#get-started) run the reference validators.
 
 !!! note "TVL is the stable contract boundary"
     TVL sits between authoring front-ends, validation tooling, optimizer/runtime layers, evaluation systems, and certification workflows. The contract remains reviewable when any of those implementations changes.
 
 ## Get Started
 
-Install the published package:
+TVL is installed from source. Clone the repository, then install the SDK and CLI tools from its root in editable mode:
 
 ```bash
-python -m pip install tvl-spec
-```
-
-Or install the SDK and CLI tools from this repository in editable mode:
-
-```bash
-python -m pip install -e tvl/[dev]
+git clone https://github.com/Traigent/tvl.git
+cd tvl
+python -m pip install -e ".[dev]"
 ```
 
 Validate one of the shipped examples end to end:
@@ -192,10 +170,6 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 -   :material-code-braces: **[Example Walkthroughs](examples/walkthroughs.md)**
 
     Follow the canonical examples for RAG bots, routers, tool-use agents, validation fixtures, and overlays.
-
--   :material-text-box-search: **[Legacy TVL 1.0 PDF](tvl_specification.pdf)**
-
-    Historical artifact that includes implementation-oriented material. The current documentation and formal semantics are canonical.
 
 -   :material-github: **[Examples on GitHub](https://github.com/Traigent/tvl/tree/main/spec/examples)**
 

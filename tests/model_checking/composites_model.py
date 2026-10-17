@@ -2,14 +2,14 @@
 
 This is a MODEL, not the implementation: the value spaces are tiny and the
 derived functions transcribe the RFC clauses one-to-one so the property checks
-in ``test_composites_c1_c6.py`` read like the spec. It follows the RFC 0001
-house convention (``model.py``): small dataclasses + plain functions, no new
-dependencies, exhaustive enumeration in the tests.
+in ``test_composites_c1_c6.py`` read like the spec. It follows the conventions
+of the RFC 0001 model (``model.py``): small dataclasses + plain functions, no
+new dependencies, exhaustive enumeration in the tests.
 
 PINNED RFC REVISION: DRAFT v7 — formalization/rfc-0002-composite-knobs.md.
-Where the /tmp/p3-alloy-final.md skeleton (a conceptual map) conflicts with
-v7's final text, THE RFC WINS. In particular this model follows the v6/v7
-semantics the captain note flagged: closed ``ArmResult`` (§3.2.1),
+Where a conceptual sketch of the algebra conflicts with v7's final text, THE
+RFC WINS. In particular this model follows the v6/v7 semantics: closed
+``ArmResult`` (§3.2.1),
 ``gate_arm_incompatible`` / ``gate_kind_placement_mismatch`` /
 ``missing_gate_signal`` gate typing (§3.2 item 5), ``signal_inputs`` freshness
 (§3.2 item 11), and the K-chain semantic compilation (§3.8).

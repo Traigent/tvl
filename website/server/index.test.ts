@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
@@ -31,7 +31,7 @@ async function withTestServer(
 }
 
 describe("website server rate limiting", () => {
-  it("rate-limits the SPA fallback route before serving index.html", async () => {
+  it("rate-limits unknown-route requests before serving the 404 page", async () => {
     const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
     writeFileSync(
       path.join(staticPath, "index.html"),
@@ -49,7 +49,7 @@ describe("website server rate limiting", () => {
           const first = await fetch(`${baseUrl}/missing-route`);
           const second = await fetch(`${baseUrl}/missing-route`);
 
-          expect(first.status).toBe(200);
+          expect(first.status).toBe(404);
           expect(await first.text()).toContain("TVL");
           expect(second.status).toBe(429);
           expect(await second.text()).toBe("Too many requests");
@@ -82,7 +82,7 @@ describe("website server rate limiting", () => {
             headers: { "x-forwarded-for": "203.0.113.99" },
           });
 
-          expect(first.status).toBe(200);
+          expect(first.status).toBe(404);
           expect(second.status).toBe(429);
         }
       );
@@ -91,7 +91,7 @@ describe("website server rate limiting", () => {
     }
   });
 
-  it("rate-limits static asset requests, not just the SPA fallback route", async () => {
+  it("rate-limits static asset requests, not just unknown routes", async () => {
     const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
     writeFileSync(
       path.join(staticPath, "index.html"),
@@ -119,7 +119,7 @@ describe("website server rate limiting", () => {
     }
   });
 
-  it("emits hardened security headers on the SPA fallback route", async () => {
+  it("emits hardened security headers on the 404 route", async () => {
     const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
     writeFileSync(
       path.join(staticPath, "index.html"),
@@ -130,13 +130,44 @@ describe("website server rate limiting", () => {
       await withTestServer({ staticPath }, async baseUrl => {
         const response = await fetch(`${baseUrl}/docs/getting-started`);
 
-        expect(response.status).toBe(200);
+        expect(response.status).toBe(404);
         expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
         expect(response.headers.get("strict-transport-security")).toBe(
           "max-age=31536000; includeSubDomains; preload"
         );
         expect(response.headers.get("x-frame-options")).toBe("DENY");
         expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      });
+    } finally {
+      rmSync(staticPath, { recursive: true, force: true });
+    }
+  });
+
+  it("serves the static 404 page with a 404 status for unknown routes and 200 for exported routes", async () => {
+    const staticPath = mkdtempSync(path.join(os.tmpdir(), "tvl-website-"));
+    writeFileSync(
+      path.join(staticPath, "index.html"),
+      "<!doctype html><title>TVL home</title>"
+    );
+    writeFileSync(
+      path.join(staticPath, "404.html"),
+      "<!doctype html><title>Page not found</title>"
+    );
+    mkdirSync(path.join(staticPath, "examples"));
+    writeFileSync(
+      path.join(staticPath, "examples", "index.html"),
+      "<!doctype html><title>TVL examples</title>"
+    );
+
+    try {
+      await withTestServer({ staticPath }, async baseUrl => {
+        const missing = await fetch(`${baseUrl}/does-not-exist`);
+        expect(missing.status).toBe(404);
+        expect(await missing.text()).toContain("Page not found");
+
+        const exported = await fetch(`${baseUrl}/examples/`);
+        expect(exported.status).toBe(200);
+        expect(await exported.text()).toContain("TVL examples");
       });
     } finally {
       rmSync(staticPath, { recursive: true, force: true });

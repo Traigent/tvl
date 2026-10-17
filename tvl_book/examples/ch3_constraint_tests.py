@@ -1,4 +1,4 @@
-"""Example pytest module that exercises Chapter 3 structural constraints.
+"""Example pytest module that exercises structural constraints.
 
 This uses TVL's structural parser (typed DNF) to evaluate constraints against
 sample assignments.

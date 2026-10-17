@@ -2,11 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | **ACCEPTED** — owner acceptance recorded 2026-06-06 (nimrod, interactive) after anchored codex rounds 1–7 (ACCEPT), the fresh unanchored pass (all findings dispositioned), and the green C1–C6 model-checking suite (re-run by the integrating agent; see §10) |
+| **Status** | **ACCEPTED** (2026-06-06) |
 | **Target language version** | TVL 1.2 (conservative extension of 1.1) |
-| **Tracking** | `FR-TVL-COMPOSITE-KNOBS-V1` · ChangeSession `cs_aef1b9d2edfa5200` |
 | **Builds on** | RFC 0001 (ACCEPTED): one-Knob model, cvars, certificates, policies, strict promotion |
-| **Downstream gate** | Acceptance of this RFC + green model checking unblock the validators packet and all SDK implementation |
 
 ## 1. Motivation
 
@@ -20,8 +18,7 @@ own dependency structure, calibratable surface, cost model, and telemetry."*
 Each consumer rebuilds the bundle by convention; conventions drift.
 
 This RFC introduces the **CompositeKnob**: a named bundle of member variables
-and policies with a declared control-flow shape. The design is two-layered
-(design review 2026-06-06; codex gpt-5.5 + gemini concurring):
+and policies with a declared control-flow shape. The design is two-layered:
 
 - a **sealed structural algebra** — three disjoint **structural constructors**
   (`CompositeKind ∈ {cascade, ensemble, loop}`), closed under nesting — that
@@ -55,7 +52,7 @@ and fail-closed governance; procedural, plural naming where adoption lives.
 **Explicitly deferred** (out of scope for TVL 1.2 and this increment):
 
 - any wire/schema crossing: composites do not ride the typed session wire,
-  TraigentSchema is untouched, backend/FE see no new fields (contract
+  no shared wire schema changes and downstream services see no new fields (contract
   decision v1; a content-free composite summary is a recorded revisit
   trigger);
 - CVAR→CVAR dependencies (`depends_on` still names TVARs only — the RFC 0001
@@ -277,8 +274,7 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
    the execution comparisons (`margin < θ`, `σ ≥ θ`, `stat ≥ θ`) are over
    finite numbers; a non-finite resolved value fails the item's evaluation
    per the existing exception rules (never a silent comparison).
-11. **Signal/threshold calibration binding** (cross-model round 4;
-   **COMPOSITE-SCOPED**, cross-model fresh pass): every **composite-bound**
+11. **Signal/threshold calibration binding** (**COMPOSITE-SCOPED**): every **composite-bound**
    thresholded construct determines a signal id —
 
    ```
@@ -311,7 +307,7 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
    empty-`tuned_params` parent-coverage ratchet, §4); a TVL 1.1 module
    declares no composites, so the lint never fires on it (P1 preserved, §4).
 
-   **Use-site signal inputs are freshness-bound** (cross-model fresh pass):
+   **Use-site signal inputs are freshness-bound**:
    a `SignalUse.inputs` list changes the runtime scoring semantics of the
    signal (it selects which keys/features the scoring function reads), so a
    recalibration that held inputs fixed must be invalidated when the
@@ -470,8 +466,7 @@ well-posed: the certificate's `H_c(σ)` covers the very signal the gate
 evaluates at runtime, never a different one.
 
 The **Claim scope** paragraph added to RFC 0001 §3.5 (the 2026-06-06
-post-acceptance owner wording-audit clarification, recorded as the
-`post-acceptance` row of RFC 0001's §10 review log; no semantic rule changed)
+post-acceptance clarification recorded in RFC 0001's revision history; no semantic rule changed)
 applies verbatim here: each certificate is a per-variable, procedural claim —
 the declared calibration procedure ran over the declared evidence pool under
 the hashed freshness context, and, where the `TargetProperty` carries a
@@ -557,7 +552,7 @@ required_parents(θ in Ensemble.accept) = ⋃_j leafT(a_j) ∪ leafT(judge if pr
 required_parents(θ in Loop.stop)       = leafT(body)
 ```
 
-Note (model-checking packet, 2026-06-06): because `leafT` is recursive, a
+Note (model checking, 2026-06-06): because `leafT` is recursive, a
 `signal_accept` loop whose body is a COMPOSITE arm accrues the entire nested
 subtree's TVARs into its stop threshold's obligation — a deliberately heavy,
 fail-closed requirement an author should anticipate when looping over deep
@@ -677,7 +672,7 @@ ad-hoc (the documented failure mode of open chain taxonomies).
 
 `Unroll` is a **semantic compilation into an internal K-chain execution
 form** (an SDK intermediate representation), NOT a syntactic rewrite into the
-surface algebra (cross-model fresh pass). It is deliberately NOT a map into a
+surface algebra. It is deliberately NOT a map into a
 surface `Cascade_post`: the v1 gate registry has only `margin_below` and
 `signal_below`, and **neither is a state-predicate gate** — there is no
 surface gate kind whose decision is `¬stop = σ(state) < θ` over the loop's
@@ -702,8 +697,7 @@ acceptance-direction complement). `external_accept` loops (opaque runtime
 predicate — no declared state predicate to chain) and `exhausted` loops (no
 acceptance predicate at all) offer **no unroll**.
 
-This is a **compilation relation, not semantic equality** (design review,
-codex): it is meaning-preserving **only under all of**:
+This is a **compilation relation, not semantic equality**: it is meaning-preserving **only under all of**:
 
 1. the body's state flows exclusively through the declared `state_keys`
    (`state_keys = []` ⟺ pure body) — no ambient mutation;
@@ -727,7 +721,7 @@ the golden expansion fixtures and SDK property tests for every pattern that
 offers `unroll`. Outside the conditions, and for non-`signal_accept` loops,
 no equivalence is claimed.
 
-### 3.9 Surface syntax (draft normative for the validators packet)
+### 3.9 Surface syntax (draft normative for validator implementations)
 
 **The arm surface form** — ONE shape, used EVERYWHERE an `Arm` appears
 (cascade `arms[]`, loop `body`, ensemble `arms[]` and `judge`):
@@ -783,8 +777,8 @@ surface syntax — the surface accepts ONLY the sugar key, never
 `pattern_version`/`param_hash`/`node_path`.
 
 Closed shapes with exact diagnostics throughout (RFC 0001 grammar
-discipline); the EBNF and `tvl.schema.json` deltas land in the validators
-packet, gated on this RFC's acceptance. Modules with no `composites:` block
+discipline); the EBNF and `tvl.schema.json` deltas land with the validator
+implementation, gated on this RFC's acceptance. Modules with no `composites:` block
 parse byte-identically to TVL 1.1 (§4).
 
 ### 3.10 Standard telemetry (content-free)
@@ -802,7 +796,7 @@ enums, finite numbers only — nothing content-typed; P8 discipline):
 ### 3.11 Error-code surface (exact diagnostics)
 
 New codes introduced by this RFC (each with a happy + rejecting conformance
-fixture in the validators packet). The list and the well-formedness /
+fixture in the validator conformance suite). The list and the well-formedness /
 execution rules above are in **1:1 correspondence** — every code below is
 emitted by exactly the cited rule, and every rule that rejects cites exactly
 one of these codes or a REUSED RFC 0001 code (`missing_ref` family,
@@ -851,7 +845,7 @@ CVAR/threshold namespace reference (gate/accept/stop thresholds, item 6), and
 rejection **R9** (`invalid_cardinality_value`) extending the §3.4 acceptance
 algebra as `Accept₁.₂` (§3.2 item 7). The former `pre_gate_requires_signal`
 code is RETIRED into `gate_kind_placement_mismatch`, which now covers both
-directions of gate-kind/placement misuse (cross-model fresh pass).
+directions of gate-kind/placement misuse.
 
 ## 4. Compatibility and migration (P1 argument)
 
@@ -872,7 +866,7 @@ PolicyDecl⟨name, "policy", "cascade", stages = s₁..s_m,
 ```
 
 **Subsumption is exact on EXECUTION SEMANTICS, with two intended composite
-ratchets on the lint surface** (cross-model fresh pass — the `≡` above is the
+ratchets on the lint surface** (the `≡` above is the
 execution-semantics identity, not a lint identity). The mapping is exact on
 StageRef opacity, the gate→CVAR rule, and execution semantics, which are
 unchanged (§3.2 incorporates RFC 0001 §3.8 by reference). The composite form
@@ -949,8 +943,8 @@ The claims above hold under, and only under:
    fail-closed), not prevented.
 7. **Pattern determinism** — `expand` is a pure function of validated
    params; catalog entries violating this are rejected at admission.
-8. **Nested-certificate freshness is per-member, not cross-level**
-   (cross-model fresh pass) — the §3.6 coverage fold and the §3.5
+8. **Nested-certificate freshness is per-member, not cross-level** —
+   the §3.6 coverage fold and the §3.5
    parent-coverage obligations bind *each member CVAR's own* freshness; they
    do NOT make an OUTER certificate depend on the *values* of INNER CVARs.
    An inner threshold can be re-calibrated to a new value while an outer
@@ -998,12 +992,9 @@ increment (§2).
 
 ## 9. Acceptance criteria for this RFC
 
-1. Cross-model review converged: anchored codex (gpt-5.5, xhigh) rounds to
-   ACCEPT **plus** one fresh unanchored full-document pass with all blocking
-   findings dispositioned in §10.
-2. Model-checking packet green for C1–C6, including every paired MUST-BE-SAT
-   vacuity check, on a re-run executed by the integrating agent.
-3. The §3.9 surface syntax validated against the §4 subsumption mapping (the
+1. The model-checking suite is green for C1–C6, including every paired MUST-BE-SAT
+   vacuity check.
+2. The §3.9 surface syntax validated against the §4 subsumption mapping (the
    policy form and its composite form have **identical execution semantics**
    and lint identically on the shared examples **except** for the two intended
    composite-only ratchets — the empty-`tuned_params` parent-coverage
@@ -1014,32 +1005,21 @@ increment (§2).
    empty-arms rejection, tagged-nesting under an ensemble judge, an
    `ambiguous_arm` rejection, and a `gate_arm_incompatible` /
    `gate_kind_placement_mismatch` rejection pair.
-4. Owner acceptance recorded in this header and §10 (human-only gate).
-5. No semantic change to any RFC 0001 construct: the RFC 0001 conformance
+3. No semantic change to any RFC 0001 construct: the RFC 0001 conformance
    fixtures pass unchanged.
 
-## 10. Review log
+## 10. Revision history
 
-| Round | Reviewer | Verdict | Disposition |
-|---|---|---|---|
-| 1 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 10 blocking, 5 non-blocking | All addressed in Draft v2: (1) arm resolution made tag-driven (`stage`/`composite` tags; bare = stage always; `ambiguous_arm` rejection); (2) pre-cascade made total (first-match-wins routing with fallback arm, per-gate signals + per-gate cost, absent-signal routes onward, `pre_gate_requires_signal`); (3) ensemble cardinality: required iff single-arm, int-typed, R9 rejection for k<1, both cost forms; (4) judge output contract (finite numeric score, exclusion rules, all-excluded fails, deterministic tie-break); (5) loop state formalized (`state_keys` + `stop_signal_outside_state`; pure ⟺ empty); (6) dependency compilation rebuilt as DECLARED parentage (`tuned_params` on stage arms) + static coverage obligations (`missing_composite_parent`), `missing_ref` stays single authority, judge/signal parents included; (7) root-consumption rule (all N_X roots, conservative fail-closed; selective consumption deferred); (8) subsumption made exact (scope?/parameters? carried onto Composite verbatim; empty tuned_params on migrated stages stated as intended ratchet); (9) Provenance closed shape (param_hash only, canary in admission contract); (10) C5 verification split by mechanism incl. condition 4. Non-blocking: full error-code surface §3.11; SignalSourceRef clarified as the RFC 0001 calibration-source registry (no new declaration surface); degenerate fixtures added to §9; AcceptDecl separated from GateDecl with opposite inequality; P6 note absorbed. |
+This RFC went through seven draft revisions on 2026-06-06 and was accepted the same day. The normative text is the body of this document; this section records what changed between revisions.
 
-| 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 5 blocking (all on the NEW round-1 machinery); round-1 dispositions confirmed closed | All addressed in Draft v3: (1) R9 integrated into the acceptance algebra — explicit `Accept₁.₂ ⟺ ¬(R1∨…∨R9) ∧ calibrators ≠ ⊥` with P3/P4 carrying over and a conservativity note (R9 unreachable on 1.1 modules); (2) `tuned_params` entries now have a static TVAR-only resolution rule (`invalid_tuned_param`, well-formedness item 9) making C6 hold by construction; (3) `arm_params` map REPLACED by a single ArmSurface form declared ON the arm (bare Ident │ {stage, tuned_params?} │ {composite}) used identically for cascade arms, loop body, ensemble arms and judge — `invalid_arm_shape` for unknown keys; (4) `SignalSourceRef` (a source id) replaced by `SignalUse ⟨spec: SignalSpec, inputs⟩` preserving RFC 0001's source/signal split — the spec is the §3.5 closed signal shape hashed H_c(σ); stop inputs MUST ⊆ state_keys making `stop_signal_outside_state` precisely checkable; (5) numeric threshold type rule (`invalid_threshold_type`: thresholds are int/float CVARs; non-finite resolved values fail evaluation). |
-
-| 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 3 findings (1 model choice + 2 wording residue); rounds 1–2 dispositions confirmed closed (incl. judge-arm coverage via ArmSurface and §3.11 completeness) | All addressed in Draft v4: (1) the signal model is CHOSEN explicitly — `SignalUse.signal` is a named Ident into the SAME registry namespace as RFC 0001's module-facing `calibration.signal` (one signal model across the language; the closed SignalSpec shape enters only through H_c(σ)); SignalSurface grammar added to §3.9 and `invalid_signal_use` to §3.11; (2) stale `arm_params` wording in §4 corrected to per-arm `tuned_params`; (3) §7 terminology fixed (signal ids + opaque input-feature ids; sources reserved for evidence pools). |
-
-| 4 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 1 blocking (round-3 deltas confirmed closed): the signal/threshold calibration binding was not normative | Addressed in Draft v5: §3.2 item 11 — every thresholded construct determines a signal id (explicit `SignalUse.signal` for `signal_below`/`signal_accept`; canonical stat ids `vote_margin`/`vote_agreement` for `margin_below`/`stat_at_least`); `θ.calibration.signal` MUST equal it; static lints `signal_mismatch` + `missing_calibration_signal`; rationale recorded (a threshold calibrated against signal A gating signal B is vacuously fresh); §3.3 notes the rule makes the target-property shapes well-posed. |
-
-| 5 | codex (gpt-5.5, xhigh, read-only, FRESH unanchored) — 2026-06-06 | **REJECT** — 8 blocking + 4 non-blocking | All addressed in Draft v6. Blocking: (FB1) §3.2 item-11 signal binding broke P1 (RFC 0001 leaves `calibration.signal` OPTIONAL) → rule re-scoped to COMPOSITES ONLY, fires at the composite USE SITE, never on `cvars`/`policies`; §4 subsumption narrowed to exact-on-execution-semantics + two intended composite-only ratchets (empty-`tuned_params`, signal binding); §4 P1-preserved sentence added (1.1 modules declare no composites); §9 criterion 3 "lint identically" carved out for the two ratchets. (FB2) use-site `SignalUse.inputs` not freshness-bound → `signal_inputs` added to the RFC 0001 §3.5 `ctx_ext` extension registry (conservative); item-11 rule requires `hash_covered_context ⊇ {signal_inputs}` AND covered value = use-site list when `inputs ≠ []`, else `unbound_signal_inputs`. (FB3) nested-certificate freshness honestly scoped → C3/C6 reworded to per-member coverage / TVAR-only obligations, explicitly NOT cross-level value-dependency freshness; §6 assumption 8 added (riding the §2 CVAR→CVAR deferral) with non-normative SHOULD to re-issue outer certificates on inner recalibration; §2 deferral bullet gains a revisit trigger; §3.6 fold scope note added. (FB4) `leafT` extended so a sampling ensemble's tuned `cardinality` (`{cardinality} ∩ N_T`) is in its leaf set, recursively through nesting. (FB5) post-cascade gate typing with strict placement symmetry — `margin_below` POST-only + gated arm must be margin-bearing (stage / `majority_vote` ensemble) else `gate_arm_incompatible`; `signal_below` PRE-only; `gate_kind_placement_mismatch` covers both misuse directions (retiring `pre_gate_requires_signal`); `missing_gate_signal` for signal-less `signal_below`; future output-signal post-gate noted deferred. (FB6) §3.2.1 closed result algebra `ArmResult ::= output(o, vote_stats?) | no_accept | error` with total/deterministic propagation rules unifying the per-construct exception/no-accept sentences; root no_accept → §3.6 fail-closed under strict / honest no-output (runtime-defined scoring) under non-strict; vote abstention stays internal. (FB7) §3.8 + C5 rewritten — `Unroll` is a SEMANTIC compilation into an internal K-chain IR (no surface state-predicate gate exists), `signal_accept` loops only; `external_accept`/`exhausted` offer no unroll; catalog table made honest (`self_debug` external_accept ⇒ no unroll). (FB8) §3.7/§3.9 — surface `pattern:` is sugar → `Provenance.pattern`; the full closed `Provenance` object is expansion-output (SDK-internal), never surface syntax. Non-blocking: (NB9) §3.3 cross-ref now cites the RFC 0001 §3.5 *Claim scope* paragraph accurately (2026-06-06 post-acceptance owner wording-audit clarification, §10 `post-acceptance` row); (NB10) pre-cascade route fixed to `j = min({ i < m : σ_i(x) ≥ θ_i } ∪ {m})`; (NB11) §3.11 restated as a 1:1 code↔rule table incl. `missing_gate_signal`, `missing_stop_signal`, `unbound_signal_inputs`, `gate_arm_incompatible`, `gate_kind_placement_mismatch`; (NB12) C4 verification narrowed — structural induction validates FORM closure only, operational estimate quality out of scope (assumption 3), cross-impl `c(agg)`/cost forms pinned by SHARED golden cost fixtures. |
-
-| 6 | codex (gpt-5.5, xhigh, read-only) — 2026-06-06 | **REJECT** — 1 blocking (all round-5 dispositions confirmed closed): §3.11's 1:1 claim missed codes for cascade arity and cross-kind/unknown body fields | Addressed in Draft v7: `unknown_composite_field` added (item 1); RFC 0001's `cascade_arity` and `unknown_gate_kind` explicitly reused with identical semantics and added to the table; the 1:1 claim wording now names the reused-code set precisely. |
-
-| MC | model-checking packet (small-scope Python suite, house convention) — 2026-06-06 | **GREEN** — C1–C6, 38 checks incl. paired vacuity teeth; independent oracles (reachability, member walk, dual execution); full tvl suite 342 pass, re-run personally by the integrating agent | Two §3.5 clarifications folded in at acceptance (loop-over-composite stop obligation note; gate/arm indexing worked example). RECORDED OBLIGATION for the validators packet: §3.2 item-11 signal/threshold binding + `signal_inputs` freshness (`missing_calibration_signal`, `signal_mismatch`, `unbound_signal_inputs`) are verified by validator conformance fixtures, NOT by the algebra suite. |
-| owner | nimrod (interactive) — 2026-06-06 | **ACCEPTED** | Owner acceptance recorded after the full chain: anchored rounds 1–7, fresh unanchored pass, green model checking. Opens the validators packet (P4) and SDK pattern factories (P5). |
-
-Design pre-review (before Draft v1): Option E architecture ACCEPTed by
-codex (gpt-5.5 xhigh — 4 hard constraints + terminology edits, all
-incorporated: not-a-binding-kind §3.1; no CVAR→CVAR deps §3.5; CascadePolicy
-anchor §4; compilation-relation framing §3.8; "structural constructors"
-naming) and by gemini (workspace-impact concurrence: schema stability,
-JS parity, spine coverage-fold fit, FE provenance rendering).
+| Revision | Changes |
+|---|---|
+| Draft v1 | Initial draft. |
+| Draft v2 | (1) arm resolution made tag-driven (`stage`/`composite` tags; bare = stage always; `ambiguous_arm` rejection); (2) pre-cascade made total (first-match-wins routing with fallback arm, per-gate signals + per-gate cost, absent-signal routes onward, `pre_gate_requires_signal`); (3) ensemble cardinality: required iff single-arm, int-typed, R9 rejection for k<1, both cost forms; (4) judge output contract (finite numeric score, exclusion rules, all-excluded fails, deterministic tie-break); (5) loop state formalized (`state_keys` + `stop_signal_outside_state`; pure ⟺ empty); (6) dependency compilation rebuilt as DECLARED parentage (`tuned_params` on stage arms) + static coverage obligations (`missing_composite_parent`), `missing_ref` stays single authority, judge/signal parents included; (7) root-consumption rule (all N_X roots, conservative fail-closed; selective consumption deferred); (8) subsumption made exact (scope?/parameters? carried onto Composite verbatim; empty tuned_params on migrated stages stated as intended ratchet); (9) Provenance closed shape (param_hash only, canary in admission contract); (10) C5 verification split by mechanism incl. condition 4. Non-blocking: full error-code surface §3.11; SignalSourceRef clarified as the RFC 0001 calibration-source registry (no new declaration surface); degenerate fixtures added to §9; AcceptDecl separated from GateDecl with opposite inequality; P6 note absorbed. |
+| Draft v3 | (1) R9 integrated into the acceptance algebra — explicit `Accept₁.₂ ⟺ ¬(R1∨…∨R9) ∧ calibrators ≠ ⊥` with P3/P4 carrying over and a conservativity note (R9 unreachable on 1.1 modules); (2) `tuned_params` entries now have a static TVAR-only resolution rule (`invalid_tuned_param`, well-formedness item 9) making C6 hold by construction; (3) `arm_params` map REPLACED by a single ArmSurface form declared ON the arm (bare Ident │ {stage, tuned_params?} │ {composite}) used identically for cascade arms, loop body, ensemble arms and judge — `invalid_arm_shape` for unknown keys; (4) `SignalSourceRef` (a source id) replaced by `SignalUse ⟨spec: SignalSpec, inputs⟩` preserving RFC 0001's source/signal split — the spec is the §3.5 closed signal shape hashed H_c(σ); stop inputs MUST ⊆ state_keys making `stop_signal_outside_state` precisely checkable; (5) numeric threshold type rule (`invalid_threshold_type`: thresholds are int/float CVARs; non-finite resolved values fail evaluation). |
+| Draft v4 | (1) the signal model is CHOSEN explicitly — `SignalUse.signal` is a named Ident into the SAME registry namespace as RFC 0001's module-facing `calibration.signal` (one signal model across the language; the closed SignalSpec shape enters only through H_c(σ)); SignalSurface grammar added to §3.9 and `invalid_signal_use` to §3.11; (2) stale `arm_params` wording in §4 corrected to per-arm `tuned_params`; (3) §7 terminology fixed (signal ids + opaque input-feature ids; sources reserved for evidence pools). |
+| Draft v5 | §3.2 item 11 — every thresholded construct determines a signal id (explicit `SignalUse.signal` for `signal_below`/`signal_accept`; canonical stat ids `vote_margin`/`vote_agreement` for `margin_below`/`stat_at_least`); `θ.calibration.signal` MUST equal it; static lints `signal_mismatch` + `missing_calibration_signal`; rationale recorded (a threshold calibrated against signal A gating signal B is vacuously fresh); §3.3 notes the rule makes the target-property shapes well-posed. |
+| Draft v6 | §3.2 item-11 signal binding broke P1 (RFC 0001 leaves `calibration.signal` OPTIONAL) → rule re-scoped to COMPOSITES ONLY, fires at the composite USE SITE, never on `cvars`/`policies`; §4 subsumption narrowed to exact-on-execution-semantics + two intended composite-only ratchets (empty-`tuned_params`, signal binding); §4 P1-preserved sentence added (1.1 modules declare no composites); §9 criterion 3 "lint identically" carved out for the two ratchets; use-site `SignalUse.inputs` not freshness-bound → `signal_inputs` added to the RFC 0001 §3.5 `ctx_ext` extension registry (conservative); item-11 rule requires `hash_covered_context ⊇ {signal_inputs}` AND covered value = use-site list when `inputs ≠ []`, else `unbound_signal_inputs`; nested-certificate freshness honestly scoped → C3/C6 reworded to per-member coverage / TVAR-only obligations, explicitly NOT cross-level value-dependency freshness; §6 assumption 8 added (riding the §2 CVAR→CVAR deferral) with non-normative SHOULD to re-issue outer certificates on inner recalibration; §2 deferral bullet gains a revisit trigger; §3.6 fold scope note added; `leafT` extended so a sampling ensemble's tuned `cardinality` (`{cardinality} ∩ N_T`) is in its leaf set, recursively through nesting; post-cascade gate typing with strict placement symmetry — `margin_below` POST-only + gated arm must be margin-bearing (stage / `majority_vote` ensemble) else `gate_arm_incompatible`; `signal_below` PRE-only; `gate_kind_placement_mismatch` covers both misuse directions (retiring `pre_gate_requires_signal`); `missing_gate_signal` for signal-less `signal_below`; future output-signal post-gate noted deferred. §3.2.1 closed result algebra `ArmResult ::= output(o, vote_stats?) \| no_accept \| error` with total/deterministic propagation rules unifying the per-construct exception/no-accept sentences; root no_accept → §3.6 fail-closed under strict / honest no-output (runtime-defined scoring) under non-strict; vote abstention stays internal. §3.8 + C5 rewritten — `Unroll` is a SEMANTIC compilation into an internal K-chain IR (no surface state-predicate gate exists), `signal_accept` loops only; `external_accept`/`exhausted` offer no unroll; catalog table made honest (`self_debug` external_accept ⇒ no unroll). §3.7/§3.9 — surface `pattern:` is sugar → `Provenance.pattern`; the full closed `Provenance` object is expansion-output (SDK-internal), never surface syntax. Smaller changes: §3.3 cross-ref now cites the RFC 0001 §3.5 *Claim scope* paragraph accurately (the 2026-06-06 post-acceptance clarification); pre-cascade route fixed to `j = min({ i < m : σ_i(x) ≥ θ_i } ∪ {m})`; §3.11 restated as a 1:1 code↔rule table incl. `missing_gate_signal`, `missing_stop_signal`, `unbound_signal_inputs`, `gate_arm_incompatible`, `gate_kind_placement_mismatch`; C4 verification narrowed — structural induction validates FORM closure only, operational estimate quality out of scope (assumption 3), cross-impl `c(agg)`/cost forms pinned by SHARED golden cost fixtures. |
+| Draft v7 | `unknown_composite_field` added (item 1); RFC 0001's `cascade_arity` and `unknown_gate_kind` explicitly reused with identical semantics and added to the table; the 1:1 claim wording now names the reused-code set precisely. |
+| Validation | Model checking: C1–C6 pass, including paired vacuity checks, with independent oracles (reachability, member walk, dual execution). Two §3.5 clarifications were folded in at acceptance (loop-over-composite stop obligation note; gate/arm indexing worked example). Recorded obligation for the validators: the §3.2 item-11 signal/threshold binding and `signal_inputs` freshness (`missing_calibration_signal`, `signal_mismatch`, `unbound_signal_inputs`) are verified by validator conformance fixtures, not by the algebra suite. |
+| Accepted (2026-06-06) | No further changes. |

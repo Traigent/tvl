@@ -4,8 +4,8 @@ message: If you use TVL in your research, please cite this work.
 type: software
 authors:
   - name: Traigent Research Team
-version: 1.0.0
-date-released: 2026-02-01
+version: 1.2.0
+date-released: 2026-06-06
 license: Apache-2.0
 license-url: https://www.apache.org/licenses/LICENSE-2.0
 repository-code: https://github.com/Traigent/tvl

@@ -4,16 +4,18 @@ This guide walks through a small but valid TVL module and the core CLI checks yo
 
 ## Install the CLI
 
-Use the published package:
+TVL is installed from source. Clone the repository and install it from the repository root:
 
 ```bash
-python -m pip install tvl-spec
+git clone https://github.com/Traigent/tvl.git
+cd tvl
+python -m pip install -e .
 ```
 
-Or install directly from this repository while developing:
+Add the `dev` extra to also install the test and documentation tooling:
 
 ```bash
-python -m pip install -e tvl/[dev]
+python -m pip install -e ".[dev]"
 ```
 
 That exposes the main CLI tools:
