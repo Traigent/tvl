@@ -217,7 +217,6 @@ class BetterWithMargins(BookScene):
             return DashedVMobject(r, num_dashes=44)
         box = always_redraw(box_fn)
         self.add(box)
-        lx, ly = to_screen(INC[0] - MARGIN_COST, INC[1] - MARGIN_SOLVED)
         rx, ry = to_screen(INC[0] + MARGIN_COST, INC[1] + MARGIN_SOLVED)
         marg_lab = T("margins: 0.02 solved,\n$0.001 cost", 28, PAL["fg"], line_spacing=0.8).move_to([3.0, ry + 1.25, 0])
         marg_lead = Line([rx - 0.2, marg_lab.get_bottom()[1] - 0.08, 0], [rx - 0.2, ry + 0.03, 0], color=PAL["muted"], stroke_width=2)
