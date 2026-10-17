@@ -51,7 +51,7 @@ async function main() {
   try {
     const page = await browser.newPage({ viewport: { width: 794, height: 1123 } });
     // The book is self-hosted; do not depend on the site's Google Fonts import.
-    await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+    await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());
     page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
     page.on("console", (m) => {
       if (m.type() === "error" && !/fonts\.(googleapis|gstatic)|net::ERR_FAILED/.test(m.text())) {

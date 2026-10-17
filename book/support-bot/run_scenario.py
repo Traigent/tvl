@@ -138,7 +138,6 @@ def write_bundles(name: str, seed: int, out: Path) -> tuple[Path, Path, Path, Pa
 
 
 def run_scenario(name: str, seed: int, out_root: Path = DEFAULT_OUT, verbose: bool = True) -> dict:
-    sc = SCENARIOS[name]
     out = out_root / name / f"seed-{seed}"
     inc_cfg, cand_cfg, inc_b, cand_b = write_bundles(name, seed, out)
     rel = lambda p: os.path.relpath(p, REPO)  # noqa: E731

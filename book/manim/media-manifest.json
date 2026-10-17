@@ -15,7 +15,7 @@
         {
           "bytes": 1269173,
           "path": "website/client/public/book/media/better_with_margins/better_with_margins.webm",
-          "sha256": "744a7a4780f4b22743428a29449e200612d08998515e0e8e2101f0c3629b2fb6"
+          "sha256": "aa169e30ce0f1b07a83095d29245e0ec5ad88c05a38fd733fc987f69adc27516"
         },
         {
           "bytes": 50043,
@@ -39,7 +39,7 @@
       "provenance": "original, made with Manim Community Edition (MIT)",
       "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o better_with_margins book/manim/scenes/better_with_margins.py BetterWithMargins (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
       "scene_source": "book/manim/scenes/better_with_margins.py",
-      "scene_source_sha256": "4be39adc684cf1fff0b199c3cd68143b9ba37dbaf2dc958a46e46c41f39b33ab",
+      "scene_source_sha256": "6939c0a46181a7c68db7f43f050fc4d208c26b4ca96b52996f5fc66d681fcacd",
       "support_sha256": {
         "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
         "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"

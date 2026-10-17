@@ -69,7 +69,9 @@ jobs:
 
       - name: Install Playwright Chromium
         working-directory: website
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends poppler-utils
 
       - name: Build book PDF
         working-directory: website

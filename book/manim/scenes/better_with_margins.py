@@ -42,7 +42,6 @@ from pathlib import Path
 from manim import (
     DOWN, LEFT, RIGHT, UP, Arrow, Circle, Create, DashedVMobject, FadeIn, FadeOut, GrowFromCenter,
     Line, Rectangle, ValueTracker, VGroup, VMobject, always_redraw, interpolate_color, ManimColor,
-    smooth,
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -156,7 +155,6 @@ class BetterWithMargins(BookScene):
             f = ft.get_value()
             o = ot.get_value()
             g = VGroup()
-            pts = []
             for p in ALL_PTS:
                 x, y = to_screen(*p)
                 if not inside(x, y):
@@ -195,8 +193,6 @@ class BetterWithMargins(BookScene):
         self.snap("1-front")
 
         # ---- phase 2: the camera moves to the incumbent; the margin box grows ------
-        def others_fade(t):
-            return smooth(min(1.0, max(0.0, (t - 0.45) / 0.55)))
         self.play(
             FadeOut(front_label),
             zt.animate.set_value(1.0),
@@ -237,9 +233,6 @@ class BetterWithMargins(BookScene):
         self.add(short_inc, short_marg)
         self.play(FadeOut(inc_lab), FadeOut(leader), FadeOut(marg_lab), FadeOut(marg_lead), run_time=0.6)
         self.play(bt.animate.set_value(1.0), sl.animate.set_value(1.0), run_time=1.6)
-        ix, iy = to_screen(*INC)
-        lx, ly = to_screen(INC[0] - MARGIN_COST, INC[1] - MARGIN_SOLVED)
-        rx, ry = to_screen(INC[0] + MARGIN_COST, INC[1] + MARGIN_SOLVED)
         banner = T("Exact-value illustration; not promotion verdicts", 28, PAL["muted"]).move_to([0, 2.93, 0])
 
         ax_, ay_ = to_screen(*A)
