@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import {
   Callout, ChapterLink, CodeBlock, CoverageFigure, EventTimeline, Example, ExampleResult, Figure, GlossaryList, KeyTakeaways, MarginFigure, Mermaid, Misconception, PlannedList,
-  Predict, Ref, SampleSizeSlider, Term, TestedRef, TryIt, Widget, WindowStrip, XRef,
+  Predict, Ref, SampleSizeSlider, Term, TestedRef, TryIt, Widget, WindowStrip, XRef, ZonesFigure,
 } from "./components";
 import { wholeWords } from "./components/CodeBlock";
 import { usePrint } from "./context";
@@ -46,5 +46,5 @@ export const mdxComponents = {
   code: InlineCode,
   table: Table,
   Callout, ChapterLink, CoverageFigure, EventTimeline, Example, ExampleResult, Figure, GlossaryList, KeyTakeaways, MarginFigure, Mermaid, Misconception, PlannedList, Predict,
-  Ref, SampleSizeSlider, Term, TestedRef, TryIt, Widget, WindowStrip, XRef,
+  Ref, SampleSizeSlider, Term, TestedRef, TryIt, Widget, WindowStrip, XRef, ZonesFigure,
 };

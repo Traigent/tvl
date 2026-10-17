@@ -1,0 +1,134 @@
+# An example GitHub Actions workflow for chapter 13 of the book. It is NOT one of this
+# repository's workflows: nothing runs it here. Copy it into .github/workflows/ of your own
+# repository and change the paths in `env`.
+#
+# As written, it runs against the book's support bot (SYNTHETIC tickets, a SIMULATED bot),
+# from the root of a clone of the TVL repository. tests/test_book_support_bot.py runs every
+# `run:` step below except the install step, in order, and checks the exit statuses.
+#
+# The gate exits 0 only on Promote. Reject, NoDecision and unusable inputs exit 2, so the
+# job fails unless the evidence supports the change. While the candidate equals the incumbent
+# the gate says NoDecision, so run the job only on changes to the module and configurations
+# (the `paths` filter below). Deploying stays your own step: the
+# deploy job below is a placeholder that runs only after the gate job passes.
+name: tvl
+
+on:
+  pull_request:
+    paths: ['book/support-bot/configs/**', 'spec/examples/book/ch05/**']
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    env:
+      MODULE: spec/examples/book/ch05/support-bot.tvl.yml
+      INCUMBENT: book/support-bot/configs/incumbent.yml
+      CANDIDATE: book/support-bot/configs/promote-candidate.yml
+      EVIDENCE: book/support-bot/out/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the TVL tools
+        # In your own repository, install a pinned commit of TVL instead:
+        #   python -m pip install "tvl-spec @ git+https://github.com/Traigent/tvl@<commit>"
+        run: python -m pip install -e .
+
+      - name: Check the module
+        run: |
+          tvl-validate "$MODULE"
+          tvl-check-structural "$MODULE"
+          tvl-check-operational "$MODULE"
+
+      - name: Check both configurations
+        run: |
+          tvl-config-validate "$MODULE" "$INCUMBENT"
+          tvl-config-validate "$MODULE" "$CANDIDATE"
+
+      - name: Evaluate both configurations (your evaluator goes here)
+        run: |
+          mkdir -p "$EVIDENCE"
+          python book/support-bot/evaluate.py --module "$MODULE" --config "$INCUMBENT" \
+            --split eval --seed 0 --bundle-id ci.incumbent \
+            --out "$EVIDENCE/incumbent.synthetic.measure.yml"
+          python book/support-bot/evaluate.py --module "$MODULE" --config "$CANDIDATE" \
+            --split eval --seed 0 --bundle-id ci.candidate \
+            --out "$EVIDENCE/candidate.synthetic.measure.yml"
+
+      - name: Validate the evidence bundles
+        run: |
+          tvl-measure-validate "$MODULE" "$INCUMBENT" "$EVIDENCE/incumbent.synthetic.measure.yml"
+          tvl-measure-validate "$MODULE" "$CANDIDATE" "$EVIDENCE/candidate.synthetic.measure.yml"
+
+      - name: Promotion gate
+        run: |
+          status=0
+          tvl-ci-gate "$MODULE" "$EVIDENCE/incumbent.synthetic.measure.yml" \
+            "$EVIDENCE/candidate.synthetic.measure.yml" --json > "$EVIDENCE/gate.json" || status=$?
+          python - "$EVIDENCE/gate.json" <<'PY'
+          import json, sys
+          report = json.load(open(sys.argv[1]))
+          if "decision" not in report:  # unusable input: an error report, no decision
+              sys.exit(f"No decision: {report.get('error')}")
+          print(report["decision"] + ":", report["evidence"]["summary"]["decision_reason"])
+          PY
+          exit "$status"
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvl-evidence
+          path: ${{ env.EVIDENCE }}
+          retention-days: 30
+
+  # Deploying is your own step. `needs: gate` runs it only if the gate job passed, that is,
+  # only on Promote; `if:` keeps it to pushes to main, not pull requests.
+  deploy:
+    needs: gate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy (your own step)
+        run: echo "Replace this line with your deployment command."
+
+  # TVL 1.3 (draft): check a module with production blocks against the company pack and
+  # compile its runtime contract. Compiling installs, enables or runs nothing.
+  runtime-contract:
+    runs-on: ubuntu-latest
+    env:
+      MODULE: spec/examples/book/ch12/support-bot.tvl.yml
+      PACK: spec/examples/book/ch12/company-floors.pack.yml
+      TOKENS: spec/examples/book/ch12/tokens.json
+      CONTRACT: book/support-bot/out/ci-contract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the TVL tools
+        run: python -m pip install -e .
+
+      - name: Check the module and its pack
+        run: |
+          tvl-validate "$MODULE"
+          tvl-validate "$PACK"
+
+      - name: Compile the runtime contract
+        run: |
+          tvl-compile-runtime "$MODULE" --pack "$PACK" --token-map "$TOKENS" --out-dir "$CONTRACT"
+
+      - name: Keep the contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvl-runtime-contract
+          path: ${{ env.CONTRACT }}/runtime-contract.json
+          retention-days: 30

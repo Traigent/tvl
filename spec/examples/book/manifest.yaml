@@ -319,3 +319,28 @@ examples:
     expect: compiled
     checker: tvl-compile-runtime
     note: Writes two closed files; compiling installs, enables or runs nothing.
+
+  # Chapter 13: a starter module to copy.
+  - file: ch13/starter.tvl.yml
+    expect: valid
+    checker: tvl-validate
+    note: The six required parts and nothing else; one knob, one objective, one margin.
+  - file: ch13/starter.tvl.yml
+    expect: sat
+    checker: tvl-check-structural
+    note: With no rules, every design is allowed.
+  - file: ch13/starter.tvl.yml
+    expect: pass
+    checker: tvl-check-operational
+    note: The module sets no environment conditions, so the snapshot meets them all.
+  - file: ch13/incumbent.yml
+    module: ch13/starter.tvl.yml
+    expect: pass
+    checker: tvl-config-validate
+    note: The configuration that runs today, written for the starter module; the first incumbent.
+  - file: ch13/incumbent.measure.yml
+    module: ch13/starter.tvl.yml
+    config: ch13/incumbent.yml
+    expect: valid
+    checker: tvl-measure-validate
+    note: A complete small bundle for the starter; made-up values that show the shape, not a measurement.

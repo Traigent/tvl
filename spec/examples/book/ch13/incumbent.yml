@@ -1,0 +1,5 @@
+# Chapter 13: the configuration your agent runs in production today, your first incumbent.
+config_id: my_agent.incumbent
+module_id: my_team.my_agent
+assignments:
+  model: model-a

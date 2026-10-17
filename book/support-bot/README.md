@@ -302,5 +302,6 @@ a test checks that file against a fresh run.
 | `confidence.py` | upper bounds for a count, and the coverage simulation behind Figure 6.1 |
 | `configs/` | the incumbent and candidate configurations |
 | `bundles/` | reference output of seed 0 (bundles, validation reports, gate reports) |
+| `ci-example.yml` | chapter 13's example GitHub Actions workflow (not a workflow of this repository); the tests run its steps |
 
 Tests: `tests/test_book_support_bot.py`.

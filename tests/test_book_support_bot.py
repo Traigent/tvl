@@ -182,3 +182,115 @@ def test_zero_violations_need_at_least_59_trials_for_a_5_percent_bound() -> None
     assert confidence.upper_bound(0, 50) > 0.05
     assert confidence.upper_bound(2, 140) <= 0.05 < confidence.upper_bound(3, 140)
 
+
+
+# ---------------------------------------------------------------- chapter 13: the CI example
+CI_EXAMPLE = PROJECT / "ci-example.yml"
+
+
+def _tool_shims(bin_dir: Path) -> None:
+    """tvl-* commands that run this checkout's code with this interpreter (no install needed)."""
+    import re
+    import stat
+
+    scripts = dict(re.findall(r'^(tvl-[\w-]+) = "([\w.]+):main"$', (ROOT / "pyproject.toml").read_text(), re.M))
+    bin_dir.mkdir()
+    for name, module in {**scripts, "python": None}.items():
+        target = bin_dir / name
+        if module is None:
+            target.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+        else:
+            target.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m {module} "$@"\n')
+        target.chmod(target.stat().st_mode | stat.S_IEXEC)
+
+
+def _run_ci_example(tmp_path: Path, **overrides: str) -> dict[str, list[tuple[str, int, str]]]:
+    """Run every `run:` step of the example except the installs, in order, as GitHub does (bash -e)."""
+    import os
+    import subprocess
+
+    workflow = _yaml(CI_EXAMPLE)
+    _tool_shims(tmp_path / "bin")
+    pythonpath = os.pathsep.join([str(ROOT / "python"), str(ROOT)])
+    results: dict[str, list[tuple[str, int, str]]] = {}
+    for job_name, job in workflow["jobs"].items():
+        env = dict(os.environ, PATH=f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", PYTHONPATH=pythonpath)
+        env.update(job.get("env", {}))
+        # Write outputs under tmp_path, not into the checkout.
+        env.update({k: str(tmp_path / job_name / k.lower()) for k in ("EVIDENCE", "CONTRACT") if k in env})
+        env.update(overrides)
+        results[job_name] = []
+        for step in job["steps"]:
+            if "run" not in step or step["name"].startswith("Install"):
+                continue
+            proc = subprocess.run(
+                ["bash", "-e", "-c", "exec 2>&1\n" + step["run"]],
+                cwd=ROOT, env=env, capture_output=True, text=True, timeout=300,
+            )
+            results[job_name].append((step["name"], proc.returncode, proc.stdout))
+            if proc.returncode != 0:
+                break
+    return results
+
+
+def test_ci_example_is_not_a_workflow_of_this_repository() -> None:
+    workflows = ROOT / ".github" / "workflows"
+    assert not any("ci-example" in p.read_text(encoding="utf-8") for p in workflows.glob("*.y*ml"))
+    installs = [s for job in _yaml(CI_EXAMPLE)["jobs"].values() for s in job["steps"] if "run" in s and s["name"].startswith("Install")]
+    assert [s["run"].strip() for s in installs] == ["python -m pip install -e ."] * 2
+
+
+def test_ci_example_promotes_the_promote_candidate(tmp_path: Path) -> None:
+    results = _run_ci_example(tmp_path)
+    for job, steps in results.items():
+        assert all(code == 0 for _, code, _ in steps), (job, steps)
+    gate = results["gate"][-1]
+    assert gate[0] == "Promotion gate"
+    assert gate[2].strip() == "Promote: All non-inferiority tests pass; superior on: resolution_rate, cost_per_ticket_usd"
+    assert results["runtime-contract"][-1][2].startswith("Compiled runtime contract: ")
+    assert (tmp_path / "runtime-contract" / "contract" / "runtime-contract.json").is_file()
+
+
+def test_ci_example_fails_the_job_on_reject(tmp_path: Path) -> None:
+    results = _run_ci_example(tmp_path, CANDIDATE="book/support-bot/configs/reject-candidate.yml")
+    name, code, out = results["gate"][-1]
+    assert (name, code) == ("Promotion gate", 2)
+    assert out.strip() == "Reject: Regression beyond the allowed margin demonstrated on: resolution_rate"
+
+
+def test_ci_example_stops_at_bundle_validation_on_a_band_violation(tmp_path: Path) -> None:
+    """The chapter 13 prediction: the band-fail candidate fails before the gate step runs."""
+    results = _run_ci_example(tmp_path, CANDIDATE="book/support-bot/configs/band-fail-candidate.yml")
+    name, code, out = results["gate"][-1]
+    assert (name, code) == ("Validate the evidence bundles", 2)
+    assert "band_violation" in out
+
+
+def test_chapter_13_quotes_the_ci_example_as_it_is() -> None:
+    """Every line of the chapter's YAML excerpt is a line of ci-example.yml, in order ("…" marks a gap)."""
+    import re
+
+    chapter = (ROOT / "website" / "client" / "src" / "book" / "chapters" / "13-using-tvl.mdx").read_text(encoding="utf-8")
+    excerpt = re.search(r"```yaml\n(.*?)```", chapter, re.S).group(1).rstrip("\n").split("\n")
+    lines = CI_EXAMPLE.read_text(encoding="utf-8").split("\n")
+    pos, after_gap = 0, True
+    for quoted in excerpt:
+        if quoted.strip() == "…":
+            after_gap = True
+            continue
+        if after_gap:
+            pos = lines.index(quoted, pos) + 1
+        else:
+            assert lines[pos] == quoted, f"excerpt line {quoted!r} is not the next line of ci-example.yml"
+            pos += 1
+        after_gap = False
+
+
+def test_ci_example_deploys_only_after_the_gate_job() -> None:
+    """Chapter 13: the deploy job needs the gate job and runs only on pushes, not on pull requests."""
+    workflow = _yaml(CI_EXAMPLE)
+    deploy = workflow["jobs"]["deploy"]
+    assert deploy["needs"] == "gate"
+    assert deploy["if"] == "github.event_name == 'push'"
+    triggers = workflow.get("on", workflow.get(True))  # PyYAML reads the key `on` as True
+    assert set(triggers) == {"pull_request", "push"}

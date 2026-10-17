@@ -7,6 +7,7 @@ export { default as CoverageFigure } from "./CoverageFigure";
 export { default as MarginFigure } from "./MarginFigure";
 export { default as EventTimeline } from "./EventTimeline";
 export { default as WindowStrip } from "./WindowStrip";
+export { default as ZonesFigure } from "./ZonesFigure";
 export { default as CodeBlock } from "./CodeBlock";
 export { default as DesignSpaceMotif } from "./DesignSpaceMotif";
 export { default as TestedRef, useTestedRef } from "./TestedRef";

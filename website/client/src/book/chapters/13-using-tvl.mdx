@@ -2,6 +2,204 @@
 title: "Using TVL day to day"
 slug: using-tvl
 order: 13
-planned: true
-summary: "The command line, the editor and the CI gate; what compiling a module does and does not turn on; and when TVL is not worth it."
+draft: false
+summary: "What runs where, a starter module to copy, a project layout and a tested CI job, wiring your evaluator, the daily loop, and when TVL is not worth it."
 ---
+
+<h2 id="ch13-learn">What you'll learn</h2>
+
+- Which parts live in your repository, which are TVL's tools, and which stay on your own platform.
+- How to start: a module of nineteen lines, comment included, your first gate end to end, a project layout and a CI job that runs the checks and the gate.
+- What to do with each decision, and when TVL costs more than it gives.
+
+<h2 id="ch13-where">What runs where</h2>
+
+<ZonesFigure
+  alt="Three zones, stacked from top to bottom. Zone 1, your repository: the module and its overlays; the configurations of the incumbent and the candidate; the CI configuration. Zone 2, TVL's tools, run in your CI: the checks tvl-validate, tvl-check-structural, tvl-check-operational and tvl-config-validate; tvl-measure-validate; tvl-ci-gate, which gives Promote, Reject or NoDecision; and, for the TVL 1.3 draft, tvl-compose, which turns a module and its overlays into one module, and tvl-compile-runtime, which writes the runtime contract file. Zone 3, outside TVL, your code and platform: your agent; your evaluator, which is your code and which your CI job may run; your deployment process; and, for the TVL 1.3 draft, the evaluator that gives production verdicts and the systems that hold grants and approvals. An arrow labelled module and configurations runs from zone 1 down to zone 2. A dashed arrow labelled evidence bundles, written by your evaluator, runs from zone 3 up to zone 2. An arrow labelled decision, exit 0 or 2, runs from zone 2 down to zone 3."
+  caption="Figure 13.1. What runs where. TVL reads your files and evidence and writes a decision (and, for the 1.3 draft, a contract file). Your evaluator is your own code: your CI job may run it, as below, and it writes the bundles the gate reads. Running, measuring and deploying the agent stay with you."
+  zones={[
+    { title: "Your repository", tone: "excluded", items: ["Module\nand overlays", "Configurations:\nincumbent, candidate", "CI configuration"] },
+    { title: "TVL's tools, run in your CI", tone: "evidence", items: ["tvl-validate\ntvl-check-structural\ntvl-check-operational\ntvl-config-validate", "tvl-measure-validate", "tvl-ci-gate:\nPromote, Reject\nor NoDecision", "TVL 1.3 draft:\ntvl-compose\ntvl-compile-runtime"] },
+    { title: "Outside TVL: your code and platform", tone: "excluded", items: ["Your agent", "Your evaluator:\nyour code, which\nyour CI may run", "Your deployment\nprocess", "TVL 1.3 draft:\nproduction verdicts;\ngrants and approvals"] },
+  ]}
+  links={[
+    { from: 0, to: 1, label: "module and configurations", at: 0.2 },
+    { from: 2, to: 1, label: "evidence bundles", at: 0.35, dashed: true },
+    { from: 1, to: 2, label: "decision: exit 0 or 2", at: 0.62 },
+  ]}
+/>
+
+TVL defines, checks and decides promotion from evidence; it does not run your agent, collect production evidence or carry out responses. Chapter 2's box mapped the pieces; this chapter wires them.
+
+<h2 id="ch13-layout">A project layout</h2>
+
+```text
+your-agent/
+  agent/                     your code, unchanged
+  tvl/
+    my-agent.tvl.yml         the module
+    busy-season.overlay.yml  optional: an overlay (chapter 12)
+    configs/incumbent.yml    what runs now
+    configs/candidate.yml    the change under review
+  evals/my-tuning-set.jsonl  for exploring candidates
+  evals/my-eval-set.jsonl    for judging them, kept apart
+  .github/workflows/tvl.yml
+```
+
+Bundles are outputs: CI writes them to an ignored folder and keeps them as build artifacts.
+
+<h2 id="ch13-starter">A starter module</h2>
+
+Copy this file next to your agent's code and change three things: the module's name, the knob's values, and the objective, which must be a name your evaluator measures.
+
+<Example file="ch13/starter.tvl.yml" checker="tvl-validate" title="A starter module" />
+
+It holds the six required parts, `tvl`, `environment`, `evaluation_set`, `tvars`, `objectives` and `promotion_policy`, and nothing else: one tuned variable, one objective, a 2-point margin. `snapshot_id` is the date and time your environment facts describe (<ChapterLink n={4} />); put the day you write the module. Leave the other values until the chapter that explains them. Grow it when you need each part: rules (<ChapterLink n={4} />), more objectives and bands (<ChapterLink n={5} />), chance constraints (<ChapterLink n={6} />) and, <span className="book-draft-note">TVL 1.3 draft</span>, requirements and monitors (chapters 9 and 10).
+
+<TryIt>
+
+Check the starter from the repository root:
+
+```bash
+tvl-validate spec/examples/book/ch13/starter.tvl.yml
+tvl-check-structural spec/examples/book/ch13/starter.tvl.yml
+tvl-check-operational spec/examples/book/ch13/starter.tvl.yml
+```
+
+One possible output; the witness line may differ.
+
+```text
+Schema + lint checks passed.
+Structural constraints satisfiable.
+  model: model-a
+Operational feasibility checks passed (budgets respected or skipped).
+```
+
+`tvl-validate` runs the schema and the lints together; `tvl-lint` alone runs only the lints. With no rules, both models are allowed, and the <Term id="witness">witness</Term>, the one allowed design the solver prints as proof, may name either.
+
+</TryIt>
+
+<h2 id="ch13-first">Your first gate</h2>
+
+**1. A configuration:** a value in `assignments` for every knob, the module's id and your label. Start with the one in production today:
+
+<Example file="ch13/incumbent.yml" checker="tvl-config-validate" title="tvl/configs/incumbent.yml" />
+
+**2. The evaluation set:** one JSON object per line, like this one from the book's `tickets.jsonl`:
+
+```json
+{"category": "technical", "difficulty": "easy", "id": "T-0004", "needs_lookup": false, "split": "eval", "synthetic": true}
+```
+
+How many lines? In chapter 6, 16 tickets left a true 5-point gain undecided (NoDecision on 399 of 400 seeds), while the 140-ticket runs, with larger true differences, ended in Promote or Reject. With no violations at 95% confidence, a 5% limit needs at least 59 trials.
+
+**3. Your evaluator** runs your agent once per example and writes one bundle. A stub for the starter's one objective, where `run_agent` is your code:
+
+```python
+import json, yaml
+from my_agent import run_agent  # your agent: one call per example
+
+def evaluate(config_file, eval_set, out):
+    config = yaml.safe_load(open(config_file))
+    examples = [json.loads(line) for line in open(eval_set)]
+    scores = [1.0 if run_agent(config["assignments"], ex)["solved"] else 0.0 for ex in examples]
+    bundle = {"bundle_id": out, "config_id": config["config_id"], "module_id": config["module_id"],
+              "objective_values": {"task_success_rate": {"samples": scores, "paired": True}}}
+    yaml.safe_dump(bundle, open(out, "w"), sort_keys=False)
+```
+
+A complete bundle, for ten examples:
+
+<Example file="ch13/incumbent.measure.yml" checker="tvl-measure-validate" title="A complete bundle" />
+
+The fields, in the format of the <Ref to="promotion-evidence" section="“Canonical measurement bundle”">promotion evidence contract</Ref>:
+
+- `module_id` must equal the module's `tvl.module`, or the gate gives no decision. `config_id`, `bundle_id`: your labels.
+- `objective_values.<name>`, one per objective: either `samples`, one value per example, or `mean`, `std`, the standard deviation of those values (not of the mean), and `n`, the number of examples (<ChapterLink n={6} />). Add `paired: true` only when both bundles hold the same examples in the same order.
+- `chance_outcomes.<name>`: `violations` and `trials`. `monitor_outcomes.<name>`, <span className="book-draft-note">TVL 1.3 draft</span>: `n` resolved units and `k` of them violating; optionally `u` unresolved, `pl` unplaceable and `complete` (<ChapterLink n={10} />). `summary`: anything else.
+
+File names and identifiers are yours: `.synthetic.` in the book's names marks simulator output, no suffix is required, and TVL never assigns ids; of the ids it reads, it only checks that `module_id` names the module.
+
+**4. The first baseline.** The gate always compares two bundles: Promote is defined only against an incumbent (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). So on day one, the configuration in production is your incumbent; measure it with the same evaluator, on the same examples, as the candidate. Gated against itself it shows no gain, and the gate says NoDecision. If nothing runs yet, there is nothing to promote over; `tvl-measure-validate` still checks one bundle against the bands and chance constraints, which never depend on an incumbent.
+
+**5. Run it.** Copy the incumbent to `tvl/configs/candidate.yml`, change one value and its `config_id`, run `evaluate` on both, then:
+
+```bash
+tvl-config-validate tvl/my-agent.tvl.yml tvl/configs/candidate.yml
+tvl-measure-validate tvl/my-agent.tvl.yml tvl/configs/candidate.yml out/candidate.measure.yml
+tvl-ci-gate tvl/my-agent.tvl.yml out/incumbent.measure.yml out/candidate.measure.yml --json
+```
+
+<h2 id="ch13-ci">A CI job</h2>
+
+`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; the book's tests run its steps, except the installs. Copy it and change the paths in `env`. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job; the three 2s differ only in the `decision` field of `gate.json`:
+
+| Gate exit | `decision` in `gate.json` | Meaning | What to do |
+|---|---|---|---|
+| 0 | `Promote` | The evidence supports the change. | Let the deploy run. |
+| 2 | `Reject` | A shown regression, a band missed, or a chance constraint not proved. | Read the reason; a chance constraint may need a larger evaluation. |
+| 2 | `NoDecision` | The evidence is too weak to decide, or a band is not shown to hold. | Plan a fresh, larger evaluation of fixed size. |
+| 2 | none: an `error` | An input is unusable; the step prints "No decision: …". | Fix the bundle or evaluator. |
+
+An excerpt of the workflow, where "…" marks lines left out:
+
+```yaml
+on:
+  pull_request:
+    paths: ['book/support-bot/configs/**', 'spec/examples/book/ch05/**']
+  push:
+    branches: [main]
+…
+      - name: Promotion gate
+        run: |
+          …
+          tvl-ci-gate "$MODULE" "$EVIDENCE/incumbent.synthetic.measure.yml" \
+            "$EVIDENCE/candidate.synthetic.measure.yml" --json > "$EVIDENCE/gate.json" || status=$?
+          …
+          exit "$status"
+    …
+  deploy:
+    needs: gate
+    if: github.event_name == 'push'
+    …
+```
+
+A short script, left out above, prints the decision. Pin a commit in your install step. On the book's bot the gate step prints one line, `Promote: All non-inferiority tests pass; superior on: resolution_rate, cost_per_ticket_usd`, and exits 0. `needs: gate` runs `deploy` only after a passing gate: replace its placeholder. A second job, <span className="book-draft-note">TVL 1.3 draft</span>, compiles chapter 12's runtime contract and turns nothing on. On another CI service, keep the exit status and the `decision` field.
+
+
+<Predict question={<p>Set <code>CANDIDATE</code> to <code>book/support-bot/configs/band-fail-candidate.yml</code>, the candidate whose replies average 260.7 tokens against a band of 80 to 250. Which step fails the job?</p>}>
+<p>"Validate the evidence bundles": `tvl-measure-validate` exits 2 on the candidate with `band_violation`, so the job stops and the gate step never runs. Had it run, it would have said Reject.</p>
+</Predict>
+
+<h2 id="ch13-loop">The day-to-day loop</h2>
+
+1. **Change a knob.** Edit `candidate.yml`, or the module if the design space changes.
+2. **Check.** `tvl-validate`, `tvl-check-structural` and `tvl-config-validate`, in seconds.
+3. **Evaluate.** Tune on the tuning set; judge on the evaluation set.
+4. **Gate.** `tvl-ci-gate … --json`: text mode prints an empty `Reason:` for 1.2 modules.
+5. **Deploy.** Your own step, only after Promote; the candidate becomes the incumbent. Each CI run pays for two evaluations. While the candidate equals the incumbent, the gate says NoDecision and the job fails. Run the gate job only on changes under `tvl/` (for example `on: pull_request: paths: ['tvl/**']`), and deploy changes to your agent's code your usual way.
+
+On Reject or NoDecision, do not re-run until it passes: each re-run is another chance for a false Promote (<ChapterLink n={6} />). Fix the size of a new evaluation before you see results. <span className="book-draft-note">TVL 1.3 draft</span>: for a production UNKNOWN, see <ChapterLink n={10} />.
+
+<Misconception wrong="TVL will stop a bad deploy by itself.">
+<p>`tvl-ci-gate` prints a decision and exits; it stops a deploy only if your pipeline makes the deploy depend on that job. <span className="book-draft-note">TVL 1.3 draft</span>: in production too, nothing happens on its own (<ChapterLink n={11} />).</p>
+</Misconception>
+
+<h2 id="ch13-not">When TVL is not worth it</h2>
+
+- **Nothing to compare or measure.** One prompt, no variants, or no evaluation data: no candidate or no bundles.
+- **Too few examples.** With only a handful, most decisions will be NoDecision, as with chapter 6's 16 tickets.
+- **A throwaway prototype.** If nobody will compare a second version, a contract has no reader. Keeping TVL costs upkeep: the module must follow your knobs, and your evaluator must keep writing bundles.
+
+<h2 id="ch13-next">Where next</h2>
+
+- Meaning and syntax: the <Ref to="semantics">formal semantics</Ref>, the <Ref to="language">language reference</Ref> and the <Ref to="conformance">conformance suite</Ref>. Extensions: <Ref to="rfc-0001">RFC 0001</Ref> (calibrated values), <Ref to="rfc-0002">RFC 0002</Ref> (composite knobs) and the <Ref to="rfc-0003">RFC 0003</Ref> draft (production).
+- Your own agent in place of the simulator: `book/support-bot/README.md`. Questions: <Ref to="discussions">GitHub Discussions</Ref>. A change to the language: the <Ref to="contributing" section="“Proposing a spec change”">contributing guide</Ref>.
+
+<KeyTakeaways>
+  <ul>
+    <li>TVL defines, checks and decides promotion from evidence; your agent, evaluator and deployment stay yours.</li>
+    <li>Start from nineteen lines; grow the module one part at a time.</li>
+    <li>In CI, only Promote exits 0. After Reject or NoDecision, plan a fresh, fixed-size evaluation.</li>
+  </ul>
+</KeyTakeaways>
