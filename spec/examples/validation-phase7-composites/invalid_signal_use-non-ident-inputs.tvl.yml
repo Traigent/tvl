@@ -1,6 +1,6 @@
 # Phase 7 (RFC 0002): SignalUse.inputs must be Ident* — a non-string element
 # rejects rather than being silently filtered (which would also suppress
-# unbound_signal_inputs). Expected: invalid_signal_use (codex mutation probe).
+# unbound_signal_inputs). Expected: invalid_signal_use (mutation probe).
 tvl:
   module: corp.validation.composites_pre_cascade
 

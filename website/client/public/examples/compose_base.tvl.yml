@@ -1,4 +1,4 @@
-# Chapter 4 example: Base TVL module for overlays.
+# Overlay example: Base TVL module for overlays.
 
 tvl:
   module: book.overlays.base

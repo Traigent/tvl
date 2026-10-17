@@ -33,9 +33,10 @@ The workflow assumes AWS access through GitHub OIDC via `AWS_ROLE_TO_ASSUME`.
 
 ## One-Time CloudFront / S3 Settings
 
-This site is an SPA with client-side routes such as `/specification`, `/examples`, and `/book`.
-The build now exports route-specific `index.html` files plus a `404.html`, but the distribution
-should still be configured to treat SPA routes correctly.
+This site is an SPA, but every client-side route (`/`, `/specification`, the `/specification/*`
+reference pages, `/examples`, `/github`, `/book`) is exported at build time as its own
+`index.html`, so no SPA fallback is needed. Unknown URLs must return a real `404`:
+`client/public/404.html` is a standalone page that does not depend on the app bundle.
 
 Minimum settings:
 
@@ -43,15 +44,22 @@ Minimum settings:
 - S3 origin serves the contents of the site bucket
 - CloudFront invalidations are allowed for the deploy role
 
-Recommended SPA fallback:
+Error handling (required, so unknown URLs are not served as soft 404s):
 
 - If the distribution uses an S3 REST origin:
-  configure custom error responses for `403` and `404` to return `/index.html` with `200`
+  configure custom error responses for `403` and `404` to return `/404.html` with response code
+  `404`. Do **not** map them to `/index.html` with `200`: that makes every unknown URL look like a
+  valid page to browsers, crawlers, and link checkers.
 - If the distribution uses an S3 website endpoint:
   configure the error document to `404.html`
 
-Without one of those fallbacks, direct visits to unknown client-side routes can still fail even
-though the build exports the common route entry points.
+Verify after a deploy: `curl -s -o /dev/null -w '%{http_code}' https://tvl-lang.org/does-not-exist`
+prints `404`, and `curl -s -o /dev/null -w '%{http_code}' https://tvl-lang.org/specification`
+prints `200`.
+
+The build also writes `sitemap.xml` from the list of indexable routes in
+`scripts/prepare_static_deploy.mjs`; add a new public route there (and to its static route list)
+when you add a page.
 
 ## Trigger
 

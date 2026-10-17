@@ -230,7 +230,7 @@ For design partner technical reviews, prepare:
 
 ### Internal
 - 1 engineer with PL/formal methods background (part-time)
-- Review cycles with Nimrod for domain accuracy
+- Review cycles with a domain expert for accuracy
 
 ### External (Optional)
 - Academic collaborator with Coq/Lean expertise

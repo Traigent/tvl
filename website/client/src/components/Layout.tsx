@@ -34,7 +34,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-lg leading-none">Tuned Variables Language</span>
-              <span className="text-xs text-muted-foreground">AI Pipeline Adaptation</span>
+              <span className="text-xs text-muted-foreground">AI Agent Requirements Specification</span>
             </div>
           </Link>
 
@@ -93,7 +93,7 @@ export default function Layout({ children }: LayoutProps) {
             <div>
               <h3 className="font-semibold text-lg mb-4">TVL</h3>
               <p className="text-sm text-muted-foreground">
-                Specification backbone for governed adaptation in AI pipelines.
+                A typed, machine-checkable language for AI agent requirements, design spaces, and the evidence required to accept a candidate.
               </p>
             </div>
             <div>
@@ -132,7 +132,7 @@ export default function Layout({ children }: LayoutProps) {
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-4">Powered By</h3>
+              <h3 className="font-semibold text-lg mb-4">Developed By</h3>
               <a
                 href="https://www.traigent.ai/"
                 target="_blank"
@@ -146,7 +146,7 @@ export default function Layout({ children }: LayoutProps) {
                 />
               </a>
               <p className="text-xs text-muted-foreground mt-3">
-                AI Agent Optimization Platform
+                Open specification maintained by Traigent.
               </p>
             </div>
           </div>

@@ -1,4 +1,4 @@
-"""Quick helper for Chapter 2 to inspect a TVL spec and print the knobs."""
+"""Quick helper to inspect a TVL spec and print the knobs."""
 from pathlib import Path
 import textwrap
 

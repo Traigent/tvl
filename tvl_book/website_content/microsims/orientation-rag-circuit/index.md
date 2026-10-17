@@ -17,7 +17,7 @@ governed tuning variable:
 - **Rerank Weight** → amplifier gate; boosts answer quality at a cost.
 - **Response Tokens** → output capacitor; longer responses draw more energy.
 
-The circuit read-outs mirror TVO objectives:
+The circuit read-outs mirror the objectives of the example TVL module:
 
 | Meter | TVL Metric | Formula |
 |-------|------------|---------|
@@ -31,12 +31,12 @@ Constraints light up when violated:
 - `cost_usd <= 0.12`
 - `rerank_weight >= 0.3` whenever `retriever_top_k >= 40`
 
-Use the preset buttons to replay events described in the book:
+Use the preset buttons to replay three scenarios:
 
-1. **Baseline** – Starting point for Chapter 2’s walkthrough.
-2. **Latency Spike** – Mirrors Chapter 3’s constraint drill.
-3. **Budget Shift** – Reproduces the Chapter 5 integration scenario.
+1. **Baseline** – The starting configuration.
+2. **Latency Spike** – A latency increase that pushes the circuit toward a constraint violation.
+3. **Budget Shift** – A change of cost budget that shifts the trade-off between objectives.
 
-For course authors, the `microsim_presets.json` file matches the format emitted by
+The `microsim_presets.json` file matches the format emitted by
 `python -m tvl_tools.microsim_bridge`. Drop updated specs in your repo, run the bridge,
 and the page reloads with fresh scenarios.

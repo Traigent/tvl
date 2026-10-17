@@ -145,22 +145,6 @@ export default function Examples() {
       section: "overlays",
     },
     {
-      name: "Integration Pipeline",
-      path: "/examples/book/integration_pipeline.sh",
-      description:
-        "Shell pipeline showing where TVL validation and promotion-adjacent checks fit in engineering workflows.",
-      section: "ci",
-      language: "bash",
-    },
-    {
-      name: "Integration Manifest",
-      path: "/examples/book/integration_manifest.yaml",
-      description:
-        "Manifest example linking the TVL spec, optimization artifacts, and validation evidence.",
-      section: "ci",
-      language: "yaml",
-    },
-    {
       name: "Banded Objective (TOST)",
       path: "/examples/validation-phase5/banded-objective-tost.tvl.yml",
       description:
@@ -252,13 +236,6 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
       title: "Learn Overlays",
       description:
         "Read these in order: base module, staging overlay, production overlay, then hotfix overlay. The goal is to see safe narrowing clearly.",
-    },
-    {
-      id: "ci",
-      step: "6",
-      title: "See CI And Manifests",
-      description:
-        "These files show where TVL checks sit in engineering workflows and what evidence gets captured alongside a promotion decision.",
     },
     {
       id: "advanced",
@@ -374,20 +351,6 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
         "This overlay only cuts the production surface down to one model and a smaller search budget.",
       runNext:
         "Return to the base module if you want to compare all three narrowing steps side by side.",
-    },
-    "/examples/book/integration_pipeline.sh": {
-      bestFor: "Understanding where TVL checks sit in an engineering pipeline.",
-      lookFor:
-        "Notice which checks happen before promotion and which artifacts are validated after runs complete.",
-      runNext:
-        "Open the integration manifest alongside the script.",
-    },
-    "/examples/book/integration_manifest.yaml": {
-      bestFor: "Seeing which artifacts a deployment record keeps around a TVL decision.",
-      lookFor:
-        "The manifest ties together the spec, lock/provenance artifacts, validation suite, and rollout checks.",
-      runNext:
-        "Open the pipeline script if you want to see when each artifact gets produced or consumed.",
     },
     "/examples/validation-phase5/banded-objective-tost.tvl.yml": {
       bestFor: "Looking up the exact syntax of banded objectives and TOST fields.",

@@ -77,6 +77,18 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Example**: `domain: { registry: model_catalog }`
 - **Remediation**: Use explicit enumeration until registry support is available.
 
+### `duplicate_domain_value`
+- **Severity**: error
+- **Description**: An enumerated TVAR domain lists the same member more than once. Repeated members silently collapse into one choice, which inflates the apparent domain size and makes encoding ambiguous.
+- **Example**: `domain: ["gpt-4o", "gpt-4o"]`
+- **Remediation**: Remove the repeated value.
+
+### `invalid_tuple_domain`
+- **Severity**: error
+- **Description**: A tuple TVAR domain uses the `components` form, but `components` is not a non-empty list.
+- **Example**: `type: tuple[int, int]` with `domain: { components: [] }`
+- **Remediation**: List at least one component domain under `components`.
+
 ---
 
 ## Structural Constraint Errors
@@ -147,6 +159,12 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Example**: `expr: "temperature = 0.5"` where temperature is float
 - **Remediation**: Consider using range constraints instead of exact equality.
 
+### `malformed_structural_constraint`
+- **Severity**: error
+- **Description**: A `constraints.structural` entry does not have the required shape. Each entry must be an object holding either `when` and `then`, or a single `expr`. A non-object entry, an entry with only one of `when`/`then`, and an entry with unrecognised keys are rejected, because the constraint would otherwise be silently ignored. An entry that mixes an incomplete `when`/`then` with `expr` is rejected by the JSON Schema; the lint does not yet flag that form.
+- **Example**: `structural: ["model = 'gpt-4o'"]` (a bare string) or `{ when: "zero_shot = true" }` (no `then`)
+- **Remediation**: Write each entry as `{ when: ..., then: ... }` or `{ expr: ... }`.
+
 ---
 
 ## Derived Constraint Errors
@@ -168,6 +186,12 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Description**: Operational precondition references something other than `env.context.*`.
 - **Example**: `require: "daily_budget_remaining >= 10"` or `require: "env.context.service_price_usd <= 1.5"`
 - **Remediation**: Put numeric operational symbols under `environment.context` and reference them as `env.context.<name>`.
+
+### `derived_references_bindings`
+- **Severity**: error
+- **Description**: An operational precondition references `env.bindings.*`. Bindings are opaque deployment references (such as a region name or an index id), not numeric operational symbols.
+- **Example**: `require: "env.bindings.llm_gateway <= 1"`
+- **Remediation**: Put the numeric value under `environment.context` and reference it as `env.context.<name>`.
 
 ---
 
@@ -221,6 +245,24 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Example**: `band: { test: "t-test" }`
 - **Remediation**: Use `test: TOST` (only supported test).
 
+### `empty_objectives`
+- **Severity**: error
+- **Description**: The module declares no objectives. At least one objective is required.
+- **Example**: `objectives: []`
+- **Remediation**: Declare at least one objective with a `direction` (or a `band`).
+
+### `duplicate_objective`
+- **Severity**: error
+- **Description**: Two objectives share the same `name`.
+- **Example**: Two entries with `name: quality`
+- **Remediation**: Give each objective a unique name.
+
+### `invalid_direction`
+- **Severity**: error
+- **Description**: An objective without a `band` has a `direction` other than `maximize` or `minimize`.
+- **Example**: `{ name: quality, direction: up }`
+- **Remediation**: Use `direction: maximize` or `direction: minimize`.
+
 ---
 
 ## Promotion Policy Errors
@@ -259,7 +301,18 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Severity**: error
 - **Description**: Chance constraint confidence not in valid range.
 - **Example**: `confidence: 1.5` or `confidence: 0`
-- **Remediation**: Set confidence in (0, 1].
+- **Remediation**: Set confidence strictly between 0 and 1.
+### `unknown_min_effect_objective`
+- **Severity**: error
+- **Description**: A key in `promotion_policy.min_effect` does not name a declared objective.
+- **Example**: `min_effect: { latency: 0.1 }` when no objective is named `latency`
+- **Remediation**: Rename the key to match a declared objective, or declare the objective.
+
+### `invalid_chance_threshold`
+- **Severity**: error
+- **Description**: A chance constraint `threshold` is not a number in [0, 1].
+- **Example**: `threshold: 1.5`
+- **Remediation**: Set `threshold` to a violation-rate bound between 0 and 1.
 
 ---
 
@@ -294,6 +347,394 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Description**: Convergence window is not a positive integer.
 - **Example**: `convergence: { metric: hypervolume_improvement, window: 0 }`
 - **Remediation**: Set window to a positive integer.
+
+---
+
+## Calibrated Variable Errors (TVL 1.1)
+
+These codes come from the `cvars` block introduced by RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`). A calibrated variable (CVAR) is governed but never searched: it does not enter the configuration space or structural SAT.
+
+### `invalid_cvars`
+- **Severity**: error
+- **Description**: `cvars` is present but is not a list of declarations.
+- **Example**: `cvars: { name: router.margin_threshold }`
+- **Remediation**: Declare `cvars` as a list of declaration objects.
+
+### `invalid_cvar_decl`
+- **Severity**: error
+- **Description**: An entry in `cvars` is not an object.
+- **Example**: `cvars: ["router.margin_threshold"]`
+- **Remediation**: Replace the entry with an object that has `name`, `type`, and `calibration`.
+
+### `invalid_cvar_name`
+- **Severity**: error
+- **Description**: A CVAR has a missing or invalid `name`. Names on the 1.1 surfaces are ASCII dotted identifiers: letters, digits and underscores, with no hyphens and no empty segments.
+- **Example**: `name: "router margin"`
+- **Remediation**: Use an identifier such as `router.margin_threshold`.
+
+### `duplicate_cvar`
+- **Severity**: error
+- **Description**: A CVAR name is declared more than once.
+- **Example**: Two `cvars` entries with `name: router.margin_threshold`
+- **Remediation**: Remove the duplicate or rename one declaration.
+
+### `cvar_shadows_tvar`
+- **Severity**: error
+- **Description**: A CVAR uses the same name as a TVAR. TVARs, CVARs, and policies share one declaration namespace.
+- **Example**: A TVAR `model` and a CVAR `model`
+- **Remediation**: Rename one of the two declarations.
+
+### `unsupported_cvar_type`
+- **Severity**: error
+- **Description**: A CVAR `type` is not `bool`, `int`, `float`, or `enum[...]`. Tuple and callable CVARs are deferred.
+- **Example**: `type: tuple[int, int]`
+- **Remediation**: Use a supported scalar or enum type.
+
+### `cvar_missing_source`
+- **Severity**: error
+- **Description**: A CVAR has no `calibration.source` string naming the evidence pool its value is fit from.
+- **Example**: `calibration: { signal: vote_margin }`
+- **Remediation**: Add `calibration.source`.
+
+### `missing_ref`
+- **Severity**: error
+- **Description**: A namespace reference does not resolve to a declaration of the required kind. It is raised for a CVAR `calibration.depends_on` entry that is not a declared TVAR, for a policy gate `threshold` that is not a declared CVAR, and for a composite `threshold` or `cardinality` that does not resolve (see the composite section).
+- **Example**: `calibration: { source: pool, depends_on: [no_such_tvar] }`
+- **Remediation**: Declare the referenced name, fix the typo, or reference a declaration of the right kind.
+
+### `invalid_cvar_governance`
+- **Severity**: error
+- **Description**: `governance.require_calibration` on a CVAR is not a boolean.
+- **Example**: `governance: { require_calibration: "yes" }`
+- **Remediation**: Use `true` or `false`.
+
+### `cvar_in_structural_constraint`
+- **Severity**: error
+- **Description**: A structural constraint references a CVAR. CVARs are governed but not searched, so they cannot appear in the structural constraint set.
+- **Example**: `expr: "router.margin_threshold <= 0.5"`
+- **Remediation**: Constrain a TVAR instead, or substitute the CVAR's value as a constant.
+
+---
+
+## Operational Policy Errors (TVL 1.1)
+
+These codes come from the `policies` block introduced by RFC 0001. Policies are operational declarations; the first supported strategy is `cascade`. Several of these codes are shared with composite cascades (see below).
+
+### `invalid_policies`
+- **Severity**: error
+- **Description**: `policies` is present but is not a list of declarations.
+- **Example**: `policies: { name: cheap_strong_cascade }`
+- **Remediation**: Declare `policies` as a list of declaration objects.
+
+### `invalid_policy_decl`
+- **Severity**: error
+- **Description**: An entry in `policies` is not an object.
+- **Example**: `policies: ["cheap_strong_cascade"]`
+- **Remediation**: Replace the entry with an object that has `name`, `kind`, `strategy`, `stages`, and `gates`.
+
+### `invalid_policy_name`
+- **Severity**: error
+- **Description**: A policy has a missing or invalid `name` (see `invalid_cvar_name` for the identifier rule).
+- **Example**: `name: "cheap strong"`
+- **Remediation**: Use an identifier such as `cheap_strong_cascade`.
+
+### `duplicate_policy`
+- **Severity**: error
+- **Description**: A policy name is declared more than once.
+- **Example**: Two `policies` entries with `name: cheap_strong_cascade`
+- **Remediation**: Remove the duplicate or rename one declaration.
+
+### `policy_name_conflict`
+- **Severity**: error
+- **Description**: A policy uses a name that is also declared as a TVAR or a CVAR. TVARs, CVARs, and policies share one declaration namespace.
+- **Example**: A policy and a CVAR both named `router.margin_threshold`
+- **Remediation**: Rename the policy.
+
+### `invalid_policy_kind`
+- **Severity**: error
+- **Description**: A policy `kind` is not the literal `policy`.
+- **Example**: `kind: cvar`
+- **Remediation**: Set `kind: policy`.
+
+### `unknown_policy_strategy`
+- **Severity**: error
+- **Description**: A policy `strategy` is not in the v1 registry, which contains only `cascade`.
+- **Example**: `strategy: ensemble`
+- **Remediation**: Use `strategy: cascade`.
+
+### `cascade_arity`
+- **Severity**: error
+- **Description**: A cascade has the wrong number of gates. A policy needs at least one stage and exactly one gate between consecutive stages, so `|gates| = |stages| - 1`. A composite cascade must satisfy `|gates| = |arms| - 1`.
+- **Example**: A policy with `stages: [cheap, mid, strong]` and a single gate
+- **Remediation**: Add or remove gates until the count is one less than the number of stages (or arms).
+
+### `duplicate_stage`
+- **Severity**: error
+- **Description**: The same stage identifier appears more than once in a policy `stages` list, or more than once among the arms of a composite.
+- **Example**: `stages: [cheap, cheap]`
+- **Remediation**: Give each stage a unique identifier.
+
+### `unknown_gate_kind`
+- **Severity**: error
+- **Description**: A gate `kind` is not in the registry. Policy gates must be `margin_below`. Composite cascade gates must be `margin_below` or `signal_below`.
+- **Example**: A policy gate with `kind: signal_below`
+- **Remediation**: Use a registered gate kind for the construct.
+
+---
+
+## Namespace and Scope Diagnostics (TVL 1.1)
+
+RFC 0001 gives TVARs, CVARs, and policies one shared declaration namespace and an optional ownership `scope`.
+
+### `invalid_scope`
+- **Severity**: error
+- **Description**: A declaration `scope` is not an object, has a field other than `node`, `agent`, or `workflow`, or has a value that is not a valid identifier.
+- **Example**: `scope: { team: router }`
+- **Remediation**: Use only `node`, `agent`, and `workflow`, each set to an identifier string.
+
+### `scope_prefix_mismatch`
+- **Severity**: warning
+- **Description**: A dotted declaration name starts with a prefix that differs from its `scope.node`. The metadata is informational, but the mismatch usually signals a copy-and-paste error.
+- **Example**: `name: router.margin_threshold` with `scope: { node: other }`
+- **Remediation**: Make the name prefix and `scope.node` agree, or drop the redundant `scope`.
+
+### `namespace_prefix_collision`
+- **Severity**: error (warning in legacy modules)
+- **Description**: A declared name is a strict dotted prefix of another declared name, which makes attribute-style access ambiguous. The diagnostic is an error when the module uses a 1.1 construct (`cvars`, `policies`, `promotion_policy.require_calibration`, or a TVAR `scope`) and a warning otherwise.
+- **Example**: TVARs named `retriever` and `retriever.k`
+- **Remediation**: Rename one of the declarations so that no name is a dotted prefix of another.
+
+---
+
+## Strict Calibration Errors (TVL 1.1)
+
+These codes validate `promotion_policy.require_calibration`, the strict evidence mode defined by RFC 0001.
+
+### `invalid_require_calibration`
+- **Severity**: error
+- **Description**: `promotion_policy.require_calibration` is not an object with a boolean `enabled` field.
+- **Example**: `require_calibration: { enabled: "yes" }`
+- **Remediation**: Set `enabled: true` or `enabled: false`.
+
+### `invalid_calibration_context`
+- **Severity**: error
+- **Description**: `hash_covered_context` is not a list, names a key that is not a freshness-context extension key, or repeats a key. The mandatory core of the context is implicit and cannot be configured. The extension keys are `stage_versions`, `model_versions`, `budget_assumptions`, `cost_assumptions`, and `signal_inputs`.
+- **Example**: `hash_covered_context: [dataset_version]`
+- **Remediation**: List each extension key at most once, using only the keys above.
+
+---
+
+## Composite Knob Errors (TVL 1.2)
+
+These codes come from the `composites` block introduced by RFC 0002 (`formalization/rfc-0002-composite-knobs.md`): named bundles of member knobs under a control-flow shape (`cascade`, `ensemble`, or `loop`). A composite is a namespace and expansion unit; it never binds a value. Codes shared with the 1.1 constructs (`missing_ref`, `cascade_arity`, `duplicate_stage`, `unknown_gate_kind`) are described above.
+
+**Declarations and shape**
+
+### `invalid_composites`
+- **Severity**: error
+- **Description**: `composites` is present but is not a list of declarations.
+- **Example**: `composites: { name: answerer }`
+- **Remediation**: Declare `composites` as a list of declaration objects.
+
+### `invalid_composite_decl`
+- **Severity**: error
+- **Description**: An entry in `composites` is not an object.
+- **Example**: `composites: ["answerer"]`
+- **Remediation**: Replace the entry with an object that has `name`, `kind`, and the fields for that kind.
+
+### `invalid_composite_name`
+- **Severity**: error
+- **Description**: A composite has a missing or invalid `name` (see `invalid_cvar_name` for the identifier rule).
+- **Example**: `name: "my composite"`
+- **Remediation**: Use an identifier such as `answerer`.
+
+### `duplicate_composite`
+- **Severity**: error
+- **Description**: A composite name is declared more than once.
+- **Example**: Two `composites` entries with `name: answerer`
+- **Remediation**: Remove the duplicate or rename one declaration.
+
+### `composite_shadows_name`
+- **Severity**: error
+- **Description**: A composite uses a name already declared as a TVAR, CVAR, or policy. All four share one namespace.
+- **Example**: A composite named `temperature` when a TVAR `temperature` exists
+- **Remediation**: Rename the composite.
+
+### `unknown_composite_kind`
+- **Severity**: error
+- **Description**: A composite `kind` is not in the sealed v1 registry (`cascade`, `ensemble`, `loop`).
+- **Example**: `kind: router`
+- **Remediation**: Use one of the three registered kinds.
+
+### `unknown_composite_field`
+- **Severity**: error
+- **Description**: A composite has a field that is unknown, or that belongs to a different kind. Composite shapes are closed.
+- **Example**: A `cascade` composite with `max_iters: 3` (a loop field)
+- **Remediation**: Remove the field, or change `kind` to the constructor that owns it.
+
+### `composite_binds_value`
+- **Severity**: error
+- **Description**: A composite carries `value`, `default`, or `binding`. A composite never binds a value; it only groups other knobs.
+- **Example**: `value: 1` on a composite
+- **Remediation**: Remove the field and bind values on the member TVARs or CVARs.
+
+### `composite_cycle`
+- **Severity**: error
+- **Description**: Composites nest each other cyclically, so expansion would not terminate.
+- **Example**: Composite `a` has a `{ composite: b }` arm and `b` has a `{ composite: a }` arm
+- **Remediation**: Break the cycle so that nesting is acyclic.
+
+**Arms**
+
+### `ambiguous_arm`
+- **Severity**: error
+- **Description**: A bare-identifier arm is always a stage, but its name is also a declared composite name.
+- **Example**: An arm `voter` when a composite `voter` exists
+- **Remediation**: Nest the composite with the tagged form `{ composite: voter }`, or rename the stage.
+
+### `invalid_arm_shape`
+- **Severity**: error
+- **Description**: An arm is not one of the three allowed forms: a bare stage identifier, `{ stage, tuned_params? }`, or `{ composite }`. Mixing the stage and composite forms, adding unknown keys, or adding `tuned_params` to a composite-tagged arm is rejected.
+- **Example**: `{ stage: s, composite: voter }`
+- **Remediation**: Use exactly one of the allowed forms.
+
+### `invalid_tuned_param`
+- **Severity**: error
+- **Description**: A `tuned_params` entry does not resolve to a declared TVAR. CVARs, policies, and composites are not tuned parents.
+- **Example**: `tuned_params: [router.margin_threshold]` where that name is a CVAR
+- **Remediation**: List only declared TVAR names.
+
+### `missing_composite_ref`
+- **Severity**: error
+- **Description**: A `{ composite: name }` arm names a composite that is not declared.
+- **Example**: `{ composite: ghost }`
+- **Remediation**: Declare the composite or fix the name.
+
+### `empty_arms`
+- **Severity**: error
+- **Description**: A cascade or ensemble declares no arms.
+- **Example**: `arms: []`
+- **Remediation**: Add at least one arm.
+
+**Cascade gates and signals**
+
+### `gate_kind_placement_mismatch`
+- **Severity**: error
+- **Description**: A gate kind is used under the wrong placement. `margin_below` is post-only; `signal_below` is pre-only. When `placement` is omitted it defaults to `post`.
+- **Example**: A `margin_below` gate under `placement: pre`
+- **Remediation**: Change the gate kind or the cascade `placement`.
+
+### `gate_arm_incompatible`
+- **Severity**: error
+- **Description**: A `margin_below` gate reads vote statistics from an arm that does not produce them. The gated arm must be a stage or a `majority_vote` ensemble.
+- **Example**: A `margin_below` gate whose gated arm is a `judge_max` ensemble
+- **Remediation**: Gate a margin-bearing arm, or use a `signal_below` gate with a pre placement.
+
+### `missing_gate_signal`
+- **Severity**: error
+- **Description**: A `signal_below` gate has no `signal` field.
+- **Example**: `{ kind: signal_below, threshold: dispatch.route_threshold }`
+- **Remediation**: Add `signal: { signal: <id> }`.
+
+### `invalid_signal_use`
+- **Severity**: error
+- **Description**: A signal use is malformed. It must be an object `{ signal, inputs? }` where `signal` is a string and `inputs` is a list of identifiers.
+- **Example**: `signal: { signal: vote_margin, inputs: draft }`
+- **Remediation**: Use `signal: { signal: vote_margin, inputs: [draft] }`.
+
+### `invalid_threshold_type`
+- **Severity**: error
+- **Description**: A gate, accept, or stop threshold CVAR is not `int` or `float` typed.
+- **Example**: A threshold CVAR with `type: enum[str]`
+- **Remediation**: Use a numeric CVAR as the threshold.
+
+### `missing_calibration_signal`
+- **Severity**: error
+- **Description**: A composite uses a CVAR as a threshold, but the CVAR declares no `calibration.signal`. The composite obliges it to name the signal the construct measures.
+- **Example**: A threshold CVAR with `calibration: { source: margin_eval_pool }`
+- **Remediation**: Add `calibration.signal` with the signal the gate, accept, or stop reads.
+
+### `signal_mismatch`
+- **Severity**: error
+- **Description**: A threshold CVAR is calibrated against a different signal than the one its construct measures, so its freshness check would be vacuous.
+- **Example**: A `margin_below` gate whose threshold CVAR has `calibration.signal: other_signal` instead of `vote_margin`
+- **Remediation**: Set `calibration.signal` to the signal the construct measures.
+
+### `unbound_signal_inputs`
+- **Severity**: error
+- **Description**: A signal use declares `inputs`, but they are not freshness-bound. `promotion_policy.require_calibration.hash_covered_context` must include `signal_inputs`, and `promotion_policy.require_calibration.signal_inputs` must equal the use-site input list.
+- **Example**: A stop signal with `inputs: [draft]` and `hash_covered_context: [model_versions]`
+- **Remediation**: Add `signal_inputs` to `hash_covered_context` and set the matching `signal_inputs` list.
+
+### `missing_composite_parent`
+- **Severity**: error
+- **Description**: A threshold CVAR's `calibration.depends_on` omits a TVAR that parameterizes the arm the gate observes, so the threshold would not go stale when that TVAR changes.
+- **Example**: A post-cascade whose cheap arm is tuned by `cheap_model` and `temperature`, with a threshold CVAR that depends only on `cheap_model`
+- **Remediation**: Add every TVAR that parameterizes the observed arm to `depends_on`.
+
+**Ensembles**
+
+### `cardinality_arity_mismatch`
+- **Severity**: error
+- **Description**: An ensemble's `cardinality` does not match its arm count. A sampling-form ensemble (exactly one arm) requires a `cardinality`; a committee-form ensemble (more than one arm) must not declare one.
+- **Example**: An ensemble with one arm and no `cardinality`
+- **Remediation**: Add `cardinality` to a one-arm ensemble, or remove it from a multi-arm ensemble.
+
+### `invalid_cardinality_type`
+- **Severity**: error
+- **Description**: `cardinality` resolves to a declaration whose type is not `int`.
+- **Example**: `cardinality: temperature` where `temperature` is a float TVAR
+- **Remediation**: Reference an int-typed TVAR or CVAR.
+
+### `unknown_aggregate_kind`
+- **Severity**: error
+- **Description**: An ensemble `aggregate.kind` is not `majority_vote` or `judge_max`, or an `accept.stat` is not `vote_margin` or `vote_agreement`.
+- **Example**: `aggregate: { kind: weighted_vote }`
+- **Remediation**: Use a registered aggregate kind and accept statistic.
+
+### `missing_judge`
+- **Severity**: error
+- **Description**: A `judge_max` aggregate has no `judge` arm.
+- **Example**: `aggregate: { kind: judge_max }`
+- **Remediation**: Add a `judge` arm.
+
+**Loops**
+
+### `invalid_max_iters`
+- **Severity**: error
+- **Description**: A loop `max_iters` is not an integer greater than or equal to 1. A loop must be total, so it needs a finite iteration bound.
+- **Example**: `max_iters: 0`
+- **Remediation**: Set `max_iters` to an integer of at least 1.
+
+### `unknown_stop_kind`
+- **Severity**: error
+- **Description**: A loop `stop.kind` is not in the registry (`signal_accept`, `external_accept`, `exhausted`).
+- **Example**: `stop: { kind: converged }`
+- **Remediation**: Use a registered stop kind.
+
+### `missing_stop_threshold`
+- **Severity**: error
+- **Description**: A `signal_accept` stop has no `threshold`.
+- **Example**: `stop: { kind: signal_accept, signal: { signal: draft_quality } }`
+- **Remediation**: Add `threshold` naming a numeric CVAR.
+
+### `missing_stop_signal`
+- **Severity**: error
+- **Description**: A `signal_accept` stop has no `signal`.
+- **Example**: `stop: { kind: signal_accept, threshold: refine.stop_threshold }`
+- **Remediation**: Add `signal: { signal: <id> }`.
+
+### `missing_stop_predicate`
+- **Severity**: error
+- **Description**: An `external_accept` stop has no `predicate`.
+- **Example**: `stop: { kind: external_accept }`
+- **Remediation**: Add `predicate`.
+
+### `stop_signal_outside_state`
+- **Severity**: error
+- **Description**: A stop signal reads input keys that are not declared in the loop's `state_keys`.
+- **Example**: `state_keys: [draft]` with `signal: { signal: draft_quality, inputs: [other] }`
+- **Remediation**: Declare each input in `state_keys`, or read only declared keys.
 
 ---
 
@@ -398,6 +839,73 @@ These warnings indicate that the module uses features outside the formally verif
 | `invalid_parallelism` | error | Exploration | Bad parallelism |
 | `invalid_convergence_threshold` | error | Exploration | Bad threshold |
 | `invalid_convergence_window` | error | Exploration | Bad window |
+| `duplicate_domain_value` | error | Domain | Repeated enum member |
+| `invalid_tuple_domain` | error | Domain | Bad tuple components |
+| `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
+| `derived_references_bindings` | error | Derived | Bindings in derived |
+| `empty_objectives` | error | Objective | No objectives |
+| `duplicate_objective` | error | Objective | Duplicate objective name |
+| `invalid_direction` | error | Objective | Bad direction |
+| `unknown_min_effect_objective` | error | Policy | min_effect key not an objective |
+| `invalid_chance_threshold` | error | Policy | Bad chance threshold |
+| `invalid_cvars` | error | CVAR (1.1) | cvars not a list |
+| `invalid_cvar_decl` | error | CVAR (1.1) | CVAR entry not an object |
+| `invalid_cvar_name` | error | CVAR (1.1) | Bad CVAR name |
+| `duplicate_cvar` | error | CVAR (1.1) | Duplicate CVAR |
+| `cvar_shadows_tvar` | error | CVAR (1.1) | CVAR reuses a TVAR name |
+| `unsupported_cvar_type` | error | CVAR (1.1) | Unsupported CVAR type |
+| `cvar_missing_source` | error | CVAR (1.1) | No calibration.source |
+| `missing_ref` | error | CVAR (1.1) | Reference does not resolve |
+| `invalid_cvar_governance` | error | CVAR (1.1) | Bad governance flag |
+| `cvar_in_structural_constraint` | error | CVAR (1.1) | CVAR in structural constraint |
+| `invalid_policies` | error | Policy (1.1) | policies not a list |
+| `invalid_policy_decl` | error | Policy (1.1) | Policy entry not an object |
+| `invalid_policy_name` | error | Policy (1.1) | Bad policy name |
+| `duplicate_policy` | error | Policy (1.1) | Duplicate policy |
+| `policy_name_conflict` | error | Policy (1.1) | Policy reuses a TVAR/CVAR name |
+| `invalid_policy_kind` | error | Policy (1.1) | kind is not `policy` |
+| `unknown_policy_strategy` | error | Policy (1.1) | Unknown strategy |
+| `cascade_arity` | error | Policy (1.1) | Wrong gate count |
+| `duplicate_stage` | error | Policy (1.1) | Duplicate stage |
+| `unknown_gate_kind` | error | Policy (1.1) | Unknown gate kind |
+| `invalid_scope` | error | Namespace (1.1) | Bad scope |
+| `scope_prefix_mismatch` | warning | Namespace (1.1) | Name prefix differs from scope.node |
+| `namespace_prefix_collision` | error/warning | Namespace (1.1) | Name is a prefix of another |
+| `invalid_require_calibration` | error | Calibration (1.1) | Bad require_calibration |
+| `invalid_calibration_context` | error | Calibration (1.1) | Bad hash_covered_context |
+| `invalid_composites` | error | Composite (1.2) | composites not a list |
+| `invalid_composite_decl` | error | Composite (1.2) | Composite entry not an object |
+| `invalid_composite_name` | error | Composite (1.2) | Bad composite name |
+| `duplicate_composite` | error | Composite (1.2) | Duplicate composite |
+| `composite_shadows_name` | error | Composite (1.2) | Composite reuses a name |
+| `unknown_composite_kind` | error | Composite (1.2) | Unknown kind |
+| `unknown_composite_field` | error | Composite (1.2) | Field not allowed for kind |
+| `composite_binds_value` | error | Composite (1.2) | Composite binds a value |
+| `composite_cycle` | error | Composite (1.2) | Cyclic nesting |
+| `ambiguous_arm` | error | Composite (1.2) | Arm collides with composite |
+| `invalid_arm_shape` | error | Composite (1.2) | Bad arm form |
+| `invalid_tuned_param` | error | Composite (1.2) | tuned_params not a TVAR |
+| `missing_composite_ref` | error | Composite (1.2) | Nested composite undeclared |
+| `empty_arms` | error | Composite (1.2) | No arms |
+| `gate_kind_placement_mismatch` | error | Composite (1.2) | Gate kind vs placement |
+| `gate_arm_incompatible` | error | Composite (1.2) | Gated arm has no margin |
+| `missing_gate_signal` | error | Composite (1.2) | signal_below without signal |
+| `invalid_signal_use` | error | Composite (1.2) | Malformed signal use |
+| `invalid_threshold_type` | error | Composite (1.2) | Non-numeric threshold CVAR |
+| `missing_calibration_signal` | error | Composite (1.2) | Threshold CVAR has no signal |
+| `signal_mismatch` | error | Composite (1.2) | Wrong calibration signal |
+| `unbound_signal_inputs` | error | Composite (1.2) | Signal inputs not freshness-bound |
+| `missing_composite_parent` | error | Composite (1.2) | depends_on omits arm TVAR |
+| `cardinality_arity_mismatch` | error | Composite (1.2) | Cardinality vs arm count |
+| `invalid_cardinality_type` | error | Composite (1.2) | Cardinality is not int |
+| `unknown_aggregate_kind` | error | Composite (1.2) | Unknown aggregate/stat |
+| `missing_judge` | error | Composite (1.2) | judge_max without judge |
+| `invalid_max_iters` | error | Composite (1.2) | max_iters < 1 |
+| `unknown_stop_kind` | error | Composite (1.2) | Unknown stop kind |
+| `missing_stop_threshold` | error | Composite (1.2) | signal_accept without threshold |
+| `missing_stop_signal` | error | Composite (1.2) | signal_accept without signal |
+| `missing_stop_predicate` | error | Composite (1.2) | external_accept without predicate |
+| `stop_signal_outside_state` | error | Composite (1.2) | Stop input not in state_keys |
 | `schema_error` | error | Schema | JSON Schema violation |
 | `unverifiable_registry_domain` | warning | Formal | Registry domain used |
 | `unverifiable_callable_type` | warning | Formal | Callable type used |

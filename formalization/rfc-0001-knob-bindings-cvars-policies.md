@@ -2,11 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | **ACCEPTED** — owner acceptance recorded 2026-06-05 (nimrod, interactive) after cross-model ACCEPT ×2 (anchored round 4 + fresh-pass confirmation); see §10 |
+| **Status** | **ACCEPTED** (2026-06-05) |
 | **Target language version** | TVL 1.1 (conservative extension of 1.0) |
-| **Tracking** | `FR-TVL-CVARS-POLICIES-V1` · ChangeSession `cs_607ce2f4f8833804` |
 | **Phases covered** | Phase 0 (scope freeze) · Phase 1 (formal semantics) · Phase 2 (property claims) |
-| **Downstream gate** | Acceptance of this RFC + green Phase 3/4 validators unblock all SDK implementation |
 
 ## 1. Motivation
 
@@ -190,7 +188,7 @@ rejection conditions:
 
 **Resolution acceptance is exactly the complement of rejection plus calibrator
 success** (this single definition makes soundness and completeness two directions of
-one biconditional — cross-model review round 1, finding 1):
+one biconditional):
 
 ```
 Accept(t, f, M, 𝓔_cal) ⟺ ¬(R1 ∨ R2 ∨ R3 ∨ R4 ∨ R5 ∨ R6 ∨ R7 ∨ R8)
@@ -207,7 +205,7 @@ Accept(t, f, M, 𝓔_cal) ⟺ ¬(R1 ∨ R2 ∨ R3 ∨ R4 ∨ R5 ∨ R6 ∨ R7 �
 ### 3.5 Certificates and freshness
 
 A **certificate** binds a *specific calibrated value of a specific CVAR* to the
-exact context it was fit under (cross-model review round 1, finding 2 — the subject
+exact context it was fit under (the subject
 is mandatory):
 
 ```
@@ -226,10 +224,10 @@ makes Property P8 checkable at the schema level. Implementations needing more
 context attach it *outside* the certificate object.
 
 The decision vocabulary is shared with the per-config guarantee certificates already
-in TraigentSchema (`guarantee_certificate_schema.json`): **one certificate ontology,
+in the Traigent platform: **one certificate ontology,
 two scopes** — per-config selection there, per-CVAR value here.
 
-**Claim scope (clarification, 2026-06-06 — owner wording audit).** A certificate is
+**Claim scope (clarification, 2026-06-06).** A certificate is
 a *per-variable, procedural* claim: the declared calibration procedure ran, over the
 declared evidence pool, under the freshness context hashed into `issued_hash` — and,
 where the `TargetProperty` carries a statistical bound, that bound's subject is the
@@ -245,8 +243,7 @@ Implementations and user-facing copy MUST NOT present a certified selection as a
 guarantee of the configuration's observed metric levels.
 
 **Freshness context.** The context has a **mandatory core** — always hashed,
-non-negotiable — and **optional extensions** (cross-model review round 1,
-finding 3 — the module can never opt out of the core):
+non-negotiable — and **optional extensions** (the module can never opt out of the core):
 
 ```
 ctx_core = ( ctx_schema_version,        — version of this context schema AND the
@@ -267,7 +264,7 @@ ctx_ext  ⊆ { stage_versions, model_versions, budget_assumptions, cost_assumpti
 
 **Validity** — every certificate field participates; the audit copies (`target`,
 `evidence`) must agree with the live context so a certificate cannot *display*
-one context while *hashing* another (cross-model review round 2, new finding 1):
+one context while *hashing* another:
 
 ```
 valid(cert, n, v, ctx_now) ⟺ ctx_now.cvar_name = n
@@ -281,7 +278,7 @@ valid(cert, n, v, ctx_now) ⟺ ctx_now.cvar_name = n
                             ∧ cert.decision = CERTIFIED
 ```
 
-The first conjunct (`ctx_now.cvar_name = n`, cross-model review round 3) closes
+The first conjunct (`ctx_now.cvar_name = n`) closes
 the forged-subject hole: a certificate issued against CVAR B's context cannot
 validate CVAR A by forging `subject.cvar = A`, because the live context
 presented for A must itself name A — and then `issued_hash` (which covers
@@ -322,7 +319,7 @@ degrade to any default, cached, or "best-effort" value. Outside strict modes, a
 declared `fallback` fixed value MAY be used; using it is observable (recorded in the
 resolution output), never silent.
 
-**Hash canonicalization `H_c`** (cross-model review round 1, finding 4): `H_c(x)` =
+**Hash canonicalization `H_c`**: `H_c(x)` =
 SHA-256 over the **RFC 8785 (JSON Canonicalization Scheme)** serialization of `x`,
 with these TVL-specific restrictions on the value space:
 
@@ -343,7 +340,7 @@ hashes).
 ### 3.6 Strict promotion fail-closed semantics
 
 A module-with-resolution is in a **strict evidence mode** iff any of the following
-holds (cross-model review round 1, finding 5 — per-CVAR governance included):
+holds (per-CVAR governance included):
 
 ```
 strict(M, c) ⟺ promotion_policy.require_calibration.enabled
@@ -386,8 +383,7 @@ ambiguity in favor of the implementations, then adds the minimum scope structure
 1. **Identity is the full dotted string.** `retriever.k` is one name. Segments have
    no intrinsic semantics. (Status quo, now normative — P1-preserving.)
 2. **Lexical rule** (single normative identifier grammar, aligned across EBNF,
-   schema `pattern`, parser, and lints in Phase 4 — cross-model review round 1,
-   finding 12): `Ident ::= Seg ('.' Seg)*` with `Seg ::= [A-Za-z_][A-Za-z0-9_]*` —
+   schema `pattern`, parser, and lints in Phase 4): `Ident ::= Seg ('.' Seg)*` with `Seg ::= [A-Za-z_][A-Za-z0-9_]*` —
    ASCII, case-sensitive, no empty segments, no leading/trailing dots.
 3. **One shared declaration namespace.** `tvars`, `cvars`, and `policies` names live
    in a single namespace. Exact-string duplicates anywhere in it are errors
@@ -399,8 +395,7 @@ ambiguity in favor of the implementations, then adds the minimum scope structure
    an error (`missing_ref`, kind-checked). No relative resolution, no implicit
    prefixing, no fallback search (Property P6 — no silent shadowing). Policy
    `stages` are NOT namespace references (§3.8).
-5. **Prefix collisions are diagnosed conservatively** (cross-model review round 1,
-   finding 8): declaring both `retriever` and `retriever.k` triggers
+5. **Prefix collisions are diagnosed conservatively**: declaring both `retriever` and `retriever.k` triggers
    `namespace_prefix_collision` as a **warning** on any module that is valid TVL 1.0
    (validity is never affected — P1 holds for *all* 1.0 modules, not just the
    corpus), and as an **error** only in modules that use TVL 1.1 constructs
@@ -440,8 +435,7 @@ operational map and is explicitly **outside** the P8 privacy guarantee (it is mo
 configuration, not a persisted signal); persisted signals and certificates are the
 closed shapes of §3.5.
 
-**Stage references are deliberately not namespace references** (cross-model review
-round 1, finding 6): a stage names a runtime execution unit (model + prompt +
+**Stage references are deliberately not namespace references**: a stage names a runtime execution unit (model + prompt +
 sampling configuration), which is not a declarable TVL variable. They follow the
 existing precedent of `environment.bindings` — implementation-defined deployment
 identifiers. The lint surface is accordingly `duplicate_stage` (within a policy) and
@@ -452,8 +446,7 @@ the gate-count invariant, not unresolved-name errors.
 - `stages` is REQUIRED with `|stages| = m ≥ 1`; `gates` MUST satisfy
   `|gates| = m − 1` (so `m = 1` ⟺ `gates` absent/empty — the degenerate cascade
   that always returns its only stage's output).
-- Each gate's `threshold` resolves to a CVAR `θ_i` (the declared gate→CVAR binding —
-  cross-model review round 1, findings 6/11).
+- Each gate's `threshold` resolves to a CVAR `θ_i` (the declared gate→CVAR binding).
 - For input `x`:
 
 ```
@@ -464,7 +457,7 @@ the gate-count invariant, not unresolved-name errors.
   variable, not part of the policy), votes over caller-defined equivalence keys, and
   exposes content-free vote statistics. The v1 gate predicate is
   `escalate ⟺ margin < θ_i`.
-- **Totality and determinism** (cross-model review round 1, finding 11):
+- **Totality and determinism**:
   - *Empty/abstain-only vote* (no valid keys): `margin = 0`, hence the gate
     escalates for any `θ_i > 0`; `θ_i = 0` means "never escalate" by the strict
     inequality.
@@ -486,7 +479,7 @@ the gate-count invariant, not unresolved-name errors.
 | `promotion_policy` | Existing promotion gate parameters (§9) — unchanged |
 | `spec/policies/*.yml` | Existing repo convention: standalone *promotion-policy files* for `--policy` in the CI gate — unchanged, unrelated |
 
-### 3.9 Surface syntax (draft normative for the validators packet)
+### 3.9 Surface syntax (draft normative for validator implementations)
 
 ```yaml
 tvars:
@@ -522,7 +515,7 @@ policies:
 ```
 
 EBNF additions (following the repo's existing EBNF conventions; optional lists may
-be present-and-empty — cross-model review round 1, finding 13):
+be present-and-empty):
 
 ```ebnf
 module     = header, environment, evaluation_set, tvars, [ cvars ], constraints,
@@ -570,8 +563,7 @@ JSON-schema shape: `cvars`/`policies` added to `properties` (NOT `required`) of 
 module schema; `$defs.CVarDecl` / `$defs.PolicyDecl` / `$defs.GateDecl` /
 `$defs.Scope` mirroring the above; **`$defs.Scope` is also added as an optional
 property of the existing `TVarDecl`** (the one 1.0-shape modification — additive and
-optional, so every existing document remains valid — cross-model review round 1,
-finding 9); `promotion_policy.require_calibration` per §3.5 (extension-keys enum
+optional, so every existing document remains valid); `promotion_policy.require_calibration` per §3.5 (extension-keys enum
 only); the shared `Ident` lexical `pattern` of §3.7(2) applied to all `name` fields
 of the new $defs.
 
@@ -581,7 +573,7 @@ Each property is a named obligation stated as a checkable predicate; Phase 3
 model-checks it on finite instances (producing counterexample fixtures where the
 *negation* is satisfiable in a buggy variant), and Phase 4 carries the executable
 form. SDK-level obligations (marked →SDK) are tracked by the SDK features, not by
-TVL validators (cross-model review round 1, finding 15).
+TVL validators.
 
 | ID | Property | Claim (checkable form) | Verification obligation |
 |---|---|---|---|
@@ -644,7 +636,7 @@ govern. `Promote` gains the `CalibrationPass` conjunct only under `strict(M, c)`
    `TVarDecl` — additive, so all existing documents remain valid.
 2. Configuration documents (`tvl-configuration.schema.json`) are **untouched**;
    their `assignments` remain candidate TVAR assignments (N_F is a resolution-time
-   concept, §3.1 — cross-model review round 1, finding 7).
+   concept, §3.1).
 3. The lint pipeline appends new checks; no existing diagnostic changes meaning. All
    new diagnostics on 1.0-valid modules are warnings (§3.7(5)).
 4. The SAT encoder reads only `tvars` (verified: `python/tvl/constraints.py`
@@ -653,8 +645,7 @@ govern. `Promote` gains the `CalibrationPass` conjunct only under `strict(M, c)`
 5. The promotion gate adds a conjunct only when a 1.1 construct is declared. (Note:
    `chance_constraints` already make modules strict in the SDK's runtime — the
    *language* semantics of chance-constraint acceptability are unchanged here; the
-   SDK-side fail-closed repair of its fallback bugs is tracked separately by
-   FR-SDK-FAIL-CLOSED-PROMOTION-V1.)
+   SDK-side fail-closed repair of its fallback bugs is tracked separately in the SDK.)
 
 The executable form of this argument is the Phase 4 requirement that the entire
 existing example/conformance corpus passes unchanged.
@@ -679,28 +670,27 @@ existing example/conformance corpus passes unchanged.
 
 ## 9. Acceptance criteria for this RFC
 
-1. Cross-model review recorded on `FR-TVL-CVARS-POLICIES-V1` with verdict
-   ACCEPT/ACCEPT-WITH-FIXES (round 1: REJECT — see §10; round 2 pending).
-2. Owner acceptance recorded in the spine (human-only gate).
-3. Phase 3 model-check cases enumerate at least: binding-partition collision,
+1. Phase 3 model-check cases enumerate at least: binding-partition collision,
    namespace shadowing + prefix collision (incl. the legacy-warning case),
    dependency-graph R1 unreachability (v1), R2–R8 reachability, certificate
    subject/value binding, stale-certificate on parent change, SAT
    encoding-equality, strict-mode verdict reachability (all five P7 verdicts),
    cascade totality (m=1, empty vote, tie) — each with a committed fixture.
-4. Only after 1–3 and green Phase 4 validators may any SDK implementation begin.
+2. Only after item 1 and green Phase 4 validators may any SDK implementation begin.
 
-## 10. Review log
+## 10. Revision history
 
-| Round | Reviewer | Verdict | Disposition |
-|---|---|---|---|
-| 1 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 12 blocking, 3 non-blocking | All 15 addressed in Draft v2 (below) |
-| 2 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 11/15 resolved, 4 partial; 2 new blocking, 1 non-blocking | Addressed in Draft v3: (a) `valid(…)` now checks the full subject (incl. `type = τ(n)`) AND the audit copies `target`/`evidence{n, pool_hash}` against the live context — a certificate cannot display one context while hashing another; (b) `scope_spec` rewritten with a proper field alternation (agent-only/workflow-only expressible) and `tvar_decl` explicitly amended to carry it; (c) `require_calibration_spec` EBNF production added (the promotion_policy extension is no longer prose-only); (d) `SignalObservation` closed shape defined in §3.5 and referenced by P8. The round-2 verification also confirmed: gates[].threshold consistent with §3.7(4); m=1/no-gates consistent; the §3.9 YAML example validates against the draft shapes. |
-| 3 | codex (gpt-5.5, xhigh, read-only) — 2026-06-04 | **REJECT** — 7/8 v3 deltas confirmed resolved; ONE remaining blocker | Addressed in Draft v4: `valid(…)` gains the first conjunct `ctx_now.cvar_name = n`, closing the forged-subject hole (a certificate issued against CVAR B's hashed context can no longer validate CVAR A via a forged `subject.cvar`). Model + test added in the model-checking packet. |
-| 4 | codex (gpt-5.5, xhigh, read-only) — 2026-06-05 | **ACCEPT** | Final confirmation: `valid()`'s `ctx_now.cvar_name = n` conjunct verified correct and coherent with issuance/ctx_core/parent-specificity; §10 log accurate. No remaining findings. |
-| post-acceptance | owner wording audit (nimrod + claude) — 2026-06-06 | **CLARIFICATION** (non-normative-impact) | §3.5 gains the *Claim scope* paragraph: certificates are per-variable procedural claims about the declared fit + freshness (component-level conditional property where a bound exists), never config-level metric guarantees; "certified selection" defined as the conjunction of the §3.6 promotion win and per-CVAR certificate coverage. Driven by a live misreading: the prior prose allowed "certified" to read as a whole-config guarantee. No semantic rule changed. |
+This RFC went through four draft revisions between 2026-06-04 and 2026-06-05 and was accepted on 2026-06-05. The normative text is the body of this document; this section records what changed between revisions.
 
-Round-1 finding dispositions:
+| Revision | Changes |
+|---|---|
+| Draft v2 | All 15 issues raised against Draft v1 were addressed; see the list below. |
+| Draft v3 | (a) `valid(…)` now checks the full subject (incl. `type = τ(n)`) AND the audit copies `target`/`evidence{n, pool_hash}` against the live context — a certificate cannot display one context while hashing another; (b) `scope_spec` rewritten with a proper field alternation (agent-only/workflow-only expressible) and `tvar_decl` explicitly amended to carry it; (c) `require_calibration_spec` EBNF production added (the promotion_policy extension is no longer prose-only); (d) `SignalObservation` closed shape defined in §3.5 and referenced by P8. |
+| Draft v4 | `valid(…)` gains the first conjunct `ctx_now.cvar_name = n`, closing the forged-subject hole (a certificate issued against CVAR B's hashed context can no longer validate CVAR A via a forged `subject.cvar`). Model + test added in the model-checking packet. |
+| Accepted (2026-06-05) | Accepted without further changes: `valid()`'s `ctx_now.cvar_name = n` conjunct verified as correct and coherent with issuance, `ctx_core`, and parent-specificity. |
+| Clarification (2026-06-06) | §3.5 gains the *Claim scope* paragraph: certificates are per-variable procedural claims about the declared fit + freshness (component-level conditional property where a bound exists), never config-level metric guarantees; "certified selection" defined as the conjunction of the §3.6 promotion win and per-CVAR certificate coverage. Driven by a live misreading: the prior prose allowed "certified" to read as a whole-config guarantee. No semantic rule changed. |
+
+Changes from Draft v1 to Draft v2:
 
 1. P4 not the converse of R1–R8 → §3.4 now defines `Accept ⟺ ¬(R1∨…∨R8) ∧
    calibrators ≠ ⊥`; P3/P4 are the two directions of one biconditional; R1 marked
@@ -728,11 +718,11 @@ Round-1 finding dispositions:
     no resolution required; explicit deviation note (§3.3).
 11. Cascade not total → `stages` required (m ≥ 1), m=1 defined, gate→θ binding
     declared, empty-vote/tie/exception semantics specified (§3.8).
-12. (NB) Lexical inconsistency → single normative `Ident` grammar (§3.7(2)),
+12. Lexical inconsistency → single normative `Ident` grammar (§3.7(2)),
     Phase 4 alignment obligation.
-13. (NB) EBNF/abstract-syntax mismatch → empty-list forms made explicit; literal
+13. EBNF/abstract-syntax mismatch → empty-list forms made explicit; literal
     style aligned (§3.9).
 14. P8 uncheckable → certificate `payload` removed (closed shapes only);
     `parameters` explicitly outside the guarantee (§3.5, §3.8, P8).
-15. (NB) Properties not finite predicates → P-table restated as checkable
+15. Properties not finite predicates → P-table restated as checkable
     predicates; →SDK obligations marked; "gate exception" defined (§3.6, §4).

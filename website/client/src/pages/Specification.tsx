@@ -3,7 +3,7 @@ import Seo from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, FileText, Eye, ShieldCheck, Sigma, FileCode, ArrowRight, BookOpen, Braces, Target, RefreshCw } from "lucide-react";
+import { FileText, Eye, ShieldCheck, Sigma, FileCode, ArrowRight, BookOpen, Braces, Target, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useEffect } from "react";
 import { Streamdown } from "streamdown";
@@ -83,10 +83,14 @@ export default function Specification() {
                   JSON Schema
                 </Button>
               </Link>
-              <a href="/docs/specification.pdf" download>
+              <a
+                href="https://github.com/Traigent/tvl/blob/main/formalization/tvl-formal-semantics.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Button size="lg" variant="outline">
-                  <Download className="mr-2 h-5 w-5" />
-                  Download PDF
+                  <BookOpen className="mr-2 h-5 w-5" />
+                  Formal Semantics
                 </Button>
               </a>
             </div>

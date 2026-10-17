@@ -1,4 +1,4 @@
-# Chapter 4 example: Temporary production hotfix overlay.
+# Overlay example: Temporary production hotfix overlay.
 # This file is composed into a valid TVL module via `tvl-compose`.
 
 _tvl_overlay:

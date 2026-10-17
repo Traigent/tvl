@@ -2,18 +2,46 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://tvl-lang.org/</loc>
-    <lastmod>2026-04-15</lastmod>
-  </url>
-  <url>
-    <loc>https://tvl-lang.org/github</loc>
-    <lastmod>2026-04-15</lastmod>
+    <lastmod>2026-10-17</lastmod>
   </url>
   <url>
     <loc>https://tvl-lang.org/specification</loc>
-    <lastmod>2026-04-15</lastmod>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/agent-requirements</loc>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/language-reference</loc>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/verification-reference</loc>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/constraint-language</loc>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/schema-reference</loc>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/json-schema</loc>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/specification/ebnf-grammar</loc>
+    <lastmod>2026-10-17</lastmod>
   </url>
   <url>
     <loc>https://tvl-lang.org/examples</loc>
-    <lastmod>2026-04-15</lastmod>
+    <lastmod>2026-10-17</lastmod>
+  </url>
+  <url>
+    <loc>https://tvl-lang.org/github</loc>
+    <lastmod>2026-10-17</lastmod>
   </url>
 </urlset>

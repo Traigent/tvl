@@ -5,8 +5,8 @@ Thank you for your interest in improving TVL! This repo contains the normative s
 ## Development Setup
 
 1. Create a virtual environment.
-2. From `tvl/`, install in editable mode:
-   - `pip install -e .[dev]`
+2. From the repository root, install in editable mode:
+   - `python -m pip install -e ".[dev]"`
 
 ## Tools
 

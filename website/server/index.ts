@@ -1,5 +1,6 @@
 import express from "express";
 import { rateLimit } from "express-rate-limit";
+import { existsSync } from "fs";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -109,9 +110,13 @@ export function createApp(options?: {
     })
   );
 
-  // Handle client-side routing - serve index.html for all routes
+  // Every client-side route is exported as its own index.html at build time
+  // (scripts/prepare_static_deploy.mjs), so a request that reaches this handler
+  // is for an unknown URL. Answer with the static 404 page and a real 404
+  // status instead of a soft 404 that serves the app shell with status 200.
   app.get("*", (_req, res) => {
-    res.sendFile(indexPath);
+    const notFoundPath = path.resolve(staticPath, "404.html");
+    res.status(404).sendFile(existsSync(notFoundPath) ? notFoundPath : indexPath);
   });
 
   return app;
