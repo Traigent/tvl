@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "promotion_ready": true,
+  "warnings": [],
+  "promotion_readiness": [],
+  "structural": {
+    "ok": true,
+    "domains": [],
+    "constraints": []
+  },
+  "operational": [],
+  "chance": [
+    {
+      "constraint": "reply_latency_slo",
+      "code": "chance_violation",
+      "message": "ci_upper (0.0582) > threshold (0.05)"
+    }
+  ],
+  "module": "spec/examples/book/ch06/support-bot.tvl.yml",
+  "config": "book/support-bot/configs/incumbent.yml",
+  "measurement": "book/support-bot/bundles/slo-few/seed-0/incumbent.synthetic.measure.yml"
+}

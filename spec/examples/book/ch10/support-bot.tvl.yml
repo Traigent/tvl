@@ -1,0 +1,213 @@
+# The support bot, version 9 (chapter 10): version 8 plus monitors, a recovery
+# promise and two evidence-liveness checks. TVL 1.3 is a draft.
+tvl:
+  module: book.support_bot
+tvl_version: "1.3"                     # a string: TVL 1.3 constructs follow
+
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+  bindings:
+    llm_gateway: eu-west-1
+    help_center_index: help-articles-2026-09
+  context:
+    gateway_baseline_latency_ms: 180
+    gateway_rpm_limit: 600
+    gateway_rpm_current_load: 420
+
+evaluation_set:                       # SYNTHETIC: the 140 "eval" tickets of book/support-bot
+  dataset: book.support-bot.tickets.eval.v1
+  seed: 0                               # the seed of the book's reference runs
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["small", "medium", "large"]
+  - name: max_tool_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 4, 8]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: use_retrieval
+    type: bool
+    domain: [true, false]
+  - name: samples                         # how many replies the bot samples and votes over
+    type: int
+    domain:
+      set: [3, 5]
+
+cvars:
+  - name: escalation_threshold          # fitted from calibration tickets, never searched
+    type: float
+    domain:
+      range: [0.0, 1.0]                   # a validity check on the fitted value
+    calibration:
+      source: support_bot.calibration_tickets.v1   # its own tickets (illustrative)
+      signal: vote_margin                 # the score the threshold is compared with
+      calibrator: margin_threshold_v1     # your fitting procedure, by name
+      depends_on: [model, max_tool_calls, temperature, use_retrieval, samples]
+
+composites:
+  - name: voter                           # sample the reply `samples` times and vote
+    kind: ensemble
+    arms:
+      - stage: support_bot
+        tuned_params: [model, max_tool_calls, temperature, use_retrieval]
+    cardinality: samples
+    aggregate: { kind: majority_vote }
+    pattern: self_consistency
+
+  - name: answerer                        # escalate when the margin is below the threshold
+    kind: cascade
+    placement: post
+    arms: [{ composite: voter }, large_model]
+    gates:
+      - kind: margin_below
+        threshold: escalation_threshold
+
+  - name: reviewed_reply                  # check the reply, and revise it at most twice
+    kind: loop
+    body: { composite: answerer }
+    state_keys: [draft, review_notes]     # what one round passes to the next
+    stop: { kind: external_accept, predicate: refund_policy_check }
+    max_iters: 3
+
+constraints:
+  structural:
+    - when: model = "small"
+      then: max_tool_calls <= 2
+    - when: model = "large"
+      then: max_tool_calls >= 1
+    - when: use_retrieval = true          # grounding: with articles, quote them
+      then: temperature <= 0.3
+    - when: use_retrieval = false         # brand team: without articles, sound warm
+      then: temperature >= 0.5
+  derived:
+    - require: env.context.gateway_baseline_latency_ms <= 300
+    - require: env.context.gateway_rpm_limit - env.context.gateway_rpm_current_load >= 100
+
+objectives:
+  - name: resolution_rate                       # share of tickets solved
+    metric_ref: metrics.support.resolution_rate.v1
+    direction: maximize
+  - name: cost_per_ticket_usd                   # model and tool spend per ticket
+    metric_ref: metrics.support.cost_per_ticket_usd.v1
+    direction: minimize
+  - name: reply_tokens                          # length of a reply: a band, not a direction
+    metric_ref: metrics.support.reply_tokens.v1
+    band:
+      target: [80, 250]
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:                                   # one margin per directed objective
+    resolution_rate: 0.02
+    cost_per_ticket_usd: 0.001
+  adjust: holm                                  # multiple-testing adjustment, stated explicitly
+  chance_constraints:
+    - name: reply_latency_slo                   # the event: a slow reply (the evaluator defines it)
+      threshold: 0.05                           # at most 5% of replies may be slow,
+      confidence: 0.95                          # shown by a 95% upper confidence bound
+  require_calibration:                          # strict: no promotion without a valid certificate
+    enabled: true
+    hash_covered_context: [model_versions]
+
+requirements:
+  - name: large_refund_needs_approval     # never: a large refund with no approval before it
+    kind: zero_tolerance
+    unit: trace
+    violation:
+      pattern: precedence
+      a: { event: authorization_granted, ref: refund_approval }
+      b: { event: tool_call, tool: refunds.issue_large }
+      mode: single_use                    # one approval pays for one refund
+      correlate_by: correlation_id        # approval and refund of the same transaction
+  - name: escalation_handed_off           # never: an escalation not handed off within 5 min
+    kind: zero_tolerance
+    unit: trace
+    violation:
+      pattern: bounded_response
+      a: { event: tool_call, tool: support.escalate }
+      b: { event: handoff }
+      within_ms: 300000
+  - name: slow_replies                    # rarely: at most 5% of tickets over 10 s
+    kind: rate_bound
+    unit: trace
+    violation: { metric: wall_clock_latency_ms, exceeds: 10000 }
+    max_rate: 0.05
+  - name: refuses_when_required           # of the tickets it must refuse, it answers at most 5%
+    kind: rate_bound
+    unit: trace
+    among: { checker: traigent.refusal.v1, label_in: [must_refuse] }
+    violation: { checker: traigent.refusal.v1, label_in: [complied] }
+    max_rate: 0.05
+  - name: fast_again_within_2_days        # after a breach of slow_replies_prod, met again in 48 h
+    kind: recovery_time
+    unit: episode
+    of: slow_replies_prod
+    within_hours: 48
+  - name: latency_evidence_flows          # the latency monitor keeps receiving evidence
+    kind: evidence_liveness
+    unit: window
+    of: slow_replies_prod
+    max_stale_windows: 4
+  - name: refund_evidence_flows
+    kind: evidence_liveness
+    unit: window
+    of: refund_approval_prod
+    max_stale_windows: 2
+
+monitors:
+  - name: slow_replies_gate               # before release: the candidate, on the evaluation set
+    requirement: slow_replies
+    phase: promotion
+    evidence: { source: evaluation_set }
+    decision: { method: clopper_pearson_rational_v2, confidence: 0.95, false_alarm_budget: 0.05 }
+  - name: refund_approval_gate
+    requirement: large_refund_needs_approval
+    phase: promotion
+    evidence: { source: evaluation_set }
+    decision: { method: exact_count_v1 }
+    limits: { max_active_obligations: 64, max_tracked_correlations: 1024 }
+  - name: slow_replies_prod               # after release: live traffic, 6-hour windows
+    requirement: slow_replies
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 6, grace_minutes: 30 }
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05            # for the whole 30-day horizon
+      horizon_days: 30
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+    episode: { closure_windows: 2, closure_max_age_hours: 24 }
+  - name: refund_approval_prod
+    requirement: large_refund_needs_approval
+    phase: runtime
+    evidence: { source: customer_side, deployment_environment: production }
+    window: { tumbling_hours: 24, grace_minutes: 60 }
+    decision: { method: exact_count_v1 }
+    episode: { closure_windows: 1, closure_max_age_hours: 48 }
+    limits: { max_active_obligations: 64, max_tracked_correlations: 1024 }
+  - name: recovery_check
+    requirement: fast_again_within_2_days
+    phase: runtime
+    evidence: { source: episodes }
+    decision: { method: exact_count_v1 }
+  - name: latency_evidence_check
+    requirement: latency_evidence_flows
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }
+  - name: refund_evidence_check
+    requirement: refund_evidence_flows
+    phase: runtime
+    evidence: { source: windows }
+    decision: { method: exact_count_v1 }

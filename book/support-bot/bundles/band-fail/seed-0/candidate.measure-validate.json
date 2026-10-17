@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "promotion_ready": true,
+  "warnings": [],
+  "promotion_readiness": [],
+  "structural": {
+    "ok": true,
+    "domains": [],
+    "constraints": []
+  },
+  "operational": [
+    {
+      "objective": "reply_tokens",
+      "code": "band_violation",
+      "message": "Value 260.68857142857144 outside band [80, 250]"
+    }
+  ],
+  "chance": [],
+  "module": "spec/examples/book/ch05/support-bot.tvl.yml",
+  "config": "book/support-bot/configs/band-fail-candidate.yml",
+  "measurement": "book/support-bot/bundles/band-fail/seed-0/candidate.synthetic.measure.yml"
+}

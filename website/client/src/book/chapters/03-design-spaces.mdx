@@ -1,0 +1,118 @@
+---
+title: "Design spaces"
+slug: design-spaces
+order: 3
+draft: false
+summary: Tuned variables, their types and domains, and how they multiply into a design space. With a compact reference, and the limits of the formal guarantees.
+---
+
+<h2 id="ch3-learn">What you'll learn</h2>
+
+- How to write the knobs of an agent as tuned variables.
+- How their values multiply into a design space, and how to count it.
+- The six types and their domains, and which of them the formal guarantees do not cover.
+
+<h2 id="ch3-knob">A knob is a tuned variable</h2>
+
+Customers say the bot's replies sound cold and robotic. You suspect the temperature, a model setting that controls how much randomness goes into each reply. You also wonder whether the bot should search the shop's help articles before it answers. That makes two new knobs, so the support bot grows. The small-model rule from version 1 stays, unchanged:
+
+<Example file="ch03/support-bot.tvl.yml" title="The support bot, version 2: four knobs" lines="12-32" />
+
+Each <Term id="tvar">tuned variable</Term> has three parts. The `name` is how rules and results refer to it. The `type` says what kind of value it holds: a name from a list, a whole number, a number with decimals, or true and false. The <Term id="domain">domain</Term> lists the values it may take. A knob is only as free as its domain: `max_tool_calls` can be 0, 1, 2, 4 or 8, and nothing else. For a float `range` with a `resolution`, start at the lower bound and add the resolution while the value stays at or below the upper bound.
+
+<h2 id="ch3-space">The space is every combination</h2>
+
+A design picks one value for every knob. The design space holds every possible pick, so the sizes of the domains multiply (<Ref to="semantics" section="section 3.4">formal semantics</Ref>). Three models times five tool-call limits is 15. The temperature has 11 values, not 10: 0.0, 0.1, and so on up to 1.0, because here the upper bound is itself a step. That makes 165, and retrieval on or off doubles it to 330. These are raw combinations, before applying constraints. The small-model rule still removes the small model with a limit of 4 or 8, and each of those two pairs meets all 22 temperature and retrieval settings, so the rule allows 330 − 44 = 286 designs.
+
+<Figure
+  base="/book/media/design_space_grows"
+  stem="design_space_grows"
+  alt="A grid of 15 cells, three models by five tool-call limits, gains a third axis for temperature and becomes a block of 165 small cubes. A second block appears beside it for retrieval on and off, and a counter reads 330 raw combinations, before applying constraints."
+  caption="Figure 3.1. Each new knob multiplies the design space. Two knobs make a grid; a third makes a block; a yes-or-no knob makes two blocks. The counts are raw combinations, before applying constraints."
+  frames={[
+    { src: "frame-1.png", alt: "A flat grid of 15 neutral cells: three models by five tool-call limits. A counter reads 15 raw combinations.", caption: "Two knobs: 3 models times 5 tool-call limits is 15 raw combinations." },
+    { src: "frame-2.png", alt: "The grid extends into depth along a temperature axis marked 0.0 to 1.0 in steps of 0.1. The counter reads 165.", caption: "Temperature adds a third axis with 11 values: 165 raw combinations." },
+    { src: "frame-3.png", alt: "Two identical blocks side by side, labelled retrieval off and retrieval on. The counter reads 330 raw combinations, before applying constraints.", caption: "Retrieval on or off doubles the space: 330 raw combinations, before applying constraints." },
+  ]}
+/>
+
+Spaces grow fast. TVL describes the space; it does not need to try every design in it. Rules, the subject of <ChapterLink n={4} />, remove the designs you do not allow.
+
+<Predict question={<p>A fifth knob, <code>retrieval_k</code>, sets how many help articles to fetch, with <code>range: [1, 8]</code>. How many raw combinations are there now, and how many does the small-model rule allow?</p>}>
+<p>2,640: each of the 330 combinations meets 8 values, the whole numbers 1 to 8. The rule does not mention <code>retrieval_k</code>, so it allows 286 × 8 = 2,288.</p>
+</Predict>
+
+<h2 id="ch3-reference">Types and domains: a compact reference</h2>
+
+The table sums up the six types. "Rules may use" lists the operators a rule may apply to it (<Ref to="constraint-language" section="“Type Checking Rules”">constraint language reference</Ref>).
+
+| Type, and its variable in the tour file | Domain | Rules may use | Written semantics |
+|---|---|---|---|
+| `bool`: `use_retrieval` | the list `[true, false]` | `=` `!=` | yes |
+| `int`: `retrieval_k`, `max_tool_calls` | `range: [a, b]`, every whole number from a to b; or `set:` with a list | `=` `!=` `<` `<=` `>` `>=` `in` | yes |
+| `float`: `temperature` | `range: [a, b]` with a `resolution` (the step) | the same as `int`; `=` gives a warning | yes |
+| `enum[str]`, `enum[int]`, `enum[float]`: `model` | a list of values | `=` `!=` `in` | yes |
+| `tuple[...]`: `chunking` | `components:`, one domain per position | `=` `!=` `in`, with values such as `(256, 0)` | yes |
+| `callable[P]`: `reranker` | `registry:`, the name of an outside catalogue, with an optional `filter` and `version` | `=` `!=` `in` | **no** |
+
+"Written semantics" says whether the formal semantics defines the type's meaning (<Ref to="semantics" section="section 1.4">formal semantics</Ref>). It does not claim that the current machine-checked proofs cover every construct.
+
+The tour file declares one tuned variable of each type. Its first four are the support bot's knobs from version 2. Here are the other three: an `int` range, a tuple and a registry-backed callable.
+
+<Example file="ch03/every-type.tvl.yml" checker="tvl-validate" expect="lint:unverifiable_callable_type" title="The tour file: three new forms" lines="29-42" />
+
+- **Numbers you compare.** A list of numbers can be an `enum[int]` or an `int` with `set:`. For counts and limits, use `int` with `set:`. Current lints and the constraint reference reject ordering comparisons, such as `<=`, on numeric enums, although the formal typing rules permit them. This book follows the form the tools accept.
+- **Tuples.** A tuple holds values that go together, such as a chunk size and its overlap. Its domain is every combination of its components, so `chunking` has four values; the rule `chunking in {(256, 0), (512, 64)}` keeps two. Rules over tuples have a written meaning, but the current machine-checked proofs, in the Lean proof assistant, do not cover them.
+
+<h2 id="ch3-resolution">Resolution turns a range into a list</h2>
+
+Always give a float range a <Term id="resolution">resolution</Term>, the step between its values. The formal semantics treats a float range without one as not well formed (<Ref to="semantics" section="section 2.4">formal semantics</Ref>). With a resolution, a range is a list: start at the lower bound and add the resolution while the value stays at or below the upper bound (<Ref to="semantics" section="section 3.3">formal semantics</Ref>). The support bot's range also meets two conditions that today's tools need: the resolution divides 1 exactly, as 0.1 does, and the lower bound is a whole number of steps from zero, as 0.0 is. With other choices, the current tools can build a different list from the one the formal semantics defines. A temperature of 0.25 lies between two steps, so it is outside the domain:
+
+<Example file="ch03/candidate-temperature-025.yml" title="A candidate between two grid points" />
+
+The check under the listing prints this, and exits with status 5:
+
+```text
+Configuration validation failed:
+[domain] temperature: Value 0.25 outside domain
+```
+
+<Misconception wrong="A float range lets a search pick any number between its two ends.">
+<p>`range: [0.0, 1.0]` with `resolution: 0.1` is exactly eleven values (<Ref to="semantics" section="section 3.3">formal semantics</Ref>). A finite list is what lets a checker answer "is any design allowed?" with a firm yes or no. If you need finer values, use a smaller step: the space grows, but it stays finite.</p>
+</Misconception>
+
+<h2 id="ch3-registry">Registries: useful, but outside the formal guarantees</h2>
+
+Your team keeps a catalogue of rerankers, the components that re-order search results, and it changes every week. A `callable` type with a <Term id="registry">registry</Term> domain points at the catalogue instead of copying its names into the module.
+
+You pay for this with the formal guarantees. Inside the <Term id="formally-verified-subset">formally verified subset</Term>, the formal semantics defines exactly what your file means, and its theorems apply: for example, the one that ties a solver's SAT answer to the meaning of your rules (Theorem 8.1). A registry's values come from outside, when the module is used, and TVL does not define what it means for a component to "implement" the named protocol. So both forms sit outside the subset. The tools still check the file, but those theorems say nothing about it, and the linter warns you (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
+
+<TryIt>
+
+Validate the tour file:
+
+```bash
+tvl-validate spec/examples/book/ch03/every-type.tvl.yml
+```
+
+You should see two warnings, both about the registry-backed `reranker`:
+
+```text
+[unverifiable_registry_domain] tvars.6.domain.registry: TVAR 'reranker' uses a registry domain, which is outside the formally verified subset. SMT encoding soundness (Theorem 8.1) does not apply.
+[unverifiable_callable_type] tvars.6.type: TVAR 'reranker' uses a callable type, which is outside the formally verified subset. Type safety theorems do not apply to callable-typed TVARs.
+```
+
+`tvars.6` is the seventh tuned variable: the tools count from 0. These are warnings about proof coverage, not errors in the file. This version of `tvl-validate` nevertheless exits with status 2 when it reports them.
+
+</TryIt>
+
+If you need the guarantees, the formal semantics suggests a workaround: resolve the registry yourself, and write the known implementations as an `enum[str]` list (<Ref to="semantics" section="section 1.4">formal semantics</Ref>). Two later constructs, calibrated values and composite knobs, are also outside the verified subset today; <ChapterLink n={7}>Chapters 7</ChapterLink> and 8 cover them.
+
+<KeyTakeaways>
+  <ul>
+    <li>A tuned variable has a name, a type and a domain. The domain is the complete list of values it may take.</li>
+    <li>The design space is every combination of values, so domain sizes multiply: 3 × 5 × 11 × 2 = 330 raw combinations for the support bot, before applying constraints. Its small-model rule allows 286 of them.</li>
+    <li>A float range with a resolution is a finite list. Use `int` with `set:` for numbers you compare.</li>
+    <li>`callable` types and registry domains are outside the formally verified subset; the linter warns.</li>
+  </ul>
+</KeyTakeaways>

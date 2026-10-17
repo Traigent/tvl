@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "promotion_ready": true,
+  "warnings": [],
+  "promotion_readiness": [],
+  "structural": {
+    "ok": true,
+    "domains": [],
+    "constraints": []
+  },
+  "operational": [],
+  "chance": [],
+  "module": "spec/examples/book/ch06/support-bot.tvl.yml",
+  "config": "book/support-bot/configs/incumbent.yml",
+  "measurement": "book/support-bot/bundles/slo-pass/seed-0/incumbent.synthetic.measure.yml"
+}

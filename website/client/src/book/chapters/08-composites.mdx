@@ -1,0 +1,175 @@
+---
+title: "Patterns that travel together"
+slug: composites
+order: 8
+draft: false
+summary: "Composites, structures over knobs: the cascade, ensemble and loop constructors, compared with named pattern expansions, and what can and cannot be proved about them."
+---
+
+<h2 id="ch8-learn">What you'll learn</h2>
+
+- The three shapes TVL 1.2 builds composites from: the cascade, the ensemble and the loop.
+- How a named pattern, such as `binary_cascade`, relates to those shapes.
+- How composites require a threshold's certificate to cover the tuned knobs declared for the relevant arms.
+- What the tools and the proofs do not cover for composites, as chapter 3 promised.
+
+<Callout kind="warning" title="What you can do today">
+  <p>Today's tools cannot promote version 7 either: given the same slo-pass bundles, <code>tvl-ci-gate</code> refuses to decide and exits with status 2. You can declare and validate composites; running them and checking their certificates is your runtime's job.</p>
+</Callout>
+
+<h2 id="ch8-together">Knobs that travel together</h2>
+
+Version 6's escalation (chapter 7) is spread over a module. The threshold is in `cvars`, the stages are in `policies`, and the knobs that configure the first stage are in `tvars`. That they form one pattern lives only in your runtime. TVL 1.2 can say it in the module with a <Term id="composite">composite</Term>: a named structure over knobs with a declared control-flow shape (<Ref to="rfc-0002" section="section 1">RFC 0002</Ref>). The RFC calls it a composite knob, but it is not a knob: it holds no value, it is not a fourth binding, and the search still sees the tuned variables one by one (<Ref to="rfc-0002" section="section 3.1">RFC 0002</Ref>). Below, <Term id="theta">θ</Term> (theta) means a calibrated threshold, and k means the number of samples.
+
+Every composite has one of three shapes, its constructor. Each of them runs <Term id="arm">arms</Term>: a stage, or another composite (<Ref to="rfc-0002" section="section 3.2">RFC 0002</Ref>).
+
+| Constructor | What runs | What decides |
+|---|---|---|
+| <Term id="cascade">cascade</Term> | `post`: arms in order. `pre`: one arm, picked first | `post`: escalate if the vote margin is below θ (`margin_below`). `pre`: pass each arm whose score is below θ (`signal_below`); the last arm is the fallback |
+| <Term id="ensemble">ensemble</Term> | one arm k times, or several arms once | majority vote or a judge's top score; optionally, accept only if a vote statistic reaches θ |
+| <Term id="loop">loop</Term> | its body, round after round | stop when a score reaches θ (`signal_accept`), your check passes (`external_accept`), or rounds run out (`exhausted`) |
+
+<Mermaid
+  alt="Three small diagrams, one under another. Cascade, of the post kind: arm 1 runs, then a gate asks whether the vote margin is below the threshold; no gives arm 1's output, yes runs arm 2. Ensemble: samples 1 to k feed a vote, which gives the output and its vote margin. Loop: the body runs, then a stop rule is checked; if it does not stop and rounds are left, the body runs again; otherwise the loop ends."
+  caption="Figure 8.1. The three constructors. A cascade escalates past a gate, an ensemble runs several times and votes, and a loop repeats its body until a stop rule fires or its rounds run out. The cascade drawn is a post cascade; a pre cascade, described below, picks one arm before any runs."
+  chart={`%%{init: {"flowchart": {"rankSpacing": 26, "nodeSpacing": 14, "padding": 6}, "themeVariables": {"fontSize": "17px"}}}%%
+flowchart TB
+  subgraph CA[cascade]
+    direction LR
+    A1[arm 1] --> G{"margin<br/>below θ?"}
+    G -->|no| O1([arm 1's output])
+    G -->|yes| A2[arm 2]
+  end
+  subgraph EN[ensemble]
+    direction LR
+    S1["sample 1 … k"] --> V{vote}
+    V --> O2([output and vote margin])
+  end
+  subgraph LO[loop]
+    direction LR
+    B[body] --> ST{stop?}
+    ST -->|"no, rounds left"| B
+    ST -->|"yes, or out of rounds"| O3([end])
+  end
+  CA ~~~ EN ~~~ LO`}
+/>
+
+Every θ in these rules is a calibrated value, fitted as in chapter 7, and so is k when it is calibrated rather than tuned (<Ref to="rfc-0002" section="section 3.3">RFC 0002</Ref>). `post` and `pre` say where a <Term id="placement">cascade's gates</Term> sit: after an arm runs, or before any arm runs. Version 6's cascade is `post`. A `pre` cascade is a router. In this one, a score of the ticket, `ticket_simplicity`, is read first. At or above the threshold, the small model answers; below it, the ticket passes on to the large model, the fallback. Exactly one arm runs (<Ref to="rfc-0002" section="section 3.2, execution semantics">RFC 0002</Ref>). The file `ch08/pre-cascade.tvl.yml` declares this router, with one `signal_below` gate, and `tvl-validate` accepts it.
+
+The three constructors are <Term id="sealed">sealed</Term>: the list is closed, and a fourth shape would need a new RFC. They combine only by nesting, an arm written `{ composite: name }`, and nesting may not form a cycle. A bare name in an arm is always a stage (<Ref to="rfc-0002" section="section 3.2, items 1, 3 and 4">RFC 0002</Ref>).
+
+<h2 id="ch8-patterns">Named patterns</h2>
+
+Teams have names for common shapes, and TVL keeps a catalogue of them. A <Term id="pattern">pattern</Term> is a named recipe that expands into the three constructors (<Ref to="rfc-0002" section="section 3.7">RFC 0002</Ref>):
+
+| Pattern | What it expands into |
+|---|---|
+| `binary_cascade` | a `post` cascade of two stages with one `margin_below` gate: chapter 7's policy |
+| `n_cascade` | a `post` cascade of any number of stages, a gate between each pair |
+| `self_consistency` | an ensemble that runs one stage `k` times and takes a majority vote |
+| `best_of_n` | an ensemble that runs one stage `k` times and keeps the reply a judge scores highest |
+| `self_debug` | a loop of one stage that stops when your tests pass (`external_accept`) |
+| `self_refine` | a loop of one stage that stops when a score reaches a calibrated threshold (`signal_accept`) |
+
+Adding a pattern is a new release of the library your runtime uses to expand patterns, not a change to the language: the constructors never grow because a pattern was added. In a module, `pattern: <name>` records which recipe a composite came from. The validator checks the shape you write. It does not check the name against the catalogue.
+
+<Misconception wrong="My team routes tickets its own way, so I declare my own kind of composite: kind: router.">
+<p>The constructors are sealed, so the validator rejects a fourth kind. A router is a `pre` cascade, like the one above. A shape you name often can become a pattern, which expands into the constructors (<Ref to="rfc-0002" section="sections 3.2 and 3.7">RFC 0002</Ref>).</p>
+<p>Here is what <code>tvl-validate</code> says about <code>ch08/fourth-kind.tvl.yml</code>, which declares <code>kind: router</code>:</p>
+</Misconception>
+
+```text
+[unknown_composite_kind] composites.2.kind: composite 'smart_router' kind 'router' is not in the sealed v1 registry (cascade | ensemble | loop)
+```
+
+<h2 id="ch8-cascade">The support bot's cascade</h2>
+
+Here is version 6's policy, written as a composite. The small model is the first arm in the configuration the team wants to try; the cascade escalates the tickets it is unsure of to the large model:
+
+<Example file="ch08/support-bot-gap.tvl.yml" title="Version 6's policy as a cascade" lines="48-59" result={false} />
+
+The first arm uses the object form: a stage name and its `tuned_params`, the tuned variables that configure that stage. The second arm, a bare name, is a stage with none. A `policies` cascade runs exactly like this composite, and it stays valid in TVL 1.2. The composite form is its forward form, and it adds two checks that the policy form never makes, so a policy cascade can hide the gap below (<Ref to="rfc-0002" section="sections 3.2, item 11, 3.5 and 4">RFC 0002</Ref>):
+
+1. In this two-arm cascade, the threshold must depend on every declared tuned knob of the first arm. In longer post-cascades, each gate must cover all arms up to its position, including tuned sample counts inside nested ensembles.
+2. A threshold's `calibration.signal` must be the signal its gate reads, `vote_margin` for a `margin_below` gate. Otherwise the certificate would vouch for a threshold fitted to a different score.
+
+<Predict question={<p>Version 6's threshold depends on the model and the temperature. The first arm declares four tuned variables. What does <code>tvl-validate</code> say about this file?</p>}>
+<p>It names the two knobs the threshold ignores, <code>max_tool_calls</code> and <code>use_retrieval</code>, in one <code>missing_composite_parent</code> finding of severity error, and exits with status 2. That is the gap chapter 7's freshness prediction exposed: switching retrieval on would not have made the certificate stale.</p>
+</Predict>
+
+<ExampleResult file="ch08/support-bot-gap.tvl.yml" />
+
+<TryIt>
+
+```bash
+tvl-validate spec/examples/book/ch08/support-bot-gap.tvl.yml
+```
+
+You should see this finding, and the exit status is 2. With `--format json` the tool gives its severity as `error`:
+
+```text
+[missing_composite_parent] composites.0.gates.0.threshold: composite 'answerer' threshold CVAR 'escalation_threshold' omits required parent TVAR(s) ['max_tool_calls', 'use_retrieval'] from its calibration.depends_on; the arm(s) the gate observes are parameterized by them (§3.5)
+```
+
+</TryIt>
+
+Add the two knobs to `depends_on`, and the file passes. Now a new value of any tuned knob declared for the first arm makes the certificate stale.
+
+**How the gate behaves.** In this example, arm 1 produces an output and vote statistics. The gate escalates exactly when the margin is strictly below θ. A <Term id="abstaining-sample">sample abstains</Term> when your runtime cannot count its reply as any answer, an empty reply for example; this is not chapter 7's abstaining calibrator. An empty or abstain-only vote has margin 0, so this comparison escalates only when θ is above 0 (<Ref to="rfc-0001" section="section 3.8">RFC 0001</Ref>). An error in an arm or a gate fails the ticket's evaluation; the cascade never quietly returns some arm's output instead. A nested arm can also return `no_accept`: it ran but produced no acceptable output. A post-cascade then tries the next arm regardless of θ. If no acceptable output reaches the root, the result is an honest no-output outcome (<Ref to="rfc-0002" section="section 3.2.1">RFC 0002</Ref>). Its expected cost is the cost of arm 1 plus the chance of escalating times the cost of arm 2, an estimate (<Ref to="rfc-0002" section="section 3.4">RFC 0002</Ref>). If arm 1 costs 0.3 cents, the large model 2.4 cents, and 30% of tickets escalate, that is 1.02 cents: 0.3 + 0.3 × 2.4.
+
+<h2 id="ch8-nesting">Sampling, escalation and review, nested</h2>
+
+Version 7 makes the samples explicit and adds a review. The number of samples becomes a fifth tuned knob, `samples` (3 or 5), and three composites nest inside each other, as Figure 8.2 shows:
+
+<Mermaid
+  alt="Nested boxes. The outer box is the loop reviewed_reply, up to 3 rounds, which stops when refund_policy_check passes. Inside it is the cascade answerer. Inside the cascade, arm 1 is the ensemble voter, which runs the stage support_bot samples times and votes. The vote margin goes to a gate: if it is below escalation_threshold, the cascade escalates to arm 2, the stage large_model."
+  caption="Figure 8.2. Version 7's composites, nested: the loop runs the cascade each round, and the cascade's first arm is the ensemble."
+  chart={`%%{init: {"flowchart": {"rankSpacing": 20, "nodeSpacing": 10, "padding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 8}}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart LR
+  subgraph L["loop reviewed_reply: up to 3 rounds, until refund_policy_check passes"]
+    direction LR
+    subgraph C["post cascade answerer"]
+      direction LR
+      subgraph E["arm 1: ensemble voter"]
+        direction LR
+        S["support_bot,<br/>samples times"] --> V{vote}
+      end
+      V --> G{{"margin below<br/>escalation_threshold?"}}
+      G -->|"yes, escalate"| LM["arm 2:<br/>large_model"]
+    end
+  end`}
+/>
+
+<Example file="ch08/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 7: three nested composites" lines="41-42,46,50-75" />
+
+`voter` is a `self_consistency` ensemble: it runs the bot `samples` times and takes a majority vote, which yields the vote margin. Its <Term id="cardinality">`cardinality`</Term> names the variable that says how many times its one arm runs; it must be an `int` tuned or calibrated variable. `answerer` is the cascade; its first arm is now the ensemble. A `margin_below` gate may observe it because a majority vote produces a margin; it may not observe a loop (<Ref to="rfc-0002" section="section 3.2, item 5">RFC 0002</Ref>). Its arms are no longer two stages, so the `binary_cascade` label is gone. `reviewed_reply` is a loop whose body is the cascade. After each round your own check, `refund_policy_check`, decides whether to stop. Its <Term id="state-keys">`state_keys`</Term> name what your runtime passes from one round to the next, here the draft reply and the review notes; TVL checks only the names. `max_iters` is required, so a loop always ends: 3 rounds are the first reply and at most two revisions.
+
+The sample count changes how clearly samples agree, so it shapes the margin, and the threshold's `depends_on` must name it too. Without `samples` there, `tvl-validate` reports `missing_composite_parent` for `['samples']`. A candidate still assigns only tuned variables. The team's first try, `ch08/candidate-small-first.yml`, puts the small model first with 5 samples, assigns just the five tuned variables, and passes `tvl-config-validate`.
+
+A candidate uses the outermost composite (a root), here `reviewed_reply`, with everything inside it. In a strict evidence mode, every calibrated value in that tree needs a valid certificate; one stale member means no certified selection (<Ref to="rfc-0002" section="section 3.6">RFC 0002</Ref>).
+
+<h2 id="ch8-limits">What the guarantees cover</h2>
+
+Chapter 3 promised the limits. RFC 0002's six claims, such as that nesting has no cycles, are checked by exploring every case up to a small size, not proved (<Ref to="rfc-0002" section="sections 5 and 10">RFC 0002</Ref>). Not covered (<Ref to="rfc-0002" section="sections 3.3, 3.8 and 6">RFC 0002</Ref>):
+
+<div className="book-limits">
+
+- **Proofs.** The machine-checked proofs predate composites, so they say nothing about a module that uses them, and no lint warns you yet (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
+- **Tools.** The public tools check shapes, references and the two obligations. They do not run a composite, expand a pattern, estimate a cost or unroll a loop, and cannot promote a module that requires calibration.
+- **Your runtime's job.** It runs composites, expands patterns and checks every certificate in the tree.
+- **Assumptions.** Chapter 7's assumptions hold here too. Costs and escalation chances are estimates, not guarantees.
+- **Undeclared influences.** The lint checks the `tuned_params` you declare; it cannot tell whether you forgot a knob.
+- **Nested thresholds.** Re-fitting an inner threshold does not make an outer certificate stale: if `voter` had an acceptance threshold, re-fitting it would leave `escalation_threshold`'s certificate fresh. Re-issue the outer certificates too.
+- **Unrolling.** Only a `signal_accept` loop may be turned into a fixed chain of up to `max_iters` steps, under the RFC's conditions.
+- **Results.** A composite's resolution rate and cost remain measurements, judged by the promotion decision; nothing in a composite guarantees them.
+
+</div>
+
+<KeyTakeaways>
+  <ul>
+    <li>A composite is a structure over knobs, not a knob: it groups the members of one control-flow pattern, holds no value, and the search still sees only tuned variables.</li>
+    <li>There are exactly three constructors, cascade, ensemble and loop, combined only by nesting. A named pattern, such as `binary_cascade`, is a recipe that expands into them; a fourth kind is rejected.</li>
+    <li>Composites check declared parent coverage and require thresholds to be calibrated against the signals they use. They cannot discover omitted influences.</li>
+    <li>The tools check composites but cannot run them or promote version 7; that is your runtime's job. Proofs do not cover composites, and a composite guarantees nothing about end-to-end results.</li>
+  </ul>
+</KeyTakeaways>

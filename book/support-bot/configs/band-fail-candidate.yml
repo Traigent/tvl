@@ -1,0 +1,8 @@
+# SYNTHETIC-evaluation configuration for the book's support-bot project.
+config_id: support-bot.band-fail-candidate
+module_id: book.support_bot
+assignments:
+  model: large
+  max_tool_calls: 2
+  temperature: 0.2
+  use_retrieval: true

@@ -1,0 +1,99 @@
+---
+title: "In production: requirements"
+slug: production-requirements
+order: 9
+draft: true
+summary: "Rules about what an agent does while it runs: what a requirement counts, rate bounds against zero tolerance, which traffic a rule covers, the catalogue of event patterns, and recovery and liveness in window time."
+---
+
+<h2 id="ch9-learn">What you'll learn</h2>
+
+- What a requirement counts; "rarely" (a rate bound) against "never" (zero tolerance); how `among` picks the traffic.
+- The catalogue of predicates, how approvals match actions, and recovery and liveness in window time.
+
+<Callout kind="warning" title="TVL 1.3 is a draft">
+  <p>Chapters 9 to 12 describe a draft; names and diagnostics can change. TVL states what requirements mean and what verdicts promise. Production verdicts come from an <Term id="evaluator-profile">evaluator profile</Term> outside TVL. TVL's tools check, compose and compile declarations and decide promotion monitors (chapter 10); compiling turns nothing on.</p>
+</Callout>
+
+<h2 id="ch9-blocks">After the gate: what must keep holding</h2>
+
+With a runtime that can validate its calibration certificates, version 7 can earn a Promote; today's reference gate cannot, as chapter 8 explained. Does it then reply fast enough on Tuesday's traffic, and never refund a large amount nobody approved? A promotion, judged once on the evaluation set, cannot say. TVL 1.3 adds three optional blocks (<Ref to="rfc-0003" section="section 3.1">RFC 0003</Ref>): `requirements`, what must hold for one unit of behaviour (this chapter); `monitors`, which evidence checks a requirement (chapter 10); `responses`, what should follow a monitor's event (chapter 11).
+
+<h2 id="ch9-units">What a requirement counts</h2>
+
+A requirement judges one unit at a time, and `unit: trace` or `unit: invocation` says which (<Ref to="semantics" section="section 12.2">formal semantics</Ref>). A <Term id="trace">trace</Term> is one ticket handled end to end, refund service and hand-off included. An invocation is one call of the bot; calling it twice for one ticket, to draft and to revise, makes two invocations in one trace. A tool call is an event inside a unit. Your instrumentation records events from a closed list: unit start and end, tool call and result, model call, hand-off, error, authorization granted or revoked.
+
+<h2 id="ch9-rate">Rarely, or never</h2>
+
+Chapter 6 accepted up to 5% slow replies; one unapproved large refund is one too many. TVL 1.3 has a kind for each:
+
+| | `rate_bound` | `zero_tolerance` |
+|---|---|---|
+| Says | at most `max_rate` of the units violate | no unit violates |
+| Violation | any predicate below | event patterns only |
+| Sampled traffic | allowed | never: a sample can miss the one bad unit |
+
+A zero-tolerance metric or label is refused (`runtime_zero_tolerance_inexact`). The slow-reply limit becomes a rate bound on traces: at most 5% take longer than 10,000 ms; the chance constraint stays in `promotion_policy`. "Of the tickets the bot must refuse, at most 5% get an answer" needs `among`, which selects the <Term id="population">population</Term> (<Ref to="semantics" section="section 12.3">formal semantics</Ref>). Both fields ask a checker, code or a model you run that labels each unit, here `traigent.refusal.v1`: `among` asks "must this be refused?", `violation` "did the bot comply?". A unit outside `among` is not counted; one whose membership is unknown is unresolved, never quietly excluded. TVL claims nothing about a checker's accuracy.
+
+<h2 id="ch9-catalogue">The catalogue</h2>
+
+A `violation` is one predicate from a sealed list (meaning in <Ref to="semantics" section="section 12.3">formal semantics</Ref>; syntax in <Ref to="rfc-0003" section="section 4.1">RFC 0003</Ref>):
+
+| Predicate | A unit violates when… | Example for the bot |
+|---|---|---|
+| `metric` … `exceeds` | a latency, cost, token or tool-call count is above a limit | a reply over 10,000 ms |
+| `checker` … `label_in` | a checker gives a listed label | `complied` when it must refuse |
+| `absence` | a matching event happens at all | a `crm.delete_customer` call |
+| `bounded_existence` | over `max_count` matching events happen | a fourth refund in a ticket |
+| `precedence` | a `b` has no usable `a` before it | a large refund, no approval |
+| `bounded_response` | an `a` lacks its own `b` within `within_ms` | an escalation with no hand-off in 5 min |
+| `protocol` | events break a declared order of steps, or the unit ends unfinished | refund before the policy check |
+
+An `absence`, `bounded_existence`, `precedence` or `protocol` violation is final the moment it happens, so chapter 11's in-process guard may act on it before the effect. A missing response, a metric or a label is known only at the end.
+
+<h2 id="ch9-match">Approvals, matched and revoked</h2>
+
+A <Term id="selector">selector</Term>, the `a` or `b` of a pattern, names an event type and, optionally, a `tool`, a `status` or a `ref`, nothing else. A `ref` is a name you choose for a kind of authorization; your instrumentation stamps it on grant and revocation events. So above the limit the bot calls a separate tool, `refunds.issue_large`; the approval tool records `authorization_granted` with `ref: refund_approval`. `correlate_by: correlation_id` matches an approval only to a refund with the same transaction id; `mode: single_use` lets one approval pay for one refund. A matching `authorization_revoked` cancels every earlier approval of that id (<Ref to="semantics" section="section 12.3">formal semantics</Ref>).
+
+<EventTimeline
+  alt="Four rows, each one trace, events in order from left to right. Row 1, approved then refunded: approve T1, refund T1; no violation. Row 2, approval revoked first: approve T1, revoke T1, refund T1, the refund marked as the violating event; violation. Row 3, another transaction's approval: approve T1, refund T2, the refund marked; violation. Row 4, one approval, two refunds: approve T1, refund T1, refund T1, the second refund marked; violation."
+  caption="Figure 9.1. Four illustrative traces for large_refund_needs_approval, events in the order they happened; T1 and T2 are correlation ids. A refund needs an earlier, unrevoked, unused approval with its own id. The outcomes follow from the definition of precedence; no tool computed them."
+  rows={[
+    { label: "1. Approved, then refunded", outcome: "no violation", tone: "allowed", events: [{ label: "approve T1" }, { label: "refund T1" }] },
+    { label: "2. Approval revoked first", outcome: "violation", tone: "breach", events: [{ label: "approve T1" }, { label: "revoke T1" }, { label: "refund T1", culprit: true }] },
+    { label: "3. Another transaction's approval", outcome: "violation", tone: "breach", events: [{ label: "approve T1" }, { label: "refund T2", culprit: true }] },
+    { label: "4. One approval, two refunds", outcome: "violation", tone: "breach", events: [{ label: "approve T1" }, { label: "refund T1" }, { label: "refund T1", culprit: true }] },
+  ]}
+/>
+
+<Misconception wrong="The selector can say 'a refund over 500' directly.">
+<p>A selector reads no other field. `ch09/refund-amount.tvl.yml` adds `amount_over: 500` to it, and `tvl-validate` exits with status 2: `schema_error`, "requirements.0.violation.b: only schema-defined fields are allowed". Expose the case as its own tool name, as version 8 does.</p>
+</Misconception>
+
+<Example file="ch09/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 8: four production requirements" lines="5,121-149" />
+
+Quote `tvl_version: "1.3"`: unquoted, YAML reads a number (`declared_version_below_constructs`). Each `support.escalate` needs its own hand-off within 300,000 ms; one exactly at the deadline counts.
+
+<Predict question={<p>Does <code>tvl-check-structural</code> allow different designs for version 8 than for version 7?</p>}>
+<p>No. Requirements never enter the rules or the search space (<Ref to="semantics" section="section 12.1">formal semantics</Ref>); the witness still sets only the five tuned variables: `max_tool_calls`, `model`, `samples`, `temperature` and `use_retrieval`.</p>
+</Predict>
+
+<h2 id="ch9-episodes">Episodes, recovery and liveness</h2>
+
+Monitors check window by window. A breached window opens an <Term id="episode">episode</Term>, one stretch of trouble; it resolves after a set number of MET windows in a row (`closure_windows`), none older than `closure_max_age_hours`. Two more kinds are promises about a monitor, named with `of`, so they arrive in version 9 (<Ref to="semantics" section="sections 12.8 and 12.9">formal semantics</Ref>):
+
+- **`recovery_time`**: after a breach, met again within `within_hours`, in window time: the window that closes the episode must end within that many hours of the end of the window that opened it. With 6-hour windows and two MET windows to close, the promise needs at least 12 hours (`recovery_deadline_impossible`); version 9 promises 48, and its monitor is `recovery_check`.
+- **`evidence_liveness`**: usable evidence keeps arriving. If `max_stale_windows` + 1 due windows in a row bring none, the monitor is stale. Otherwise silently lost traces would look healthy.
+
+<TryIt>
+
+Run `tvl-validate spec/examples/book/ch09/support-bot.tvl.yml`. It prints `Schema + lint checks passed.`
+
+</TryIt>
+
+<KeyTakeaways>
+  <ul>
+    <li>`rate_bound` allows a share of bad units; `zero_tolerance` allows none, takes only event patterns and is never sampled.</li>
+    <li>Seven sealed predicates. Selectors read no field values; correlation ids and `ref`s tie approvals to actions. Recovery deadlines run in window time.</li>
+  </ul>
+</KeyTakeaways>

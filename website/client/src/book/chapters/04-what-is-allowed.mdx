@@ -1,0 +1,175 @@
+---
+title: "What is allowed"
+slug: what-is-allowed
+order: 4
+draft: false
+summary: Rules over the knobs, conditions on the environment snapshot, and what SAT and UNSAT tell you.
+---
+
+<h2 id="ch4-learn">What you'll learn</h2>
+
+- How to write rules over tuned variables, and what SAT and UNSAT mean.
+- How to state conditions on the environment, and why they never mention knobs or measured results.
+- How an environment snapshot records the outside world a study depends on.
+
+<h2 id="ch4-rules">Rules over the knobs</h2>
+
+Production has taught you two lessons. Small models get stuck in loops when they may make many tool calls; you already have the rule that limits them. Large models with tools disabled tend to guess an order's status. So a large-model configuration must allow at least one tool call. This rule does not require the bot to use that allowance. Here are both rules in the version 3 support bot:
+
+<Example file="ch04/support-bot.tvl.yml" checker="tvl-check-structural" title="The support bot, version 3: two rules" lines="37-42" />
+
+A rule written with `when` and `then` means: whenever the first formula holds, the second must hold too. A rule written with `expr` must always hold. Formulas compare a tuned variable with a value using `=`, `!=`, `<`, `<=`, `>` and `>=`, combine comparisons with `and`, `or` and `not`, and test membership with `in` and a set such as `{"small", "medium"}`. Strings take quotes. Rules use TVL's own formula language: write `model = "small"`, not `params.model == "small"` (<Ref to="constraint-language">constraint language reference</Ref>).
+
+These are <Term id="structural">structural rules</Term>: they mention only tuned variables, so you can check them before any test runs. A design that obeys all of them is structurally feasible (<Ref to="semantics" section="section 6.1">formal semantics</Ref>).
+
+<Predict question={<p>The version 3 bot has 330 raw combinations in all. The two rules mention only the model and the tool-call limit. How many of the 330 designs do they allow?</p>}>
+<p>264. Twelve of the 15 model and tool-call pairs are allowed. Each of them combines with all 11 temperatures and both retrieval settings, which is 22 combinations, and 12 times 22 is 264.</p>
+</Predict>
+
+<Figure
+  base="/book/media/design_space"
+  stem="design_space"
+  alt="A grid of fifteen agent designs, three models by five tool-call limits. Two structural rules cross out three cells, leaving twelve allowed."
+  caption="Figure 4.1. Rules over tuned variables cut the design space. Green cells stay allowed; crossed grey cells are excluded."
+  frames={[
+    { src: "frame-1.png", alt: "All fifteen cells are green.", caption: "Every combination of model and tool-call limit is a cell." },
+    { src: "frame-2.png", alt: "Two cells in the small-model row are crossed out.", caption: "The small-model rule crosses out small models with a limit above two." },
+    { src: "frame-3.png", alt: "Three cells are crossed out in total; twelve remain.", caption: "The large-model rule crosses out large models with a limit of 0. Twelve designs remain." },
+  ]}
+/>
+
+<h2 id="ch4-sat">SAT and UNSAT</h2>
+
+The first question to ask of any set of rules is whether they allow anything at all. If at least one design obeys every rule, the rules are <Term id="sat">SAT</Term>, short for satisfiable. If none does, they are <Term id="unsat">UNSAT</Term>: the rules contradict each other, the space is empty, and there is nothing to test (<Ref to="language" section="“What The Verifiers Are Checking”">language reference</Ref>). `tvl-check-structural` answers the question. For SAT it prints a witness, one allowed design. For UNSAT it prints an <Term id="unsat-core">UNSAT core</Term>: a subset of your rules that already contradicts itself. The tool does not promise the smallest such subset, so the core may include rules that play no part in the clash.
+
+Three colleagues now each add a rule. The support lead wants the bot to search the help articles every time. The person in charge of grounding says that when the bot uses articles, it should quote them rather than improvise, so the temperature stays at or below 0.3. The brand team wants replies that sound warm, so the temperature is at least 0.5. These are the colleagues' proposed heuristics. Low temperature does not guarantee quotations, and high temperature does not guarantee warmth. TVL checks that the rules you declare can hold together; whether a rule actually helps the bot is a question for the evaluation.
+
+<Example file="ch04/support-bot-unsat.tvl.yml" title="Three new rules" lines="37-46" />
+
+<TryIt>
+
+Check the file:
+
+```bash
+tvl-check-structural spec/examples/book/ch04/support-bot-unsat.tvl.yml
+```
+
+One possible output is shown below; yours may differ.
+
+```text
+Structural constraints UNSAT.
+- constraints.structural.0
+    expression: not (model = "small") or (max_tool_calls <= 2)
+      clause: max_tool_calls <= 2
+      clause: not model == 'small'
+- constraints.structural.1
+    expression: not (model = "large") or (max_tool_calls >= 1)
+      clause: max_tool_calls >= 1
+      clause: not model == 'large'
+- constraints.structural.2
+    expression: use_retrieval = true
+      clause: use_retrieval == true
+- constraints.structural.3
+    expression: not (use_retrieval = true) or (temperature <= 0.3)
+      clause: temperature <= 0.3
+      clause: not use_retrieval == true
+- constraints.structural.4
+    expression: temperature >= 0.5
+      clause: temperature >= 0.5
+```
+
+</TryIt>
+
+Here the core lists all five rules, so read it with care. The two tool-call rules, entries 0 and 1, play no part. The clash is among the three new rules, entries 2, 3 and 4: retrieval is always on, so the temperature must be at most 0.3, and it must also be at least 0.5.
+
+UNSAT is good news that arrives early. It means three people must agree before anyone spends money on a test. No measurement can repair a contradiction.
+
+So the three meet and settle on a compromise. The support lead agrees that searching first is a guess worth testing, not a rule, so `use_retrieval` stays a knob. The grounding rule applies when the bot uses the articles, and the brand team's rule applies when it does not. Two rules replace the three proposals:
+
+<Example file="ch04/support-bot-resolved.tvl.yml" checker="tvl-check-structural" title="The negotiated rules" lines="43-46" />
+
+The negotiated file is version 3 from now on: the rest of this chapter and <ChapterLink n={5} /> build on it.
+
+<h2 id="ch4-environment">The environment is a second filter</h2>
+
+Your study also assumes things about the world outside the bot. The model gateway should answer quickly, and it should have spare capacity, or your measurements will be slow for reasons that have nothing to do with your design. These are not knobs, because you cannot tune the gateway. They are not results of your bot either. They are facts, and TVL records them in an <Term id="environment-snapshot">environment snapshot</Term>:
+
+<Example file="ch04/support-bot-resolved.tvl.yml" checker="tvl-validate" title="The environment snapshot" lines="6-14" />
+
+The `snapshot_id` is the date and time the facts describe. The `bindings` name the services that were in use. They are pinned for the record, so a later change of gateway or help-article index is not mistaken for progress, and they are never used in arithmetic. The `context` holds the numeric facts. The module states its <Term id="environment-condition">environment conditions</Term>, and each condition reads those facts as `env.context.<name>`:
+
+<Example file="ch04/support-bot-resolved.tvl.yml" checker="tvl-check-operational" title="Two environment conditions" lines="47-49" />
+
+One idea has several names, depending on where you meet it. This book uses one:
+
+| Where you meet it | Its name there |
+|---|---|
+| This book | environment conditions |
+| The YAML file | the key <Term id="derived">`constraints.derived`</Term>, one `require:` per condition |
+| The command that checks them | `tvl-check-operational` |
+| The references and tool messages | "operational preconditions", "operational feasibility" |
+
+A condition may add and subtract facts and multiply them by fixed numbers, nothing more (<Ref to="constraint-language" section="“Operational Preconditions”">constraint language reference</Ref>). `tvl-check-operational` checks the conditions against the snapshot.
+
+Notice what the conditions do not mention: any tuned variable. So they never pick out some designs over others. If the snapshot passes, every structurally feasible design stays allowed. If it fails, all designs fail together, because the problem is the world, not the design. A design is allowed only when it obeys the rules and the snapshot meets the conditions (<Ref to="semantics" section="section 6.3">formal semantics</Ref>).
+
+<Figure
+  base="/book/media/environment_filter"
+  stem="environment_filter"
+  alt="The allowed cells of the design-space grid sit behind a gate labelled with the two environment conditions. While the snapshot's numbers pass, the grid stays green; when the latency number rises above its limit, the gate closes and the whole grid dims together."
+  caption="Figure 4.2. The environment is a second filter. It does not remove some designs: it lets the whole allowed space through, or none of it."
+  frames={[
+    { src: "frame-1.png", alt: "The grid of twelve green cells behind an open gate. Two gauges show latency 180 ms against a limit of 300, and spare capacity 180 against a minimum of 100, both with check marks.", caption: "Snapshot of 1 October: both conditions hold, so the allowed designs stay allowed." },
+    { src: "frame-2.png", alt: "The latency gauge reads 420 ms, above its 300 limit, and is marked with a cross. The capacity gauge reads 120, still above 100, with a check mark. The gate is closed and every cell of the grid is greyed together.", caption: "Snapshot of 14 October: latency fails its condition, and every design waits together." },
+  ]}
+/>
+
+<TryIt>
+
+A newer snapshot, `ch04/busy-gateway.tvl.yml`, was taken on a busy morning: gateway latency rose to 420 ms and current load to 480 requests per minute. The knobs and rules are unchanged. Check both snapshots:
+
+```bash
+tvl-check-operational spec/examples/book/ch04/support-bot-resolved.tvl.yml
+tvl-check-operational spec/examples/book/ch04/busy-gateway.tvl.yml
+```
+
+The first snapshot passes and the second fails:
+
+```text
+Operational feasibility checks passed (budgets respected or skipped).
+Operational feasibility failed.
+- derived_constraint_violation: [(1.0, 'env.context.gateway_baseline_latency_ms')]=420.0 violates constraint <= 300.0 (['constraints', 'derived', 0, 'require'])
+```
+
+The failure names the first condition, `constraints.derived` entry 0, and the value that broke it. The checker writes the left side of the condition as a list of (factor, fact) pairs: here 1.0 times the latency, which is 420. "Budgets" in the first line are optional exploration budgets, such as a maximum number of trials; the support bot sets none. The second condition holds on the busy morning: spare capacity is 600 minus 480, which is 120, still at least 100.
+
+</TryIt>
+
+<Predict question={<p>A third snapshot finds the gateway quick again, at 180 ms, but busier than ever: current load is 520 requests per minute. Does <code>tvl-check-operational</code> pass? If not, which condition fails? And does <code>tvl-check-structural</code> still report SAT?</p>}>
+<p>The environment check fails, this time on the second condition, <code>constraints.derived</code> entry 1. Latency passes: 180 is within the 300 ms limit. But spare capacity is 600 minus 520, which is 80, below the minimum of 100. The structural check still reports SAT, because it reads only the rules over the knobs. To check, run the “Try it” box after Figure 4.2 on a copy of <code>ch04/busy-gateway.tvl.yml</code> with these two numbers.</p>
+</Predict>
+
+When the world changes in a way that matters, update the snapshot: a new `snapshot_id` with the new facts, as `busy-gateway.tvl.yml` has (<Ref to="language" section="“Environment”">language reference</Ref>). Then every result can be tied to the facts it was measured under.
+
+<h2 id="ch4-facts">Facts, not outcomes</h2>
+
+<Misconception wrong="constraints.derived is the place for my latency target: reply latency must stay under two seconds.">
+<p>Environment conditions may read only numeric facts under `env.context`. The bot's reply latency is something you measure on the evaluation set; it is an outcome, not a fact you know before the study. Outcomes belong in objectives (<ChapterLink n={5} />) or in chance constraints (<ChapterLink n={6} />). Written as a condition, it is rejected:</p>
+</Misconception>
+
+<Example file="ch04/derived-on-outcome.tvl.yml" title="A measured outcome written as a condition" lines="47-50" />
+
+```text
+[derived_invalid_symbol_reference] constraints.derived.1.require: Operational preconditions may reference only env.context.* symbols; found 'reply_latency_p95_ms'
+```
+
+A condition that mentions a tuned variable is rejected too, with the code `derived_references_tvar`: rules over knobs belong in `constraints.structural` (<Ref to="error-codes">error code catalog</Ref>).
+
+<KeyTakeaways>
+  <ul>
+    <li>Structural rules (`when`/`then` and `expr`) mention only tuned variables and cut the design space before any test runs.</li>
+    <li>SAT means at least one design obeys every rule; UNSAT means the rules contradict each other, so stop and decide before testing.</li>
+    <li>The environment snapshot records the facts a study assumes. Environment conditions, under `constraints.derived`, read only `env.context` facts, so they pass or fail for all designs at once.</li>
+    <li>Measured outcomes never go in `constraints.derived`; they are objectives or chance constraints.</li>
+  </ul>
+</KeyTakeaways>

@@ -1,0 +1,68 @@
+# Version 4 with a forgotten margin: cost has no min_effect entry.
+tvl:
+  module: book.support_bot
+
+environment:
+  snapshot_id: "2026-10-01T00:00:00Z"
+  bindings:
+    llm_gateway: eu-west-1
+    help_center_index: help-articles-2026-09
+  context:
+    gateway_baseline_latency_ms: 180
+    gateway_rpm_limit: 600
+    gateway_rpm_current_load: 420
+
+evaluation_set:
+  dataset: datasets/support-tickets-v1.jsonl
+  seed: 7
+
+tvars:
+  - name: model
+    type: enum[str]
+    domain: ["small", "medium", "large"]
+  - name: max_tool_calls
+    type: int
+    domain:
+      set: [0, 1, 2, 4, 8]
+  - name: temperature
+    type: float
+    domain:
+      range: [0.0, 1.0]
+      resolution: 0.1
+  - name: use_retrieval
+    type: bool
+    domain: [true, false]
+
+constraints:
+  structural:
+    - when: model = "small"
+      then: max_tool_calls <= 2
+    - when: model = "large"
+      then: max_tool_calls >= 1
+    - when: use_retrieval = true          # grounding: with articles, quote them
+      then: temperature <= 0.3
+    - when: use_retrieval = false         # brand team: without articles, sound warm
+      then: temperature >= 0.5
+  derived:
+    - require: env.context.gateway_baseline_latency_ms <= 300
+    - require: env.context.gateway_rpm_limit - env.context.gateway_rpm_current_load >= 100
+
+objectives:
+  - name: resolution_rate                       # share of tickets solved
+    metric_ref: metrics.support.resolution_rate.v1
+    direction: maximize
+  - name: cost_per_ticket_usd                   # model and tool spend per ticket
+    metric_ref: metrics.support.cost_per_ticket_usd.v1
+    direction: minimize
+  - name: reply_tokens                          # length of a reply: a band, not a direction
+    metric_ref: metrics.support.reply_tokens.v1
+    band:
+      target: [80, 250]
+      test: TOST
+      alpha: 0.05
+
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    resolution_rate: 0.02

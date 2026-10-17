@@ -1,0 +1,6 @@
+# A candidate that breaks the module's rule for small models.
+config_id: support-bot.small-4
+module_id: book.support_bot
+assignments:
+  model: small
+  max_tool_calls: 4

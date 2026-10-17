@@ -25,10 +25,14 @@ EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "spec" / "examples"
 # composites) are the validators-packet acceptance bar — many are deliberately
 # invalid — so they are NOT part of the LEGACY 1.0 baseline corpus.
 _FORWARD_FIXTURE_DIRS = ("validation-phase6-cvars", "validation-phase7-composites")
+# spec/examples/book/ holds the book's teaching fixtures (some deliberately
+# invalid); tests/test_book_examples.py owns them, so the legacy walk skips it.
+_BOOK_DIR = EXAMPLES_ROOT / "book"
 CORPUS = sorted(
     p
     for p in EXAMPLES_ROOT.rglob("*.yml")
     if not any(d in str(p) for d in _FORWARD_FIXTURE_DIRS)
+    and _BOOK_DIR not in p.parents
 )
 
 INJECTED_CVARS = [

@@ -1,0 +1,219 @@
+{
+  "scenes": {
+    "better_with_margins": {
+      "assets": [
+        {
+          "bytes": 155159,
+          "path": "website/client/public/book/media/better_with_margins/better_with_margins-poster.png",
+          "sha256": "c830ef774db2480e8c38c3aa37b1cfea88dd31fd4b30df32dd69bee71f5f65f9"
+        },
+        {
+          "bytes": 789868,
+          "path": "website/client/public/book/media/better_with_margins/better_with_margins.mp4",
+          "sha256": "e932b235f5192b3a5e4f06f0f7b3e0a4c882df30fe4c1bd8f5a14edfb8c49150"
+        },
+        {
+          "bytes": 1269173,
+          "path": "website/client/public/book/media/better_with_margins/better_with_margins.webm",
+          "sha256": "da4a4eab8c9d8d1fef3f190c2ab1d6ab76e63969e5b055cf1d7b3fc7a28fcc82"
+        },
+        {
+          "bytes": 50043,
+          "path": "website/client/public/book/media/better_with_margins/frame-1.png",
+          "sha256": "4d0b31283d22af4400df8422f71c0e05a8ecb19c5066f11a199080201f36994b"
+        },
+        {
+          "bytes": 94210,
+          "path": "website/client/public/book/media/better_with_margins/frame-2.png",
+          "sha256": "f398dc6d3c500385fbb2e2f83c38bb5d556535293ac67ad68084eb5d99f6a50f"
+        },
+        {
+          "bytes": 154142,
+          "path": "website/client/public/book/media/better_with_margins/frame-3.png",
+          "sha256": "861d51dd89894e177156ad12e0da7b368a96b8e0ea6c9a9c8d1ce2805ea28ee7"
+        }
+      ],
+      "manim_version": "0.22.0",
+      "palette_sha256": "e5d7a7530ff0ebf703df579923fd69edfdbd0783037fdf7021b87b873087c6a2",
+      "palette_source": "book/manim/palette.py",
+      "provenance": "original, made with Manim Community Edition (MIT)",
+      "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o better_with_margins book/manim/scenes/better_with_margins.py BetterWithMargins (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
+      "scene_source": "book/manim/scenes/better_with_margins.py",
+      "scene_source_sha256": "1eac1cc7d5502278be138da37bd1a95117054ec4dab064393c51af41e3fc4a43",
+      "support_sha256": {
+        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
+      }
+    },
+    "design_space": {
+      "assets": [
+        {
+          "bytes": 107238,
+          "path": "website/client/public/book/media/design_space/design_space-poster.png",
+          "sha256": "bed7681afd4898688f9b541041e06de56b2b12fa4f10256c063874870219605a"
+        },
+        {
+          "bytes": 637124,
+          "path": "website/client/public/book/media/design_space/design_space.mp4",
+          "sha256": "ce17a572fd7b2d696ed3e6a067b6f82faa5ebe3f30aa82cfe48851accbf19507"
+        },
+        {
+          "bytes": 862627,
+          "path": "website/client/public/book/media/design_space/design_space.webm",
+          "sha256": "43d5bc9e7e2ee4eb0e90647f2a01126130e55a551f8662a7521a536716cf5529"
+        },
+        {
+          "bytes": 69505,
+          "path": "website/client/public/book/media/design_space/frame-1.png",
+          "sha256": "dfe1ab39467031dc9264c91c72aa3525aa5c52b016e8c28d33fe751818d8ec11"
+        },
+        {
+          "bytes": 94494,
+          "path": "website/client/public/book/media/design_space/frame-2.png",
+          "sha256": "a7349355c55615b4798bf193a1b7f77271c8abb71d7092bb8a87ac41cb75f783"
+        },
+        {
+          "bytes": 107689,
+          "path": "website/client/public/book/media/design_space/frame-3.png",
+          "sha256": "c6f090402b6fa1213c29ad88c592be724b04c070b144e3a08769329f0f200bda"
+        }
+      ],
+      "manim_version": "0.22.0",
+      "palette_sha256": "e5d7a7530ff0ebf703df579923fd69edfdbd0783037fdf7021b87b873087c6a2",
+      "palette_source": "book/manim/palette.py",
+      "provenance": "original, made with Manim Community Edition (MIT)",
+      "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o design_space book/manim/scenes/design_space.py DesignSpace (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
+      "scene_source": "book/manim/scenes/design_space.py",
+      "scene_source_sha256": "b244d36e905afc9676911501f3d9314bb22c6d56852ca277f160df87ed429bbe",
+      "support_sha256": {
+        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
+      }
+    },
+    "design_space_grows": {
+      "assets": [
+        {
+          "bytes": 58294,
+          "path": "website/client/public/book/media/design_space_grows/design_space_grows-poster.png",
+          "sha256": "442190309b5eb00f521244eef2db4cb4c80ef6506b129c7da3e17c1ea5278bc9"
+        },
+        {
+          "bytes": 597331,
+          "path": "website/client/public/book/media/design_space_grows/design_space_grows.mp4",
+          "sha256": "f9ed963e1ba5a6bc620c8697f4fdbea5468f5c5be96891b421a05d0d2876a5d2"
+        },
+        {
+          "bytes": 1040446,
+          "path": "website/client/public/book/media/design_space_grows/design_space_grows.webm",
+          "sha256": "c47778be0c614daebd72c7cf31f6fb5050c3de544f9d77bf2c9951783de21ca8"
+        },
+        {
+          "bytes": 59248,
+          "path": "website/client/public/book/media/design_space_grows/frame-1.png",
+          "sha256": "f4af4e146c0a240d140c304c13ed5d6e88100f746ea3229144e88c9c0b502812"
+        },
+        {
+          "bytes": 58519,
+          "path": "website/client/public/book/media/design_space_grows/frame-2.png",
+          "sha256": "2c26e7bf7408a86b83539e4158fdff5f580b5e6307115b93ac625cb2926a335d"
+        },
+        {
+          "bytes": 58068,
+          "path": "website/client/public/book/media/design_space_grows/frame-3.png",
+          "sha256": "2eb8f5107b4fd9bd97ad4b885134b5e19b9391ac2610bed83d6ab103e0af57a6"
+        }
+      ],
+      "manim_version": "0.22.0",
+      "palette_sha256": "e5d7a7530ff0ebf703df579923fd69edfdbd0783037fdf7021b87b873087c6a2",
+      "palette_source": "book/manim/palette.py",
+      "provenance": "original, made with Manim Community Edition (MIT)",
+      "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o design_space_grows book/manim/scenes/design_space_grows.py DesignSpaceGrows (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
+      "scene_source": "book/manim/scenes/design_space_grows.py",
+      "scene_source_sha256": "efa35fad4524a974480d6b850276ed62d1d26db6a2bd482f9f5139c2ae29decf",
+      "support_sha256": {
+        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
+      }
+    },
+    "environment_filter": {
+      "assets": [
+        {
+          "bytes": 103631,
+          "path": "website/client/public/book/media/environment_filter/environment_filter-poster.png",
+          "sha256": "b57aceacc94414b736a925b8085c958d6e907a05a4379b36d22c74932c39ff7d"
+        },
+        {
+          "bytes": 654269,
+          "path": "website/client/public/book/media/environment_filter/environment_filter.mp4",
+          "sha256": "f82cb76343710cd98573c36309eac7a155236c4341106734eedc7042b86587b7"
+        },
+        {
+          "bytes": 978521,
+          "path": "website/client/public/book/media/environment_filter/environment_filter.webm",
+          "sha256": "5d63068a3886a7a0f9499cfc52aebb42ccaae3d5e00e58bcd4f8cface8bf7cc7"
+        },
+        {
+          "bytes": 103642,
+          "path": "website/client/public/book/media/environment_filter/frame-1.png",
+          "sha256": "41e30feb25b856b3c52db8d434fd33273333f786050578d0eff4c8fc15ccc15c"
+        },
+        {
+          "bytes": 102992,
+          "path": "website/client/public/book/media/environment_filter/frame-2.png",
+          "sha256": "a2958a6bf0363524719e67bc6db43212a4aca9c5271c5a8ae503a791075c3bc0"
+        }
+      ],
+      "manim_version": "0.22.0",
+      "palette_sha256": "e5d7a7530ff0ebf703df579923fd69edfdbd0783037fdf7021b87b873087c6a2",
+      "palette_source": "book/manim/palette.py",
+      "provenance": "original, made with Manim Community Edition (MIT)",
+      "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o environment_filter book/manim/scenes/environment_filter.py EnvironmentFilter (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
+      "scene_source": "book/manim/scenes/environment_filter.py",
+      "scene_source_sha256": "5cfad7116129952f722190c34e40f52688d0046abe5058916c6ab76738423ee4",
+      "support_sha256": {
+        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
+      }
+    },
+    "scattered_to_gathered": {
+      "assets": [
+        {
+          "bytes": 85580,
+          "path": "website/client/public/book/media/scattered_to_gathered/frame-1.png",
+          "sha256": "45244f926b7a4249708f558898f3e5bfb9807d1a469e4e4b54f919902319e5d7"
+        },
+        {
+          "bytes": 102054,
+          "path": "website/client/public/book/media/scattered_to_gathered/frame-2.png",
+          "sha256": "5081a75661f69b0f5191905559a07e750baf43ddd4515095fd687cc5b319d860"
+        },
+        {
+          "bytes": 102052,
+          "path": "website/client/public/book/media/scattered_to_gathered/scattered_to_gathered-poster.png",
+          "sha256": "71d948e538ea8c36e5e6af3ee5543a9ad8967361096e3112d118e3673828d619"
+        },
+        {
+          "bytes": 558583,
+          "path": "website/client/public/book/media/scattered_to_gathered/scattered_to_gathered.mp4",
+          "sha256": "6ac8ef9c3e77a909d146baedf39551fc12418e038b1821402ab2e159e775ffcb"
+        },
+        {
+          "bytes": 842546,
+          "path": "website/client/public/book/media/scattered_to_gathered/scattered_to_gathered.webm",
+          "sha256": "fc004247cfc67db13ffe3cbbf25ab7b0a6925ca8f46bc8b21f72280d2487619c"
+        }
+      ],
+      "manim_version": "0.22.0",
+      "palette_sha256": "e5d7a7530ff0ebf703df579923fd69edfdbd0783037fdf7021b87b873087c6a2",
+      "palette_source": "book/manim/palette.py",
+      "provenance": "original, made with Manim Community Edition (MIT)",
+      "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o scattered_to_gathered book/manim/scenes/scattered_to_gathered.py ScatteredToGathered (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
+      "scene_source": "book/manim/scenes/scattered_to_gathered.py",
+      "scene_source_sha256": "36b045883adf7fcb463c93d8a45033c0eda770889e4a2b9211d7f5ac4ab6a9eb",
+      "support_sha256": {
+        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
+      }
+    }
+  }
+}

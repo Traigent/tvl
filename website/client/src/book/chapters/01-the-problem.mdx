@@ -1,0 +1,112 @@
+---
+title: "The problem"
+slug: the-problem
+order: 1
+draft: false
+summary: An agent's requirements are scattered across prompts, config files, evaluation scripts and checklists, and nobody checks them together.
+---
+
+<h2 id="ch1-learn">What you'll learn</h2>
+
+- Where the rules for a typical AI agent live today, and why that hurts.
+- How rules that are each sensible can contradict each other without anyone noticing.
+- The four questions a requirement for an agent must answer.
+
+<h2 id="ch1-scattered">One bot, four places</h2>
+
+Meet the support bot. It answers customer tickets for an online shop. It reads a ticket, may call tools to look up an order or a refund, and writes a reply. You own it, and you want to try a cheaper model without breaking anything that matters. So you ask: what must the bot do? Here is where the answers usually live.
+
+| Where it lives | What it says | Who checks it, and when |
+|---|---|---|
+| The prompt | "Look up the order, the payment, the shipment and the refund before you reply. Never promise a refund." | Nobody, until a customer complains |
+| A config file | `model: large` and `max_tool_calls: 8`, with the comment "small models: at most 2 tool calls" | A code reviewer, if one looks |
+| The evaluation script | "The share of solved tickets must not drop." | A script, before each release |
+| A launch checklist | "Gateway latency under 300 ms. Use the small model to save money." | A person, once |
+
+Each place has its own format, its own owner and its own moment of checking. None of them sees the others. To know which rules still hold after you change the model, you must read all four places and keep them in your head. This is the problem this book is about: the <Term id="requirement">requirements</Term> of an agent exist, but they are scattered, so they drift apart and contradict each other quietly.
+
+<h2 id="ch1-meet">Rules that never meet</h2>
+
+Here are three rules about the support bot, from three of the four places. Each was written by a different person, for a good reason.
+
+1. The launch checklist says: use the small model, to save money.
+2. The config file says: a small model gets a tool-call limit of at most two, because small models get stuck in loops on long chains of calls.
+3. The prompt asks the bot to look up the order, the payment, the shipment and the refund. So the tool-call limit must be at least four.
+
+The fourth place, the evaluation script, holds a rule too, but it is about measured results. It takes no part here; <ChapterLink n={5} /> shows where it goes.
+
+<Predict question={<p>The bot can use a small, medium or large model, and its tool-call limit can be 0, 1, 2, 4 or 8. That makes 15 possible designs. Suppose the team may keep only two of the three rules. Which two should it keep to allow the most designs, and how many designs is that?</p>}>
+<p>Rules 2 and 3, which allow 4 designs. Without rule 1 the small model is still ruled out, because rule 2 gives it at most two tool calls and rule 3 asks for at least four. A medium or large model with a limit of 4 or 8 obeys both. Keeping rules 1 and 3 allows only 2 designs, the small model with 4 or 8 tool calls. Keeping rules 1 and 2 allows 3, the small model with 0, 1 or 2. With all three rules, no design is left.</p>
+</Predict>
+
+One at a time, each rule looks fine. In a real team nobody reads them together, so a clash among them shows up late, as a failed release. Now gather the same three rules into one TVL file and let a checker read them together:
+
+<Example file="ch01/scattered-rules.tvl.yml" checker="tvl-check-structural" title="The three rules, gathered" lines="23-32" />
+
+A checker reads the file and reports at once that no design obeys all three rules, and it lists the rules involved. TVL calls this result <Term id="unsat">UNSAT</Term>. You install the checker in <ChapterLink n={2} />; <ChapterLink n={4} /> explains the result.
+
+<Figure
+  base="/book/media/scattered_to_gathered"
+  stem="scattered_to_gathered"
+  alt="Four boxes labelled prompt, config file, evaluation script and launch checklist each hold one rule. The rules move into one file, where the three rules about the model and tool calls are marked as a clash."
+  caption="Figure 1.1. Rules in four places never meet. Gathered into one file, they are checked together, and the clash between three of them shows up at once."
+  frames={[
+    { src: "frame-1.png", alt: "Four separate boxes, each holding one rule, spread across the frame.", caption: "Each rule lives in its own place, with its own owner." },
+    { src: "frame-2.png", alt: "All four rules sit inside one file outline. The three rules about the model and tool calls have a red outline and a clash mark, with a red label: no design obeys all three. The evaluation script's rule, about measured results, stays grey.", caption: "Gathered and read together, three of the rules clash. The fourth, about measured results, does not take part." },
+  ]}
+/>
+
+<h2 id="ch1-questions">What a requirement for an agent must say</h2>
+
+A requirement for an ordinary program is often a yes-or-no test: the function returns the right answer or it does not. An agent is different. You choose among many possible designs, and you judge them by noisy measurements. So a useful requirement for an agent answers four questions.
+
+| Question | In the support bot | TVL part | Chapter |
+|---|---|---|---|
+| What may change? | the model, the tool-call limit | `tvars` | 3 |
+| What is allowed? | a small-model configuration has a tool-call limit of at most two | `constraints`, `environment` | 4 |
+| What counts as better? | more tickets solved, at a lower cost | `objectives`, `promotion_policy` | 5 |
+| How much evidence is enough? | enough tickets to trust a difference | `promotion_policy`, `evaluation_set` | 6 |
+
+The "TVL part" column names the section of a TVL file that holds each answer. You do not need to know them yet: each chapter in the last column explains its part.
+
+A TVL <Term id="module">module</Term> answers all four in one file that a machine can check. TVL 1.3, still a draft, adds a fifth question, what must keep holding in production, which chapters 9 to 12 cover.
+
+<Misconception wrong="TVL is a tuning tool: it searches for the best configuration of my agent.">
+<p>TVL states which designs are allowed and what makes a candidate acceptable. It does not prescribe how a candidate is built or which search finds it (<Ref to="language" section="opening paragraph">language reference</Ref>). Your prompts, code and evaluation scripts stay where they are; TVL is the contract they are checked against.</p>
+</Misconception>
+
+<TryIt>
+
+After you install the tools in <ChapterLink n={2} />, run this from the root of the repository:
+
+```bash
+tvl-check-structural spec/examples/book/ch01/scattered-rules.tvl.yml
+```
+
+You should see:
+
+```text
+Structural constraints UNSAT.
+- constraints.structural.0
+    expression: model = "small"
+      clause: model == 'small'
+- constraints.structural.1
+    expression: not (model = "small") or (max_tool_calls <= 2)
+      clause: max_tool_calls <= 2
+      clause: not model == 'small'
+- constraints.structural.2
+    expression: max_tool_calls >= 4
+      clause: max_tool_calls >= 4
+```
+
+The entries are the three rules. The tools count from 0, so `constraints.structural.0` is the first rule. For each rule, the checker prints the rule as it read it (`expression`), then its <Term id="clause">clauses</Term>: the separate ways the rule can hold. A rule holds when at least one of its clauses holds. The second rule, a `when`/`then` rule, fails only for a small model with a limit above two, so it holds exactly when the model is not small or the limit is at most two. The checker writes formulas in its own notation, with `==` and single quotes; they mean the same as `=` in your file.
+
+</TryIt>
+
+<KeyTakeaways>
+  <ul>
+    <li>An agent's rules usually live in prompts, config files, evaluation scripts and checklists, and nobody checks them together. Rules that are each sensible can then contradict each other.</li>
+    <li>Gathered in one TVL file, the rules meet, and a checker finds a clash at once.</li>
+    <li>A requirement for an agent answers four questions: what may change, what is allowed, what counts as better, and how much evidence is enough. TVL states that contract; it does not search for designs.</li>
+  </ul>
+</KeyTakeaways>

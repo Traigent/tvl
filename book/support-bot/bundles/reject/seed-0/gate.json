@@ -1,0 +1,71 @@
+{
+  "ok": false,
+  "decision": "Reject",
+  "warnings": [],
+  "evidence": {
+    "per_objective": {
+      "resolution_rate": {
+        "test_type": "paired",
+        "n_incumbent": 140,
+        "n_candidate": 140,
+        "mean_incumbent": 0.5785714285714286,
+        "mean_candidate": 0.34285714285714286,
+        "delta": -0.23571428571428577,
+        "std_pooled": 0.4259684570636131,
+        "t_statistic": -5.991912797662754,
+        "df": 139,
+        "p_value_noninf": 0.999999991559637,
+        "p_value_super": 0.9999999999710889,
+        "p_value_inferior": 8.440362993732892e-09,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 0.9999999999710889,
+        "adjusted_p_inferior": 1.6880725987465785e-08,
+        "epsilon": 0.02,
+        "verdict": "inferior"
+      },
+      "cost_per_ticket_usd": {
+        "test_type": "paired",
+        "n_incumbent": 140,
+        "n_candidate": 140,
+        "mean_incumbent": 0.024086535714285713,
+        "mean_candidate": 0.008953357142857143,
+        "delta": -0.01513317857142857,
+        "std_pooled": 0.0012491460638156557,
+        "t_statistic": 152.8166710817094,
+        "df": 139,
+        "p_value_noninf": 1e-300,
+        "p_value_super": 1e-300,
+        "p_value_inferior": 1.0,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 2e-300,
+        "adjusted_p_inferior": 1.0,
+        "epsilon": 0.001,
+        "verdict": "superior"
+      },
+      "reply_tokens": {
+        "test_type": "tost",
+        "n": 140,
+        "mean": 134.26000000000002,
+        "std": 34.26467400825647,
+        "ci_lower": 129.46471929105692,
+        "ci_upper": 139.05528070894312,
+        "band_lower": 80.0,
+        "band_upper": 250.0,
+        "p_value_lower": 1e-300,
+        "p_value_upper": 1e-300,
+        "verdict": "in_band"
+      }
+    },
+    "chance_constraints": {},
+    "summary": {
+      "all_noninferior": false,
+      "any_superior": true,
+      "all_bands_pass": true,
+      "any_band_out_of_band": false,
+      "all_chance_pass": true,
+      "adjustment_method": "holm",
+      "fdr_controlled_at": null,
+      "decision_reason": "Regression beyond the allowed margin demonstrated on: resolution_rate"
+    }
+  }
+}

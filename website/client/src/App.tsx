@@ -6,7 +6,9 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Specification from "./pages/Specification";
-import BookTbd from "./pages/BookTbd";
+import BookIndex from "./book/pages/BookIndex";
+import BookChapter from "./book/pages/BookChapter";
+import BookPrint from "./book/pages/BookPrint";
 import Examples from "./pages/Examples";
 import SpecViewer from "./pages/SpecViewer";
 import GitHubRepo from "./pages/GitHubRepo";
@@ -17,7 +19,9 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path="/specification" component={Specification} />
       <Route path="/specification/:type" component={SpecViewer} />
-      <Route path="/book" component={BookTbd} />
+      <Route path="/book" component={BookIndex} />
+      <Route path="/book/print" component={BookPrint} />
+      <Route path="/book/:slug" component={BookChapter} />
       <Route path="/examples" component={Examples} />
       <Route path="/github" component={GitHubRepo} />
       <Route path={"/404"} component={NotFound} />

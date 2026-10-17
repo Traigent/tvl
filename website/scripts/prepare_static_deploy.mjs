@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chaptersForBuild } from "./book_lib.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,10 +93,10 @@ const routeMeta = new Map([
   [
     "/book",
     {
-      title: "TVL Book | Coming Soon | Traigent",
+      title: "TVL, Visually | The TVL Book | Traigent",
       description:
-        "The TVL book is still being prepared. Use the specification and examples to learn the language and tooling today.",
-      robots: "noindex,nofollow",
+        "A short, visual book that teaches TVL to engineers who build AI agents, with runnable examples and a downloadable PDF.",
+      robots: "index,follow",
     },
   ],
 ]);
@@ -117,7 +118,7 @@ function replaceMetaContent(html, selector, content) {
 function applyRouteMeta(route, html) {
   const meta = routeMeta.get(route) ?? {};
   const canonical = `${siteOrigin}${route === "/" ? "/" : route}`;
-  const robots = meta.robots ?? (route.startsWith("/book") ? "noindex,nofollow" : "index,follow");
+  const robots = meta.robots ?? "index,follow";
 
   let routeHtml = html;
 
@@ -171,8 +172,9 @@ function applyRouteMeta(route, html) {
   return routeHtml;
 }
 
-// Routes that are indexed by search engines and listed in sitemap.xml. `/book`
-// is exported as a placeholder page but is marked noindex, so it is not listed.
+// Routes that are indexed by search engines and listed in sitemap.xml. The
+// book's index and its written chapters are added in buildSitemap. Pilot and
+// planned chapters are not listed; pilot chapters are never exported. `/book/print` is the PDF build's route and is not exported.
 const indexableRoutes = [
   "/",
   "/specification",
@@ -188,7 +190,8 @@ const indexableRoutes = [
 ];
 
 function buildSitemap(lastmod) {
-  const urls = indexableRoutes
+  const bookRoutes = ["/book", ...chaptersForBuild(false).filter((c) => !c.planned).map((c) => `/book/${c.slug}`)];
+  const urls = [...indexableRoutes, ...bookRoutes]
     .map(
       (route) =>
         `  <url>\n    <loc>${siteOrigin}${route === "/" ? "/" : route}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>`,
@@ -205,7 +208,8 @@ async function main() {
   // a real 404: `client/public/404.html` is a static page that does not depend
   // on the SPA bundle, and the CDN must serve it with a 404 status (see
   // DEPLOYMENT.md). Do not overwrite it with a copy of the SPA entry point.
-  const staticRoutes = new Set([...indexableRoutes, "/book"]);
+  const bookChapterRoutes = chaptersForBuild(false).map((c) => `/book/${c.slug}`);
+  const staticRoutes = new Set([...indexableRoutes, "/book", ...bookChapterRoutes]);
 
   for (const route of staticRoutes) {
     await writeRouteIndex(route, indexHtml);

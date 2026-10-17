@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Link } from "wouter";
-import { FileText, BookOpen, Code2, Zap, Shield, Layers, Clock3, Github } from "lucide-react";
+import { FileText, BookOpen, Code2, Zap, Shield, Layers, Github } from "lucide-react";
 
 const QUICK_HOOK_TVL = `tvl:
   module: corp.support.rag_agent
@@ -176,8 +176,8 @@ export default function Home() {
                 </Link>
                 <Link href="/book">
                   <Button variant="outline">
-                    <Clock3 className="mr-2 h-4 w-4" />
-                    Book Is TBD
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    Read the book
                   </Button>
                 </Link>
               </div>
@@ -308,11 +308,11 @@ export default function Home() {
                   <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
                     <BookOpen className="h-6 w-6 text-primary" />
                   </div>
-                  <CardTitle>Book (Temporarily Hidden)</CardTitle>
+                  <CardTitle>The book: TVL, Visually</CardTitle>
                   <CardDescription>
-                    Additional study materials are being prepared. Start with
-                    the specification and examples, then return here for the
-                    full learning track.
+                    A short, visual book with runnable examples and a
+                    downloadable PDF. Chapters 1 to 12 are ready; the TVL 1.3
+                    chapters are marked draft.
                   </CardDescription>
                 </CardHeader>
               </Card>

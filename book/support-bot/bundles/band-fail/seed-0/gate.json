@@ -1,0 +1,71 @@
+{
+  "ok": false,
+  "decision": "Reject",
+  "warnings": [],
+  "evidence": {
+    "per_objective": {
+      "resolution_rate": {
+        "test_type": "paired",
+        "n_incumbent": 140,
+        "n_candidate": 140,
+        "mean_incumbent": 0.5785714285714286,
+        "mean_candidate": 0.7785714285714286,
+        "delta": 0.19999999999999996,
+        "std_pooled": 0.4014362703302863,
+        "t_statistic": 6.484404367403377,
+        "df": 139,
+        "p_value_noninf": 7.22675030928599e-10,
+        "p_value_super": 2.1650034254250272e-07,
+        "p_value_inferior": 0.999999999277325,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 4.3300068508500544e-07,
+        "adjusted_p_inferior": 1.0,
+        "epsilon": 0.02,
+        "verdict": "superior"
+      },
+      "cost_per_ticket_usd": {
+        "test_type": "paired",
+        "n_incumbent": 140,
+        "n_candidate": 140,
+        "mean_incumbent": 0.024086535714285713,
+        "mean_candidate": 0.024595914285714286,
+        "delta": 0.0005093785714285724,
+        "std_pooled": 0.00020462861491274862,
+        "t_statistic": 28.36900905540018,
+        "df": 139,
+        "p_value_noninf": 1e-300,
+        "p_value_super": 1.0,
+        "p_value_inferior": 1.0,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 1.0,
+        "adjusted_p_inferior": 1.0,
+        "epsilon": 0.001,
+        "verdict": "noninferior"
+      },
+      "reply_tokens": {
+        "test_type": "tost",
+        "n": 140,
+        "mean": 260.68857142857144,
+        "std": 41.817152664155735,
+        "ci_lower": 254.8363346489355,
+        "ci_upper": 266.5408082082074,
+        "band_lower": 80.0,
+        "band_upper": 250.0,
+        "p_value_lower": 1e-300,
+        "p_value_upper": 0.9985156324233847,
+        "verdict": "out_of_band"
+      }
+    },
+    "chance_constraints": {},
+    "summary": {
+      "all_noninferior": true,
+      "any_superior": true,
+      "all_bands_pass": false,
+      "any_band_out_of_band": true,
+      "all_chance_pass": true,
+      "adjustment_method": "holm",
+      "fdr_controlled_at": null,
+      "decision_reason": "Banded objectives outside declared band: reply_tokens"
+    }
+  }
+}

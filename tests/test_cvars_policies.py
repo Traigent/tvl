@@ -29,6 +29,16 @@ from tvl.schema import validator  # noqa: E402
 
 FIXTURES = BASE / "spec" / "examples" / "validation-phase6-cvars"
 EXAMPLES = BASE / "spec" / "examples"
+# spec/examples/book/ holds the book's teaching fixtures (some deliberately
+# invalid); they are checked by tests/test_book_examples.py, not by this sweep.
+SKIPPED_EXAMPLE_DIRS = (EXAMPLES / "book",)
+
+
+def iter_example_files():
+    for path in sorted(EXAMPLES.rglob("*.yml")):
+        if any(d in path.parents for d in SKIPPED_EXAMPLE_DIRS):
+            continue
+        yield path
 
 
 def _load(name: str) -> dict:
@@ -153,7 +163,7 @@ def test_p1_all_existing_examples_unchanged():
         "namespace_prefix_collision",
     }
     checked = 0
-    for path in sorted(EXAMPLES.rglob("*.yml")):
+    for path in iter_example_files():
         # Skip the forward validators-packet fixtures (phase 6 = RFC 0001,
         # phase 7 = RFC 0002) — many are deliberately invalid by design.
         if "validation-phase6-cvars" in str(path) or "validation-phase7-composites" in str(path):

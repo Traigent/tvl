@@ -1,0 +1,6 @@
+# One candidate configuration: a value for every tuned variable.
+config_id: support-bot.medium-2
+module_id: book.support_bot
+assignments:
+  model: medium
+  max_tool_calls: 2

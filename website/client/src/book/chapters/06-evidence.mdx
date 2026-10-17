@@ -1,0 +1,294 @@
+---
+title: "Evidence and the promotion decision"
+slug: evidence
+order: 6
+draft: false
+summary: "Evaluation sets, evidence bundles, what a confidence level promises, the tests behind \"not worse and better\", the three decisions Promote, Reject and NoDecision from real runs, a limit on slow replies, and what a Promote does not prove."
+---
+
+<h2 id="ch6-learn">What you'll learn</h2>
+
+- Why the tickets you tune on are not the tickets you judge on, and what an evidence bundle holds.
+- What "95% confidence" promises, and why zero failures can still be too little evidence.
+- How the gate turns two bundles into Promote, Reject or NoDecision, shown on real runs of the book's support-bot project.
+- What a Promote does not prove, and why it is not a deployment.
+
+<Callout kind="warning" title="Everything in this chapter is synthetic">
+<p>The runs use the book's project in `book/support-bot/`: 200 invented tickets and a <b>simulated</b> bot, a small program with made-up formulas that makes no model calls. Every number below shows how the gate reasons. None of them measures a real bot, model or customer.</p>
+</Callout>
+
+<h2 id="ch6-sets">Tune on some tickets, judge on others</h2>
+
+In a real project you tune while looking at results: try a setting, see which tickets fail, adjust. Every look fits your choices a little to those tickets, so a score on the same tickets flatters them, the way a student who has seen the exam scores well on it.
+
+So the project splits its 200 tickets once, by a seeded script: 60 form the `tuning` split, for exploring, and 140 the `eval` split, the <Term id="evaluation-set">evaluation set</Term> on which candidates are judged. An evaluation set kept apart from tuning like this is also called a <Term id="holdout">holdout</Term>. The evaluator, the program that runs a configuration on the tickets and scores its replies (here `evaluate.py` with the simulator), uses the `eval` split by default. The version 5 module names it in `evaluation_set`, with the book's own label.
+
+<h2 id="ch6-bundle">An evidence bundle, from a real run</h2>
+
+An <Term id="evidence-bundle">evidence bundle</Term> holds the measurements of one configuration on the evaluation set. For each objective it gives either raw `samples`, one value per ticket, or a summary. A summary gives the average (`mean`), the spread of individual results (`std`, standard deviation), and the number of observations (`n`). A bundle also holds counts for each <Term id="chance-constraint">chance constraint</Term>, a limit on how often something may go wrong, such as a slow reply (its own section comes <XRef to="ch6-chance">later</XRef>): the number of violations and the number of trials. It also names its module and configuration (<Ref to="promotion-evidence" section="“Canonical measurement bundle”">promotion evidence contract</Ref>).
+
+Here is the start of a bundle the project wrote for a candidate, a medium model with two tool calls and retrieval:
+
+<Example file="book/support-bot/bundles/promote/seed-0/candidate.synthetic.measure.yml" title="A real bundle (SYNTHETIC data)" lines="1-8,16" />
+
+Each of the 140 samples of `resolution_rate` (the listing shows the first line of them) is 1.0 for a resolved ticket and 0.0 otherwise; their mean is the share solved. `paired: true`, the last line shown, says that the incumbent's bundle has samples for the same tickets in the same order. The gate then compares ticket by ticket, a paired test, which cancels the luck both share on each ticket (<Ref to="semantics" section="section 9.4">formal semantics</Ref>). Mark a bundle paired only when that is true.
+
+The validator, `tvl-measure-validate`, checks the configuration, the module name, that every objective has samples or a mean, standard deviation and count, and, on this bundle alone, each band's mean and each chance constraint. "Promotion-ready" means the gate can read the bundle. It is not the decision Promote, which the gate makes later from two bundles. And a pass does not say the numbers are true: the validator cannot see how they were made.
+
+<h2 id="ch6-confidence">What 95% confidence promises</h2>
+
+The evidence for a chance constraint is a count: say no slow replies in 140 tickets. The true rate of slow replies is unknown, so the gate computes a number from the count instead: an <Term id="upper-bound">upper confidence bound</Term>, a rate computed by a method that, over many repeated studies, lands at or above the true rate at least 95% of the time. The gate's method is the exact Clopper-Pearson method (<Ref to="semantics" section="section 9.6">formal semantics</Ref>).
+
+What does "95%" mean here? Not "we are 95% sure about this candidate". Imagine 100 teams, each running the same study: 140 fresh tickets from the same traffic, a count of slow replies, a bound. At least 95 of the teams, on average, get a bound at or above the true rate; the others get one below it. You are one team, and you cannot tell which kind of bound you have. So the promise is about the method, over repetitions of the whole study. That long-run share is the bound's <Term id="coverage">coverage</Term>. Figure 6.1 runs the experiment.
+
+The method assumes independent trials, each with the same chance of a violation. Two tickets from the same customer about the same problem are not independent; neither are retries of one hard ticket. Under these assumptions, the exact method has theoretical coverage of at least 95%. This finite simulation covers the true rate in 95.8% of its studies. And the rate it bounds is the rate on tickets like the evaluation set; if those are not like your production traffic, the bound says nothing about production.
+
+<CoverageFigure
+  alt="A chart of sixty thin vertical lines, one per simulated study, each rising from zero to a short tick at that study's 95% upper bound on the violation rate. A legend says each line is one study's 95% upper bound. A dashed horizontal line marks the true rate, 3.5%, labelled in the right margin. Fifty-eight ticks lie above the dashed line, drawn in blue. Two lie just below it, drawn in red, with a cross under each below the axis and the label: bound below the true rate, 2 studies."
+  caption="Figure 6.1. Sixty simulated studies of a process whose true violation rate is 3.5%. Each counts violations in 140 trials and computes the gate's 95% upper bound (a tick). In 58 of the 60, the bound is at or above the true rate; in 10,000 such studies, 95.8% are. That long-run share is what 95% confidence means. Data: python book/support-bot/confidence.py coverage."
+/>
+
+<Predict question={<p>A candidate has no slow replies at all in 50 tickets. Will a 95% upper bound on its slow-reply rate be at or below 5%?</p>}>
+<p>No: 0 in 50 gives a bound of 0.0582, above 0.05. It takes at least 59 clean trials.</p>
+</Predict>
+
+<Misconception wrong="Zero failures means safe.">
+<p>Zero failures in ten tickets says little: a bot that fails one reply in four would show no failure in ten tickets about one time in eighteen. The evidence is the count <i>and</i> the number of trials. TVL never treats zero observed violations as enough by itself; it passes only when the upper bound is at or below the threshold (<Ref to="semantics" section="section 9.6">formal semantics</Ref>).</p>
+</Misconception>
+
+Do not expect the bound to fall steadily as trials accumulate. Each new violation pushes it up: with 140 trials, no violation gives 0.0212 and one gives 0.0334. And checking after every batch, stopping the first time the bound passes, gives the luck many chances to help; the 95% promise is for a study whose size was fixed in advance.
+
+<h2 id="ch6-tests">The tests behind "not worse, and better"</h2>
+
+Chapter 5 compared exact numbers. Measurements are noisy: run the same candidate on other tickets and its numbers move. So for every directed objective the gate runs three statistical tests, each <Term id="one-sided">one-sided</Term>, using the margin from `min_effect` (<Ref to="semantics" section="section 9.4">formal semantics</Ref>). "One-sided" means the test asks about a difference in one specified direction.
+
+Each test starts from a claim about the true difference and asks: if this claim held, how unusual would results like ours be? The answer is a number between 0 and 1, the test's <Term id="p-value">p-value</Term>. A small p-value is evidence against the claim, so to show what we want, each test examines its opposite:
+
+| Test | What the gate wants to show | The claim it tests | Verdict when the p-value is below `alpha` |
+|---|---|---|---|
+| Non-inferiority | not worse by the margin or more | the candidate is worse by at least the margin | `noninferior` |
+| Superiority | better by more than the margin | its improvement is no greater than the margin | `superior` (only if also not worse) |
+| Inferiority | worse by more than the margin | it has not regressed beyond the margin | `inferior` |
+
+When none of these settles it, the verdict is `inconclusive`. Each test asks how unusual these results would be if its claim held. A small p-value is evidence against that claim. It is not the probability that the claim is true. The gate compares these p-values with `alpha`, applying the adjustments described below.
+
+The <Term id="alpha">significance level</Term> `alpha` = 0.05 is the line for "small enough". Under a test's assumptions, `alpha` limits its long-run false-positive rate: how often, over repeated studies, the test would count evidence against a claim that was in fact true. Here the gate applies t-tests to binary resolution outcomes. Their small-sample error rates are not exact guarantees for this simulator. And `alpha` is not the probability that this candidate is better. The gate picks the kind of t-test from the bundles (paired, or Welch's for unpaired samples and summaries); your part is to mark `paired: true` only when it is true. Here is the end of the gate's `--json` report on `resolution_rate` for the Promote run below; above these lines it records the test type (`paired`), the counts, the means and the difference:
+
+```json
+        "p_value_noninf": 2.033767789133556e-05,
+        "p_value_super": 0.003509125848550898,
+        "p_value_inferior": 0.9999796623221087,
+        "adjusted_p_noninf": null,
+        "adjusted_p_super": 0.003509125848550898,
+        "adjusted_p_inferior": 1.0,
+        "epsilon": 0.02,
+        "verdict": "superior"
+      },
+```
+
+The candidate solved 9.3 points more tickets. The p-values for "not worse" and "better" are far below 0.05, so the verdict is `superior`. The inferiority p-value is close to 1: no sign of a regression. `adjusted_p_noninf` is `null` because non-inferiority is never adjusted, as the next paragraph explains, and `epsilon` is the margin.
+
+**Many objectives, many chances.** Check many things, and one may look good by luck alone. A <Term id="multiple-testing">multiple-testing adjustment</Term> makes the tests stricter when several of them could each produce a claim. "Not worse" must hold on every objective, so each non-inferiority test runs at `alpha` unadjusted: requiring all of them is already strict. "Better on at least one" gives luck several chances to produce one apparent win, and "worse on at least one" several chances to produce one apparent regression. So the gate adjusts the superiority p-values as one family, and the inferiority p-values as another, by the method in `adjust` (<Ref to="semantics" section="section 9.8">formal semantics</Ref>). Holm keeps the chance of even one false claim in the family at or below `alpha`, under its standard conditions. Benjamini-Hochberg, under its conditions, limits only the expected share of false claims among those made, which is weaker. Version 4 sets no `adjust`, so the reference tool applies Holm and says so (`adjustment_method: holm`); version 5 writes `adjust: holm`, so the module decides.
+
+**Bands use TOST.** A band asks whether the candidate's mean lies inside the range. <Term id="tost">TOST</Term>, two one-sided tests, asks it at both edges: is the mean above 80, and is it below 250, each at the band's `alpha`. Both must succeed. A <Term id="confidence-interval">confidence interval</Term> gives a lower and upper estimate for the mean, using a method with stated long-run coverage. TOST passes exactly when a 90% confidence interval (1 − 2 × 0.05, one 0.05 per edge) lies wholly inside the band (<Ref to="semantics" section="section 9.5">formal semantics</Ref>). In the Promote run the interval for `reply_tokens` is 194.8 to 206.5: inside.
+
+<h2 id="ch6-outcomes">Three decisions, from real runs</h2>
+
+`tvl-ci-gate` takes the module and two bundles, incumbent then candidate. It checks acceptability first, the candidate alone against the bands and chance constraints, and only then compares the two (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). An objective not shown to be non-inferior gives NoDecision; a chance constraint not shown to hold gives Reject.
+
+<Mermaid
+  alt="A decision flow from top to bottom, in four questions. First: is a chance constraint not shown to hold, or is a band's mean outside its range? Yes leads to Reject. No leads to the second question: is a regression beyond a margin demonstrated on some objective? Yes leads to Reject. No leads to the third question: is every band shown inside its range by TOST? No leads to NoDecision. Yes leads to the last question: not worse on every objective and better on at least one? Yes leads to Promote; no leads to NoDecision."
+  caption="Figure 6.2. The order of the checks, read from the top. Acceptability comes first and looks at the candidate alone; the comparison with the incumbent comes after. An invalid configuration is an error, not a decision."
+  chart={`%%{init: {"flowchart": {"rankSpacing": 20, "nodeSpacing": 40, "padding": 6}, "themeVariables": {"fontSize": "17px"}}}%%
+flowchart TB
+  A["1. A chance constraint not shown to hold,<br/>or a band mean outside its range?"] -->|no| B["2. A regression beyond<br/>a margin demonstrated?"]
+  A -->|yes| R1([Reject])
+  B -->|no| C["3. Every band shown<br/>inside its range?"]
+  B -->|yes| R2([Reject])
+  C -->|yes| D["4. Not worse on every objective,<br/>better on at least one?"]
+  C -->|no| N1([NoDecision])
+  D -->|yes| P([Promote])
+  D -->|no| N2([NoDecision])`}
+/>
+
+Each scenario of the project writes two bundles, validates both with `tvl-measure-validate` and asks the gate. The script prints each command it runs and its exit status, then a digest of the gate's `--json` report. The gate exits 0 only for Promote; Reject and NoDecision exit 2.
+
+**Promote.** The candidate of the bundle shown earlier, against the incumbent, a large model with one tool call:
+
+```bash
+python book/support-bot/run_scenario.py promote --seed 0
+```
+
+The last lines it prints, the gate's part:
+
+```text
+$ tvl-ci-gate spec/examples/book/ch05/support-bot.tvl.yml book/support-bot/out/promote/seed-0/incumbent.synthetic.measure.yml book/support-bot/out/promote/seed-0/candidate.synthetic.measure.yml --json
+  exit 0  decision=Promote
+  reason: All non-inferiority tests pass; superior on: resolution_rate, cost_per_ticket_usd
+  resolution_rate      incumbent=0.5786 candidate=0.6714 delta=+0.0929 (margin 0.02, n=140) -> superior
+  cost_per_ticket_usd  incumbent=0.0241 candidate=0.0097 delta=-0.0144 (margin 0.001, n=140) -> superior
+  reply_tokens         mean=200.7 band=[80, 250] -> in_band
+  (SYNTHETIC: simulator output, not a measurement of a real bot)
+```
+
+The gate prints `delta` raw, candidate minus incumbent; unlike chapter 5's table, it does not flip the sign for objectives you minimize. So for cost a negative delta is a saving: −0.0144 is 1.4 cents cheaper per ticket, and the verdict `superior` already takes the direction into account.
+
+<Predict question={<p>The reject candidate drops tool calls: it costs less than half as much per ticket as the incumbent, but resolves 34% of tickets against the incumbent's 58%. What does the gate decide?</p>}>
+<p>Reject: a regression of 23.6 points on resolution_rate, beyond the margin, is demonstrated. A gain on cost never buys back a loss beyond a margin.</p>
+</Predict>
+
+**The other runs.** The nodecision pair is a medium model without retrieval (the incumbent) and with it (the candidate). In the simulator's own formulas the candidate really is a little better, by 5 points. It is judged on only 16 tickets, with seed 4. A seed is the number that fixes the simulator's random choices: which 16 tickets are drawn, and each ticket's luck. The same seed gives the same run every time. The band-fail candidate is a large model with two tool calls and retrieval.
+
+<Predict question={<p>On its 16 tickets the nodecision candidate solves two more than the incumbent: 8 against 6, a gain of 12.5 points, with a margin of 2 points. What does the gate decide?</p>}>
+<p>NoDecision. The interval for the difference runs from about −2.5 to +27.5 points: it reaches below the −2-point margin, so the gate cannot show even "not worse" (Figure 6.3).</p>
+</Predict>
+
+Each run below is `python book/support-bot/run_scenario.py <name> --seed <n>`. The table gives the gate's decision and exit status, its reason as printed, and the deciding numbers from the same output:
+
+| Run | Decision, exit | Reason printed | Deciding numbers |
+|---|---|---|---|
+| reject, seed 0 | Reject, 2 | Regression beyond the allowed margin demonstrated on: resolution_rate | resolution_rate 0.5786 → 0.3429: inferior; cost 0.0241 → 0.0090: superior |
+| nodecision, seed 4 | NoDecision, 2 | Non-inferiority not established on: resolution_rate | resolution_rate 0.3750 → 0.5000, n = 16: inconclusive |
+| band-fail, seed 0 | Reject, 2 | Banded objectives outside declared band: reply_tokens | reply_tokens mean 260.7, band [80, 250]: out_of_band |
+
+<MarginFigure
+  alt="A number line of the difference in resolution rate, candidate minus incumbent, in points, from minus 30 to plus 30. A shaded strip from minus 2 to plus 2 marks the margin; left of it is 'worse by more than the margin', right of it 'better by more than the margin'. Three horizontal intervals, each with a dot at the observed difference. Promote run, 140 tickets: from about plus 4.9 to plus 13.7, dot at plus 9.3, wholly right of plus 2: superior. NoDecision run, 16 tickets: from about minus 2.5 to plus 27.5, dot at plus 12.5, crossing the left edge of the margin: inconclusive. Reject run, 140 tickets: from about minus 29.5 to minus 17.6, dot at minus 23.6, wholly left of minus 2: inferior."
+  caption="Figure 6.3. The three tests, read from one interval (before any adjustment). Each line is the 90% confidence interval for the difference, with a dot at the observed difference; the shaded strip is the 2-point margin. Wholly right of −2: not worse. Wholly right of +2: also better. Wholly left of −2: a regression. The NoDecision interval crosses −2, so it shows neither. Data: the gate's --json reports for the three runs; SYNTHETIC."
+  margin={0.02}
+  min={-0.32}
+  max={0.32}
+  unit={100}
+  rows={[
+    { label: "Promote run, 140 tickets", verdict: "superior", tone: "evidence", delta: 0.0929, lo: 0.0488, hi: 0.1369 },
+    { label: "NoDecision run, 16 tickets", verdict: "inconclusive", tone: "unknown", delta: 0.125, lo: -0.0247, hi: 0.2747 },
+    { label: "Reject run, 140 tickets", verdict: "inferior", tone: "breach", delta: -0.2357, lo: -0.2953, hi: -0.1761 },
+  ]}
+/>
+
+The nodecision candidate solved two more of the 16 tickets, yet the gate cannot even show it is not worse: the non-inferiority p-value in the report is 0.055, just above 0.05. Why does an observed gain of 12.5 points, against a true one of 5, fail to show "not worse"? On 16 tickets one ticket is 6.25 points, so luck moves the observed difference far from the true one. With so few tickets the interval is also wide, so it still reaches below −2. These sixteen tickets do not establish non-inferiority under the gate's test. NoDecision is the honest answer, and it is not a Reject. This run leaves the comparison unresolved. To gather stronger evidence, plan a fresh evaluation of fixed size before seeing its results.
+
+The band-fail candidate resolves 20 points more tickets, but its replies average 260.7 tokens, above the band, and the gate answers Reject without weighing the gain: acceptability comes first.
+
+Do the decisions depend on the seed's luck? Run every scenario on five seeds:
+
+```bash
+python book/support-bot/run_scenario.py all --seeds 0 1 2 3 4
+```
+
+It ends with a table of the gate's decision per scenario and seed. All 30 match the expected decisions: Promote for promote, Reject for reject, NoDecision for nodecision and Reject for band-fail, and for two scenarios of the section on chance constraints, Promote for slo-pass and Reject for slo-few (slo stands for service-level objective, a target for how a service behaves). Seed 4 illustrates an observed gain that still leaves the comparison unresolved. These five seeds are examples, not a guarantee of seed-independent decisions. Across seeds 0–399, `nodecision` returns NoDecision 399 times and Promote once.
+
+<h2 id="ch6-chance">Chance constraints: a limit on how often</h2>
+
+Customers give up on a reply that takes more than ten seconds. You will accept a few slow replies, but not many: at most 5%. That is a chance constraint. Version 5 of the module adds one, `reply_latency_slo`, at the end of `promotion_policy`, after stating the multiple-testing adjustment explicitly:
+
+<Example file="ch06/support-bot.tvl.yml" title="The support bot, version 5: a limit on slow replies" lines="70-74" />
+
+`threshold` is the highest violation rate you accept; `confidence` is the level of the upper bound that must show it. The module names the event but does not define it. The evaluator defines what counts as slow. Here that means more than ten seconds from the customer's message to the completed reply. The simulator generates a latency for each reply. The evaluator counts values above 10,000 ms as violations. It writes one trial per ticket, in the shape the contract requires; the 50-ticket bundle below holds, under `chance_outcomes`, the line `reply_latency_slo: {violations: 0, trials: 50}`.
+
+A chance constraint checks the candidate alone; the incumbent's counts play no part (<Ref to="semantics" section="section 9.6">formal semantics</Ref>). With the promote candidate on all 140 tickets (`python book/support-bot/run_scenario.py slo-pass --seed 0`), there are 0 slow replies in 140, the bound is 0.0212, the constraint passes, and the gate answers Promote as before. Here is the bound for zero violations at several sizes, by the gate's own function:
+
+```bash
+python book/support-bot/confidence.py bounds --violations 0 --trials 10 30 50 59 140
+```
+
+```text
+95% upper bound on the violation rate with 0 violation(s) observed
+ trials  upper bound
+     10       0.2589
+     30       0.0950
+     50       0.0582
+     59       0.0495
+    140       0.0212
+```
+
+Now judge the same candidate on 50 tickets:
+
+```bash
+python book/support-bot/run_scenario.py slo-few --seed 0
+```
+
+Among the last lines it prints, the gate's:
+
+```text
+  exit 2  decision=Reject
+  reason: Chance constraints failed: reply_latency_slo
+  reply_latency_slo    violations=0/50 upper bound=0.0582 (threshold 0.05, confidence 0.95) -> fail
+```
+
+Not one slow reply, superior on both objectives (resolution_rate +0.1000, cost −0.0145), and the decision is Reject: the bound, 0.0582, is above 0.05. Compare NoDecision above. A chance constraint is a hard acceptability requirement, and evidence that does not show it holds counts as failing (<Ref to="semantics" section="sections 9.6 and 9.7">formal semantics</Ref>). The 50-ticket evidence would not pass the incumbent either: the script's first command, `tvl-measure-validate` on the incumbent's bundle, exits 2 with the same `chance_violation`.
+
+Both scenarios hold on all five seeds; on seed 2 one ticket is slow (1 in 140, and 1 in 50). The simulator's true slow-reply rate for this candidate is under 1%. Over 400 seeds (`python book/support-bot/robustness.py --seeds 400`), slo-pass ends in Reject on 8 (2%): three or more slow replies by chance. Strictness costs some good candidates; a larger evaluation, planned in advance, lowers the cost.
+
+The chance constraint's `confidence` is separate from `alpha`. This chapter has five numbers near 5% or 95%; each controls something different:
+
+| Number | Where it is set | What it controls |
+|---|---|---|
+| `alpha: 0.05` | `promotion_policy`, and each band | The significance level: the line a test's p-value must be below. |
+| `threshold: 0.05` | the chance constraint | The highest slow-reply rate you accept: 5%. |
+| `confidence: 0.95` | the chance constraint | The coverage of the upper bound that is compared with the threshold. |
+| 90% interval | follows from a band's `alpha` (1 − 2 × 0.05) | The interval that must lie inside a band for TOST to pass. |
+| 5% per comparison | an illustration in the next section | An assumed false-positive chance, used only to show how twenty tries add up. |
+
+<h2 id="ch6-limits">What a Promote does not prove</h2>
+
+A Promote says that these bundles pass these tests, under the tests' assumptions. A claim about your agent also depends on what the gate cannot see: whether the tests suit the data, how the data was produced, how the candidate was selected, whether the evaluator is reliable, and whether the evidence was collected independently of that selection (<Ref to="semantics" section="section 9.8">formal semantics</Ref>). Two counterexamples:
+
+**A bad evaluator.** Suppose your evaluator marks a ticket resolved whenever the reply links to a help article. Candidates with retrieval add links, so they "resolve" more tickets. The bundles are well formed and the gate answers Promote, correctly for those numbers, which measure links, not solved tickets. The same holds for a latency timer that starts after the tool calls. In this book's project the simulator is both bot and judge: "resolved" means what `bot.py` says.
+
+**A reused holdout.** Suppose you try twenty candidates, each against the incumbent on the same 140 tickets of the evaluation set, and keep the one the gate promotes. For illustration, imagine twenty independent comparisons, each with a 5% false-positive probability. The chance of at least one false positive is about 64%: 1 − 0.95²⁰, for the same reason that twenty throws of a die are likely to show at least one six. Comparisons sharing a holdout need not be independent, so 64% is not a calculated error rate for this project. And the winner's measured advantage is partly its luck on those 140 tickets. The gate sees one comparison, not the other nineteen. Choose on the tuning split, keep the evaluation set for the final comparison, and record how many candidates you tried.
+
+So report a Promote with what was specified, the candidate, evaluation set, evaluator, checks and assumptions, not as "the new bot is better" (<Ref to="semantics" section="section 9.8">formal semantics</Ref>).
+
+<h2 id="ch6-deploy">Promote is not deployment</h2>
+
+`tvl-ci-gate` prints a decision and exits; it deploys nothing. Your deployment process acts on it: a CI job that continues on exit 0, a release step, a person who approves. Exit 2 is shared by Reject, NoDecision and unusable inputs (a bundle that is not promotion-ready, one the gate cannot read, yields no decision at all), so read `decision` from `--json`. Read the reason before choosing the next step. If more evidence is needed, plan a fresh evaluation of fixed size. Do not repeatedly add tickets or change seeds until the gate passes.
+
+To run the gate yourself, without the script, on the committed Promote bundles:
+
+```bash
+tvl-ci-gate spec/examples/book/ch05/support-bot.tvl.yml \
+  book/support-bot/bundles/promote/seed-0/incumbent.synthetic.measure.yml \
+  book/support-bot/bundles/promote/seed-0/candidate.synthetic.measure.yml
+echo "exit $?"
+```
+
+In this text mode it prints `Decision: Promote`, then, for this module, an empty `Reason:` line (the reason is in the evidence summary it prints next, as `decision_reason`), and the exit status is 0. In CI, use `--json` and read `decision` and `evidence.summary.decision_reason`.
+
+<TryIt>
+
+Write the bundle shown <XRef to="ch6-bundle">earlier</XRef> yourself, check that it matches the reference copy byte for byte, and validate it against the module and its configuration:
+
+```bash
+python book/support-bot/evaluate.py \
+  --module spec/examples/book/ch05/support-bot.tvl.yml \
+  --config book/support-bot/configs/promote-candidate.yml \
+  --split eval --seed 0 --bundle-id support-bot.promote.candidate \
+  --out book/support-bot/out/my-candidate.synthetic.measure.yml
+cmp book/support-bot/out/my-candidate.synthetic.measure.yml \
+  book/support-bot/bundles/promote/seed-0/candidate.synthetic.measure.yml && echo same
+tvl-measure-validate spec/examples/book/ch05/support-bot.tvl.yml \
+  book/support-bot/configs/promote-candidate.yml \
+  book/support-bot/out/my-candidate.synthetic.measure.yml
+```
+
+You should see:
+
+```text
+wrote book/support-bot/out/my-candidate.synthetic.measure.yml  (140 eval tickets, seed 0, SYNTHETIC)
+same
+Configuration + measurement bundle satisfy structural, operational, and chance requirements.
+Promotion-ready: yes
+```
+
+</TryIt>
+
+<KeyTakeaways>
+  <ul>
+    <li>Tune on one split, judge on another: here 60 tuning and 140 evaluation tickets.</li>
+    <li>A bundle holds samples (or mean, std, n) per objective and violation and trial counts per chance constraint. Validation checks shape, not truth.</li>
+    <li>95% confidence is coverage over repeated studies. Zero violations pass only with enough trials: 59 for a 5% limit.</li>
+    <li>A p-value says how unusual the results would be if a claim held. It is not the probability of the claim.</li>
+    <li>Acceptability first, then "not worse on all, better on one". Only Promote exits 0. A chance constraint not shown to hold is a Reject.</li>
+    <li>A Promote is only as good as the evaluator, the data and the selection; your deployment acts on it.</li>
+  </ul>
+</KeyTakeaways>
