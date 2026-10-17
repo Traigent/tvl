@@ -8,7 +8,7 @@ import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/codeql.yml"
 LANGUAGES = ["python", "javascript-typescript", "actions"]
-CODEQL_PIN = "e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81"
+CODEQL_PIN = "24c54180a607b1449ed407dd24f251e4e9147c8d"
 
 
 def _workflow():
