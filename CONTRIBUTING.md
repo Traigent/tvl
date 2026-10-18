@@ -17,7 +17,7 @@ Use your real name; anonymous sign-offs are not accepted. The email must match t
 
 ## Development setup
 
-You need Python 3.10 or newer. CI uses Python 3.11 and installs the package in editable mode with the `dev` extra. From the repository root:
+You need Python 3.11 or newer. CI uses Python 3.11 and installs the package in editable mode with the `dev` extra. From the repository root:
 
 ```bash
 python -m venv .venv

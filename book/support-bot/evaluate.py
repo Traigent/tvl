@@ -56,7 +56,8 @@ def load_tickets(path: Path = DEFAULT_TICKETS, split: str = "eval") -> list[dict
     for line in path.read_text(encoding="utf-8").splitlines():
         row = json.loads(line)
         if "_meta" in row:
-            assert row["_meta"]["synthetic"] is True
+            if row["_meta"]["synthetic"] is not True:
+                raise ValueError("ticket file _meta must declare synthetic: true")
             continue
         if split == "all" or row["split"] == split:
             tickets.append(row)

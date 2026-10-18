@@ -10,6 +10,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { chromium } from "playwright";
+import { resolveStaticPath } from "./static_path.mjs";
 import { chaptersForBuild, plannedForBuild, projectRoot, pdfPath, reportPath, sourceCommit } from "./book_lib.mjs";
 
 const distPublic = path.join(projectRoot, "dist", "public");
@@ -25,13 +26,12 @@ const MIME = {
 function serve() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    let file = path.join(distPublic, decodeURIComponent(url.pathname));
-    if (!file.startsWith(distPublic)) {
-      res.writeHead(403).end();
+    const resolved = resolveStaticPath(distPublic, url.pathname);
+    if (resolved.status !== 200) {
+      res.writeHead(resolved.status).end();
       return;
     }
-    if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, "index.html");
-    if (!fs.existsSync(file)) file = path.join(distPublic, "index.html"); // SPA fallback
+    const file = resolved.file;
     res.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" });
     fs.createReadStream(file).pipe(res);
   });
