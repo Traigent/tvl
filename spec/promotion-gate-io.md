@@ -20,7 +20,7 @@ tvl-ci-gate <module> <incumbent-bundle> <candidate-bundle> --json
 
 The module is the source of `objectives` and `promotion_policy`.
 
-The current measurement-bundle format does not carry the calibration certificates required by `promotion_policy.require_calibration` or per-CVAR strict governance. `tvl-ci-gate` MUST report `calibration_evidence_unsupported` and MUST NOT return `Promote` for such a module until a versioned certificate input and verifier are part of this contract.
+The current measurement-bundle format does not carry the calibration certificates required under any strict-mode trigger (RFC 0001 section 3.6, RFC 0002 section 5). `tvl-ci-gate` MUST report `calibration_evidence_unsupported` and MUST NOT return `Promote` for a module in a strict evidence mode that has a CVAR or calibrated composite member to certify until a versioned certificate input and verifier are part of this contract.
 
 ### 1.1 Objective Values
 

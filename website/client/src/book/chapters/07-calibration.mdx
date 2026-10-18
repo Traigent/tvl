@@ -146,7 +146,7 @@ tvl-ci-gate spec/examples/book/ch07/support-bot.tvl.yml \
   book/support-bot/bundles/slo-pass/seed-0/candidate.synthetic.measure.yml
 ```
 
-It prints `"error": "Measurement bundles are not promotion-ready."`, lists this issue for each bundle, and exits with status 2, with no decision at all. It does not fall back to judging the objectives, on which the candidate is superior. This refusal does not cover every strict-mode trigger yet: the tools refuse only when a module requires calibration explicitly, in its promotion policy or on a cvar. Under any trigger, your runtime must still check the certificates.
+It prints `"error": "Measurement bundles are not promotion-ready."`, lists this issue for each bundle, and exits with status 2, with no decision at all. It does not fall back to judging the objectives, on which the candidate is superior. The gate refuses under every strict-mode trigger, not only an explicit request: a module with a chance constraint and a calibrated value is refused even when its promotion policy does not ask for calibration. Your runtime must still check the certificates.
 
 Every case, what RFC 0001 says, and what `tvl-ci-gate` does today with version 6 (version 5 for the last row):
 
@@ -170,7 +170,7 @@ Chapter 3 promised the limits. Tests check that cvars and policies never change 
 <div className="book-limits">
 
 - **Proofs.** The machine-checked proofs predate cvars and policies, so they say nothing about a module that uses them, and, unlike for a registry, no lint warns you yet (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
-- **Tools.** The public tools check declarations only: they neither fit values nor check certificates, cannot promote a module that requires calibration, and do not yet enforce every strict-mode trigger.
+- **Tools.** The public tools check declarations only: they neither fit values nor check certificates, and refuse to promote a module that requires calibration under any strict-mode trigger.
 - **Your runtime's job.** Separate tickets, the ticket floor and certificate checks are yours to enforce.
 - **Assumptions.** All of it assumes separate calibration and evaluation tickets and stable ticket hashes (<Ref to="rfc-0001" section="section 5">RFC 0001</Ref>).
 - **Undeclared influences.** A certificate notices only what its context covers: an undeclared influence, such as retrieval in version 6, never makes it stale.
@@ -183,6 +183,6 @@ Chapter 3 promised the limits. Tests check that cvars and policies never change 
     <li>A tuned value is searched, a fixed value comes from your runtime, and a cvar is fitted from calibration evidence for each choice of its declared parents.</li>
     <li>Cvars never enter the rules or the search. Bound a cvar with its validity domain, not with a rule. Calibration tickets must not overlap the evaluation set, and too few are rejected.</li>
     <li>A certificate binds one value to a hashed context. A new value of a declared parent, or of any covered key, makes it stale. An undeclared influence does not.</li>
-    <li>In a strict evidence mode, a failed certificate check, an abstention or too little evidence means no promotion, never a fallback to the best score. Today's tools cannot validate certificates. Version 6 explicitly requires them, so its gate refuses to decide. This refusal does not cover every strict-mode trigger yet.</li>
+    <li>In a strict evidence mode, a failed certificate check, an abstention or too little evidence means no promotion, never a fallback to the best score. Today's tools cannot validate certificates. Version 6 explicitly requires them, so its gate refuses to decide, and it refuses under every strict-mode trigger.</li>
   </ul>
 </KeyTakeaways>

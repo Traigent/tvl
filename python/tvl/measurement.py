@@ -312,23 +312,75 @@ def _evaluate_promotion_readiness(
 
 
 def _calibration_issues(module: dict[str, Any]) -> list[dict[str, Any]]:
-    strict_policy = ((module.get("promotion_policy") or {}).get("require_calibration") or {})
-    strict_cvar = any(
-        bool(((cvar.get("governance") or {}).get("require_calibration")))
-        for cvar in (module.get("cvars") or [])
-        if isinstance(cvar, dict)
-    )
-    if bool(strict_policy.get("enabled")) or strict_cvar:
-        return [
-            {
-                "code": "calibration_evidence_unsupported",
-                "message": (
-                    "This module requires calibration certificates, but the current "
-                    "measurement bundle and tvl-ci-gate contract cannot validate them."
-                ),
-            }
-        ]
-    return []
+    """Refuse promotion under every strict-mode trigger (fail closed).
+
+    The tools cannot validate calibration certificates, so any module that is
+    in the strict evidence mode of RFC 0001 section 3.6 (and RFC 0002 section 5
+    for composites) is refused. Triggers, with the RFC clause they implement:
+
+    * ``require_calibration_enabled``: promotion_policy.require_calibration.enabled
+    * ``chance_constraints``: promotion_policy.chance_constraints is non-empty
+      AND the module has something to certify (a cvar or a calibrated
+      composite member); with nothing to certify, CalibrationPass holds
+      vacuously and the chapter 6 style module still gets a decision
+    * ``cvar_governance``: a cvar has governance.require_calibration
+    * ``certificate_backed_cvar``: a cvar is declared; every cvar carries a
+      calibration block, so its certificate has a TargetProperty. The RFC
+      limits this to cvars the candidate consumes; v1 treats every declared
+      cvar as consumed, which can only over-refuse.
+    * ``composite_calibrated_member``: a composite has a calibrated member
+      (gate threshold, signal_accept stop threshold, or aggregate judge).
+
+    The guaranteed-selection trigger belongs to the operational profile, which
+    the gate does not receive; it has no module field to inspect.
+    """
+    if not _strict_calibration_triggers(module):
+        return []
+    return [
+        {
+            "code": "calibration_evidence_unsupported",
+            "message": (
+                "This module requires calibration certificates, but the current "
+                "measurement bundle and tvl-ci-gate contract cannot validate them."
+            ),
+        }
+    ]
+
+
+def _strict_calibration_triggers(module: dict[str, Any]) -> list[str]:
+    triggers: list[str] = []
+    policy = module.get("promotion_policy") or {}
+    strict_policy = policy.get("require_calibration") or {}
+    if bool(strict_policy.get("enabled")):
+        triggers.append("require_calibration_enabled")
+    has_chance = bool(policy.get("chance_constraints"))
+    cvars = [cvar for cvar in (module.get("cvars") or []) if isinstance(cvar, dict)]
+    if any(bool((cvar.get("governance") or {}).get("require_calibration")) for cvar in cvars):
+        triggers.append("cvar_governance")
+    if cvars:
+        triggers.append("certificate_backed_cvar")
+    has_composite_member = _has_calibrated_composite_member(module.get("composites"))
+    if has_chance and (cvars or has_composite_member):
+        triggers.append("chance_constraints")
+    if has_composite_member:
+        triggers.append("composite_calibrated_member")
+    return triggers
+
+
+def _has_calibrated_composite_member(node: Any) -> bool:
+    if isinstance(node, list):
+        return any(_has_calibrated_composite_member(item) for item in node)
+    if not isinstance(node, dict):
+        return False
+    if node.get("gates"):
+        return True
+    stop = node.get("stop")
+    if isinstance(stop, dict) and stop.get("kind") == "signal_accept":
+        return True
+    aggregate = node.get("aggregate")
+    if isinstance(aggregate, dict) and aggregate.get("judge"):
+        return True
+    return any(_has_calibrated_composite_member(value) for value in node.values())
 
 
 def _module_mismatch_issues(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
