@@ -329,7 +329,8 @@ def _calibration_issues(module: dict[str, Any]) -> list[dict[str, Any]]:
       limits this to cvars the candidate consumes; v1 treats every declared
       cvar as consumed, which can only over-refuse.
     * ``composite_calibrated_member``: a composite has a calibrated member
-      (gate threshold, signal_accept stop threshold, or aggregate judge).
+      (gate threshold, signal_accept stop, accept threshold, cvar cardinality,
+      or a judge/arm that references a composite with one).
 
     The guaranteed-selection trigger belongs to the operational profile, which
     the gate does not receive; it has no module field to inspect.
@@ -359,7 +360,7 @@ def _strict_calibration_triggers(module: dict[str, Any]) -> list[str]:
         triggers.append("cvar_governance")
     if cvars:
         triggers.append("certificate_backed_cvar")
-    has_composite_member = _has_calibrated_composite_member(module.get("composites"))
+    has_composite_member = _has_calibrated_composite_member(module)
     if has_chance and (cvars or has_composite_member):
         triggers.append("chance_constraints")
     if has_composite_member:
@@ -367,20 +368,56 @@ def _strict_calibration_triggers(module: dict[str, Any]) -> list[str]:
     return triggers
 
 
-def _has_calibrated_composite_member(node: Any) -> bool:
-    if isinstance(node, list):
-        return any(_has_calibrated_composite_member(item) for item in node)
-    if not isinstance(node, dict):
-        return False
-    if node.get("gates"):
-        return True
-    stop = node.get("stop")
-    if isinstance(stop, dict) and stop.get("kind") == "signal_accept":
-        return True
-    aggregate = node.get("aggregate")
-    if isinstance(aggregate, dict) and aggregate.get("judge"):
-        return True
-    return any(_has_calibrated_composite_member(value) for value in node.values())
+def _has_calibrated_composite_member(module: dict[str, Any]) -> bool:
+    """RFC 0002 section 3.6 ``Cal``: does any declared composite have a calibrated member?
+
+    Only grammar-defined composite fields are read (arms, gates, aggregate,
+    body, stop, cardinality); operational metadata such as ``parameters`` is
+    skipped. A judge or nested arm counts only through the calibrated members of
+    the composite it references (``Cal(stage) = {}``).
+    """
+    declared = {
+        decl["name"]: decl
+        for decl in (module.get("composites") or [])
+        if isinstance(decl, dict) and isinstance(decl.get("name"), str)
+    }
+    cvar_names = {
+        cvar["name"]
+        for cvar in (module.get("cvars") or [])
+        if isinstance(cvar, dict) and isinstance(cvar.get("name"), str)
+    }
+
+    def arm_calibrated(arm: Any, seen: frozenset[str]) -> bool:
+        if not isinstance(arm, dict):
+            return False
+        ref = arm.get("composite")
+        return isinstance(ref, str) and ref in declared and decl_calibrated(ref, seen)
+
+    def decl_calibrated(name: str, seen: frozenset[str]) -> bool:
+        if name in seen:
+            return False
+        seen = seen | {name}
+        decl = declared[name]
+        arms = decl.get("arms")
+        if isinstance(arms, list) and any(arm_calibrated(arm, seen) for arm in arms):
+            return True
+        if arm_calibrated(decl.get("body"), seen):
+            return True
+        gates = decl.get("gates")
+        if isinstance(gates, list) and any(isinstance(gate, dict) for gate in gates):
+            return True
+        stop = decl.get("stop")
+        if isinstance(stop, dict) and stop.get("kind") == "signal_accept":
+            return True
+        aggregate = decl.get("aggregate")
+        if isinstance(aggregate, dict):
+            if arm_calibrated(aggregate.get("judge"), seen):
+                return True
+            if isinstance(aggregate.get("accept"), dict) and aggregate["accept"].get("threshold"):
+                return True
+        return decl.get("cardinality") in cvar_names
+
+    return any(decl_calibrated(name, frozenset()) for name in declared)
 
 
 def _module_mismatch_issues(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:

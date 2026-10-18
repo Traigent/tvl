@@ -142,3 +142,63 @@ def test_module_without_a_trigger_still_gets_a_decision(
     assert payload["decision"] == "Promote"
     assert not _refused(payload)
     assert not _strict_calibration_triggers(module)
+
+
+def _no_cvar_module() -> dict[str, Any]:
+    module = _load("ch06/support-bot.tvl.yml")
+    module["composites"] = []
+    return module
+
+
+def test_judge_ensemble_without_calibrated_members_still_gets_a_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    module = _no_cvar_module()
+    module["composites"] = [
+        {
+            "name": "panel",
+            "kind": "ensemble",
+            "arms": ["a", "b"],
+            "aggregate": {"kind": "judge_max", "judge": "j"},
+        }
+    ]
+
+    code, payload = _gate(module, tmp_path, monkeypatch, capsys)
+
+    assert code == 0
+    assert payload["decision"] == "Promote"
+    assert not _strict_calibration_triggers(module)
+
+
+def test_judge_referencing_a_gated_composite_is_refused() -> None:
+    module = _load("ch08/support-bot.tvl.yml")
+    module["composites"].append(
+        {
+            "name": "panel",
+            "kind": "ensemble",
+            "arms": ["a", "b"],
+            "aggregate": {"kind": "judge_max", "judge": {"composite": "answerer"}},
+        }
+    )
+    assert "composite_calibrated_member" in _strict_calibration_triggers(module)
+
+
+def test_opaque_parameters_and_empty_gates_do_not_trigger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    module = _no_cvar_module()
+    module["composites"] = [
+        {
+            "name": "single",
+            "kind": "cascade",
+            "arms": ["a"],
+            "gates": [],
+            "parameters": {"gates": ["routing"], "stop": {"kind": "signal_accept"}},
+        }
+    ]
+
+    code, payload = _gate(module, tmp_path, monkeypatch, capsys)
+
+    assert code == 0
+    assert payload["decision"] == "Promote"
+    assert not _strict_calibration_triggers(module)
