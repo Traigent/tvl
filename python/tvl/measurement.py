@@ -312,23 +312,112 @@ def _evaluate_promotion_readiness(
 
 
 def _calibration_issues(module: dict[str, Any]) -> list[dict[str, Any]]:
-    strict_policy = ((module.get("promotion_policy") or {}).get("require_calibration") or {})
-    strict_cvar = any(
-        bool(((cvar.get("governance") or {}).get("require_calibration")))
+    """Refuse promotion under every strict-mode trigger (fail closed).
+
+    The tools cannot validate calibration certificates, so any module that is
+    in the strict evidence mode of RFC 0001 section 3.6 (and RFC 0002 section 5
+    for composites) is refused. Triggers, with the RFC clause they implement:
+
+    * ``require_calibration_enabled``: promotion_policy.require_calibration.enabled
+    * ``chance_constraints``: promotion_policy.chance_constraints is non-empty
+      AND the module has something to certify (a cvar or a calibrated
+      composite member); with nothing to certify, CalibrationPass holds
+      vacuously and the chapter 6 style module still gets a decision
+    * ``cvar_governance``: a cvar has governance.require_calibration
+    * ``certificate_backed_cvar``: a cvar is declared; every cvar carries a
+      calibration block, so its certificate has a TargetProperty. The RFC
+      limits this to cvars the candidate consumes; v1 treats every declared
+      cvar as consumed, which can only over-refuse.
+    * ``composite_calibrated_member``: a composite has a calibrated member
+      (gate threshold, signal_accept stop, accept threshold, cvar cardinality,
+      or a judge/arm that references a composite with one).
+
+    The guaranteed-selection trigger belongs to the operational profile, which
+    the gate does not receive; it has no module field to inspect.
+    """
+    if not _strict_calibration_triggers(module):
+        return []
+    return [
+        {
+            "code": "calibration_evidence_unsupported",
+            "message": (
+                "This module requires calibration certificates, but the current "
+                "measurement bundle and tvl-ci-gate contract cannot validate them."
+            ),
+        }
+    ]
+
+
+def _strict_calibration_triggers(module: dict[str, Any]) -> list[str]:
+    triggers: list[str] = []
+    policy = module.get("promotion_policy") or {}
+    strict_policy = policy.get("require_calibration") or {}
+    if bool(strict_policy.get("enabled")):
+        triggers.append("require_calibration_enabled")
+    has_chance = bool(policy.get("chance_constraints"))
+    cvars = [cvar for cvar in (module.get("cvars") or []) if isinstance(cvar, dict)]
+    if any(bool((cvar.get("governance") or {}).get("require_calibration")) for cvar in cvars):
+        triggers.append("cvar_governance")
+    if cvars:
+        triggers.append("certificate_backed_cvar")
+    has_composite_member = _has_calibrated_composite_member(module)
+    if has_chance and (cvars or has_composite_member):
+        triggers.append("chance_constraints")
+    if has_composite_member:
+        triggers.append("composite_calibrated_member")
+    return triggers
+
+
+def _has_calibrated_composite_member(module: dict[str, Any]) -> bool:
+    """RFC 0002 section 3.6 ``Cal``: does any declared composite have a calibrated member?
+
+    Only grammar-defined composite fields are read (arms, gates, aggregate,
+    body, stop, cardinality); operational metadata such as ``parameters`` is
+    skipped. A judge or nested arm counts only through the calibrated members of
+    the composite it references (``Cal(stage) = {}``).
+    """
+    declared = {
+        decl["name"]: decl
+        for decl in (module.get("composites") or [])
+        if isinstance(decl, dict) and isinstance(decl.get("name"), str)
+    }
+    cvar_names = {
+        cvar["name"]
         for cvar in (module.get("cvars") or [])
-        if isinstance(cvar, dict)
-    )
-    if bool(strict_policy.get("enabled")) or strict_cvar:
-        return [
-            {
-                "code": "calibration_evidence_unsupported",
-                "message": (
-                    "This module requires calibration certificates, but the current "
-                    "measurement bundle and tvl-ci-gate contract cannot validate them."
-                ),
-            }
-        ]
-    return []
+        if isinstance(cvar, dict) and isinstance(cvar.get("name"), str)
+    }
+
+    def arm_calibrated(arm: Any, seen: frozenset[str]) -> bool:
+        if not isinstance(arm, dict):
+            return False
+        ref = arm.get("composite")
+        return isinstance(ref, str) and ref in declared and decl_calibrated(ref, seen)
+
+    def decl_calibrated(name: str, seen: frozenset[str]) -> bool:
+        if name in seen:
+            return False
+        seen = seen | {name}
+        decl = declared[name]
+        arms = decl.get("arms")
+        if isinstance(arms, list) and any(arm_calibrated(arm, seen) for arm in arms):
+            return True
+        if arm_calibrated(decl.get("body"), seen):
+            return True
+        gates = decl.get("gates")
+        if isinstance(gates, list) and any(isinstance(gate, dict) for gate in gates):
+            return True
+        stop = decl.get("stop")
+        if isinstance(stop, dict) and stop.get("kind") == "signal_accept":
+            return True
+        aggregate = decl.get("aggregate")
+        if isinstance(aggregate, dict):
+            if arm_calibrated(aggregate.get("judge"), seen):
+                return True
+            if isinstance(aggregate.get("accept"), dict) and aggregate["accept"].get("threshold"):
+                return True
+        return decl.get("cardinality") in cvar_names
+
+    return any(decl_calibrated(name, frozenset()) for name in declared)
 
 
 def _module_mismatch_issues(module: dict[str, Any], measurement: dict[str, Any]) -> list[dict[str, Any]]:
