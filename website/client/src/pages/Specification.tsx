@@ -83,6 +83,12 @@ export default function Specification() {
                   JSON Schema
                 </Button>
               </Link>
+              <Link href="/tvl-1-3">
+                <Button size="lg" variant="outline">
+                  <RefreshCw className="mr-2 h-5 w-5" />
+                  TVL 1.3 (draft)
+                </Button>
+              </Link>
               <a
                 href="https://github.com/Traigent/tvl/blob/main/formalization/tvl-formal-semantics.md"
                 target="_blank"

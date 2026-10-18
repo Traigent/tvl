@@ -311,8 +311,8 @@ export default function Home() {
                   <CardTitle>The book: TVL, Visually</CardTitle>
                   <CardDescription>
                     A short, visual book with runnable examples and a
-                    downloadable PDF. Chapters 1 to 12 are ready; the TVL 1.3
-                    chapters are marked draft.
+                    downloadable PDF. 13 chapters, from first spec to running TVL in
+                    CI. Chapters 9 to 12 cover the TVL 1.3 draft.
                   </CardDescription>
                 </CardHeader>
               </Card>

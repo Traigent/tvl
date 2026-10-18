@@ -75,6 +75,14 @@ const routeMeta = new Map([
     },
   ],
   [
+    "/tvl-1-3",
+    {
+      title: "TVL 1.3 (draft): Runtime Requirements, Monitors and Responses | Traigent",
+      description:
+        "Draft overview of TVL 1.3: runtime requirements, monitors and responses for agents in production, with the RFC, a guide and examples.",
+    },
+  ],
+  [
     "/examples",
     {
       title: "TVL Examples | Tuned Variables Language by Traigent",
@@ -185,6 +193,7 @@ const indexableRoutes = [
   "/specification/schema-reference",
   "/specification/json-schema",
   "/specification/ebnf-grammar",
+  "/tvl-1-3",
   "/examples",
   "/github",
 ];

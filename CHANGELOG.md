@@ -28,6 +28,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- The website has a short "TVL 1.3 (draft)" page (`/tvl-1-3`) linking RFC 0003, the guide and the runtime-1.3 examples; the home page book blurb now says 13 chapters.
+
 - Community health files: a rewritten contributing guide, security policy and Contributor Covenant code of conduct, governance, maintainers and support documents, issue forms and a pull request template, an RFC process with an RFC template, code owners, Dependabot configuration, and a `NOTICE` file.
 - README status badges and a short example that validates and lints a module.
 

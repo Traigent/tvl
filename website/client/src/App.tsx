@@ -11,6 +11,7 @@ import BookChapter from "./book/pages/BookChapter";
 import BookPrint from "./book/pages/BookPrint";
 import Examples from "./pages/Examples";
 import SpecViewer from "./pages/SpecViewer";
+import Tvl13 from "./pages/Tvl13";
 import GitHubRepo from "./pages/GitHubRepo";
 
 function Router() {
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/book/print" component={BookPrint} />
       <Route path="/book/:slug" component={BookChapter} />
       <Route path="/examples" component={Examples} />
+      <Route path="/tvl-1-3" component={Tvl13} />
       <Route path="/github" component={GitHubRepo} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
