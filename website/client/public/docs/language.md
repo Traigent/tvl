@@ -271,7 +271,7 @@ Each TVAR declares:
 | :--- | :--- | :--- |
 | `bool` | Boolean choice | `[true, false]` |
 | `int` | Integer domain | `range: [1, 10]` |
-| `float` | Numeric domain with optional resolution | `range: [0.0, 1.0]` |
+| `float` | Numeric domain; a `range` should give a `resolution` (see below) | `range: [0.0, 1.0]`, `resolution: 0.1` |
 | `enum[str]`, `enum[int]`, `enum[float]` | Finite enumerations | `["gpt-4o", "gpt-4o-mini"]` |
 | `tuple[...]` | Structured tuple values | `tuple[int, float]` |
 | `callable[ProtoId]` | Registry-backed executable choices | `callable[RerankerProto]` |
@@ -283,6 +283,8 @@ TVL examples and schema support these common domain styles:
 *   `set`: explicit discrete values
 *   `range`: numeric interval
 *   `resolution`: step size for numeric ranges
+
+For a float `range`, the formal semantics (`formalization/tvl-formal-semantics.md`, section 2.4) requires a `resolution`; an `int` range defaults to a step of 1. The schema and the current tools do not yet enforce this: `tvl-validate` accepts a float range without a resolution. Always give one, as the examples in this documentation do. Enumerated float choices (`enum[float]` or a `set`) need no resolution, and the optional validity domain of a `cvar` is a closed interval that does not use one.
 *   `registry`: lazy lookup for callable domains
 *   `filter` and `version`: specialization-time filters for registry-backed domains
 

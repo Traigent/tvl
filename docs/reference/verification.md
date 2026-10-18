@@ -117,6 +117,12 @@ tvl-ci-gate module.tvl.yml incumbent.measure.yml candidate.measure.yml --json
 
 These tools work with measured evidence, chance constraints, and the `promotion_policy` comparison rule.
 
+**Keep the final evaluation independent of selection.** The gate compares one incumbent with one candidate. It cannot see how many candidates you tried or whether you chose the candidate on the same data. Choose on a tuning split, keep a separate evaluation set for the final comparison, and record how many candidates you tried. Repeated looks at the same evaluation set bias the result in the candidate's favour, and the formal semantics lists independent collection of the evidence among the assumptions behind a Promote (`formalization/tvl-formal-semantics.md`, section 9.8).
+
+**Reading the exit status of `tvl-ci-gate`.** It exits 0 only for `Promote`. It exits 2 for `Reject`, for `NoDecision`, and for inputs it cannot use (bundles that are not promotion-ready, unreadable files, any error). A nonzero status alone therefore does not tell you which. With `--json`, read `decision` when it is present; when it is absent, read the `error` and `readiness_issues` fields. The exit-code table is in the error-codes reference.
+
+**Calibration.** The reference gate cannot validate calibration certificates. For a module that requires them (`promotion_policy.require_calibration.enabled`, or a `cvar` whose `governance.require_calibration` is set), `tvl-ci-gate` reports the readiness issue `calibration_evidence_unsupported` and exits 2 without a decision. This differs from `NoDecision`: no evidence comparison ran.
+
 ## Where Users Should Start
 
 If you are authoring TVL modules:
