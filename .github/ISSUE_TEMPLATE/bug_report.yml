@@ -56,4 +56,4 @@ body:
     attributes:
       label: Python version
       description: Required for Python tool reports; otherwise leave blank.
-      placeholder: "3.11.9"
+      placeholder: "3.12.4"
