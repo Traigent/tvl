@@ -12,7 +12,7 @@ export function resolveStaticPath(root, pathname) {
   if (decoded.includes("\0")) return { status: 400 };
   const inside = (candidate) => {
     const rel = path.relative(root, candidate);
-    return !(rel.startsWith("..") || path.isAbsolute(rel));
+    return !(rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel));
   };
   let file = path.resolve(root, "." + path.posix.normalize("/" + decoded));
   if (!inside(file)) return { status: 403 };

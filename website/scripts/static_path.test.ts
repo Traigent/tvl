@@ -15,6 +15,7 @@ beforeAll(() => {
   fs.mkdirSync(path.join(tmp, "public-evil"));
   fs.writeFileSync(path.join(root, "index.html"), "root");
   fs.writeFileSync(path.join(root, "book", "x"), "x");
+  fs.writeFileSync(path.join(root, "..asset"), "dots");
   fs.writeFileSync(path.join(tmp, "x"), "outside");
   fs.writeFileSync(path.join(tmp, "public-evil", "secret"), "evil");
 });
@@ -40,6 +41,12 @@ describe("resolveStaticPath", () => {
   it("does not reach a sibling directory sharing the prefix", () => {
     const r = resolveStaticPath(root, "/../public-evil/secret");
     expect(r.file).toBe(path.join(root, "index.html"));
+  });
+  it("serves a file whose name starts with two dots", () => {
+    expect(resolveStaticPath(root, "/..asset")).toEqual({ status: 200, file: path.join(root, "..asset") });
+  });
+  it("falls back to the SPA for a missing name starting with two dots", () => {
+    expect(resolveStaticPath(root, "/..preview")).toEqual({ status: 200, file: path.join(root, "index.html") });
   });
   it("rejects malformed encoding with 400", () => {
     expect(resolveStaticPath(root, "/%E0%A4%A")).toEqual({ status: 400 });
