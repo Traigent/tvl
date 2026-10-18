@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
 
+### Removed
+
+- The website no longer ships the app builder's editor runtime or its source-location attributes, and the unused builder template leftovers (login dialog, maps component, OAuth helper) are gone.
+
 ### Changed
 
 - Revised the promotion decision contract so failure to establish non-inferiority returns `NoDecision`; `Reject` now requires demonstrated inferiority, a failed chance constraint, or an observed point estimate outside a hard band.
