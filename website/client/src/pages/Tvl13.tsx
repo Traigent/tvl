@@ -1,6 +1,5 @@
 import Layout from "@/components/Layout";
 import Seo from "@/components/Seo";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, FileCode, FileText, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
