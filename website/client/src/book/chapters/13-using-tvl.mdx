@@ -120,7 +120,7 @@ The fields, in the format of the <Ref to="promotion-evidence" section="“Canoni
 
 File names and identifiers are yours: `.synthetic.` in the book's names marks simulator output, no suffix is required, and TVL never assigns ids; of the ids it reads, it only checks that `module_id` names the module.
 
-**4. The first baseline.** The gate always compares two bundles: Promote is defined only against an incumbent (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). So on day one, the configuration in production is your incumbent; measure it with the same evaluator, on the same examples, as the candidate. Gated against itself it shows no gain, and the gate says NoDecision. If nothing runs yet, there is nothing to promote over; `tvl-measure-validate` still checks one bundle against the bands and chance constraints, which never depend on an incumbent.
+**4. The first baseline.** The gate always compares two bundles: Promote is defined only against an incumbent (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). So on day one, the configuration in production is your incumbent; measure it with the same evaluator, on the same examples, as the candidate. Gated against itself (the same bundle file, or a deterministic evaluation) it shows no gain, and the gate says NoDecision. If nothing runs yet, there is nothing to promote over; `tvl-measure-validate` still checks one bundle against the bands and chance constraints, which never depend on an incumbent.
 
 **5. Run it.** Copy the incumbent to `tvl/configs/candidate.yml`, change one value and its `config_id`, run `evaluate` on both, then:
 
@@ -132,7 +132,7 @@ tvl-ci-gate tvl/my-agent.tvl.yml out/incumbent.measure.yml out/candidate.measure
 
 <h2 id="ch13-ci">A CI job</h2>
 
-`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; the book's tests run its steps, except the installs. Copy it and change the paths in `env`. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job; the three 2s differ only in the `decision` field of `gate.json`:
+`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; its tests run the shell `run:` steps locally, except the installs, and check the rest's configuration, not hosted Actions. Copy it and change the paths in `env` and the `on` filters. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job; the three 2s differ only in the `decision` field of `gate.json`:
 
 | Gate exit | `decision` in `gate.json` | Meaning | What to do |
 |---|---|---|---|
@@ -149,6 +149,7 @@ on:
     paths: ['book/support-bot/configs/**', 'spec/examples/book/ch05/**']
   push:
     branches: [main]
+    paths: ['book/support-bot/configs/**', 'spec/examples/book/ch05/**']
 …
       - name: Promotion gate
         run: |
@@ -177,7 +178,7 @@ A short script, left out above, prints the decision. Pin a commit in your instal
 2. **Check.** `tvl-validate`, `tvl-check-structural` and `tvl-config-validate`, in seconds.
 3. **Evaluate.** Tune on the tuning set; judge on the evaluation set.
 4. **Gate.** `tvl-ci-gate … --json`: text mode prints an empty `Reason:` for 1.2 modules.
-5. **Deploy.** Your own step, only after Promote; the candidate becomes the incumbent. Each CI run pays for two evaluations. While the candidate equals the incumbent, the gate says NoDecision and the job fails. Run the gate job only on changes under `tvl/` (for example `on: pull_request: paths: ['tvl/**']`), and deploy changes to your agent's code your usual way.
+5. **Deploy.** Your own step, only after Promote; the candidate becomes the incumbent. Each CI run pays for two evaluations. With identical evidence in both bundles, the gate says NoDecision and the job fails. Run the gate job only on changes under `tvl/`: filter `pull_request` and `push` by `paths: ['tvl/**']`; deploy changes to your agent's code your usual way.
 
 On Reject or NoDecision, do not re-run until it passes: each re-run is another chance for a false Promote (<ChapterLink n={6} />). Fix the size of a new evaluation before you see results. <span className="book-draft-note">TVL 1.3 draft</span>: for a production UNKNOWN, see <ChapterLink n={10} />.
 
