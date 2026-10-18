@@ -2629,7 +2629,9 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
 
     _lint_require_calibration(policy, issues)
 
-    alpha = policy.get("alpha")
+    # An omitted alpha takes the documented default (0.05); an explicit value,
+    # including null, must still be a number in (0, 1).
+    alpha = policy.get("alpha", 0.05)
     if not _is_number(alpha) or not (0 < float(alpha) < 1):
         issues.append(
             {

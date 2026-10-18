@@ -154,7 +154,7 @@ def test_documented_yaml_snippet(path, name, kind, body, tmp_path, monkeypatch):
         assert validate_code == 2 and not validated["ok"]
         assert {issue["code"] for issue in validated["issues"]} == {"schema_error"}
         assert lint_code == 2 and not linted["ok"]
-        assert {issue["code"] for issue in linted["issues"]} == {"empty_objectives", "invalid_alpha"}
+        assert {issue["code"] for issue in linted["issues"]} == {"empty_objectives"}
     else:
         assert validate_code == 0 and validated["ok"], validated
         assert lint_code == 0 and linted["ok"], linted
