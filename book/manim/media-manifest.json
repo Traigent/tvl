@@ -15,7 +15,7 @@
         {
           "bytes": 1269173,
           "path": "website/client/public/book/media/better_with_margins/better_with_margins.webm",
-          "sha256": "da4a4eab8c9d8d1fef3f190c2ab1d6ab76e63969e5b055cf1d7b3fc7a28fcc82"
+          "sha256": "f358f40b48030859e78568d796a01616d769f64285627f68d2dd50911735f6ca"
         },
         {
           "bytes": 50043,
@@ -39,9 +39,9 @@
       "provenance": "original, made with Manim Community Edition (MIT)",
       "render_command": "manim render -r 1280,720 --fps 30 --format {webm,mp4} -o better_with_margins book/manim/scenes/better_with_margins.py BetterWithMargins (BOOK_THEME=dark screen, BOOK_THEME=light frames)",
       "scene_source": "book/manim/scenes/better_with_margins.py",
-      "scene_source_sha256": "1eac1cc7d5502278be138da37bd1a95117054ec4dab064393c51af41e3fc4a43",
+      "scene_source_sha256": "a21169ffebc817a2fdafef7b63ada0d0299297361b063cb4de24c75c6113a566",
       "support_sha256": {
-        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/common.py": "0e652eaf66f916925fdf36cbe2d7dd8dd5f46c25dac093f69258b7c55818cde5",
         "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
       }
     },
@@ -60,7 +60,7 @@
         {
           "bytes": 862627,
           "path": "website/client/public/book/media/design_space/design_space.webm",
-          "sha256": "43d5bc9e7e2ee4eb0e90647f2a01126130e55a551f8662a7521a536716cf5529"
+          "sha256": "84019f737da20e8fbaa763c06dd8f28434fc812e8a5ffcf5c21bf4670f6f43de"
         },
         {
           "bytes": 69505,
@@ -86,7 +86,7 @@
       "scene_source": "book/manim/scenes/design_space.py",
       "scene_source_sha256": "b244d36e905afc9676911501f3d9314bb22c6d56852ca277f160df87ed429bbe",
       "support_sha256": {
-        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/common.py": "0e652eaf66f916925fdf36cbe2d7dd8dd5f46c25dac093f69258b7c55818cde5",
         "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
       }
     },
@@ -105,7 +105,7 @@
         {
           "bytes": 1040446,
           "path": "website/client/public/book/media/design_space_grows/design_space_grows.webm",
-          "sha256": "c47778be0c614daebd72c7cf31f6fb5050c3de544f9d77bf2c9951783de21ca8"
+          "sha256": "baef4d9b0a9c0ec02ee1504e46e788dd7ad3b2d00a9eae9604212481b7ff35fe"
         },
         {
           "bytes": 59248,
@@ -131,7 +131,7 @@
       "scene_source": "book/manim/scenes/design_space_grows.py",
       "scene_source_sha256": "efa35fad4524a974480d6b850276ed62d1d26db6a2bd482f9f5139c2ae29decf",
       "support_sha256": {
-        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/common.py": "0e652eaf66f916925fdf36cbe2d7dd8dd5f46c25dac093f69258b7c55818cde5",
         "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
       }
     },
@@ -150,7 +150,7 @@
         {
           "bytes": 978521,
           "path": "website/client/public/book/media/environment_filter/environment_filter.webm",
-          "sha256": "5d63068a3886a7a0f9499cfc52aebb42ccaae3d5e00e58bcd4f8cface8bf7cc7"
+          "sha256": "2bd9d3cc9e156b4a0bbac229185642efe60d4e625ccd1a48f20115adaf551e89"
         },
         {
           "bytes": 103642,
@@ -171,7 +171,7 @@
       "scene_source": "book/manim/scenes/environment_filter.py",
       "scene_source_sha256": "5cfad7116129952f722190c34e40f52688d0046abe5058916c6ab76738423ee4",
       "support_sha256": {
-        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/common.py": "0e652eaf66f916925fdf36cbe2d7dd8dd5f46c25dac093f69258b7c55818cde5",
         "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
       }
     },
@@ -200,7 +200,7 @@
         {
           "bytes": 842546,
           "path": "website/client/public/book/media/scattered_to_gathered/scattered_to_gathered.webm",
-          "sha256": "fc004247cfc67db13ffe3cbbf25ab7b0a6925ca8f46bc8b21f72280d2487619c"
+          "sha256": "cb47c7132d05f8c1d8ae95553c40d4c71bb4190b7f7075968c29aae8ac576f78"
         }
       ],
       "manim_version": "0.22.0",
@@ -211,7 +211,7 @@
       "scene_source": "book/manim/scenes/scattered_to_gathered.py",
       "scene_source_sha256": "36b045883adf7fcb463c93d8a45033c0eda770889e4a2b9211d7f5ac4ab6a9eb",
       "support_sha256": {
-        "book/manim/common.py": "7ff3087b7a615b1b047ebc2745f14bd8fc2b526fd7e9b93f263493ba58e3491f",
+        "book/manim/common.py": "0e652eaf66f916925fdf36cbe2d7dd8dd5f46c25dac093f69258b7c55818cde5",
         "book/manim/fonts.py": "98ed1eb4876fbdea51d4de28dccc83d5555c775a4c366d80cb2c4901d063b653"
       }
     }

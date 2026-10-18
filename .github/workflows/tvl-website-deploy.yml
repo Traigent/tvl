@@ -42,6 +42,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.inputs.deploy_ref || github.ref }}
+          persist-credentials: false
 
       - name: Validate deployment settings
         run: |

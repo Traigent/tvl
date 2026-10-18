@@ -43,7 +43,7 @@ Two details that follow from the design:
 
 ## Run it (from the repository root)
 
-Python 3.10+ with the `tvl-spec` package installed (`pip install -e .` in this repository), or run with
+Python 3.11+ with the `tvl-spec` package installed (`pip install -e .` in this repository), or run with
 `PYTHONPATH=python:.` as the tests do. Check the tickets are what the generator makes:
 
 ```bash

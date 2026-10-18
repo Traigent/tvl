@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Security
+
+- Cleared the open dependency and code-scanning findings: the website PDF build server now checks path containment with `path.relative` (a sibling directory such as `dist/public-evil` no longer passes), the website deploy checkout no longer persists credentials, the support-bot evaluator raises an explicit error instead of using `assert`, and the locked `numpy` for Python 3.10 (2.2.6) is gone with the Python 3.10 drop below.
+
 ### Fixed
 
 - `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
@@ -16,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Dropped Python 3.10 support (end of life October 2026): `requires-python` is now `>=3.11`.
 - Contributions are now accepted under the Developer Certificate of Origin sign-off (`DCO`, `Signed-off-by:` on every commit, checked in CI) instead of a contributor license agreement.
 
 - Revised the promotion decision contract so failure to establish non-inferiority returns `NoDecision`; `Reject` now requires demonstrated inferiority, a failed chance constraint, or an observed point estimate outside a hard band.
