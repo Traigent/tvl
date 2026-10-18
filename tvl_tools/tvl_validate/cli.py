@@ -7,7 +7,7 @@ from jsonschema import Draft202012Validator
 
 from tvl.lints import lint_module, lint_pack
 from tvl.loader import is_pack_document
-from tvl_tools.cli_utils import add_common_args, get_format, handle_error, load_yaml_safely, print_output
+from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output
 
 
 def _load_schema(tool_file: Path, schema_name: str = "tvl.schema.json") -> dict[str, Any]:
@@ -43,8 +43,7 @@ def text_renderer(data: dict[str, Any]) -> None:
     issues = data.get("issues", [])
     if issues:
         for issue in issues:
-            path = ".".join(str(p) for p in issue.get("path", [])) or "<root>"
-            print(f"[{issue.get('code')}] {path}: {issue.get('message')}")
+            print(format_issue_line(issue))
     else:
         print("Schema + lint checks passed.")
 

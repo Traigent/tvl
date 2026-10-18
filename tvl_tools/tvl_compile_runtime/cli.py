@@ -24,7 +24,7 @@ from tvl.runtime import (
     canonical_json_str,
     compile_runtime_document,
 )
-from tvl_tools.cli_utils import add_common_args, get_format, load_yaml_safely, print_output
+from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, load_yaml_safely, print_output
 from tvl.diagnostics import closed_lint_issue, closed_schema_issues, runtime_syntax_issues
 from tvl.lints import lint_module, lint_pack
 from tvl.runtime_projection import token_map_template
@@ -35,9 +35,8 @@ def text_renderer(data: Dict[str, Any]) -> None:
     if data.get("ok"):
         print(f"Compiled runtime contract: {data.get('contract_digest')}")
     for issue in data.get("issues") or []:
-        path = ".".join(str(p) for p in issue.get("path", [])) or "<root>"
         print(
-            f"[{issue.get('code')}] {path}: {issue.get('message')}",
+            format_issue_line(issue),
             file=sys.stdout if data.get("ok") else sys.stderr,
         )
 
