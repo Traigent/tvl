@@ -4,12 +4,14 @@
 #
 # As written, it runs against the book's support bot (SYNTHETIC tickets, a SIMULATED bot),
 # from the root of a clone of the TVL repository. tests/test_book_support_bot.py runs every
-# `run:` step below except the install step, in order, and checks the exit statuses.
+# `run:` step below locally except the install step, in order, and checks the exit statuses.
+# It does not run GitHub-hosted Actions: `uses:` steps and triggers are not executed.
 #
 # The gate exits 0 only on Promote. Reject, NoDecision and unusable inputs exit 2, so the
-# job fails unless the evidence supports the change. While the candidate equals the incumbent
-# the gate says NoDecision, so run the job only on changes to the module and configurations
-# (the `paths` filter below). Deploying stays your own step: the
+# job fails unless the evidence supports the change. When both bundles carry identical
+# evidence the gate says NoDecision, so run the job only on changes to the module and
+# configurations (the `paths` filters below, on both pull_request and push). Change them
+# along with `env`. Deploying stays your own step: the
 # deploy job below is a placeholder that runs only after the gate job passes.
 name: tvl
 
@@ -18,6 +20,7 @@ on:
     paths: ['book/support-bot/configs/**', 'spec/examples/book/ch05/**']
   push:
     branches: [main]
+    paths: ['book/support-bot/configs/**', 'spec/examples/book/ch05/**']
 
 permissions:
   contents: read
