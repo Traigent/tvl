@@ -256,9 +256,11 @@ export function resolveIssueLine(issue: TvlCliIssue, documentText?: string): num
                 if (i > currentLine && listStartIndent !== undefined && indent < listStartIndent) {
                     break;
                 }
-                const listMatch = raw.match(/^(\s*)-\s*(.*)$/);
-                if (listMatch) {
-                    const itemIndent = listMatch[1].length;
+                // trimStart() instead of a /^(\s*)-\s*(.*)$/ match: the regex backtracks
+                // polynomially on long runs of whitespace (CodeQL js/polynomial-redos).
+                const afterIndent = raw.trimStart();
+                if (afterIndent.startsWith('-')) {
+                    const itemIndent = raw.length - afterIndent.length;
                     if (listStartIndent === undefined) {
                         listStartIndent = itemIndent;
                     }

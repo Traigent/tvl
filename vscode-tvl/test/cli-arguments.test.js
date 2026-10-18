@@ -579,3 +579,28 @@ test("all 6 expanded snippets validate cleanly with tvl-validate and tvl-lint", 
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
+
+test("resolveIssueLine locates list items and stays linear on long whitespace runs", () => {
+    const mockState = {
+        config: {},
+        infoMessages: [],
+        warningMessages: [],
+        errorMessages: [],
+        textDocuments: [],
+    };
+    const { ext, restore } = loadExtensionWithMockVscode(mockState);
+    try {
+        const text = "tvars:\n  - name: a\n  - name: b\n";
+        assert.equal(ext.resolveIssueLine({ path: ["tvars", 1] }, text), 2);
+        assert.equal(ext.resolveIssueLine({ path: ["tvars", 0] }, text), 1);
+
+        // A '-' preceded by a huge run of spaces (and a long line of spaces with no '-')
+        // must resolve promptly rather than backtrack.
+        const padded = "tvars:\n" + " ".repeat(200000) + "- name: a\n" + " ".repeat(200000) + "x\n";
+        const started = Date.now();
+        assert.equal(ext.resolveIssueLine({ path: ["tvars", 0] }, padded), 1);
+        assert.ok(Date.now() - started < 2000, "list-item scan must not backtrack");
+    } finally {
+        restore();
+    }
+});
