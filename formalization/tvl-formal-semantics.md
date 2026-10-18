@@ -416,7 +416,7 @@ PromotionPolicy ::= {
   dominance: epsilon_pareto,
   alpha?: Number,                        (* Default: 0.05 *)
   min_effect?: Ident → Number,           (* ε values per objective *)
-  adjust?: AdjustMethod,                 (* Default: none *)
+  adjust?: AdjustMethod,                 (* Default: holm *)
   chance_constraints?: ChanceConstraint*,
   tie_breakers?: Ident → TieBreaker
 }
