@@ -1,0 +1,28 @@
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: Signed-off-by check
+    # Pull requests opened by GitHub App bots (e.g. Dependabot) are exempt;
+    # the account type is set by GitHub, not by the commit author.
+    if: github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check every commit is signed off
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/scripts/check-dco.sh "$BASE_SHA" "$HEAD_SHA"
