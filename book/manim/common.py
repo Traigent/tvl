@@ -47,7 +47,8 @@ def pt_of(font_size: float) -> float:
     return font_size / 72 * UNIT_MM / 25.4 * 72
 
 
-assert pt_of(MIN_FS) >= 8.0
+if pt_of(MIN_FS) < 8.0:
+    raise ValueError(f"minimum font size renders below 8 pt: {pt_of(MIN_FS)}")
 
 _sizes: list[int] = []
 

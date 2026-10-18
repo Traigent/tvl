@@ -70,8 +70,10 @@ def undominated(pts):
     return sorted(out)
 
 
-assert len(ALL_PTS) == 20
-assert undominated(ALL_PTS) == sorted(FRONT_PTS), undominated(ALL_PTS)
+if len(ALL_PTS) != 20:
+    raise ValueError(f"expected 20 points, got {len(ALL_PTS)}")
+if undominated(ALL_PTS) != sorted(FRONT_PTS):
+    raise ValueError(f"front mismatch: {undominated(ALL_PTS)}")
 
 # View windows (cost range, solved range): overview, then zoomed on the incumbent.
 WIN0 = ((0.0060, 0.0180), (0.55, 0.95))
