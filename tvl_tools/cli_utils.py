@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict as Dict, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 

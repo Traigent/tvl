@@ -36,7 +36,6 @@ class TypeContext:
             self.cvar_names = set()
 
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 # TVL 1.1 normative identifier (RFC 0001 §3.7(2)): ASCII dotted segments, no
 # empty segments, no leading/trailing dots, no hyphens. Enforced on the NEW
 # surfaces (cvars/policies/scope) as errors; legacy tvar names are untouched.
@@ -56,7 +55,6 @@ _CVAR_TYPE_RE = re.compile(r"^(bool|int|float|enum\[(str|int|float)\])$")
 # strict grammar-conformant consumers (e.g. tvl-check-structural) reject.
 _INT_LITERAL_RE = re.compile(r"^-?[0-9]+$")
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
-_NON_LINEAR_TOKENS_STRUCTURAL = {"*", "/", "^"}
 _NON_LINEAR_TOKENS_DERIVED = {"/", "^"}
 
 

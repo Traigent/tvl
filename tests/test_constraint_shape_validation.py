@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from tvl.configuration import validate_configuration
-from tvl.constraints import ConstraintParseError, compile_constraints, parse_expression
+from tvl.constraints import compile_constraints, parse_expression
 
 
 def _module_with_structural(entry):

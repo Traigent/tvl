@@ -33,7 +33,7 @@ def h_c(value: Any) -> str:
         if isinstance(v, str):
             return unicodedata.normalize("NFC", v)
         if isinstance(v, float):
-            if v != v or v in (float("inf"), float("-inf")):
+            if math.isnan(v) or v in (float("inf"), float("-inf")):
                 raise ValueError("non-finite numbers are rejected, never hashed")
             if v == 0.0:
                 return 0.0  # -0.0 -> 0.0

@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict as Dict, List as List, Optional, Tuple as Tuple
+from typing import Any, Optional
 
 from .model import ValidationOptions, extract_validation_options
 

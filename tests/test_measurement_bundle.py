@@ -119,7 +119,7 @@ class MeasurementBundleTests(unittest.TestCase):
 
         report = validate_measurement(module, config, measurement)
         self.assertFalse(report["ok"])
-        self.assertFalse(report["chance"] == [])
+        self.assertNotEqual(report["chance"], [])
         self.assertEqual("chance_violation", report["chance"][0]["code"])
 
 

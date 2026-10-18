@@ -272,7 +272,6 @@ def _run_toolchain_conformance_case(case: Mapping[str, Any]) -> None:
     from contextlib import ExitStack, redirect_stderr, redirect_stdout
     import copy
     import io
-    import json
     import sys
     import shutil
     from tempfile import mkdtemp
