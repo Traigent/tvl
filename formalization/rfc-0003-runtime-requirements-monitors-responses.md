@@ -591,7 +591,7 @@ JSON type (a string where an integer is required) is a `schema_error`, not an ou
 
 | Code | Sev. | Trigger | Case |
 |---|---|---|---|
-| `runtime_met_unreachable_at_min_samples` | E; W under `backend_v1` | a primary `rate_bound` runtime monitor whose met test fails at N = `min_samples` even with k = u = 0: rational: (1 − θ)^N > 1 − c; float: `beta.ppf(c, 1, N) > θ`. Episodes could never close on windows of that size. Example: θ 0.01, c 0.95 needs N ≥ 299, since 0.99²⁹⁹ ≈ 0.0495 ≤ 0.05 < 0.99²⁹⁸ ≈ 0.0500 | E: `lints/met-unreachable-298.yml`; boundary `lints/met-reachable-299.yml` (absent); W under `backend_v1`: `lints/backend-met-unreachable-warning.yml` |
+| `runtime_met_unreachable_at_min_samples` | E; W under `backend_v1` | a primary `rate_bound` runtime monitor whose met test fails at N = `min_samples` even with k = u = 0: rational: (1 − θ)^N > 1 − c; float: `beta.ppf(c, 1, N) > θ`. Episodes could never close using windows of exactly that size; windows with more units can still reach MET. Example: θ 0.01, c 0.95 needs N ≥ 299, since 0.99²⁹⁹ ≈ 0.0495 ≤ 0.05 < 0.99²⁹⁸ ≈ 0.0500 | E: `lints/met-unreachable-298.yml`; boundary `lints/met-reachable-299.yml` (absent); W under `backend_v1`: `lints/backend-met-unreachable-warning.yml` |
 | `runtime_breach_unreachable_at_min_samples` | W | a primary `rate_bound` runtime monitor that cannot breach at N = `min_samples` even with k = N: rational: θ^N ≥ α_w; float: the hosted latency profile's computation finds no breaching k | `lints/primary-breach-unreachable-warning.yml` |
 | `chance_constraint_shadowed` | W | a promotion monitor and a `promotion_policy.chance_constraints` entry with the same name as the monitor or its requirement: the chance constraint's Reject still wins the gate join (§6.11) | `promotion/chance-constraint-shadow-warning.yml` |
 | `runtime_liveness_missing` | W | a primary monitor that no `evidence_liveness` requirement covers | `lints/primary-liveness-missing-warning.yml` |
@@ -1147,7 +1147,7 @@ these fields (`runtime_invalid_ladder`).
 
 | Approval | Allowed on | Meaning |
 |---|---|---|
-| `none` | `notify`, `open_next_step`, `block_action`, `halt_unit` (the default for these) | the recorded event is the authority |
+| `none` | `notify`, `open_next_step`, `block_action`, `halt_unit` (the default for these) | no approval is required. `notify` rests on its recorded event (event authority, §7.4); every other action still passes the current-scope and precondition checks of §7.4 at the time of its effect |
 | `standing` | `optimize`, `rollback`, `throttle`, `degrade` | a standing grant (below). Each occurrence, including each repeat, consumes the grant; a retry of one occurrence does not |
 | `human` | `optimize`, `rollback`, `throttle`, `degrade` (the default for these), `suspend` (required) | an authorized human approves each occurrence; for `suspend`, per episode, always |
 
