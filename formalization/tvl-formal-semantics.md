@@ -198,17 +198,18 @@ Only the dominance relation (`min_effect`, `alpha`, `adjust`) is comparative. Ch
 
 These fields affect *how* optimization is performed, not *what* constitutes a valid or acceptable configuration.
 
-#### 1.5.5 Governed-but-not-searched fields (TVL 1.1 — proposed)
+#### 1.5.5 Governed-but-not-searched fields (TVL 1.1)
 
-> **Status**: proposed by [RFC 0001](rfc-0001-knob-bindings-cvars-policies.md)
-> (Knob bindings: calibrated variables and policies). Normative semantics live in the
-> RFC until it is accepted; this subsection reserves the category so the layering
-> stays coherent.
+> **Status**: accepted (2026-06-05) in [RFC 0001](rfc-0001-knob-bindings-cvars-policies.md)
+> (Knob bindings: calibrated variables and policies). The RFC holds the normative
+> semantics; this subsection places the category in the layering.
 
 TVL 1.1 introduces a fourth field category: declarations that are **parsed, typed,
 and governed but absent from the search semantics** — they never enter Γ,
 `Config(Δ, E_τ)`, or `F^str`, so Theorem 8.1 (SAT soundness) and the §9 promotion
-theorems are unaffected by construction.
+theorems are preserved by construction: the existing results still hold for the
+core language. The new constructs themselves are not yet covered by the mechanized
+proofs (§1.4).
 
 | Field | Layer | Role |
 |-------|-------|------|
