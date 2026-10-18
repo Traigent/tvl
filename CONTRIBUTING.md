@@ -9,9 +9,11 @@ Thank you for your interest in improving TVL. This repository contains the norma
 - A change to the language itself follows the [RFC process](#proposing-a-spec-change).
 - How decisions are made: [GOVERNANCE.md](GOVERNANCE.md).
 
-## Contributor agreement
+## Licence and sign-off
 
-External pull requests need a signed contributor license agreement before they can be merged. The agreement for this repository is being prepared; until it is published here, external pull requests cannot be merged. Issues, RFC drafts and comments are welcome now. Contributions from Traigent employees are covered by their employment agreements.
+Contributions are accepted under the repository licences: CC-BY-4.0 for the prose paths listed in `LICENSE-content` (documentation, RFCs and the book), and Apache-2.0 (`LICENSE`) for everything else, including code and `spec/`. There is no contributor license agreement. Instead, every commit must carry a `Signed-off-by: Your Name <you@example.com>` line, which certifies the [Developer Certificate of Origin](DCO). Add it with `git commit -s`.
+
+Use your real name; anonymous sign-offs are not accepted. The email must match the commit author. If a sign-off is missing, fix the last commit with `git commit --amend -s`, or several commits with `git rebase --signoff origin/main`, then force-push your branch. A check on every pull request lists any commit that lacks one.
 
 ## Development setup
 

@@ -4,7 +4,7 @@ TVL is a maintainer-led open-source project. Traigent Ltd. stewards it: Traigent
 
 ## Roles
 
-- **Contributors** open issues and pull requests. Anyone may contribute, under the [Code of Conduct](CODE_OF_CONDUCT.md) and the contributor agreement described in [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Contributors** open issues and pull requests. Anyone may contribute, under the [Code of Conduct](CODE_OF_CONDUCT.md) and the sign-off (DCO) described in [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Maintainers** review and merge pull requests, run the RFC process and cut releases. They are listed in [MAINTAINERS.md](MAINTAINERS.md).
 
 ## How decisions are made

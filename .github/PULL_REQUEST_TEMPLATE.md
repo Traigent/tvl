@@ -19,5 +19,5 @@
 - [ ] Added an entry under `[Unreleased]` in `CHANGELOG.md`
 - [ ] Documented any new lint code or diagnostic in `docs/reference/error-codes.md`
 - [ ] Updated other docs if needed
-- [ ] Covered by a Traigent employee agreement or signed contributor agreement (see "Contributor agreement" in `CONTRIBUTING.md`; external PRs cannot merge until the agreement is published)
+- [ ] Every commit is signed off (`git commit -s`), certifying the [DCO](../DCO) (see "Licence and sign-off" in `CONTRIBUTING.md`)
 - [ ] RFC link (spec changes): <!-- link to the RFC, or "n/a" -->
