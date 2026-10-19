@@ -226,8 +226,8 @@ def test_project_files_shown_in_the_book_are_committed_project_files() -> None:
 
 def test_legacy_walkers_skip_book_examples() -> None:
     """The recursive legacy corpus must not contain spec/examples/book/."""
-    from tests.model_checking import test_legacy_corpus
     from tests import test_cvars_policies
+    from tests.model_checking import test_legacy_corpus
 
     assert any(BOOK_EXAMPLES.rglob("*.yml")), "book fixtures should exist"
     assert not [p for p in test_legacy_corpus.CORPUS if BOOK_EXAMPLES in p.parents]

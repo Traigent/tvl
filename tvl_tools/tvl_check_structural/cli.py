@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 import hashlib
+import json
 import math
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, NoReturn, Optional
+from typing import Any, NoReturn
 
 import yaml
-
 from tvl.errors import TVLError
 from tvl.loader import load
 from tvl.structural_parser import StructuralParseError
@@ -21,7 +20,7 @@ from tvl.structural_sat import check_structural
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _emit_event(payload: dict[str, Any]) -> None:
@@ -35,7 +34,7 @@ def _format_number(value: float) -> str:
 
 
 def _build_repair_candidates(
-    unsat_core: Optional[list[dict[str, Any]]],
+    unsat_core: list[dict[str, Any]] | None,
     file_path: Path,
 ) -> list[dict[str, Any]]:
     if not unsat_core:
@@ -166,7 +165,7 @@ def _write_temp_file(content: str, suffix: str = "") -> Path:
         return Path(tmp.name)
 
 
-def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
+def _build_witness_id(assignment: dict[str, Any] | None) -> str | None:
     if not isinstance(assignment, dict):
         return None
     try:
@@ -190,7 +189,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _prepare_module_path(
     args: argparse.Namespace,
-) -> tuple[Path, Optional[Path], Optional[dict[str, Any]]]:
+) -> tuple[Path, Path | None, dict[str, Any] | None]:
     """Return the module path to check, any temp file holding a patched copy, and the candidate.
 
     With ``--candidate-file`` the candidate's edits are applied to a temporary
@@ -217,7 +216,7 @@ def _prepare_module_path(
     return temp_file, temp_file, candidate_payload
 
 
-def _remove_temp_file(temp_file: Optional[Path]) -> None:
+def _remove_temp_file(temp_file: Path | None) -> None:
     if temp_file is None:
         return
     try:
@@ -260,7 +259,7 @@ def _exit_load_error(
     raise SystemExit(2)
 
 
-def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file: Optional[Path]) -> dict[str, Any]:
+def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file: Path | None) -> dict[str, Any]:
     try:
         return _load_module(module_path)
     except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
@@ -268,7 +267,7 @@ def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file:
 
 
 def _check_module_or_exit(
-    module: dict[str, Any], args: argparse.Namespace, temp_file: Optional[Path]
+    module: dict[str, Any], args: argparse.Namespace, temp_file: Path | None
 ) -> tuple[Any, int]:
     """Run the structural check; return the result and its duration in ms."""
     start_time = time.perf_counter()
@@ -337,7 +336,7 @@ def _emit_candidate_validation(result: Any, candidate_payload: dict[str, Any], d
 def _report_json(
     result: Any,
     args: argparse.Namespace,
-    candidate_payload: Optional[dict[str, Any]],
+    candidate_payload: dict[str, Any] | None,
     duration_ms: int,
 ) -> None:
     if candidate_payload is None:

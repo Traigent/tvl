@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import json
+import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Iterable
-
-import json
-import math
+from typing import Any
 
 from tvl.yaml_safe import safe_load
 

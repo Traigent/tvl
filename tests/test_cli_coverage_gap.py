@@ -26,11 +26,11 @@ from pathlib import Path
 
 import pytest
 
-from tvl_tools.tvl_parse import cli as parse_cli
-from tvl_tools.tvl_validate import cli as validate_cli
-from tvl_tools.tvl_measure_validate import cli as measure_validate_cli
 from tvl_tools.microsim_bridge import cli as microsim_bridge_cli
 from tvl_tools.tvl_check_operational import cli as check_operational_cli
+from tvl_tools.tvl_measure_validate import cli as measure_validate_cli
+from tvl_tools.tvl_parse import cli as parse_cli
+from tvl_tools.tvl_validate import cli as validate_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MINIMAL_MODULE = REPO_ROOT / "conformance" / "cases" / "satisfiable" / "minimal.yml"

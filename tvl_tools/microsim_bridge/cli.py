@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> None:
     import sys
 
     from tvl.loader import is_pack_document
+
     from tvl_tools.cli_utils import load_yaml_safely
 
     parser = _build_parser()

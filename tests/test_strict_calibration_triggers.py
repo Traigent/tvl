@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 import yaml
-
 from tvl.lints import lint_module
 from tvl.measurement import _strict_calibration_triggers
+
 from tvl_tools.tvl_ci_gate import cli as ci_gate_cli
 
 ROOT = Path(__file__).resolve().parents[1]

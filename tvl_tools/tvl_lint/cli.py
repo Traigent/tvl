@@ -5,7 +5,15 @@ from typing import Any
 
 from tvl.lints import lint_module, lint_pack
 from tvl.loader import is_pack_document
-from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output
+
+from tvl_tools.cli_utils import (
+    add_common_args,
+    format_issue_line,
+    get_format,
+    handle_error,
+    load_yaml_safely,
+    print_output,
+)
 
 
 def lint(doc: dict[str, Any], precision: int = 1000) -> list[dict[str, Any]]:
