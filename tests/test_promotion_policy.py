@@ -79,6 +79,18 @@ class AlphaValidationTests(unittest.TestCase):
         codes = _collect_codes(issues)
         self.assertNotIn("invalid_alpha", codes)
 
+    def test_alpha_omitted_uses_default(self) -> None:
+        """An omitted alpha takes the documented default of 0.05 (#136)."""
+        doc = _base_module()
+        del doc["promotion_policy"]["alpha"]
+        self.assertNotIn("invalid_alpha", _collect_codes(lint_module(doc)))
+
+    def test_alpha_explicit_null_invalid(self) -> None:
+        """An explicit null alpha is still rejected."""
+        doc = _base_module()
+        doc["promotion_policy"]["alpha"] = None
+        self.assertIn("invalid_alpha", _collect_codes(lint_module(doc)))
+
     def test_alpha_at_zero_invalid(self) -> None:
         """Alpha = 0 is invalid (exclusive lower bound)."""
         doc = _base_module()

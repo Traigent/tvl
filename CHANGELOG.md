@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Fixed
 
 - `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
+- `tvl-lint` applies the documented default `promotion_policy.alpha` of 0.05 when it is omitted, instead of failing with `invalid_alpha`; explicit `null` or out-of-range values are still rejected.
+- Runtime diagnostics printed by the CLI text renderers show their field location once instead of twice.
 
 ### Removed
 
@@ -22,6 +24,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Python 3.12 or newer is required: `requires-python` is now `>=3.12`. Python 3.10 reached end of life in October 2026, and the fixed `numpy` releases need Python 3.12.
 - Contributions are now accepted under the Developer Certificate of Origin sign-off (`DCO`, `Signed-off-by:` on every commit, checked in CI) instead of a contributor license agreement.
+- The formal semantics now state that the omitted promotion `adjust` default is `holm`, matching the gate implementation and gate I/O specification.
+- The formal semantics mark RFC 0001 as accepted and state that existing core results are preserved while the new constructs remain outside the mechanized proofs.
+- The composition reference documents the directory boundary for overlay `extends`: relative paths, resolved against the containing overlay, must stay inside the directory of the overlay passed to `tvl-compose`, including across chained overlays and symlinks.
+- RFC 0003 distinguishes `approval: none` event authority (`notify`) from the effect checks of remote service effects and the local guards of section 7.5, and limits the `min_samples` closure claim to windows of exactly that size.
 
 - Revised the promotion decision contract so failure to establish non-inferiority returns `NoDecision`; `Reject` now requires demonstrated inferiority, a failed chance constraint, or an observed point estimate outside a hard band.
 - Added `p_value_inferior`, `adjusted_p_inferior`, and `any_band_out_of_band` to promotion evidence.

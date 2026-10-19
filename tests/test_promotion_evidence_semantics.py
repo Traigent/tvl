@@ -195,3 +195,12 @@ def test_strict_calibration_cannot_silently_become_promotion_ready() -> None:
     _normalized, _warnings, readiness = prepare_measurement_bundle(module, measurement)
 
     assert "calibration_evidence_unsupported" in {issue["code"] for issue in readiness}
+
+
+def test_omitted_adjust_defaults_to_holm():
+    """An omitted `adjust` takes the documented default, holm (#137)."""
+    objectives = [{"name": "quality", "direction": "maximize"}]
+    policy = {"dominance": "epsilon_pareto", "alpha": 0.05, "min_effect": {"quality": 0.01}}
+    stats = {"objective_values": {"quality": {"mean": 0.80, "std": 0.10, "n": 100}}}
+    _, evidence = epsilon_pareto_gate(stats, stats, policy, objectives)
+    assert evidence["summary"]["adjustment_method"] == "holm"

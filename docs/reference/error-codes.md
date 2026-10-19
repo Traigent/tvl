@@ -1000,7 +1000,7 @@ A value of the wrong JSON type, for example a string where an integer is require
 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
-| `runtime_met_unreachable_at_min_samples` | error (warning under `backend_v1`) | lint | even with zero bad units, a window of `min_samples` units can never be `MET` at this `max_rate` and `confidence`, so episodes could never close | raise `min_samples` to at least the size in the guide's table (299 for `max_rate` 0.01 at 0.95), loosen `max_rate`, or lower `confidence` |
+| `runtime_met_unreachable_at_min_samples` | error (warning under `backend_v1`) | lint | even with zero bad units, a window of `min_samples` units can never be `MET` at this `max_rate` and `confidence`, so no window of that size can close an episode | raise `min_samples` to at least the size in the guide's table (299 for `max_rate` 0.01 at 0.95), loosen `max_rate`, or lower `confidence` |
 | `runtime_breach_unreachable_at_min_samples` | warning | lint | even with every unit bad, a window of `min_samples` units can never be `BREACHED` | raise `min_samples` |
 | `chance_constraint_shadowed` | warning | lint | a promotion monitor and a 1.2 `chance_constraints` entry share a name, so the chance constraint's `Reject` still wins | remove one of them |
 | `runtime_liveness_missing` | warning | lint | a primary monitor has no `evidence_liveness` requirement watching it | add an `evidence_liveness` requirement and a `source: windows` monitor for it |

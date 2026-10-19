@@ -9,6 +9,19 @@ import yaml
 from tvl.yaml_safe import safe_load
 
 
+def format_issue_line(issue: dict[str, Any]) -> str:
+    """Format one diagnostic for text output, printing its location exactly once.
+
+    Closed diagnostics already start their message with the field path, so the
+    path is only prepended when the message does not carry it.
+    """
+    path = ".".join(str(p) for p in issue.get("path", [])) or "<root>"
+    message = str(issue.get("message"))
+    if message.startswith(f"{path}: "):
+        return f"[{issue.get('code')}] {message}"
+    return f"[{issue.get('code')}] {path}: {message}"
+
+
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     """Add standard arguments to the CLI parser."""
     group = parser.add_mutually_exclusive_group()

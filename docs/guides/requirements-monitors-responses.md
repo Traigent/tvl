@@ -619,8 +619,9 @@ make `BREACHED` slightly harder to reach in each window.
    is, the more traffic you need to *prove* it.
 2. **`confidence`: leave it at 0.95** unless you have a reason. 0.99 needs about 50% more units to reach `MET`; 0.90 needs
    about a quarter fewer.
-3. **`min_samples`: no smaller than what lets `MET` be reached.** If a window of that size can never be `MET`
-   even with zero bad units, episodes could never close. TVL checks this (`runtime_met_unreachable_at_min_samples`).
+3. **`min_samples`: no smaller than what lets `MET` be reached.** If a window of exactly that many units can never be
+   `MET`, even with zero bad units, no window of that size can close an episode (windows with more units still can).
+   TVL checks this (`runtime_met_unreachable_at_min_samples`).
    The smallest sizes that pass the check:
 
     | `max_rate` | `confidence` 0.90 | `confidence` 0.95 | `confidence` 0.99 |
@@ -897,7 +898,10 @@ Fields not listed for an action are rejected (`runtime_invalid_ladder`). Two mor
 
 ### Who decides: approvals
 
-* **`none`**: the recorded event is authority enough (`notify`, `open_next_step`, local guards).
+* **`none`**: no approval is needed, which is not the same as no authority check. `notify` rests on its recorded event
+  alone, which stays authority after the scope closes. `open_next_step` still needs its originating scope to be current
+  (for an episode, still open) at the time of the effect; `none` does not waive that. The local guards (`block_action`,
+  `halt_unit`) act on their own unit event.
 * **`standing`**: a *standing grant* covers it. A grant is a signed authority record that lives **outside** TVL documents: it
   names the agent, the scope, the configurations it may target, an expiry at most 30 days away, a maximum number of
   uses and, for `optimize`, a cost limit. Each occurrence uses up the grant. The module cannot say who signs grants
