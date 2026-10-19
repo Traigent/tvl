@@ -249,3 +249,77 @@ def test_modern_large_finite_float_stays_supported(tmp_path):
     path = _spec(tmp_path, [{"name": "custom_control", "type": "float", "domain": {"range": [value, value]}}])
     payload = build_presets(path)
     assert payload["defaults"]["custom_control"] == value
+
+
+@pytest.mark.parametrize("shape", ["modern-bounds", "modern-resolution", "legacy-range", "legacy-values", "legacy-default"])
+@pytest.mark.parametrize("sign", ["", "-"])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_raw_yaml_fractional_integer_precision_refuses_before_write(shape, sign, dry_run, tmp_path):
+    import subprocess
+    import sys
+
+    raw = f"{sign}9007199254740990.5"
+    if shape.startswith("modern"):
+        domain = f"range: [{raw}, {raw}]" if shape == "modern-bounds" else f"range: [0, 9007199254740991]\n      resolution: {raw}"
+        source = f"tvars:\n  - name: retriever_top_k\n    type: int\n    domain:\n      {domain}\n"
+    else:
+        key = shape.removeprefix("legacy-")
+        value = f"[{raw}, {raw}]" if key == "range" else f"[{raw}]" if key == "values" else raw
+        source = f"configuration_space:\n  retriever_top_k:\n    type: integer\n    {key}: {value}\n"
+    path = tmp_path / "raw.yml"
+    path.write_text(source)
+    output = tmp_path / "presets.json"
+    output.write_text("sentinel\n")
+    args = ["--dry-run"] if dry_run else ["-o", str(output)]
+    result = subprocess.run([sys.executable, "-m", "tvl_tools.microsim_bridge", str(path), *args], capture_output=True, text=True, check=False)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert output.read_text() == "sentinel\n"
+    assert "unsupported numeric precision" in result.stderr and raw in result.stderr
+    assert "Traceback" not in result.stderr
+    if dry_run:
+        assert json.loads(result.stdout)["ok"] is False
+
+
+@pytest.mark.parametrize("lower,upper,step", [
+    (0.1, 0.3, 0.1), (0.1, 0.35, 0.1),
+    (0.0, 0.0001, 0.00003), (-0.3, -0.1, 0.1),
+    (0.05, 0.35, 0.1), (-0.35, 0.25, 0.2),
+])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_float_grid_serialized_values_keep_original_decimal_bounds(lower, upper, step, dry_run, tmp_path):
+    import subprocess
+    import sys
+    from fractions import Fraction
+
+    path = _spec(tmp_path, [{"name": "rerank_weight", "type": "float", "domain": {"range": [lower, upper], "resolution": step}}])
+    output = tmp_path / "presets.json"
+    args = ["--dry-run"] if dry_run else ["-o", str(output)]
+    result = subprocess.run([sys.executable, "-m", "tvl_tools.microsim_bridge", str(path), *args], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout if dry_run else output.read_text())
+    lo, hi, resolution = (Fraction(repr(value)) for value in (lower, upper, step))
+    values = [payload["defaults"]["rerank_weight"], *(preset["rerank_weight"] for preset in payload["presets"].values())]
+    for value in values:
+        exact = Fraction(repr(value))
+        assert lo <= exact <= hi
+        assert (exact - lo) % resolution == 0
+
+
+@pytest.mark.parametrize("source,expected", [
+    ("tvars:\n  - name: retriever_top_k\n    type: int\n    domain:\n      range: [3.0, 11.0]\n      resolution: 2.0\n", 7),
+    ("tvars:\n  - name: custom_control\n    type: float\n    domain:\n      range: [1.0e+20, 1.0e+20]\n", 1e20),
+    ('configuration_space:\n  custom_control:\n    type: float\n    default: "9007199254740993.5"\n', float("9007199254740993.5")),
+])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_raw_yaml_supported_numeric_controls_remain_usable(source, expected, dry_run, tmp_path):
+    import subprocess
+    import sys
+
+    path = tmp_path / "control.yml"
+    path.write_text(source)
+    output = tmp_path / "presets.json"
+    args = ["--dry-run"] if dry_run else ["-o", str(output)]
+    result = subprocess.run([sys.executable, "-m", "tvl_tools.microsim_bridge", str(path), *args], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout if dry_run else output.read_text())
+    assert list(payload["defaults"].values()) == [expected]

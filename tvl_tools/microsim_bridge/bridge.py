@@ -24,6 +24,12 @@ def _check_numeric_precision(
 ) -> None:
     if isinstance(value, bool):
         return
+    if integer_context and getattr(value, "_unrecoverable_decimal", False):
+        raw = getattr(value, "_raw_lexeme", repr(value))
+        raise ValueError(
+            f"{context}: unsupported numeric precision; original YAML decimal {raw!r} "
+            "was rounded before integer validation"
+        )
     if isinstance(value, str):
         try:
             exact = Decimal(value)
@@ -110,7 +116,7 @@ def _format_defaults(configuration_space: dict[str, Any]) -> dict[str, float | i
         if default is None:
             continue
         if isinstance(definition.get("type"), str) and definition["type"] in {"integer", "discrete"}:
-            default = int(round(default))
+            default = round(default)
         defaults[name] = default
     return defaults
 
@@ -128,16 +134,16 @@ def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
         last_step = (slider.maximum - slider.minimum) // slider.step
         step_index = max(0, min(round((Fraction(value) - slider.minimum) / slider.step), last_step))
         return step_index * slider.step + slider.minimum
-    normalized = (value - slider.minimum) / slider.step
-    last_step = math.floor((slider.maximum - slider.minimum) / slider.step + 1e-12)
-    step_index = max(0, min(round(normalized), last_step))
-    return step_index * slider.step + slider.minimum
+    minimum, maximum, step = (Fraction(repr(part)) for part in (slider.minimum, slider.maximum, slider.step))
+    last_step = (maximum - minimum) // step
+    step_index = max(0, min(round((Fraction(repr(value)) - minimum) / step), last_step))
+    return float(minimum + step_index * step)
 
 
 def _coerce(name: str, value: float, slider: SliderConfig | None, type_name: str | None) -> float | int:
     value = _snap_to_step(value, slider)
     if type_name in {"integer", "discrete"}:
-        return int(round(value))
+        return round(value)
     if type_name and type_name.startswith("categorical"):
         return value
     return value
@@ -369,7 +375,7 @@ def presets_from_spec(spec: dict[str, Any], warnings: list[str] | None = None) -
 
 
 def _serialize_key(name: str) -> str:
-    return name if "_" not in name else name
+    return name
 
 
 def dump_presets(payload: dict[str, Any], destination: Path) -> None:

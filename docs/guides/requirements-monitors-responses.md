@@ -117,9 +117,9 @@ Read it from the bottom up:
 * **The second requirement, `fast_enough_evidence`**, is an `evidence_liveness` obligation on the first
   monitor. It says the monitoring itself must keep working: if the last five windows (`max_stale_windows` plus one)
   all produce no usable evidence, the monitor is `STALE`. Without it, a monitor that silently stops receiving traces looks
-  like a quiet, healthy system. TVL warns about this (`runtime_liveness_missing`), and because
-  `tvl-validate` exits 2 on *any* issue, warnings included, a primary monitor without a liveness
-  requirement makes `tvl-validate` fail.
+  like a quiet, healthy system. TVL warns about this (`runtime_liveness_missing`). The warning
+  remains visible but does not fail validation: `tvl-validate` exits 0 when there are no errors,
+  including when a primary monitor has no liveness requirement.
 
 ```bash
 tvl-validate support-latency.tvl.yml
@@ -1152,7 +1152,7 @@ tvl-lint support-bot.tvl.yml           # the lints only (no schema)
 tvl-validate --format json file.yml    # machine-readable issues: {code, message, path, severity}
 ```
 
-`tvl-validate` exits 0 only when there is nothing to report; any issue, a warning included, exits 2.
+`tvl-validate` exits 0 when there are no errors; warnings remain visible and do not fail validation. Any error exits 2.
 Use `tvl-validate` rather than `tvl-lint` alone: `tvl-lint` does not run the JSON Schema.
 The other 1.2 tools accept a module with these blocks and ignore them (`tvl-check-structural`, `tvl-check-operational`,
 `tvl-config-validate`); the ones that cannot honour a 1.3 construct refuse it with `unsupported_construct` instead of silently dropping it.
@@ -1255,8 +1255,8 @@ not enabled, and with `response_action_unsupported` for an action it cannot carr
 
 | Tool | Reads | Exit 2 means |
 |---|---|---|
-| `tvl-validate` | module or pack | any issue, warnings included |
-| `tvl-lint` | module or pack | any issue (no schema check) |
+| `tvl-validate` | module or pack | any error (warnings exit 0) |
+| `tvl-lint` | module or pack | any error; warnings exit 0 (no schema check) |
 | `tvl-compose --pack` / `--meet` | module + pack(s) | any composition error |
 | `tvl-ci-gate module incumbent candidate` | module + two bundles | not `Promote` (including `NoDecision` and not ready) |
 | `tvl-compile-runtime` | module or pack + token map | any error, or unreadable input |
