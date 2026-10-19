@@ -121,3 +121,74 @@ def test_nonfinite_payload_cannot_truncate_destination(tmp_path):
     with pytest.raises(ValueError):
         dump_presets({"value": float("inf")}, output)
     assert output.read_text() == "sentinel\n"
+
+
+@pytest.mark.parametrize("bounds,resolution", [
+    ([9007199254740993, 9007199254740993], 1),
+    ([-9007199254740993, -9007199254740993], 1),
+    ([0, 9007199254740993], 1),
+    ([0, 10], 9007199254740993),
+    ([0, 9007199254740992], 1),
+    ([0, 10], 9007199254740992.0),
+])
+def test_unsafe_integer_precision_is_refused_by_builder(bounds, resolution, tmp_path):
+    path = _spec(tmp_path, [{"name": "retriever_top_k", "type": "int", "domain": {"range": bounds, "resolution": resolution}}])
+    with pytest.raises(ValueError, match="unsupported numeric precision"):
+        build_presets(path)
+
+
+@pytest.mark.parametrize("bounds,resolution", [
+    ([9007199254740993, 9007199254740993], 1),
+    ([-9007199254740993, -9007199254740993], 1),
+    ([0, 9007199254740993], 1),
+    ([0, 10], 9007199254740993),
+    ([0, 9007199254740992], 1),
+    ([0, 10], 9007199254740992.0),
+])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_unsafe_integer_precision_cli_preserves_destination(bounds, resolution, dry_run, tmp_path):
+    import subprocess
+    import sys
+
+    path = _spec(tmp_path, [{"name": "retriever_top_k", "type": "int", "domain": {"range": bounds, "resolution": resolution}}])
+    output = tmp_path / "presets.json"
+    output.write_text("sentinel\n")
+    args = ["--dry-run"] if dry_run else ["-o", str(output)]
+    result = subprocess.run([sys.executable, "-m", "tvl_tools.microsim_bridge", str(path), *args], capture_output=True, text=True, check=False)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert output.read_text() == "sentinel\n"
+    assert "unsupported numeric precision" in result.stderr
+    assert "retriever_top_k" in result.stderr and "Traceback" not in result.stderr
+    if dry_run:
+        assert json.loads(result.stdout)["ok"] is False
+
+
+@pytest.mark.parametrize("value", [-9007199254740991, 9007199254740991])
+def test_safe_integer_boundary_singletons_remain_exact(value, tmp_path):
+    path = _spec(tmp_path, [{"name": "retriever_top_k", "type": "int", "domain": {"range": [value, value]}}])
+    payload = build_presets(path)
+    assert payload["sliders"]["retriever_top_k"] == {"min": value, "max": value, "step": 1}
+    assert payload["defaults"]["retriever_top_k"] == value
+    assert all(preset["retriever_top_k"] == value for preset in payload["presets"].values())
+
+
+def test_safe_integer_boundary_resolution_remains_exact(tmp_path):
+    value = 9007199254740991
+    path = _spec(tmp_path, [{"name": "retriever_top_k", "type": "int", "domain": {"range": [0, value], "resolution": value}}])
+    payload = build_presets(path)
+    assert payload["sliders"]["retriever_top_k"]["step"] == value
+    assert all(preset["retriever_top_k"] in {0, value} for preset in payload["presets"].values())
+
+
+@pytest.mark.parametrize("lower,upper,step", [
+    (9007199254740891, 9007199254740991, 3),
+    (-9007199254740991, -9007199254740891, 7),
+    (-9007199254740991, 9007199254740991, 3),
+    (-9007199254740991, 9007199254740990, 7),
+])
+def test_safe_integer_offset_and_signed_span_presets_keep_original_grid(lower, upper, step, tmp_path):
+    path = _spec(tmp_path, [{"name": "retriever_top_k", "type": "int", "domain": {"range": [lower, upper], "resolution": step}}])
+    payload = build_presets(path)
+    assert payload["sliders"]["retriever_top_k"] == {"min": lower, "max": upper, "step": step}
+    values = [payload["defaults"]["retriever_top_k"], *(preset["retriever_top_k"] for preset in payload["presets"].values())]
+    assert all(type(value) is int and lower <= value <= upper and (value - lower) % step == 0 for value in values)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -88,6 +89,10 @@ def _clamp(value: float, slider: SliderConfig | None) -> float:
 def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
     if slider is None or slider.step <= 0:
         return value
+    if all(type(part) is int for part in (slider.minimum, slider.maximum, slider.step)):
+        last_step = (slider.maximum - slider.minimum) // slider.step
+        step_index = max(0, min(round((Fraction(value) - slider.minimum) / slider.step), last_step))
+        return step_index * slider.step + slider.minimum
     normalized = (value - slider.minimum) / slider.step
     last_step = math.floor((slider.maximum - slider.minimum) / slider.step + 1e-12)
     step_index = max(0, min(round(normalized), last_step))
@@ -181,6 +186,7 @@ def _load_spec(path: Path) -> dict[str, Any]:
 
 # The only keys the Orientation RAG MicroSim reads (app.js FIELD_MAP).
 MICROSIM_CONTROLS = ("retriever_top_k", "rerank_weight", "response_tokens")
+_JS_MAX_SAFE_INTEGER = 2**53 - 1
 
 
 def _is_number(value: Any) -> bool:
@@ -196,6 +202,16 @@ def _tvar_slider(tvar: dict[str, Any], warnings: list[str]) -> SliderConfig | No
     if kind not in {"int", "float"} or not isinstance(bounds, list):
         warnings.append(f"skipped TVAR '{name}' (type {kind}): only int/float range domains are exported")
         return None
+    # Inspect original values before float conversion can round a large integer.
+    numeric_values = [*bounds, domain.get("resolution")]
+    for value in numeric_values:
+        is_integer_value = isinstance(value, int) and not isinstance(value, bool)
+        is_integer_slider_float = kind == "int" and isinstance(value, float) and math.isfinite(value)
+        if (is_integer_value or is_integer_slider_float) and abs(value) > _JS_MAX_SAFE_INTEGER:
+            raise ValueError(
+                f"TVAR '{name}': unsupported numeric precision; integer bounds and resolution "
+                f"must be within JavaScript's safe integer range [-{_JS_MAX_SAFE_INTEGER}, {_JS_MAX_SAFE_INTEGER}]"
+            )
     if len(bounds) != 2 or not all(_is_number(b) for b in bounds) or bounds[0] > bounds[1]:
         raise ValueError(f"TVAR '{name}': domain.range must be a finite numeric [low, high] pair")
     minimum, maximum = float(bounds[0]), float(bounds[1])
@@ -214,6 +230,8 @@ def _tvar_slider(tvar: dict[str, Any], warnings: list[str]) -> SliderConfig | No
     else:
         span = maximum - minimum
         step = (round(span / 16, 4) or span / 16) if span > 0 else 0.1
+    if kind == "int":
+        return SliderConfig(minimum=int(bounds[0]), maximum=int(bounds[1]), step=int(step))
     return SliderConfig(minimum=minimum, maximum=maximum, step=step)
 
 
@@ -230,7 +248,12 @@ def _tvar_space(
         if slider is None:
             continue
         name = tvar["name"]
-        default = _snap_to_step((slider.minimum + slider.maximum) / 2, slider)
+        midpoint = (
+            Fraction(slider.minimum + slider.maximum, 2)
+            if tvar["type"] == "int"
+            else (slider.minimum + slider.maximum) / 2
+        )
+        default = _snap_to_step(midpoint, slider)
         if tvar["type"] == "int":
             types[name] = "integer"
             slider = SliderConfig(
