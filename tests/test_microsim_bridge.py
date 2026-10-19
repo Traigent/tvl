@@ -192,3 +192,60 @@ def test_safe_integer_offset_and_signed_span_presets_keep_original_grid(lower, u
     assert payload["sliders"]["retriever_top_k"] == {"min": lower, "max": upper, "step": step}
     values = [payload["defaults"]["retriever_top_k"], *(preset["retriever_top_k"] for preset in payload["presets"].values())]
     assert all(type(value) is int and lower <= value <= upper and (value - lower) % step == 0 for value in values)
+
+
+@pytest.mark.parametrize("shape", ["range", "values", "default"])
+@pytest.mark.parametrize("value", [9007199254740993, -9007199254740993, "9007199254740993"])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_legacy_unsafe_original_integer_cli_preserves_destination(shape, value, dry_run, tmp_path):
+    import subprocess
+    import sys
+
+    definition = {"type": "integer", shape: [value, value] if shape == "range" else [value] if shape == "values" else value}
+    path = tmp_path / "legacy.yml"
+    path.write_text(yaml.safe_dump({"configuration_space": {"retriever_top_k": definition}}))
+    output = tmp_path / "presets.json"
+    output.write_text("sentinel\n")
+    args = ["--dry-run"] if dry_run else ["-o", str(output)]
+    result = subprocess.run([sys.executable, "-m", "tvl_tools.microsim_bridge", str(path), *args], capture_output=True, text=True, check=False)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert output.read_text() == "sentinel\n"
+    assert "unsupported numeric precision" in result.stderr and "Traceback" not in result.stderr
+    if dry_run:
+        assert json.loads(result.stdout)["ok"] is False
+
+
+@pytest.mark.parametrize("type_name", ["int", "integer", "discrete"])
+@pytest.mark.parametrize("key", ["value", "default", "initial", "start"])
+def test_legacy_integer_context_rejects_nonintegral_large_numeric_string(type_name, key, tmp_path):
+    path = tmp_path / "legacy.yml"
+    path.write_text(yaml.safe_dump({"configuration_space": {"custom_control": {"type": type_name, key: "9007199254740993.5"}}}))
+    with pytest.raises(ValueError, match="unsupported numeric precision"):
+        build_presets(path)
+
+
+@pytest.mark.parametrize("shape", ["range", "values", "default"])
+@pytest.mark.parametrize("value", [-9007199254740991, 9007199254740991, "3"])
+def test_legacy_safe_integer_and_numeric_string_controls_remain_supported(shape, value, tmp_path):
+    definition = {"type": "integer", shape: [value, value] if shape == "range" else [value] if shape == "values" else value}
+    path = tmp_path / "legacy.yml"
+    path.write_text(yaml.safe_dump({"configuration_space": {"custom_control": definition}}))
+    payload = build_presets(path)
+    assert payload["defaults"]["custom_control"] == int(value)
+    assert all(preset["custom_control"] == int(value) for preset in payload["presets"].values())
+
+
+@pytest.mark.parametrize("value", [1e20, "9007199254740993.5", "0.25"])
+def test_legacy_large_finite_float_and_fractional_string_controls_stay_supported(value, tmp_path):
+    path = tmp_path / "legacy.yml"
+    path.write_text(yaml.safe_dump({"configuration_space": {"custom_control": {"type": "float", "default": value}}}))
+    payload = build_presets(path)
+    assert payload["defaults"]["custom_control"] == float(value)
+
+
+
+def test_modern_large_finite_float_stays_supported(tmp_path):
+    value = 1e20
+    path = _spec(tmp_path, [{"name": "custom_control", "type": "float", "domain": {"range": [value, value]}}])
+    payload = build_presets(path)
+    assert payload["defaults"]["custom_control"] == value

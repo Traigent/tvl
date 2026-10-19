@@ -420,27 +420,30 @@ def test_unlink_oserror_is_swallowed(monkeypatch, capsys, tmp_path, structural: 
 
 # --- uncaught errors -------------------------------------------------------- #
 
-def test_missing_candidate_file_raises(monkeypatch, tmp_path) -> None:
+def test_missing_candidate_file_exits_2(monkeypatch, capsys, tmp_path) -> None:
     module = _write(tmp_path, SAT)
-    monkeypatch.setattr(sys, "argv", ["x", str(module), "--candidate-file", str(tmp_path / "nope.json")])
-    with pytest.raises(FileNotFoundError):
-        cli.main()
+    code, out, err = _run(monkeypatch, capsys, str(module), "--candidate-file", str(tmp_path / "nope.json"))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error loading candidate: ") and "nope.json" in err
+    assert "Traceback" not in err
 
 
-def test_invalid_candidate_json_raises(monkeypatch, tmp_path) -> None:
+def test_invalid_candidate_json_exits_2(monkeypatch, capsys, tmp_path) -> None:
     module = _write(tmp_path, SAT)
     bad = tmp_path / "bad.json"
     bad.write_text("{", encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["x", str(module), "--candidate-file", str(bad)])
-    with pytest.raises(json.JSONDecodeError):
-        cli.main()
+    code, out, err = _run(monkeypatch, capsys, str(module), "--candidate-file", str(bad))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error loading candidate: ") and "Expecting" in err
+    assert "Traceback" not in err
 
 
-def test_candidate_with_missing_module_raises(monkeypatch, tmp_path) -> None:
+def test_candidate_with_missing_module_exits_2(monkeypatch, capsys, tmp_path) -> None:
     cand = _candidate(tmp_path, {"edits": []})
-    monkeypatch.setattr(sys, "argv", ["x", str(tmp_path / "missing.yml"), "--candidate-file", str(cand)])
-    with pytest.raises(FileNotFoundError):
-        cli.main()
+    code, out, err = _run(monkeypatch, capsys, str(tmp_path / "missing.yml"), "--candidate-file", str(cand))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error loading module: ") and "missing.yml" in err
+    assert "Traceback" not in err
 
 
 def test_unexpected_check_error_propagates(monkeypatch, tmp_path) -> None:

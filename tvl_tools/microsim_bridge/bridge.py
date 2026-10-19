@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
@@ -18,21 +19,54 @@ class SliderConfig:
     step: float
 
 
-def _to_number(value: Any) -> float | None:
+def _check_numeric_precision(
+    value: Any, *, integer_context: bool = False, context: str = "numeric value"
+) -> None:
+    if isinstance(value, bool):
+        return
+    if isinstance(value, str):
+        try:
+            exact = Decimal(value)
+        except InvalidOperation:
+            return
+        unsafe = (
+            exact.is_finite()
+            and exact == exact.to_integral_value()
+            and (exact > _JS_MAX_SAFE_INTEGER or exact < -_JS_MAX_SAFE_INTEGER)
+        )
+    elif isinstance(value, int):
+        unsafe = abs(value) > _JS_MAX_SAFE_INTEGER
+    elif isinstance(value, float):
+        unsafe = integer_context and math.isfinite(value) and abs(value) > _JS_MAX_SAFE_INTEGER
+    else:
+        return
+    if unsafe:
+        raise ValueError(
+            f"{context}: unsupported numeric precision; integer values must be within "
+            f"JavaScript's safe integer range [-{_JS_MAX_SAFE_INTEGER}, {_JS_MAX_SAFE_INTEGER}]"
+        )
+
+
+def _to_number(value: Any, *, integer_context: bool = False) -> float | None:
+    _check_numeric_precision(value, integer_context=integer_context)
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str):
         try:
-            return float(value)
+            parsed = float(value)
         except ValueError:
             return None
+        _check_numeric_precision(parsed, integer_context=integer_context)
+        return parsed
     return None
 
 
 def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
+    integer_context = definition.get("type") in ("int", "integer", "discrete")
     if "values" in definition and isinstance(definition["values"], Iterable):
         values = [
-            _to_number(entry) for entry in definition["values"] if _to_number(entry) is not None
+            number for entry in definition["values"]
+            if (number := _to_number(entry, integer_context=integer_context)) is not None
         ]
         if not values:
             return None
@@ -45,8 +79,8 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
         bounds = list(definition["range"])
         if len(bounds) != 2:
             return None
-        minimum = _to_number(bounds[0])
-        maximum = _to_number(bounds[1])
+        minimum = _to_number(bounds[0], integer_context=integer_context)
+        maximum = _to_number(bounds[1], integer_context=integer_context)
         if minimum is None or maximum is None:
             return None
         span = maximum - minimum
@@ -57,9 +91,10 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
 
 
 def _infer_default(definition: dict[str, Any]) -> float | int | None:
+    integer_context = definition.get("type") in ("int", "integer", "discrete")
     for key in ("value", "default", "initial", "start"):
         if key in definition:
-            maybe_number = _to_number(definition[key])
+            maybe_number = _to_number(definition[key], integer_context=integer_context)
             if maybe_number is not None:
                 return maybe_number
     slider = _infer_slider(definition)
@@ -205,13 +240,7 @@ def _tvar_slider(tvar: dict[str, Any], warnings: list[str]) -> SliderConfig | No
     # Inspect original values before float conversion can round a large integer.
     numeric_values = [*bounds, domain.get("resolution")]
     for value in numeric_values:
-        is_integer_value = isinstance(value, int) and not isinstance(value, bool)
-        is_integer_slider_float = kind == "int" and isinstance(value, float) and math.isfinite(value)
-        if (is_integer_value or is_integer_slider_float) and abs(value) > _JS_MAX_SAFE_INTEGER:
-            raise ValueError(
-                f"TVAR '{name}': unsupported numeric precision; integer bounds and resolution "
-                f"must be within JavaScript's safe integer range [-{_JS_MAX_SAFE_INTEGER}, {_JS_MAX_SAFE_INTEGER}]"
-            )
+        _check_numeric_precision(value, integer_context=kind == "int", context=f"TVAR '{name}'")
     if len(bounds) != 2 or not all(_is_number(b) for b in bounds) or bounds[0] > bounds[1]:
         raise ValueError(f"TVAR '{name}': domain.range must be a finite numeric [low, high] pair")
     minimum, maximum = float(bounds[0]), float(bounds[1])
