@@ -447,15 +447,15 @@ def test_compose_emits_schema_valid_numbers(tmp_path: Path) -> None:
 def test_runner_rejects_unknown_expected_keys() -> None:
     """Conformance runner rejects unknown expected keys."""
     import copy
-    from tvl.runtime_conformance import ConformanceFailureError, run_runtime_conformance_case
+    import tvl.runtime_conformance as R
 
     p = sorted((RUNTIME_CASES / "projection").glob("*.yml"))[0]
     c_mut = copy.deepcopy(safe_load(p.read_text(encoding="utf-8")))
     c_mut["expected"]["totally_unknown_key"] = 42
     rejected = False
     try:
-        run_runtime_conformance_case(c_mut)
-    except ConformanceFailureError:
+        R.run_runtime_conformance_case(c_mut)
+    except R.ConformanceFailureError:
         rejected = True
     _must(rejected, "Unknown expected key must be rejected")
 
