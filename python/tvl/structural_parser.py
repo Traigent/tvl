@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Iterable, List as List, Sequence
+from typing import Iterable, Sequence
 
 # Cap the recursive-descent nesting depth (parentheses / chained `not`). Each
 # nesting level passes through ``unary()`` exactly once, and each level costs a
@@ -338,7 +338,8 @@ class _Parser:
         if op_token.type in {"EQ", "NE", "LE", "GE", "LT", "GT"}:
             op = self.advance().value
             value = self.value_token()
-            return ("comparison", ident, op, value)
+            # (op, value) is one payload element so every return here is a 3-tuple.
+            return ("comparison", ident, (op, value))
         raise StructuralParseError(f"Expected comparison operator after identifier '{ident}'")
 
     @staticmethod
@@ -415,7 +416,8 @@ def _to_nnf(node):
                     return ("and", _to_nnf(("not", child[1])), _to_nnf(("not", child[2])))
                 if cop == "=>":
                     return _to_nnf(("and", child[1], ("not", child[2])))
-            return ("not_atom", child)
+            # Padded to 3 elements like the and/or nodes returned alongside it.
+            return ("not_atom", child, None)
         if op == "=>":
             _, antecedent, consequent = node
             return ("or", _to_nnf(("not", antecedent)), _to_nnf(consequent))
@@ -475,7 +477,7 @@ def _literal_from_ast(node) -> Literal:
             value_types=tuple(value_types),
         )
     if kind == "comparison":
-        _, ident, op, value_info = node
+        _, ident, (op, value_info) = node
         value_type, value = value_info
         normalized_op = "==" if op == "=" else op
         return Literal(

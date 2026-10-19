@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
@@ -93,9 +94,12 @@ def invoke_entrypoint(
         else:
             argv = [entrypoint, str(doc_path), str(inc_path), str(cand_path), "--json"]
     elif entrypoint == "tvl-microsim-bridge":
-        from tvl_tools.microsim_bridge.cli import main as fn
+        from tvl_tools.microsim_bridge.cli import main as bridge_main
 
         argv = [entrypoint, str(doc_path), "--dry-run"]
+        # The bridge takes its argv explicitly; bind it so every entrypoint is
+        # invoked uniformly as fn() below.
+        fn = functools.partial(bridge_main, argv[1:])
     else:
         raise ValueError(f"Unknown entrypoint: {entrypoint}")
 
@@ -106,10 +110,7 @@ def invoke_entrypoint(
     try:
         sys.argv = argv
         with redirect_stdout(out_buf), redirect_stderr(err_buf):
-            if entrypoint == "tvl-microsim-bridge":
-                fn(argv[1:])
-            else:
-                fn()
+            fn()
     except SystemExit as exc:
         exit_code = int(exc.code) if isinstance(exc.code, int) else 2
     finally:
@@ -118,9 +119,9 @@ def invoke_entrypoint(
     stdout_text = out_buf.getvalue().strip()
     stderr_text = err_buf.getvalue().strip()
     parsed: Dict[str, Any] = {}
+    lines = stdout_text.splitlines()
     if stdout_text:
         try:
-            lines = stdout_text.splitlines()
             parsed = json.loads(stdout_text)
         except Exception:  # noqa: BLE001
             try:

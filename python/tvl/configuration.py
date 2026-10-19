@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict as Dict
+from typing import Any
 
 from .constraints import compile_constraints, evaluate_assignment
 from .errors import ParseError, SchemaError

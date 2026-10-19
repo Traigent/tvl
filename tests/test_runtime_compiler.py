@@ -464,7 +464,9 @@ def test_projection_validates_contract_schema_and_blocks_leaks() -> None:
     """Projection validates contract schema and rejects leaked local names."""
     import copy
     import tvl.runtime_conformance as R
-    from tvl.runtime_conformance import ConformanceFailureError, run_runtime_conformance_case
+
+    ConformanceFailureError = R.ConformanceFailureError
+    run_runtime_conformance_case = R.run_runtime_conformance_case
 
     c = _load_fixture("projection/numbers-enums-and-methods.yml")
     orig = R.project_runtime_declarations

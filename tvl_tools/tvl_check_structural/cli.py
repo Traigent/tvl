@@ -213,6 +213,8 @@ def _remove_temp_file(temp_file: Optional[Path]) -> None:
     try:
         temp_file.unlink(missing_ok=True)
     except OSError:
+        # Best-effort cleanup of a temp file; a failed unlink must not mask the
+        # command result.
         pass
 
 
