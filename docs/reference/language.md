@@ -499,7 +499,7 @@ chain is followed, so an overlay in a subdirectory cannot reach back out through
 are resolved before the check, so a symlink that points outside the root is refused as well. A violation fails with
 `Overlay 'extends' path must stay within the overlay root` (exit 2).
 
-Keep shared bases at or above the overlay you compose from, with overlays below them:
+Place shared bases beside the overlay you compose from, or beneath its directory. If several entry overlays share a base, keep them in the same directory as that base:
 
 ```text
 envs/
@@ -509,7 +509,7 @@ envs/
     prod.overlay.yml    # extends: ../base.yml     -> refused when run as envs/team/prod.overlay.yml
 ```
 
-To compose the `team/` overlay, either move it up to `envs/` or keep a copy of the base inside `team/`.
+To compose the `team/` overlay, either move it up to `envs/` beside the base or keep a copy of the base inside `team/`.
 
 ### Overlays may only tighten
 
