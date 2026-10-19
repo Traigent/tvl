@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
-from .bridge import build_presets, dump_presets
+from .bridge import MICROSIM_CONTROLS, dump_presets, presets_from_spec
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -20,8 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-o",
         "--output",
         type=Path,
-        default=Path("tvl_book/website_content/microsims/orientation-rag-circuit/microsim_presets.json"),
-        help="Destination JSON file (defaults to the bundled Orientation RAG MicroSim presets file).",
+        help="Destination JSON file. Required unless --dry-run is given.",
     )
     parser.add_argument(
         "--dry-run",
@@ -31,16 +30,32 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _fail(message: str, dry_run: bool) -> NoReturn:
+    import json
+    import sys
+
+    print(f"Error: {message}", file=sys.stderr)
+    if dry_run:
+        print(json.dumps({"ok": False, "error": message}, indent=2))
+    raise SystemExit(2)
+
+
 def main(argv: list[str] | None = None) -> None:
     import json
     import sys
+
     from tvl.loader import is_pack_document
-    from tvl.yaml_safe import safe_load
+    from tvl_tools.cli_utils import load_yaml_safely
 
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.output is None and not args.dry_run:
+        parser.error("-o/--output is required unless --dry-run is given")
 
-    raw_doc = safe_load(args.spec.read_text(encoding="utf-8"))
+    try:
+        raw_doc = load_yaml_safely(args.spec)
+    except (OSError, ValueError) as exc:
+        _fail(str(exc), args.dry_run)
     if isinstance(raw_doc, dict):
         refuse_construct: str | None = None
         if is_pack_document(raw_doc):
@@ -64,13 +79,34 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 )
             raise SystemExit(2)
+    else:
+        _fail(f"{args.spec} is not a TVL module (expected a YAML mapping)", args.dry_run)
 
-    payload: dict[str, Any] = build_presets(args.spec)
+    warnings: list[str] = []
+    try:
+        payload: dict[str, Any] = presets_from_spec(raw_doc, warnings)
+        serialized = json.dumps(payload, indent=2, allow_nan=False)
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        _fail(str(exc), args.dry_run)
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    if not payload["defaults"] and not payload["sliders"]:
+        _fail(f"no exportable tvars found in {args.spec}", args.dry_run)
+    if not set(payload["sliders"]) & set(MICROSIM_CONTROLS):
+        print(
+            "warning: no exported TVAR matches a MicroSim control "
+            f"({', '.join(MICROSIM_CONTROLS)}); the MicroSim ignores the exported values",
+            file=sys.stderr,
+        )
+
     if args.dry_run:
-        print(json.dumps(payload, indent=2))
+        print(serialized)
         return
 
-    dump_presets(payload, args.output)
+    try:
+        dump_presets(payload, args.output)
+    except (OSError, ValueError) as exc:
+        _fail(f"cannot write {args.output}: {exc}", False)
     print(f"✅ wrote presets to {args.output}")
 
 

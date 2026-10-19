@@ -54,6 +54,7 @@ _CVAR_TYPE_RE = re.compile(r"^(bool|int|float|enum\[(str|int|float)\])$")
 # underscore-grouped ('1_000') and surrounding-whitespace (' 5 ') forms that
 # strict grammar-conformant consumers (e.g. tvl-check-structural) reject.
 _INT_LITERAL_RE = re.compile(r"^-?[0-9]+$")
+_ENUM_ELEMENT_TYPE_RE = re.compile(r"^enum\[\s*(str|int|float)\s*\]$")
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
 _NON_LINEAR_TOKENS_DERIVED = {"/", "^"}
 
@@ -1620,7 +1621,9 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
                 continue
 
             domain_spec = decl.get("domain")
-            domain_values, minimum, maximum = _parse_domain(name, normalized, domain_spec, ["tvars", idx], issues)
+            domain_values, minimum, maximum = _parse_domain(
+                name, normalized, domain_spec, ["tvars", idx], issues, raw_type=raw_type
+            )
             if domain_values is not None and len(domain_values) == 0:
                 issues.append(
                     {
@@ -1674,6 +1677,7 @@ def _parse_domain(
     spec: Any,
     path: List[Any],
     issues: List[Issue],
+    raw_type: str | None = None,
 ) -> Tuple[Optional[Set[Any]], Optional[float], Optional[float]]:
     if kind == "bool":
         values: Set[Any] = {True, False}
@@ -1742,6 +1746,24 @@ def _parse_domain(
                     "severity": "error",
                 }
             )
+        if kind == "enum" and isinstance(raw_type, str):
+            # Issue #157: the element type in enum[str|int|float] was never
+            # compared with the members. Strings are never coerced, and bool
+            # is not a number (consistent with the numeric branch).
+            type_match = _ENUM_ELEMENT_TYPE_RE.match(raw_type.strip().lower())
+            if type_match is not None:
+                element_type = type_match.group(1)
+                mistyped = [item for item in parsed if not _enum_member_matches(item, element_type)]
+                if mistyped:
+                    issues.append(
+                        {
+                            "code": "invalid_enum_domain",
+                            "message": f"TVAR '{name}' of type enum[{element_type}] has domain value(s) "
+                            f"that are not {element_type}: {mistyped!r}",
+                            "path": path + ["domain"],
+                            "severity": "error",
+                        }
+                    )
         return set(parsed), None, None
 
     if kind in {"int", "float"}:
@@ -1890,6 +1912,16 @@ def _collect_environment_symbols(environment: Any) -> Set[str]:
     if isinstance(environment, dict):
         walk("", environment)
     return symbols
+
+
+def _enum_member_matches(value: Any, element_type: str) -> bool:
+    if element_type == "str":
+        return isinstance(value, str)
+    if isinstance(value, bool):
+        return False
+    if element_type == "int":
+        return isinstance(value, int)
+    return isinstance(value, (int, float))
 
 
 def _coerce_numeric(value: Any, kind: str) -> float | int:

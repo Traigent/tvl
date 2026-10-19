@@ -31,9 +31,11 @@ For website changes, also install [Node.js](https://nodejs.org/en/download) 22 a
 
 The command-line tools are installed with the package: `tvl-parse`, `tvl-lint`, `tvl-validate`, `tvl-config-validate`, `tvl-measure-validate`, `tvl-ci-gate`, `tvl-check-structural`, `tvl-check-operational`, `tvl-compose`, `tvl-compile-runtime` and `tvl-microsim-bridge`. Return codes: `0` on success (for `tvl-ci-gate`, a `Promote` decision); `5` when `tvl-config-validate` fails; `2` for every other validation, lint, structural UNSAT, operational, composition, compilation or gate failure.
 
+`tvl-validate` and `tvl-lint` exit 0 with `ok: true` when all issues are warnings; they retain those warnings in their output. Error-severity issues, including issues with no severity, exit 2.
+
 ## Running the checks
 
-Run what is relevant to your change before opening a pull request. CI runs the Python tests, the website build and tests, CodeQL, and (for changes under `proofs/`, `spec/grammar/`, `formalization/`) the Lean build.
+Run what is relevant to your change before opening a pull request. CI runs the Python tests, the website build and tests, the VS Code extension compilation and tests, CodeQL, and (for changes under `proofs/`, `spec/grammar/`, `formalization/`) the Lean build.
 
 | Area | Command |
 |------|---------|
@@ -42,7 +44,7 @@ Run what is relevant to your change before opening a pull request. CI runs the P
 | Conformance fixture integrity (TVL 1.3 draft) | `python conformance/tools/check_runtime_cases.py` |
 | Lean proofs (CI) | `cd proofs && lake build` (needs the Lean toolchain from [elan](https://github.com/leanprover/elan); CI also rejects `sorry`, `admit` and `axiom` in `proofs/`) |
 | Website (CI) | `cd website && pnpm install --frozen-lockfile && pnpm run test && pnpm run build` |
-| VS Code extension | `cd vscode-tvl && npm ci && npm test` |
+| VS Code extension (CI) | `cd vscode-tvl && npm ci --ignore-scripts && TVL_REQUIRE_CLI=1 npm test` (requires the repository-root `.venv` setup above) |
 
 The conformance suite is also part of `pytest -q tests`; the second row runs it alone.
 

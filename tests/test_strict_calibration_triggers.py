@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 import yaml
 
+from tvl.lints import lint_module
 from tvl.measurement import _strict_calibration_triggers
 from tvl_tools.tvl_ci_gate import cli as ci_gate_cli
 
@@ -79,7 +80,7 @@ def test_composite_with_calibrated_members_is_refused_without_chance_or_flag(
     module = _load("ch08/support-bot.tvl.yml")
     _drop_explicit_enforcement(module)
     module["promotion_policy"].pop("chance_constraints")
-    module.pop("cvars")  # leave only the composite's gate threshold as the trigger
+    assert not [issue for issue in lint_module(module) if issue.get("severity") == "error"]
 
     code, payload = _gate(module, tmp_path, monkeypatch, capsys)
 

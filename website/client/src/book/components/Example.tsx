@@ -51,6 +51,7 @@ export function expectLabel(e: string): string {
   if (e === "pass") return "passes";
   if (e === "sat") return "satisfiable (SAT)";
   if (e === "unsat") return "unsatisfiable (UNSAT)";
+  if (e.startsWith("warning:")) return `warning (passes): ${e.slice(8)}`;
   if (e.startsWith("lint:")) return `lint finding: ${e.slice(5)}`;
   if (e.startsWith("fail:")) return `fails: ${e.slice(5)}`;
   if (e.startsWith("not_ready:")) return `valid, not promotion-ready: ${e.slice(10)}`;

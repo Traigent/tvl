@@ -381,9 +381,31 @@ export async function validateDocument(document: vscode.TextDocument): Promise<v
     }
 }
 
+export function resolveLintCliPath(validatePath: string, configuredPath: string = ''): string {
+    const explicitPath = configuredPath.trim();
+    if (explicitPath) {
+        return explicitPath;
+    }
+    const paths = validatePath.includes('\\') ? path.win32 : path.posix;
+    const match = /^tvl-validate(\.exe)?$/.exec(paths.basename(validatePath));
+    if (!match) {
+        throw new Error('Set tvl.lint.path when tvl.cli.path uses a custom executable name');
+    }
+    return paths.join(paths.dirname(validatePath), `tvl-lint${match[1] ?? ''}`);
+}
+
 export async function lintDocument(document: vscode.TextDocument): Promise<void> {
     const config = vscode.workspace.getConfiguration('tvl');
-    const cliPath = config.get<string>('cli.path', 'tvl-validate').replace('validate', 'lint');
+    let cliPath: string;
+    try {
+        cliPath = resolveLintCliPath(
+            config.get<string>('cli.path', 'tvl-validate'),
+            config.get<string>('lint.path', ''),
+        );
+    } catch (error: any) {
+        vscode.window.showErrorMessage(`TVL lint configuration error: ${error.message || error}`);
+        return;
+    }
 
     let result: TvlCliResult;
     try {

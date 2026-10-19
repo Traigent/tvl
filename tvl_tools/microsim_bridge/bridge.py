@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import json
+import math
 
 from tvl.yaml_safe import safe_load
 
@@ -49,7 +50,7 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
             return None
         span = maximum - minimum
         # Provide a sensible default step: divide into 16 increments (avoid zeros).
-        step = round(span / 16, 4) if span > 0 else 0.1
+        step = (round(span / 16, 4) or span / 16) if span > 0 else 0.1
         return SliderConfig(minimum=minimum, maximum=maximum, step=step)
     return None
 
@@ -62,9 +63,7 @@ def _infer_default(definition: dict[str, Any]) -> float | int | None:
                 return maybe_number
     slider = _infer_slider(definition)
     if slider:
-        midpoint = (slider.minimum + slider.maximum) / 2
-        step = slider.step or 1.0
-        return round(midpoint / step) * step
+        return _snap_to_step((slider.minimum + slider.maximum) / 2, slider)
     return None
 
 
@@ -90,8 +89,9 @@ def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
     if slider is None or slider.step <= 0:
         return value
     normalized = (value - slider.minimum) / slider.step
-    snapped = round(normalized) * slider.step + slider.minimum
-    return _clamp(snapped, slider)
+    last_step = math.floor((slider.maximum - slider.minimum) / slider.step + 1e-12)
+    step_index = max(0, min(round(normalized), last_step))
+    return step_index * slider.step + slider.minimum
 
 
 def _coerce(name: str, value: float, slider: SliderConfig | None, type_name: str | None) -> float | int:
@@ -100,8 +100,7 @@ def _coerce(name: str, value: float, slider: SliderConfig | None, type_name: str
         return int(round(value))
     if type_name and type_name.startswith("categorical"):
         return value
-    # For continuous values, limit to four decimal places to avoid noisy diffs.
-    return round(value, 4)
+    return value
 
 
 def _adjust_presets(
@@ -180,21 +179,114 @@ def _load_spec(path: Path) -> dict[str, Any]:
         return safe_load(handle)
 
 
-def build_presets(path: Path) -> dict[str, Any]:
-    spec = _load_spec(path)
-    configuration_space = spec.get("configuration_space") or {}
-    defaults = _format_defaults(configuration_space)
+# The only keys the Orientation RAG MicroSim reads (app.js FIELD_MAP).
+MICROSIM_CONTROLS = ("retriever_top_k", "rerank_weight", "response_tokens")
 
-    types = {
-        name: (configuration_space.get(name, {}).get("type") or "").lower()
-        for name in configuration_space
-    }
 
-    sliders = {
-        name: slider
-        for name in configuration_space
-        if (slider := _infer_slider(configuration_space[name])) is not None
-    }
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _tvar_slider(tvar: dict[str, Any], warnings: list[str]) -> SliderConfig | None:
+    """Slider for an ``int``/``float`` TVAR with a ``domain.range``; ``None`` (with a warning) otherwise."""
+    name = tvar.get("name")
+    kind = tvar.get("type")
+    domain = tvar.get("domain")
+    bounds = domain.get("range") if isinstance(domain, dict) else None
+    if kind not in {"int", "float"} or not isinstance(bounds, list):
+        warnings.append(f"skipped TVAR '{name}' (type {kind}): only int/float range domains are exported")
+        return None
+    if len(bounds) != 2 or not all(_is_number(b) for b in bounds) or bounds[0] > bounds[1]:
+        raise ValueError(f"TVAR '{name}': domain.range must be a finite numeric [low, high] pair")
+    minimum, maximum = float(bounds[0]), float(bounds[1])
+    if kind == "int" and not all(bound.is_integer() for bound in (minimum, maximum)):
+        raise ValueError(f"TVAR '{name}': int domain.range bounds must be integers")
+    resolution = domain.get("resolution")
+    if "resolution" in domain and (not _is_number(resolution) or resolution <= 0):
+        raise ValueError(f"TVAR '{name}': resolution must be finite and positive")
+    if _is_number(resolution) and resolution > 0:
+        if kind == "int" and not float(resolution).is_integer():
+            warnings.append(f"skipped TVAR '{name}': int TVAR has non-integral resolution {resolution}")
+            return None
+        step = float(resolution)
+    elif kind == "int":
+        step = 1.0
+    else:
+        span = maximum - minimum
+        step = (round(span / 16, 4) or span / 16) if span > 0 else 0.1
+    return SliderConfig(minimum=minimum, maximum=maximum, step=step)
+
+
+def _tvar_space(
+    tvars: list[Any], warnings: list[str]
+) -> tuple[dict[str, float | int], dict[str, SliderConfig], dict[str, str]]:
+    defaults: dict[str, float | int] = {}
+    sliders: dict[str, SliderConfig] = {}
+    types: dict[str, str] = {}
+    for tvar in tvars:
+        if not isinstance(tvar, dict) or not isinstance(tvar.get("name"), str):
+            continue
+        slider = _tvar_slider(tvar, warnings)
+        if slider is None:
+            continue
+        name = tvar["name"]
+        default = _snap_to_step((slider.minimum + slider.maximum) / 2, slider)
+        if tvar["type"] == "int":
+            types[name] = "integer"
+            slider = SliderConfig(
+                minimum=int(slider.minimum), maximum=int(slider.maximum), step=int(slider.step)
+            )
+            defaults[name] = round(default)
+        else:
+            types[name] = "float"
+            defaults[name] = default
+        sliders[name] = slider
+    return defaults, sliders, types
+
+
+def build_presets(path: Path, warnings: list[str] | None = None) -> dict[str, Any]:
+    return presets_from_spec(_load_spec(path), warnings)
+
+
+def presets_from_spec(spec: dict[str, Any], warnings: list[str] | None = None) -> dict[str, Any]:
+    """Build the MicroSim preset payload from a parsed TVL module.
+
+    Sliders come from ``int``/``float`` TVARs with a ``domain.range``; every other
+    TVAR is skipped and named in ``warnings``. A document without ``tvars`` is
+    read through the legacy ``configuration_space`` mapping.
+    """
+    if warnings is None:
+        warnings = []
+    if "tvars" in spec:
+        tvars = spec.get("tvars") if isinstance(spec.get("tvars"), list) else []
+        defaults, sliders, types = _tvar_space(tvars, warnings)
+        header = spec.get("tvl") if isinstance(spec.get("tvl"), dict) else {}
+        source = {"spec_id": header.get("module"), "spec_version": spec.get("tvl_version")}
+    else:
+        configuration_space = spec.get("configuration_space") or {}
+        if not isinstance(configuration_space, dict) or not all(
+            isinstance(definition, dict) for definition in configuration_space.values()
+        ):
+            raise ValueError("configuration_space must map names to variable definitions")
+        legacy_header = spec.get("spec") or {}
+        if not isinstance(legacy_header, dict):
+            raise ValueError("spec must be a mapping")
+        defaults = _format_defaults(configuration_space)
+
+        types = {
+            name: (configuration_space.get(name, {}).get("type") or "").lower()
+            for name in configuration_space
+        }
+
+        sliders = {
+            name: slider
+            for name in configuration_space
+            if (slider := _infer_slider(configuration_space[name])) is not None
+        }
+        source = {
+            "spec_id": legacy_header.get("id"),
+            "spec_version": legacy_header.get("version"),
+        }
 
     slider_payload = {
         name: {
@@ -208,10 +300,7 @@ def build_presets(path: Path) -> dict[str, Any]:
     presets = _adjust_presets(defaults, sliders, types)
     payload = {
         "version": "1.0.0",
-        "source": {
-            "spec_id": spec.get("spec", {}).get("id"),
-            "spec_version": spec.get("spec", {}).get("version"),
-        },
+        "source": source,
         "defaults": {
             key: presets["baseline"][key] for key in presets["baseline"]
         },
@@ -232,7 +321,6 @@ def _serialize_key(name: str) -> str:
 
 
 def dump_presets(payload: dict[str, Any], destination: Path) -> None:
+    serialized = json.dumps(payload, indent=2, allow_nan=False) + "\n"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-        handle.write("\n")
+    destination.write_text(serialized, encoding="utf-8")

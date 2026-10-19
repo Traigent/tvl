@@ -12,5 +12,5 @@ tvl-ci-gate spec/examples/rag-support-bot.tvl.yml \
   `chance_outcomes` with `violations` and `trials`.
 - `--policy` is kept only as a deprecated fallback for standalone dry-runs.
 
-- Exit 0: command succeeded (decision may be `Promote`, `Reject`, or `NoDecision`)
-- Exit 2: parse/schema failure
+- Exit 0: decision is `Promote`
+- Exit 2: decision is `Reject` or `NoDecision`, or input validation fails

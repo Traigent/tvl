@@ -20,6 +20,8 @@ def main() -> None:
 
     try:
         ast = load_yaml_safely(args.file)
+        if not isinstance(ast, dict):
+            raise TypeError("TVL module must be a mapping at the top level")
         output: dict[str, Any] = {
             "ok": True,
             "file": str(args.file),

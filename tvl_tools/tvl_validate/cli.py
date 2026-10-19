@@ -28,10 +28,28 @@ def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str
         return runtime_syntax_issues(doc) or closed_schema_issues(errors)
     issues: list[dict[str, Any]] = []
     for err in errors:
+        code, message = "schema_error", err.message
+        field_path = list(err.path)
+        tvars = doc.get("tvars")
+        if (
+            err.validator == "type"
+            and len(field_path) in {4, 5}
+            and field_path[0] == "tvars"
+            and isinstance(field_path[1], int)
+            and field_path[2] == "domain"
+            and isinstance(field_path[-1], int)
+            and (len(field_path) == 4 or field_path[3] == "set")
+            and isinstance(tvars, list)
+            and 0 <= field_path[1] < len(tvars)
+        ):
+            tvar = tvars[field_path[1]]
+            if isinstance(tvar, dict) and tvar.get("type") in ("enum[int]", "enum[float]", "enum[str]"):
+                code = "invalid_enum_domain"
+                message = f"TVAR {tvar.get('name', '<unnamed>')}: {message}"
         issues.append(
             {
-                "code": "schema_error",
-                "message": err.message,
+                "code": code,
+                "message": message,
                 "path": list(err.path),
                 "severity": "error",
             }
@@ -67,14 +85,16 @@ def main() -> None:
             "tvl-pack.schema.json" if is_pack else "tvl.schema.json",
         )
         issues = _schema_issues(doc, schema)
+        schema_ok = not issues
 
         if not issues:
             issues = lint_pack(doc) if is_pack else lint_module(doc)
 
+        has_errors = any(issue.get("severity", "error") == "error" for issue in issues)
         result: dict[str, Any] = {
-            "ok": len(issues) == 0,
+            "ok": not has_errors,
             "file": str(args.file),
-            "schema_ok": all(issue.get("code") != "schema_error" for issue in issues),
+            "schema_ok": schema_ok,
             "issues": issues,
         }
         if is_pack:
@@ -82,7 +102,7 @@ def main() -> None:
 
         print_output(result, get_format(args), text_renderer)
 
-        if issues:
+        if has_errors:
             sys.exit(2)
 
     except Exception as exc:  # noqa: BLE001

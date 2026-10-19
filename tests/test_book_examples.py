@@ -31,10 +31,10 @@ CHECKERS = {
     "tvl-compile-runtime": ("tvl_tools.tvl_compile_runtime.cli", ["--format", "json"]),
     "tvl-ci-gate": ("tvl_tools.tvl_ci_gate.cli", []),
 }
-# Which expected results each checker can prove ("lint" and "fail" take a :CODE suffix).
+# Which expected results each checker can prove (diagnostic kinds take a :CODE suffix).
 EXPECT_BY_CHECKER = {
-    "tvl-validate": {"valid", "lint"},
-    "tvl-lint": {"valid", "lint"},
+    "tvl-validate": {"valid", "lint", "warning"},
+    "tvl-lint": {"valid", "lint", "warning"},
     "tvl-check-structural": {"sat", "unsat"},
     "tvl-check-operational": {"pass", "fail"},
     "tvl-config-validate": {"pass", "fail"},
@@ -116,7 +116,7 @@ def test_manifest_entry(entry: dict) -> None:
     expect = entry["expect"]
     kind = expect.split(":", 1)[0]
     assert kind in EXPECT_BY_CHECKER[checker], f"{checker} cannot prove {expect}"
-    assert (":" in expect) == (kind in {"lint", "fail", "not_ready", "reject"}), f"bad expect {expect}"
+    assert (":" in expect) == (kind in {"lint", "warning", "fail", "not_ready", "reject"}), f"bad expect {expect}"
 
     module_file = None
     if checker in NEEDS_MODULE:
@@ -181,6 +181,13 @@ def test_manifest_entry(entry: dict) -> None:
             # A bundle the book shows as valid must also be one the promotion gate accepts.
             assert report["promotion_ready"] is True, report
             assert report["structural"]["ok"] is True, report
+    elif kind == "warning":
+        report = objs[-1]
+        wanted = expect.split(":", 1)[1]
+        assert code == 0 and report["ok"] is True, report
+        issues = report["issues"]
+        assert any(i.get("code") == wanted and i.get("severity") == "warning" for i in issues), report
+        assert all(i.get("severity", "error") != "error" for i in issues), report
     elif kind == "not_ready":
         # A well-formed bundle the promotion gate may not use: exit 0, ok, not promotion-ready.
         report = objs[-1]

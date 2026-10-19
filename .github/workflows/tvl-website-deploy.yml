@@ -45,8 +45,10 @@ jobs:
           persist-credentials: false
 
       - name: Validate deployment settings
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
         run: |
-          test -n "${{ secrets.AWS_ROLE_TO_ASSUME }}"
+          test -n "$AWS_ROLE_TO_ASSUME"
           test -n "$AWS_REGION"
           test -n "$TVL_WEBSITE_S3_BUCKET"
           test -n "$TVL_WEBSITE_CLOUDFRONT_DISTRIBUTION_ID"

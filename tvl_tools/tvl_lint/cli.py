@@ -56,8 +56,9 @@ def main() -> None:
                 }
             ]
 
+        has_errors = any(issue.get("severity", "error") == "error" for issue in issues)
         out: dict[str, Any] = {
-            "ok": len(issues) == 0,
+            "ok": not has_errors,
             "file": str(args.file),
             "issues": issues,
         }
@@ -66,7 +67,7 @@ def main() -> None:
 
         print_output(out, get_format(args), text_renderer)
 
-        if issues:
+        if has_errors:
             sys.exit(2)
 
     except Exception as exc:  # noqa: BLE001

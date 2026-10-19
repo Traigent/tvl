@@ -8,10 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Security
 
+- The website deployment settings check now passes its role secret through a step environment variable before testing the quoted value.
 - Cleared the open dependency and code-scanning findings: the website PDF build server now checks path containment with `path.relative` (a sibling directory such as `dist/public-evil` no longer passes), the website deploy checkout no longer persists credentials, the support-bot evaluator raises an explicit error instead of using `assert`, and the older locked `numpy` releases (2.2.6, 2.4.6) are gone with the Python 3.12 minimum below.
 
 ### Fixed
 
+- Tightened schema bounds for chance thresholds, confidence, objective tolerances and convergence settings, and made full-module promotion gates reject error-severity lints while retaining warnings. Legacy `--policy` full modules now use the same schema validation as canonical input.
+- Enum domains now enforce their declared string or numeric element type in lints and the module schema, so configuration and structural validators also reject mismatched members. Ordinary module validation reports `invalid_enum_domain` with the TVAR name and offending value; JSON Schema accepts integral numbers such as `3.0`, while lint also checks Python literal types.
+- `tvl-validate` and `tvl-lint` now return success for warning-only results, keep all diagnostics, and treat missing severity as an error. The book records warning expectations explicitly, and tool examples use the committed module filename.
+- `tvl-parse` now rejects empty, sequence and scalar documents while leaving schema validation to `tvl-validate`. Tool documentation now records configuration failures as exit 5 and gate success only for `Promote`.
+- Structural candidate loading and MicroSim input handling now report diagnostic failures instead of tracebacks for unreadable, malformed or non-mapping input.
+- The MicroSim bridge now exports numeric TVAR ranges with module identity, respects integer steps and range resolution, and warns about skipped variables and unmatched lab controls. Empty exports fail without writing; output requires `-o` unless `--dry-run` is selected.
+- The VS Code extension derives a sibling linter by exact executable basename, preserving parent directories and Windows paths. Custom validator names require an explicit machine-scoped `tvl.lint.path`.
+- Pull-request CI now compiles and tests the VS Code extension with the Python CLIs installed in the repository virtual environment; required CLI integration tests fail when the executable is absent.
 - `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
 - `tvl-lint` applies the documented default `promotion_policy.alpha` of 0.05 when it is omitted, instead of failing with `invalid_alpha`; explicit `null` or out-of-range values are still rejected.
 - Runtime diagnostics printed by the CLI text renderers show their field location once instead of twice.

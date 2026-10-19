@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Optional
+from typing import Any, NoReturn, Optional
 
 import yaml
 
@@ -198,8 +198,18 @@ def _prepare_module_path(
     """
     if not args.candidate_file:
         return args.file, None, None
-    candidate_payload = json.loads(args.candidate_file.read_text(encoding="utf-8"))
-    original_text = args.file.read_text(encoding="utf-8")
+    # Issue #159: an unreadable candidate or module must give the same exit-2
+    # diagnostic (and --json payload) as the guarded module load, not a traceback.
+    try:
+        candidate_payload = json.loads(args.candidate_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _exit_load_error(str(exc), args, None, label="candidate")
+    if not isinstance(candidate_payload, dict):
+        _exit_load_error("candidate file must contain a JSON object", args, None, label="candidate")
+    try:
+        original_text = args.file.read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        _exit_load_error(str(exc), args, None)
     patched_text = _apply_candidate_edits(original_text, candidate_payload)
     if patched_text == original_text:
         return args.file, None, candidate_payload
@@ -218,33 +228,43 @@ def _remove_temp_file(temp_file: Optional[Path]) -> None:
         pass
 
 
+def _exit_load_error(
+    error_msg: str,
+    args: argparse.Namespace,
+    temp_file: Path | None,
+    exc: BaseException | None = None,
+    label: str = "module",
+) -> NoReturn:
+    """Report an input that could not be loaded and exit 2."""
+    if args.json:
+        error_payload: dict[str, Any] = {
+            "schemaVersion": "1.0",
+            "kind": "PhaseResult",
+            "phase": "structural",
+            "ok": False,
+            "status": "error",
+            "error": error_msg if label == "module" else f"{label}: {error_msg}",
+            "timestamp": _current_timestamp(),
+            "durationMs": 0,
+        }
+        if getattr(exc, "code", None) == "unsupported_construct":
+            error_payload["code"] = "unsupported_construct"
+            error_payload["construct"] = getattr(exc, "construct", None)
+        print(json.dumps(error_payload, indent=2))
+    else:
+        if getattr(exc, "code", None) == "unsupported_construct":
+            print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
+        else:
+            print(f"Error loading {label}: {error_msg}", file=sys.stderr)
+    _remove_temp_file(temp_file)
+    raise SystemExit(2)
+
+
 def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file: Optional[Path]) -> dict[str, Any]:
     try:
         return _load_module(module_path)
     except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
-        error_msg = str(exc)
-        if args.json:
-            error_payload: dict[str, Any] = {
-                "schemaVersion": "1.0",
-                "kind": "PhaseResult",
-                "phase": "structural",
-                "ok": False,
-                "status": "error",
-                "error": error_msg,
-                "timestamp": _current_timestamp(),
-                "durationMs": 0,
-            }
-            if getattr(exc, "code", None) == "unsupported_construct":
-                error_payload["code"] = "unsupported_construct"
-                error_payload["construct"] = getattr(exc, "construct", None)
-            print(json.dumps(error_payload, indent=2))
-        else:
-            if getattr(exc, "code", None) == "unsupported_construct":
-                print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
-            else:
-                print(f"Error loading module: {error_msg}", file=sys.stderr)
-        _remove_temp_file(temp_file)
-        raise SystemExit(2)
+        _exit_load_error(str(exc), args, temp_file, exc)
 
 
 def _check_module_or_exit(

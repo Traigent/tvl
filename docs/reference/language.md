@@ -276,6 +276,8 @@ Each TVAR declares:
 | `tuple[...]` | Structured tuple values | `tuple[int, float]` |
 | `callable[ProtoId]` | Registry-backed executable choices | `callable[RerankerProto]` |
 
+Every member of an `enum[T]` domain must have the element type `T`: strings for `enum[str]`, integers for `enum[int]`, and integers or floats for `enum[float]`. Booleans are not numbers, and strings are not converted, so `"3"` is not an `int`. The schema enforces this for direct arrays and `domain.set`, including modules loaded by `tvl-config-validate` and `tvl-check-structural`; registry references are unchanged. `tvl-validate` and `tvl-lint` report a mismatch as `invalid_enum_domain`, naming the TVAR and offending value. JSON Schema counts an integral number such as `3.0` as an integer, whereas YAML loads `3.0` as a Python float: schema-only consumers accept this representation in `enum[int]`, but the lint rejects it.
+
 ### Domain Shapes
 
 TVL examples and schema support these common domain styles:

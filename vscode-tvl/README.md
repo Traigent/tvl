@@ -104,7 +104,10 @@ tvl-validate --help
 |---------|---------|-------------|
 | `tvl.validation.enable` | `true` | Enable/disable TVL validation |
 | `tvl.validation.onSave` | `true` | Validate TVL files on save |
-| `tvl.cli.path` | `tvl-validate` | Path to tvl-validate CLI tool |
+| `tvl.cli.path` | `tvl-validate` | Path to the validator; standard names also locate the sibling linter |
+| `tvl.lint.path` | `""` | Explicit linter path; required when the validator uses a custom executable name |
+
+Both executable paths are machine-scoped settings. When `tvl.lint.path` is empty, only the exact validator basename `tvl-validate` or `tvl-validate.exe` is changed to `tvl-lint` or `tvl-lint.exe`; parent directories are preserved. Set `tvl.lint.path` explicitly for a custom validator wrapper.
 
 ## Commands
 

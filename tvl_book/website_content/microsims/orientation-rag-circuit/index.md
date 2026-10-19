@@ -38,5 +38,7 @@ Use the preset buttons to replay three scenarios:
 3. **Budget Shift** – A change of cost budget that shifts the trade-off between objectives.
 
 The `microsim_presets.json` file matches the format emitted by
-`python -m tvl_tools.microsim_bridge`. Drop updated specs in your repo, run the bridge,
-and the page reloads with fresh scenarios.
+`python -m tvl_tools.microsim_bridge path/to/spec.tvl.yml -o path/to/microsim_presets.json`.
+Choose an output path explicitly, or preview the JSON with `--dry-run`. The bridge
+exports numeric TVAR ranges and warns when their names match none of this lab's controls (`retriever_top_k`, `rerank_weight`, `response_tokens`). Copy the
+export to the lab's `microsim_presets.json` to load the fresh scenarios.

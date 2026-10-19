@@ -34,6 +34,9 @@ test("restricts CLI configuration to trusted machine scope", () => {
         manifest.contributes.configuration.properties["tvl.cli.path"].scope,
         "machine",
     );
+    const lintSetting = manifest.contributes.configuration.properties["tvl.lint.path"];
+    assert.equal(lintSetting.scope, "machine");
+    assert.equal(lintSetting.default, "");
     assert.equal(manifest.capabilities.untrustedWorkspaces.supported, false);
 });
 
@@ -429,7 +432,7 @@ test("preserves result.issues and field paths when tvl-validate or tvl-lint exit
     fs.writeFileSync(fakeLintCliPath, cliScript, { mode: 0o755 });
 
     const mockState = {
-        config: { "cli.path": fakeCliPath },
+        config: { "cli.path": fakeCliPath, "lint.path": fakeLintCliPath },
         infoMessages: [],
         warningMessages: [],
         errorMessages: [],
@@ -489,6 +492,7 @@ function expandSnippetDefaults(bodyLines) {
 test("all 6 expanded snippets validate cleanly with tvl-validate and tvl-lint", async (t) => {
     const tvlValidateBin = path.join(repoRoot, ".venv", "bin", "tvl-validate");
     if (!fs.existsSync(tvlValidateBin)) {
+        assert.notEqual(process.env.TVL_REQUIRE_CLI, "1", "TVL_REQUIRE_CLI=1 requires .venv/bin/tvl-validate");
         t.skip("tvl-validate not installed in .venv");
         return;
     }
@@ -602,5 +606,63 @@ test("resolveIssueLine locates list items and stays linear on long whitespace ru
         assert.ok(Date.now() - started < 2000, "list-item scan must not backtrack");
     } finally {
         restore();
+    }
+});
+
+test("resolves only standard validator basenames and honors an explicit linter", () => {
+    const state = { config: {}, infoMessages: [], warningMessages: [], errorMessages: [] };
+    const { ext, restore } = loadExtensionWithMockVscode(state);
+    try {
+        for (const [validator, linter] of [
+            ["tvl-validate", "tvl-lint"],
+            ["tvl-validate.exe", "tvl-lint.exe"],
+            ["/opt/validate-tools/.venv/bin/tvl-validate", "/opt/validate-tools/.venv/bin/tvl-lint"],
+            ["C:\\Users\\example\\validate\\Scripts\\tvl-validate.exe", "C:\\Users\\example\\validate\\Scripts\\tvl-lint.exe"],
+        ]) {
+            assert.equal(ext.resolveLintCliPath(validator), linter);
+        }
+        assert.throws(() => ext.resolveLintCliPath("/opt/bin/custom-check"), /tvl\.lint\.path/);
+        assert.throws(() => ext.resolveLintCliPath("/opt/bin/tvl-validate-wrapper"), /tvl\.lint\.path/);
+        assert.equal(ext.resolveLintCliPath("/opt/bin/custom-check", " /opt/bin/custom-lint "), "/opt/bin/custom-lint");
+    } finally {
+        restore();
+    }
+});
+
+test("lint executes the sibling in a validate directory and refuses an ambiguous custom validator", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vscode-tvl-validate-"));
+    const validator = path.join(tmpDir, "tvl-validate");
+    const linter = path.join(tmpDir, "tvl-lint");
+    const marker = path.join(tmpDir, "validator-ran");
+    const custom = path.join(tmpDir, "custom-check");
+    const docPath = path.join(tmpDir, "document with spaces; literal.tvl.yml");
+    fs.writeFileSync(docPath, "tvl: {}\n");
+    const sentinel = `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran');\nprocess.exit(9);\n`;
+    fs.writeFileSync(validator, sentinel, { mode: 0o755 });
+    fs.writeFileSync(custom, sentinel, { mode: 0o755 });
+    const payload = { ok: true, issues: [{ code: "sibling_lint", message: "Sibling lint ran", severity: "warning" }] };
+    const lintScript = `#!/usr/bin/env node\nconst assert = require('node:assert/strict');\nassert.deepEqual(process.argv.slice(2), ${JSON.stringify([docPath, "--format", "json"])});\nprocess.stdout.write(${JSON.stringify(JSON.stringify(payload))});\n`;
+    fs.writeFileSync(linter, lintScript, { mode: 0o755 });
+    const state = { config: { "cli.path": validator }, infoMessages: [], warningMessages: [], errorMessages: [] };
+    const { ext, vscodeMock, diagnosticStore, restore } = loadExtensionWithMockVscode(state);
+    try {
+        ext.activate({ subscriptions: [], extensionPath: vscodeTvlRoot });
+        const doc = { uri: vscodeMock.Uri.file(docPath), fileName: docPath, getText: () => "tvl: {}\n" };
+        await ext.lintDocument(doc);
+        assert.equal(state.errorMessages.length, 0);
+        assert.equal(diagnosticStore.get(docPath)[0].code, "sibling_lint");
+        assert.equal(diagnosticStore.get(docPath)[0].severity, vscodeMock.DiagnosticSeverity.Warning);
+        assert.equal(fs.existsSync(marker), false);
+        state.config["cli.path"] = custom;
+        await ext.lintDocument(doc);
+        assert.match(state.errorMessages[0], /configuration error.*tvl\.lint\.path/);
+        assert.equal(fs.existsSync(marker), false, "custom validator must not execute as linter");
+        state.config["lint.path"] = linter;
+        await ext.lintDocument(doc);
+        assert.equal(state.errorMessages.length, 1);
+        assert.equal(diagnosticStore.get(docPath)[0].code, "sibling_lint");
+    } finally {
+        restore();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
