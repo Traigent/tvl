@@ -90,7 +90,7 @@ candidate:
 policy:
   alpha: 0.05
   min_effect:
-    latency_p95_ms: 10    # ε for this objective (units: ms)
+    latency_p95_ms: 10    # ε for this objective (units: ms); required for every standard objective
     accuracy: 0.02        # ε for this objective (units: fraction)
   adjust: "holm"          # "none" | "bonferroni" | "holm" | "BH" (default: "holm")
   chance_constraints:
@@ -420,6 +420,6 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 | `missing_samples` | Neither samples nor aggregated stats provided |
 | `insufficient_samples` | Fewer than 2 samples for t-test |
 | `missing_policy` | No promotion_policy in module |
-| `missing_epsilon` | No min_effect for standard objective |
+| `missing_epsilon` | No min_effect for a standard objective. The gate rejects the policy before any evaluation (a non-zero exit from `tvl-ci-gate`); a missing entry is never defaulted to 0. An explicit `0` is allowed. |
 | `invalid_direction` | Unknown objective direction |
 | `missing_band_target` | Banded objective without target |

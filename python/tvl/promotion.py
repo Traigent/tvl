@@ -429,8 +429,20 @@ def _parse_objectives(
     than silently defaulted to "maximize" — a silent default here can invert
     the promotion verdict on paths that bypass schema validation (see
     ``tvl-ci-gate --policy`` and the public ``epsilon_pareto_gate`` API).
+
+    ``min_effect`` is fail-closed the same way: every standard (non-banded)
+    objective must carry its own explicit entry. A missing, misspelt,
+    wrong-case or null entry is rejected, never defaulted to 0.0 — a zero
+    margin would promote on any noise-level difference (Traigent/tvl#161).
+    An explicit ``0`` stays allowed.
     """
+    if not isinstance(min_effects, dict):
+        raise ParseError(
+            "promotion_policy.min_effect must be a mapping of objective name "
+            f"to a non-negative number, got {min_effects!r}"
+        )
     specs: List[ObjectiveSpec] = []
+    missing: List[str] = []
     for obj in objectives:
         name = obj.get("name")
         if not name:
@@ -447,7 +459,13 @@ def _parse_objectives(
                 f"Objective '{name}' has invalid direction {direction!r}; "
                 f"expected one of {sorted(_VALID_DIRECTIONS)}"
             )
-        epsilon = min_effects.get(name, 0.0)
+        if name in min_effects:
+            epsilon = _validated_min_effect(name, min_effects[name])
+        elif band is None:
+            missing.append(name)
+            continue
+        else:
+            epsilon = 0.0  # banded objectives are tested via their band
         metric_ref = obj.get("metric_ref")
         specs.append(
             ObjectiveSpec(
@@ -458,7 +476,29 @@ def _parse_objectives(
                 metric_ref=metric_ref,
             )
         )
+    if missing:
+        raise ParseError(
+            "promotion_policy.min_effect must name every objective; missing "
+            f"{sorted(missing)} (present keys: {sorted(map(str, min_effects))}). "
+            "A missing min_effect is not treated as 0.0 (Traigent/tvl#161)."
+        )
     return specs
+
+
+def _validated_min_effect(name: str, value: Any) -> float:
+    """Return a ``min_effect`` entry as a float, or raise ``ParseError``."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or math.isnan(value)
+        or math.isinf(value)
+        or value < 0
+    ):
+        raise ParseError(
+            f"promotion_policy.min_effect['{name}'] must be a finite number "
+            f">= 0, got {value!r}"
+        )
+    return float(value)
 
 
 def _test_objective(

@@ -430,7 +430,7 @@ promotion_policy:
 
 Notes:
 
-*   Standard objectives should have a `min_effect` entry.
+*   Every standard objective must have an explicit `min_effect` entry. The linter reports `missing_min_effect`, and the promotion gate (`epsilon_pareto_gate`, `tvl-ci-gate`) rejects the policy before any evaluation. A missing entry is never treated as `0`; an explicit `0` is allowed.
 *   Banded objectives do not need a `min_effect` entry.
 *   Chance constraints are expressed as threshold + confidence pairs over named metrics.
 *   `metric_ref` is optional, but recommended for production-facing specs because it links each objective to the metric contract that computes it.

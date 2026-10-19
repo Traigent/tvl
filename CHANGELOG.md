@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- The promotion gate (`epsilon_pareto_gate`, `tvl-ci-gate`) rejects a promotion policy that leaves a standard objective without its own `min_effect` entry (missing, misspelt, wrong-case, null or invalid), before any evaluation and with exit 2 in the CLI, instead of defaulting the margin to 0.0 and promoting on noise (#161). An explicit `0` stays allowed; banded objectives still need no entry.
 - `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
 - `tvl-lint` applies the documented default `promotion_policy.alpha` of 0.05 when it is omitted, instead of failing with `invalid_alpha`; explicit `null` or out-of-range values are still rejected.
 - Runtime diagnostics printed by the CLI text renderers show their field location once instead of twice.

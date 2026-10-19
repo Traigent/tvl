@@ -283,7 +283,7 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Severity**: error
 - **Description**: Objective lacks entry in `min_effect` map.
 - **Example**: `min_effect: { quality: 0.01 }` when `latency` objective exists
-- **Remediation**: Add epsilon entry for every declared objective.
+- **Remediation**: Add epsilon entry for every declared objective. The promotion gate enforces the same rule: it rejects a policy with a missing entry before evaluation and never treats it as `0` (an explicit `0` is allowed).
 
 ### `invalid_min_effect`
 - **Severity**: error

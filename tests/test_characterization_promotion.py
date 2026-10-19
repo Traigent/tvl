@@ -2559,10 +2559,37 @@ CASES = [('samples_single_inc',
                  'fdr_controlled_at': None}})))]
 
 
+def _with_explicit_min_effect(args):
+    """State the old 0.0 default explicitly (Traigent/tvl#161).
+
+    The gate now rejects a policy that leaves a standard objective without a
+    ``min_effect`` entry. These pinned cases predate that rule and do not care
+    about the margin, so each missing entry becomes an explicit ``0`` (the value
+    the gate used to default to, so every pinned result is unchanged). The
+    rejection itself is tested in test_promotion_objective_validation.py.
+    """
+    args = list(args)
+    if len(args) < 4 or not isinstance(args[2], dict) or not isinstance(args[3], list):
+        return args
+    policy = dict(args[2])
+    min_effect = policy.get("min_effect", {})
+    if not isinstance(min_effect, dict):
+        return args
+    min_effect = dict(min_effect)
+    for obj in args[3]:
+        if isinstance(obj, dict) and obj.get("name") and obj.get("band") is None:
+            min_effect.setdefault(obj["name"], 0)
+    policy["min_effect"] = min_effect
+    args[2] = policy
+    return args
+
+
 @pytest.mark.parametrize("case_id,fn,args,kwargs,expected", CASES, ids=[c[0] for c in CASES])
 def test_pinned_case(case_id, fn, args, kwargs, expected):
     func = FUNCS[fn]
     args = copy.deepcopy(args)
+    if fn == "gate":
+        args = _with_explicit_min_effect(args)
     kwargs = copy.deepcopy(kwargs)
     if expected[0] == "raises":
         with pytest.raises(Exception) as info:
