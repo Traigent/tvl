@@ -1147,7 +1147,7 @@ these fields (`runtime_invalid_ladder`).
 
 | Approval | Allowed on | Meaning |
 |---|---|---|
-| `none` | `notify`, `open_next_step`, `block_action`, `halt_unit` (the default for these) | no approval is required. `notify` rests on its recorded event (event authority, §7.4); every other action still passes the current-scope and precondition checks of §7.4 at the time of its effect |
+| `none` | `notify`, `open_next_step`, `block_action`, `halt_unit` (the default for these) | no approval is required. `notify` rests on its recorded event (event authority, §7.4); `open_next_step`, a remote service effect, still passes the current-scope and precondition checks of §7.4 at the time of its effect; `block_action` and `halt_unit` are local guards governed by §7.5, which keep working when remote authority is unreachable |
 | `standing` | `optimize`, `rollback`, `throttle`, `degrade` | a standing grant (below). Each occurrence, including each repeat, consumes the grant; a retry of one occurrence does not |
 | `human` | `optimize`, `rollback`, `throttle`, `degrade` (the default for these), `suspend` (required) | an authorized human approves each occurrence; for `suspend`, per episode, always |
 
