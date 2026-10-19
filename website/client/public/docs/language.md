@@ -492,6 +492,27 @@ tvl-measure-validate module.tvl.yml config.yml measurements.yml
 
 `tvl-compose` takes **one** overlay file, which names its base via `_tvl_overlay.extends`.
 
+#### Where `extends` may point
+
+`_tvl_overlay.extends` is a **relative** path, resolved against the directory of the overlay file that contains it.
+Absolute paths are refused. Every base in a chain must stay inside the **overlay root**: the directory of the overlay
+file you pass to `tvl-compose`, and everything below it. The root is fixed by that first file and does not move as the
+chain is followed, so an overlay in a subdirectory cannot reach back out through `..` to a base above the root. Paths
+are resolved before the check, so a symlink that points outside the root is refused as well. A violation fails with
+`Overlay 'extends' path must stay within the overlay root` (exit 2).
+
+Place shared bases beside the overlay you compose from, or beneath its directory. If several entry overlays share a base, keep them in the same directory as that base:
+
+```text
+envs/
+  base.yml              # shared base
+  staging.overlay.yml   # extends: base.yml        -> run: tvl-compose envs/staging.overlay.yml
+  team/
+    prod.overlay.yml    # extends: ../base.yml     -> refused when run as envs/team/prod.overlay.yml
+```
+
+To compose the `team/` overlay, either move it up to `envs/` beside the base or keep a copy of the base inside `team/`.
+
 ### Overlays may only tighten
 
 An overlay narrows a base module; it may never widen it. The composer enforces:
