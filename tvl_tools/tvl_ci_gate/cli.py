@@ -165,9 +165,10 @@ def main() -> None:
         incumbent_raw = load_measurement(incumbent_path)
         candidate_raw = load_measurement(candidate_path)
 
-        if args.policy is not None:
-            if "monitor_outcomes" in incumbent_raw or "monitor_outcomes" in candidate_raw:
-                _refuse_unsupported("monitor_outcomes", args.json)
+        if args.policy is not None and (
+            "monitor_outcomes" in incumbent_raw or "monitor_outcomes" in candidate_raw
+        ):
+            _refuse_unsupported("monitor_outcomes", args.json)
 
         incumbent, incumbent_warnings, incumbent_readiness = prepare_measurement_bundle(
             module, incumbent_raw, role="incumbent"

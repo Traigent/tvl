@@ -77,3 +77,54 @@ def test_missing_min_effect_remains_a_documented_lint_boundary():
     doc["promotion_policy"]["min_effect"].pop("quality")
     assert not list(validator().iter_errors(doc))
     assert "missing_min_effect" in {i["code"] for i in lint_module(doc)}
+
+
+def test_role_diagnostics_keep_each_monitor_index():
+    path = next((ROOT / "spec/examples/runtime-1.3").glob("02-*.yml"))
+    doc = yaml.safe_load(path.read_text())
+    assert not [i for i in lint_module(doc) if i.get("severity") == "error"]
+    del doc["monitors"][0]["window"]
+    del doc["monitors"][0]["decision"]["confidence"]
+    doc["monitors"][1]["evidence"]["resolution"] = "terminal_status_v1"
+
+    paths = {
+        tuple(i["path"]) for i in lint_module(doc)
+        if i["code"] == "runtime_invalid_profile"
+    }
+    assert paths == {
+        ("monitors", 0, "window"),
+        ("monitors", 0, "decision", "confidence"),
+        ("monitors", 1, "evidence", "resolution"),
+    }
+
+
+def test_action_parameter_diagnostics_keep_response_and_rule_indices():
+    path = next((ROOT / "spec/examples/runtime-1.3").glob("02-*.yml"))
+    doc = yaml.safe_load(path.read_text())
+    monitor = doc["monitors"][0]["name"]
+    doc["responses"] = [
+        {
+            "name": f"controls_{index}",
+            "rules": [
+                {
+                    "id": "restore", "do": "rollback", "approval": "human",
+                    "trigger": {"monitor": monitor, "event": "episode_continued"},
+                },
+                {
+                    "id": "stop", "do": "suspend", "approval": "human",
+                    "fallback": "invalid_fallback",
+                    "trigger": {"monitor": monitor, "event": "episode_continued"},
+                },
+            ],
+        }
+        for index in range(2)
+    ]
+    paths = {
+        tuple(i["path"]) for i in lint_module(doc)
+        if i["code"] == "runtime_invalid_ladder"
+    }
+    assert paths == {
+        ("responses", index, "rules", rule, field)
+        for index in range(2)
+        for rule, field in ((0, "target"), (1, "fallback"))
+    }

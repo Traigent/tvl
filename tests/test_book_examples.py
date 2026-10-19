@@ -88,7 +88,7 @@ def _run(
         targets, flags = targets + flags, []
     proc = subprocess.run(
         [sys.executable, "-c", code, *flags, *targets],
-        capture_output=True, text=True, env=env, cwd=ROOT, timeout=120,
+        capture_output=True, text=True, env=env, cwd=ROOT, timeout=120, check=False,
     )
     return proc.returncode, _json_objects(proc.stdout)
 
@@ -103,6 +103,15 @@ def _codes(report: dict) -> set[str]:
     lists = [report[k] for k in keys if isinstance(report.get(k), list)]
     items = [i for lst in lists for i in lst if isinstance(i, dict)]
     return {i["code"] for i in items if i.get("code")}
+
+
+def test_run_preserves_rejected_checker_exit_and_diagnostics(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.tvl.yml"
+    path.write_text("{}\n")
+    code, reports = _run("tvl-validate", path)
+    assert code == 2
+    assert reports and reports[-1]["ok"] is False
+    assert "schema_error" in _codes(reports[-1])
 
 
 @pytest.mark.parametrize(

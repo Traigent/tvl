@@ -203,11 +203,9 @@ def _uses_11_constructs(doc: dict[str, Any]) -> bool:
     if isinstance(promotion, dict) and "require_calibration" in promotion:
         return True
     tvars = doc.get("tvars") or []
-    if isinstance(tvars, list) and any(
+    return isinstance(tvars, list) and any(
         isinstance(d, dict) and "scope" in d for d in tvars
-    ):
-        return True
-    return False
+    )
 
 
 def _check_scope(decl: dict[str, Any], path: list[Any], name: Any, issues: list[Issue]) -> None:
@@ -245,19 +243,21 @@ def _check_scope(decl: dict[str, Any], path: list[Any], name: Any, issues: list[
                 }
             )
     node = scope.get("node")
-    if isinstance(name, str) and isinstance(node, str) and "." in name:
-        if name.split(".", 1)[0] != node:
-            issues.append(
-                {
-                    "code": "scope_prefix_mismatch",
-                    "message": (
-                        f"declaration '{name}' has dotted prefix "
-                        f"'{name.split('.', 1)[0]}' but scope.node is '{node}'"
-                    ),
-                    "path": path + ["scope", "node"],
-                    "severity": "warning",
-                }
-            )
+    if (
+        isinstance(name, str) and isinstance(node, str) and "." in name
+        and name.split(".", 1)[0] != node
+    ):
+        issues.append(
+            {
+                "code": "scope_prefix_mismatch",
+                "message": (
+                    f"declaration '{name}' has dotted prefix "
+                    f"'{name.split('.', 1)[0]}' but scope.node is '{node}'"
+                ),
+                "path": path + ["scope", "node"],
+                "severity": "warning",
+            }
+        )
 
 
 def _lint_cvars(doc: dict[str, Any], issues: list[Issue]) -> None:
@@ -1377,7 +1377,7 @@ def _check_loop(decl: dict[str, Any], ctx: _CompositeCtx) -> None:
                 spath,
             )
         signal_use = stop.get("signal")
-        ok, sig_name, sig_inputs = _check_signal_use(
+        _ok, sig_name, sig_inputs = _check_signal_use(
             signal_use, spath + ["signal"], ctx, required=True, in_state=state_keys
         )
         if signal_use is None:
@@ -2210,7 +2210,7 @@ def _typecheck_literal(literal: Literal, path: list[Any], context: TypeContext, 
         return
 
     if literal.kind == "interval":
-        lower_raw, upper_raw, left_op, right_op = literal.values
+        lower_raw, upper_raw, left_op, _right_op = literal.values
         try:
             lower = float(lower_raw)
             upper = float(upper_raw)
@@ -2451,9 +2451,7 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: list[Any]) 
 def _are_types_compatible(lhs: TypeInfo, rhs: TypeInfo) -> bool:
     if lhs.kind == rhs.kind:
         return True
-    if lhs.kind in {"int", "float"} and rhs.kind in {"int", "float"}:
-        return True
-    return False
+    return lhs.kind in {"int", "float"} and rhs.kind in {"int", "float"}
 
 
 def _lint_derived_constraints(doc: dict[str, Any], issues: list[Issue], context: TypeContext) -> None:
@@ -2493,7 +2491,7 @@ def _lint_derived_constraints(doc: dict[str, Any], issues: list[Issue], context:
                 token for token in tokens if token.startswith("env.") and not token.startswith("env.context.")
             )
             for token in invalid_env_tokens:
-                if token.startswith("env.bindings.") or token.startswith("env.components."):
+                if token.startswith(("env.bindings.", "env.components.")):
                     continue
                 issues.append(
                     {
@@ -3150,7 +3148,7 @@ def _check_value_collisions(
     collision: tuple[float, float, int] | None = None
 
     for v in values:
-        scaled = int(round(v * precision))
+        scaled = round(v * precision)
         if scaled in scaled_values:
             existing = scaled_values[scaled]
             if abs(existing - v) > 1e-12:
@@ -3555,16 +3553,15 @@ def _lint_predicate(
                         "severity": "error",
                     }
                 )
-        elif metric == "cost_usd":
-            if frac <= 0:
-                issues.append(
-                    {
-                        "code": "runtime_exceeds_out_of_range",
-                        "message": "Metric 'cost_usd' exceeds must be > 0",
-                        "path": path + ["exceeds"],
-                        "severity": "error",
-                    }
-                )
+        elif metric == "cost_usd" and frac <= 0:
+            issues.append(
+                {
+                    "code": "runtime_exceeds_out_of_range",
+                    "message": "Metric 'cost_usd' exceeds must be > 0",
+                    "path": path + ["exceeds"],
+                    "severity": "error",
+                }
+            )
         return
 
     if has_checker:
@@ -3841,9 +3838,11 @@ def _lint_predicate(
             nondet = True
         for i in range(len(alphabet)):
             for j in range(i + 1, len(alphabet)):
-                if isinstance(alphabet[i], dict) and isinstance(alphabet[j], dict):
-                    if _selectors_can_overlap(alphabet[i], alphabet[j]):
-                        nondet = True
+                if (
+                    isinstance(alphabet[i], dict) and isinstance(alphabet[j], dict)
+                    and _selectors_can_overlap(alphabet[i], alphabet[j])
+                ):
+                    nondet = True
         seen_trans: set[tuple[Any, Any]] = set()
         alphabet_set = set(alphabet_canon)
         for tr in transitions:
@@ -4643,12 +4642,18 @@ def _lint_monitors(
 
         role_fields: list[tuple[list[Any], str]] = []
 
-        def forbid_fields(obj: dict[str, Any], prefix: list[Any], keys: Sequence[str]) -> None:
+        def forbid_fields(
+            obj: dict[str, Any], prefix: list[Any], keys: Sequence[str],
+            *, role_fields: list[tuple[list[Any], str]] = role_fields,
+        ) -> None:
             for key in keys:
                 if key in obj:
                     role_fields.append((prefix + [key], "field is forbidden"))
 
-        def require_fields(obj: Any, prefix: list[Any], keys: Sequence[str]) -> None:
+        def require_fields(
+            obj: Any, prefix: list[Any], keys: Sequence[str],
+            *, role_fields: list[tuple[list[Any], str]] = role_fields,
+        ) -> None:
             if not isinstance(obj, dict):
                 role_fields.append((prefix, "required object is missing"))
                 return
@@ -4921,16 +4926,16 @@ def _lint_monitors(
             and grace_min is not None
             and c_windows is not None
             and c_age is not None
+            and c_age * 60 < c_windows * w_hours * 60 + grace_min + 60
         ):
-            if c_age * 60 < c_windows * w_hours * 60 + grace_min + 60:
-                issues.append(
-                    {
-                        "code": "closure_unreachable",
-                        "message": "closure_max_age_hours cannot accommodate closure_windows + grace + 1h",
-                        "path": path + ["episode"],
-                        "severity": "error",
-                    }
-                )
+            issues.append(
+                {
+                    "code": "closure_unreachable",
+                    "message": "closure_max_age_hours cannot accommodate closure_windows + grace + 1h",
+                    "path": path + ["episode"],
+                    "severity": "error",
+                }
+            )
 
         # Burn threshold and power check (§5.4)
         theta_frac = _to_exact_fraction(req.get("max_rate")) if req_kind == "rate_bound" else None
@@ -5094,16 +5099,19 @@ def _lint_monitors(
                 t_ep = target_mon.get("episode") or {}
                 w_h = t_win.get("tumbling_hours", 6 if target_mon.get("profile") == "backend_v1" else None)
                 k_c = t_ep.get("closure_windows", 2 if target_mon.get("profile") == "backend_v1" else None)
-                if _is_int_strict(within_hours) and within_hours >= 1 and _is_int_strict(w_h) and _is_int_strict(k_c):
-                    if within_hours < k_c * w_h:
-                        issues.append(
-                            {
-                                "code": "recovery_deadline_impossible",
-                                "message": "within_hours must be >= closure_windows * tumbling_hours",
-                                "path": ["requirements", r_idx, "within_hours"],
-                                "severity": "error",
-                            }
-                        )
+                if (
+                    _is_int_strict(within_hours) and within_hours >= 1
+                    and _is_int_strict(w_h) and _is_int_strict(k_c)
+                    and within_hours < k_c * w_h
+                ):
+                    issues.append(
+                        {
+                            "code": "recovery_deadline_impossible",
+                            "message": "within_hours must be >= closure_windows * tumbling_hours",
+                            "path": ["requirements", r_idx, "within_hours"],
+                            "severity": "error",
+                        }
+                    )
         elif r_kind == "evidence_liveness":
             if target_role not in {"primary_rate", "primary_zero", "burn"}:
                 issues.append(
@@ -5339,16 +5347,18 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
                     )
                 else:
                     t_req = reqs_by_name.get(t_mon.get("requirement", ""))
-                    if isinstance(t_event, str) and t_event in _TRIGGER_EVENTS:
-                        if t_event not in _emitted_events_for_monitor(t_mon, t_req):
-                            issues.append(
-                                {
-                                    "code": "runtime_ref_kind_mismatch",
-                                    "message": "Monitor does not emit this trigger event",
-                                    "path": path + ["trigger", "event"],
-                                    "severity": "error",
-                                }
-                            )
+                    if (
+                        isinstance(t_event, str) and t_event in _TRIGGER_EVENTS
+                        and t_event not in _emitted_events_for_monitor(t_mon, t_req)
+                    ):
+                        issues.append(
+                            {
+                                "code": "runtime_ref_kind_mismatch",
+                                "message": "Monitor does not emit this trigger event",
+                                "path": path + ["trigger", "event"],
+                                "severity": "error",
+                            }
+                        )
                 if "hours" in trigger:
                     t_hours = trigger.get("hours")
                     if not _is_int_strict(t_hours) or t_hours < 1:
@@ -5461,7 +5471,7 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
                 })
 
             # Action-specific parameter rules (§5.8, §7.2)
-            def invalid_parameter(field: str, expected: str) -> None:
+            def invalid_parameter(field: str, expected: str, *, path: list[Any] = path) -> None:
                 issues.append({
                     "code": "runtime_invalid_ladder",
                     "message": expected,
