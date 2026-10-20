@@ -637,7 +637,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `response_guard_not_enforceable` | E | `block_action`/`halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker; §6.5), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | `lints/guard-metric-not-enforceable.yml` |
 | `response_on_check_error_missing` | E | `block_action`/`halt_unit` without `on_check_error` | `lints/local-guard-error-policy-required.yml` |
 | `response_rule_repeat_unbounded` | E | an action other than `notify` with `repeat_after_hours` and no `max_repeats` | `lints/repeat-must-be-bounded.yml` |
-| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16); `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/pack-cannot-declare-deploy.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (absent) |
+| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16); `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/deploy-promotion-monitor-on-other-requirement.yml`, `lints/pack-cannot-declare-deploy.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (absent) |
 
 ### 5.9 Measurement readiness
 
@@ -1240,7 +1240,8 @@ responses:
         deploy: if_promoted      # requires a promotion monitor on latency_prod's requirement
 ```
 
-1. **Occurrence.** A deploy occurrence is identified by (rule id, scope, optimize occurrence j, candidate fingerprint).
+1. **Occurrence.** A deploy occurrence is identified by (response, rule id, scope, optimize occurrence j, candidate
+   fingerprint); rule ids are unique only within their response (§4.8).
    Each optimize occurrence yields at most one deploy occurrence. Retries and redeliveries of a deploy occurrence are
    the same occurrence; a repeat of the rule (§7.4) is a new optimize occurrence and may yield a new deploy occurrence,
    which needs authority again. The rule never deploys a candidate that none of its own occurrences produced.
@@ -1251,6 +1252,10 @@ responses:
    expected head generation). Under `standing`, a deploy takes place under a standing grant that names the deploy
    effect of this rule (§7.3: own occurrence limit, expiry at most 30 days after issue); a grant that covers only the
    optimization does not authorize the deploy, which then needs a human approval of that occurrence, as under `human`.
+   Under a grant, the controller records the same bindings for the occurrence before the effect — the occurrence key,
+   candidate fingerprint, gate-result digest, contract digest, grant and deployment precondition — and every retry of
+   the occurrence reuses that record; a changed candidate, gate result or precondition is a different occurrence or
+   no deploy.
    `approval: none` is rejected for `optimize` and therefore for its deploy (`response_irreversible_without_approval`).
 3. **Effect-time checks.** At the time of the effect every condition below holds, or nothing is deployed:
    1. the service-effect conditions of §7.4 item 2 for the originating episode: the rule still exists in the current
@@ -1263,7 +1268,8 @@ responses:
       measurement bundle for that fingerprint under the current contract digest. `NoDecision` and `Reject` never deploy,
       and a gate result computed under another contract digest is not current;
    4. the candidate is not a configuration that breached in an open episode (as for rollback targets, §7.2);
-   5. the deployment precondition bound by the approval still holds; a stale precondition writes nothing.
+   5. the deployment precondition bound to the occurrence (by its human approval, or by the record made under a
+      grant) still holds, checked atomically with the deploy write; a stale precondition writes nothing.
 4. **Hold when unreachable.** While the controller, the approver, grant verification or the record of the candidate's
    promotion decision is unreachable, no deploy starts (§7.3). A deploy that has not taken place when its episode closes
    or its response revision changes never takes place (§7.4). The candidate stays on the customer side and nothing in
@@ -1909,7 +1915,7 @@ family. Unknown case kinds and expected assertion keys fail closed.
 | Family | Cases | What passing shows |
 |---|---|---|
 | `compatibility/` | 30 | old readers reject runtime blocks; every refusal of §11.2; pack dispatch; version rules (`runtime_version_required`, `declared_version_below_constructs`); a rule or transition keyed `on` is a `schema_error`; legacy erasure is unchanged |
-| `lints/` | 68 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
+| `lints/` | 69 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
 | `composition/` | 33 | overlays that change a predicate, population, method or schedule, drop a rule, flip `on_check_error`, weaken an approval, widen repeats or change a target; widen or tighten `deploy`, its meet, and its compilation; severity order and meet; pack floor tightening; module weaker than floor; floor-only carriage and reference rewriting; unreachable meets; post-composition deadline feasibility |
 | `projection/` | 15 | a canary per projection row of §8.2, unresolved alias, unavailable token map, unlisted-field refusal, closed errors without echo |
 | `latency_roundtrip/` | 2 | the `backend_v1` codec round trip of §10.3 |

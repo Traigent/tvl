@@ -539,8 +539,8 @@ Each entry uses exactly one class. A helper's class concerns only its own statem
   per-event bounds and a predesignated allocation; it needs no independence.
 - `compose_partial_statement` is OPEN and ranges over static normalized
   contracts; its record and validity predicate carry no enabled actions.
-  `NormalizedRule` contains only authored identity, approval, repeat bounds and
-  severity. Rule survival and the approval/severity orders are stated; standing
+  `NormalizedRule` contains only authored identity, approval, repeat bounds,
+  severity and `deploy`. Rule survival and the approval/severity/deploy orders are stated; standing
   grants (their scopes, limits and expiry, and any order on them) are outside this
   library. Static composition neither compares grants nor checks enabled
   capabilities.

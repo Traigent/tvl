@@ -126,3 +126,16 @@ def test_module_cannot_widen_a_pack_optimize_rule_to_deploy() -> None:
         compose_runtime_documents(pack, module, operation="overlay")
     assert err.value.code == "runtime_overlay_weakens"
     assert err.value.path[-1] == "deploy"
+
+
+def test_promotion_monitor_on_another_requirement_does_not_gate_the_deploy() -> None:
+    doc = _case("lints/deploy-promotion-monitor-on-other-requirement.yml")["module"]
+    from tvl.lints import lint_module
+
+    assert "response_deploy_without_promotion_monitor" in {i["code"] for i in lint_module(doc)}
+    with pytest.raises(RuntimeClosedError) as err:
+        compile_runtime_document(doc, token_map_doc=_tokens(doc))
+    assert err.value.code == "response_deploy_without_promotion_monitor"
+    with pytest.raises(RuntimeClosedError) as err:
+        _check_deploy_gates(doc)
+    assert err.value.code == "response_deploy_without_promotion_monitor"
