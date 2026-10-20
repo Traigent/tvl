@@ -109,3 +109,33 @@ def test_enum_schema_errors_name_the_variable_and_value(domain, tmp_path):
     assert report["ok"] is False and report["schema_ok"] is False
     issue = next(i for i in report["issues"] if i["code"] == "invalid_enum_domain")
     assert "choice" in issue["message"] and "wrong" in issue["message"]
+
+
+def test_compose_validate_matches_the_warning_only_contract(tmp_path):
+    """`tvl-compose --validate` runs the same lints, so it gives the same verdict.
+
+    Issue #158 is about warning-only results failing the build. tvl-compose
+    --validate reuses lint_module/lint_pack, so leaving it on the old
+    `any issue fails` rule would make the same module pass tvl-validate and
+    fail tvl-compose.
+    """
+    overlay = ROOT / "spec/examples/book/ch03/warning-only-overlay.overlay.yml"
+    overlay.write_text(
+        "_tvl_overlay:\n  extends: every-type.tvl.yml\n\noverrides: {}\n",
+        encoding="utf-8",
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "tvl_tools.tvl_compose.cli", str(overlay), "--validate", "--json"],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+    finally:
+        overlay.unlink(missing_ok=True)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    report = json.loads(proc.stdout)
+    assert report["ok"] is True
+    assert report["validation"]["ok"] is True
+    codes = {issue["code"] for issue in report["validation"]["issues"]}
+    assert {"unverifiable_callable_type", "unverifiable_registry_domain"} <= codes
+    assert all(issue["severity"] == "warning" for issue in report["validation"]["issues"])

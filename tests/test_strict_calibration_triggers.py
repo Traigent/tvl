@@ -8,6 +8,7 @@ calibration certificates, so a module that needs them must be refused
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,12 @@ def test_composite_with_calibrated_members_is_refused_without_chance_or_flag(
     module = _load("ch08/support-bot.tvl.yml")
     _drop_explicit_enforcement(module)
     module["promotion_policy"].pop("chance_constraints")
+    # This used to `module.pop("cvars")` to leave the composite's gate threshold
+    # as the only trigger. Issue #156 makes tvl-ci-gate lint every full module,
+    # and a module without its cvars is lint-dirty (`missing_ref`), so the gate
+    # now refuses it before the calibration check runs -- gate-level isolation
+    # is no longer available. Keep the module lint-clean and pin the composite's
+    # contribution differentially below instead.
     assert not [issue for issue in lint_module(module) if issue.get("severity") == "error"]
 
     code, payload = _gate(module, tmp_path, monkeypatch, capsys)
@@ -87,6 +94,16 @@ def test_composite_with_calibrated_members_is_refused_without_chance_or_flag(
     assert code == 2
     assert _refused(payload)
     assert "composite_calibrated_member" in _strict_calibration_triggers(module)
+
+    # The refusal above is over-determined: `certificate_backed_cvar` fires too,
+    # and test_calibrated_cvar_alone_is_refused already covers that one. Without
+    # this control the test would still pass if the composite rule were deleted.
+    without_composites = copy.deepcopy(module)
+    without_composites.pop("composites")
+    assert not [
+        issue for issue in lint_module(without_composites) if issue.get("severity") == "error"
+    ]
+    assert "composite_calibrated_member" not in _strict_calibration_triggers(without_composites)
 
 
 def test_calibrated_cvar_alone_is_refused(

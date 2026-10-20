@@ -1,6 +1,9 @@
 """Schema and lint agree on the numeric validation boundaries."""
 
 import copy
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -128,3 +131,67 @@ def test_action_parameter_diagnostics_keep_response_and_rule_indices():
         for index in range(2)
         for rule, field in ((0, "target"), (1, "fallback"))
     }
+
+
+# The boundaries above prove the schema and the lint both REJECT. The schema
+# runs first in tvl-validate, so a shared bound could still be reported under
+# the generic `schema_error` code while tvl-lint and tvl-ci-gate report the
+# documented one -- a new tool-to-tool divergence created by closing the old
+# one. docs/reference/error-codes.md lists tvl-validate as a reporter of every
+# code below, so these assert WHICH code tvl-validate surfaces, not only that
+# it fails.
+
+_SHARED_BOUND_CASES = {
+    "invalid_chance_threshold": lambda d: d["promotion_policy"]["chance_constraints"][0]
+    .__setitem__("threshold", 5),
+    "invalid_chance_confidence": lambda d: d["promotion_policy"]["chance_constraints"][0]
+    .__setitem__("confidence", 0),
+    "invalid_band_tolerance": lambda d: d.__setitem__(
+        "objectives",
+        [{"name": "quality", "band": {"target": {"center": 1, "tol": 0}, "test": "TOST", "alpha": 0.05}}],
+    ),
+    "invalid_band_alpha": lambda d: d.__setitem__(
+        "objectives",
+        [{"name": "quality", "band": {"target": {"center": 1, "tol": 0.1}, "test": "TOST", "alpha": 0}}],
+    ),
+    "invalid_convergence_threshold": lambda d: d["exploration"]["convergence"]
+    .__setitem__("threshold", 0),
+    "invalid_convergence_window": lambda d: d["exploration"]["convergence"].pop("window"),
+    "missing_strategy": lambda d: d["exploration"].pop("strategy"),
+    "invalid_enum_domain": lambda d: d["tvars"].append(
+        {"name": "probe_enum", "type": "enum[int]", "domain": ["three", 4]}
+    ),
+}
+
+
+def _cli_codes(tool: str, path: Path) -> tuple[int, set[str]]:
+    """Run a CLI the way a user does and return its exit status and codes."""
+    proc = subprocess.run(
+        [sys.executable, "-m", f"tvl_tools.{tool}.cli", str(path), "--json"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.stdout, f"{tool} printed nothing; stderr={proc.stderr[:400]}"
+    payload = json.loads(proc.stdout)
+    return proc.returncode, {issue["code"] for issue in payload["issues"]}
+
+
+@pytest.mark.parametrize("code", sorted(_SHARED_BOUND_CASES))
+def test_tvl_validate_reports_the_documented_code_not_schema_error(code, tmp_path):
+    """tvl-validate, tvl-lint and the error-code catalogue name the same code."""
+    doc = copy.deepcopy(BASE)
+    _SHARED_BOUND_CASES[code](doc)
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    validate_status, validate_codes = _cli_codes("tvl_validate", path)
+    lint_status, lint_codes = _cli_codes("tvl_lint", path)
+
+    assert validate_status == 2 and lint_status == 2
+    assert code in lint_codes, f"tvl-lint reported {sorted(lint_codes)} instead of {code}"
+    assert code in validate_codes, (
+        f"tvl-validate reported {sorted(validate_codes)} instead of {code}; "
+        "a shared bound must not be downgraded to the generic schema_error"
+    )

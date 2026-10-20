@@ -403,6 +403,9 @@ export async function lintDocument(document: vscode.TextDocument): Promise<void>
             config.get<string>('lint.path', ''),
         );
     } catch (error: any) {
+        // No lint ran, so any squiggles still in the gutter are from an earlier
+        // run and no longer describe a check that happened.
+        diagnosticCollection.delete(document.uri);
         vscode.window.showErrorMessage(`TVL lint configuration error: ${error.message || error}`);
         return;
     }

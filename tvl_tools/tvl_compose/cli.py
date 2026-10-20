@@ -11,7 +11,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -136,7 +136,7 @@ def _clause_key(clause: Any) -> str:
 _BOUND_RE = re.compile(r"^\s*(?P<lhs>.+?)\s*(?P<op>>=|<=|>|<)\s*(?P<num>-?\d+(?:\.\d+)?)\s*$")
 
 
-def _as_bound(clause: Any) -> Optional[tuple]:
+def _as_bound(clause: Any) -> tuple | None:
     """Parse a simple ``<lhs> <op> <number>`` clause into ``(lhs, op, value)``.
 
     Derived clauses are linear checks over ``env.context.*`` symbols, and the common
@@ -196,7 +196,7 @@ def _same_family_tightens(
 _BAND_EPS = 1e-9
 
 
-def _band_interval(band: Any) -> Optional[tuple]:
+def _band_interval(band: Any) -> tuple | None:
     """Normalise a band target to ``(low, high)``, or None if not comparable.
 
     The schema permits both ``target: [low, high]`` and ``target: {center, tol}``, and
@@ -221,7 +221,7 @@ def _band_interval(band: Any) -> Optional[tuple]:
 def _validate_safety_narrowing(
     base: dict[str, Any],
     composed: dict[str, Any],
-    waives: Optional[list[Any]] = None,
+    waives: list[Any] | None = None,
 ) -> list[str]:
     """Validate that an overlay does not weaken the base's safety posture.
 
@@ -261,7 +261,7 @@ def _validate_safety_narrowing(
     return errors
 
 
-def _parse_waivers(waives: Optional[list[Any]]) -> tuple[dict[str, str], list[str]]:
+def _parse_waivers(waives: list[Any] | None) -> tuple[dict[str, str], list[str]]:
     """Map each well-formed waiver's clause key to its reason; report malformed ones."""
     errors: list[str] = []
     waived: dict[str, str] = {}
@@ -777,7 +777,12 @@ def main() -> None:
             from tvl.lints import lint_module, lint_pack
             from tvl.schema import pack_validator
             from tvl.yaml_safe import safe_load as parse_yaml_safely
-            from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
+
+            from tvl_tools.tvl_validate.cli import (
+                _load_schema,
+                _restore_lint_codes,
+                _schema_issues,
+            )
 
             raw_to_validate = args.output.read_text(encoding="utf-8") if args.output else emitted_yaml
             parsed_written = parse_yaml_safely(raw_to_validate)
@@ -787,13 +792,20 @@ def main() -> None:
             issues = _schema_issues(parsed_written, schema)
             if not issues:
                 issues = lint_pack(parsed_written) if is_pack else lint_module(parsed_written, floor_provenance=floor_provenance)
+            else:
+                issues = _restore_lint_codes(issues, parsed_written, is_pack)
 
+            # Issue #158: --validate runs the same lints as tvl-validate and
+            # tvl-lint, so it reports the same verdict on a warning-only result:
+            # the warnings are kept and the composition still succeeds. A
+            # missing severity counts as an error, as it does in both of those.
+            has_errors = any(issue.get("severity", "error") == "error" for issue in issues)
             result["validation"] = {
-                "ok": len(issues) == 0,
+                "ok": not has_errors,
                 "issues": issues,
             }
 
-            if issues:
+            if has_errors:
                 result["ok"] = False
 
         print_output(result, get_format(args), text_renderer)

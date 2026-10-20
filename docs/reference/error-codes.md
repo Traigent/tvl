@@ -1059,6 +1059,6 @@ A value of the wrong JSON type, for example a string where an integer is require
 | Tool | 0 | 2 |
 |---|---|---|
 | `tvl-validate`, `tvl-lint` | no error (warnings allowed) | any error |
-| `tvl-compose` | composed | any composition error or unreadable input |
+| `tvl-compose` | composed; with `--validate`, no error (warnings allowed) | any composition error, unreadable input, or a `--validate` error |
 | `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
 | `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, not ready, or any error |

@@ -37,6 +37,13 @@ def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str
     for err in errors:
         code, message = "schema_error", err.message
         field_path = list(err.path)
+        if err.validator == "required" and isinstance(err.instance, dict):
+            # Point at the key to add, as docs/reference/error-codes.md promises,
+            # instead of at the object that is missing it. Only when the error
+            # names a single key, so the path stays unambiguous.
+            missing = [p for p in (err.validator_value or []) if p not in err.instance]
+            if len(missing) == 1:
+                field_path = [*field_path, missing[0]]
         tvars = doc.get("tvars")
         if (
             err.validator == "type"
@@ -57,11 +64,78 @@ def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str
             {
                 "code": code,
                 "message": message,
-                "path": list(err.path),
+                "path": field_path,
                 "severity": "error",
             }
         )
     return issues
+
+
+def _lint_errors_by_path(doc: dict[str, Any], is_pack: bool) -> dict[tuple[Any, ...], dict[str, Any]]:
+    """Index this document's error-severity lints by the path they point at.
+
+    A schema-invalid document can break a lint's shape assumptions, so a failure
+    here returns nothing and leaves the schema diagnostics exactly as they were.
+    """
+    try:
+        lint_issues = lint_pack(doc) if is_pack else lint_module(doc)
+    except Exception:  # noqa: BLE001
+        return {}
+    index: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for issue in lint_issues:
+        if issue.get("severity", "error") != "error":
+            continue
+        path = tuple(issue.get("path") or ())
+        if path:
+            index.setdefault(path, issue)
+    return index
+
+
+def _restore_lint_codes(
+    issues: list[dict[str, Any]], doc: dict[str, Any], is_pack: bool
+) -> list[dict[str, Any]]:
+    """Report the normative lint code where the schema now encodes a lint rule.
+
+    Issues #156 and #157 moved shared bounds (chance threshold and confidence,
+    band tolerance and alpha, convergence threshold and window, the required
+    exploration strategy, enum element types) into the grammar. The schema runs
+    first, so without this ``tvl-validate`` would answer ``schema_error`` for
+    diagnostics that ``docs/reference/error-codes.md`` documents by their lint
+    code and that ``tvl-lint`` and ``tvl-ci-gate`` still report by that code.
+
+    Matching is on the diagnostic's own path rather than a hand-maintained table
+    of schema paths, so any future shared bound is covered with no second list to
+    update: first the longest lint path that prefixes the schema error's path,
+    then -- for a ``oneOf`` failure, which reports only the branch point -- the
+    single lint error inside that subtree. Several candidates in one subtree are
+    ambiguous, so the generic ``schema_error`` is kept rather than guessed at.
+    """
+    if not any(issue.get("code") == "schema_error" for issue in issues):
+        return issues
+    index = _lint_errors_by_path(doc, is_pack)
+    if not index:
+        return issues
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for issue in issues:
+        replacement: dict[str, Any] | None = None
+        if issue.get("code") == "schema_error":
+            path = tuple(issue.get("path") or ())
+            for length in range(len(path), 0, -1):
+                replacement = index.get(path[:length])
+                if replacement is not None:
+                    break
+            if replacement is None and path:
+                inside = [v for k, v in index.items() if k[: len(path)] == path]
+                if len(inside) == 1:
+                    replacement = inside[0]
+        chosen = issue if replacement is None else dict(replacement)
+        identity = (chosen.get("code"), tuple(chosen.get("path") or ()))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        merged.append(chosen)
+    return merged
 
 
 def text_renderer(data: dict[str, Any]) -> None:
@@ -96,6 +170,8 @@ def main() -> None:
 
         if not issues:
             issues = lint_pack(doc) if is_pack else lint_module(doc)
+        else:
+            issues = _restore_lint_codes(issues, doc, is_pack)
 
         has_errors = any(issue.get("severity", "error") == "error" for issue in issues)
         result: dict[str, Any] = {
