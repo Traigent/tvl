@@ -362,6 +362,9 @@ export async function validateDocument(document: vscode.TextDocument): Promise<v
     } catch (error: any) {
         const parsed = parseErrorStdoutJson(error);
         if (!parsed) {
+            // The validator never produced a result, so the squiggles still in
+            // the gutter describe an earlier run, not this one.
+            diagnosticCollection.delete(document.uri);
             vscode.window.showErrorMessage(`TVL validation failed: ${error.message || error}`);
             return;
         }
@@ -417,6 +420,9 @@ export async function lintDocument(document: vscode.TextDocument): Promise<void>
     } catch (error: any) {
         const parsed = parseErrorStdoutJson(error);
         if (!parsed) {
+            // The linter never produced a result, so the squiggles still in the
+            // gutter describe an earlier run, not this one.
+            diagnosticCollection.delete(document.uri);
             vscode.window.showErrorMessage(`TVL lint failed: ${error.message || error}`);
             return;
         }

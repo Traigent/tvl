@@ -11,20 +11,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The website deployment settings check now passes its role secret through a step environment variable before testing the quoted value.
 - Cleared the open dependency and code-scanning findings: the website PDF build server now checks path containment with `path.relative` (a sibling directory such as `dist/public-evil` no longer passes), the website deploy checkout no longer persists credentials, the support-bot evaluator raises an explicit error instead of using `assert`, and the older locked `numpy` releases (2.2.6, 2.4.6) are gone with the Python 3.12 minimum below.
 
-### Changed
-
-These four change behaviour that an existing script or module may depend on. The
-grammar is served at an unversioned `$id`, so a pinned external consumer picks the
-tightened bounds up without opting in.
-
-- **BREAKING** — `tvl-validate`, `tvl-lint` and `tvl-compose --validate` now exit 0 with `ok: true` on a warning-only result, where they exited 2. They keep every diagnostic in the output, and an issue with no severity still counts as an error. A build step that gated on the exit code no longer fails on proof-coverage warnings; to keep that gate, test the payload instead — `tvl-validate m.tvl.yml --format json | jq -e '.issues | length == 0'`.
-- **BREAKING** — `tvl-parse` now exits 2 on an empty, sequence or scalar document, where it exited 0 with `ok: true`. Schema validation stays `tvl-validate`'s job; a mapping with unknown fields still parses.
-- **BREAKING** — `tvl-microsim-bridge` now requires `-o/--output` unless `--dry-run` is given, where it defaulted to the bundled Orientation RAG presets file and overwrote it.
-- **BREAKING** — the module schema tightens bounds that previously only the lint enforced: chance-constraint `threshold` to `[0, 1]` and `confidence` to `(0, 1)`, banded `tol` and `alpha` to `> 0`, `exploration.strategy` to required, and `convergence.window`/`threshold` to required and `> 0` under `metric: hypervolume_improvement`. Enum domains enforce their declared element type. A module that was schema-valid and lint-invalid is now rejected by both. No module committed in this repository is newly rejected except the fixture named for being invalid. `promotion_policy.min_effect` stays a lint-only cross-reference, which JSON Schema cannot express.
-
 ### Fixed
 
-- Full-module promotion gates now reject error-severity lints while retaining warnings, so a schema-valid but lint-invalid module can no longer promote. Legacy `--policy` full modules use the same schema validation as canonical input.
+- `tvl-ci-gate` retains warning-severity lints instead of refusing on them; the refusal is now scoped to error severity. The widened set of modules it lints is recorded under Compatibility above.
 - `tvl-validate` keeps reporting the documented diagnostic code — `invalid_chance_threshold`, `missing_strategy`, `invalid_enum_domain` and the rest — for a bound the schema now also enforces, instead of downgrading it to the generic `schema_error`; `tvl-lint` and `tvl-ci-gate` already did. A `required` diagnostic's `path` points at the missing key rather than at the object missing it.
 - Enum domains are checked in lints and in the module schema, so configuration and structural validators also reject mismatched members. Ordinary module validation reports `invalid_enum_domain` with the TVAR name and offending value; JSON Schema accepts integral numbers such as `3.0`, while lint also checks Python literal types.
 - The book records warning expectations explicitly, and tool examples use the committed module filename.
@@ -41,7 +30,22 @@ tightened bounds up without opting in.
 
 - The website no longer ships the app builder's editor runtime or its source-location attributes, and the unused builder template leftovers (login dialog, maps component, OAuth helper) are gone.
 
+### Compatibility
+
+Five changes alter behaviour an existing script, pipeline or module may depend
+on. Releases 1.1.0 and 1.2.0 use this section for the same purpose. The grammar
+is served at an unversioned `$id`, so a consumer pinning that URL picks the
+tightened bounds up without opting in.
+
+- `tvl-validate`, `tvl-lint` and `tvl-compose --validate` exit 0 with `ok: true` on a warning-only result, where they exited 2. Every diagnostic is still printed, in text as well as JSON, and an issue with no severity still counts as an error. A build step that gated on the exit code no longer fails on proof-coverage warnings. To keep that gate, test the payload: `tvl-validate m.tvl.yml --format json | jq -e '.ok and (.issues | length == 0)'`. The `.ok` term is load-bearing — an unreadable or unparsable module answers `{"ok": false, "error": …}` with no `issues` key, and `null | length` is `0`, so a check on `.issues` alone passes on a file that could not be read. (`jq` is not a dependency of this repository; use any JSON reader.)
+- `tvl-ci-gate` lints every full module before deciding, where it linted only TVL 1.3 modules given in the canonical three-file form. A module that is schema-valid but has an error-severity lint is now refused with exit 2 instead of promoting. This is the point of the gate half of #156, and it is the change most likely to affect an existing pipeline: a module you have not edited can go from `Promote` to refused. A legacy full module passed through `--policy` now gets the same schema validation as canonical input, for the same reason.
+- `tvl-parse` exits 2 on an empty, sequence or scalar document, where it exited 0 with `ok: true`. Schema validation stays `tvl-validate`'s job; a mapping with unknown fields still parses.
+- `tvl-microsim-bridge` requires `-o/--output` unless `--dry-run` is given, where it defaulted to the bundled Orientation RAG presets file and overwrote it.
+- The module schema tightens bounds that previously only the lint enforced: chance-constraint `threshold` to `[0, 1]` and `confidence` to `(0, 1)`, banded `tol` and `alpha` to `> 0`, `exploration.strategy` to required, and `convergence.window` and `threshold` to required under `metric: hypervolume_improvement` (`window`'s own `minimum: 1` is unchanged, and `threshold` additionally becomes `> 0`). Enum domains enforce their declared element type. For these bounds specifically, a module that was schema-valid and lint-invalid is now rejected by both — this is not a general property, and other lint rules such as `missing_min_effect` and the `composite_*` family remain lint-only, which JSON Schema cannot express. Measured over the 297 modules committed in this repository, **none goes from passing to failing**; five go from failing to passing, and all five are warning-only modules moved by the exit-code change above. One consequence worth naming for anyone parsing the output: `schema_ok` now reports `false` where the grammar itself rejects one of these bounds, so a consumer using `schema_ok` to tell "grammar-invalid" from "lint-invalid" sees these move across that line.
+
 ### Changed
+
+
 
 - Python 3.12 or newer is required: `requires-python` is now `>=3.12`. Python 3.10 reached end of life in October 2026, and the fixed `numpy` releases need Python 3.12.
 - Contributions are now accepted under the Developer Certificate of Origin sign-off (`DCO`, `Signed-off-by:` on every commit, checked in CI) instead of a contributor license agreement.

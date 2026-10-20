@@ -662,6 +662,12 @@ def compose(overlay_path: Path, validate_narrowing: bool = True) -> dict[str, An
 def text_renderer(data: dict[str, Any]) -> None:
     """Render compose result as text."""
     if data.get("ok"):
+        # Issue #158: a warning-only --validate result now succeeds, so the
+        # success branch has to print the warnings the failure branch used to.
+        # Without this, text -- the default format -- would drop every
+        # diagnostic exactly when the exit code stops announcing it.
+        for issue in (data.get("validation") or {}).get("issues") or []:
+            print(f"  {issue}", file=sys.stderr)
         if data.get("output_file"):
             print(f"Composed: {data['output_file']}")
         else:
@@ -793,7 +799,9 @@ def main() -> None:
             if not issues:
                 issues = lint_pack(parsed_written) if is_pack else lint_module(parsed_written, floor_provenance=floor_provenance)
             else:
-                issues = _restore_lint_codes(issues, parsed_written, is_pack)
+                issues = _restore_lint_codes(
+                    issues, parsed_written, is_pack, floor_provenance=floor_provenance
+                )
 
             # Issue #158: --validate runs the same lints as tvl-validate and
             # tvl-lint, so it reports the same verdict on a warning-only result:

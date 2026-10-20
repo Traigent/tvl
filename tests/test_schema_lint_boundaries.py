@@ -195,3 +195,78 @@ def test_tvl_validate_reports_the_documented_code_not_schema_error(code, tmp_pat
         f"tvl-validate reported {sorted(validate_codes)} instead of {code}; "
         "a shared bound must not be downgraded to the generic schema_error"
     )
+
+
+# Substituting a lint diagnostic for a schema error must be lossless. Each case
+# below carries TWO defects, which is where a one-for-one swap goes wrong: a
+# dropped diagnostic, or a code attached to an error it does not describe.
+
+def test_two_missing_required_keys_are_both_reported(tmp_path):
+    """One lint replacement must not swallow its neighbour's schema error."""
+    doc = copy.deepcopy(BASE)
+    doc["tvars"][0].pop("type")
+    doc["tvars"][0].pop("domain")
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    status, codes = _cli_codes("tvl_validate", path)
+    assert status == 2
+    # the lint names the missing type; the missing domain has no lint and keeps
+    # the generic code -- but it is still reported.
+    assert "missing_tvar_type" in codes
+    assert "schema_error" in codes
+
+
+def test_an_unrelated_schema_error_keeps_its_own_diagnosis(tmp_path):
+    """A keyword that diagnoses something specific is never given a child's code."""
+    doc = copy.deepcopy(BASE)
+    doc["exploration"]["bogus_key"] = 1
+    doc["exploration"]["convergence"]["threshold"] = 0
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_validate.cli", str(path), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode == 2
+    issues = json.loads(proc.stdout)["issues"]
+    assert "invalid_convergence_threshold" in {i["code"] for i in issues}
+    assert any(
+        i["code"] == "schema_error" and "bogus_key" in i["message"] for i in issues
+    ), f"the unknown-key error was lost: {issues}"
+
+
+def test_every_lint_in_a_branch_subtree_is_reported(tmp_path):
+    """`oneOf` names only the branch point; all the reasons inside it must show."""
+    doc = copy.deepcopy(BASE)
+    doc["objectives"] = [
+        {
+            "name": "quality",
+            "band": {"target": {"center": 0.5, "tol": 0}, "alpha": 0, "test": "TOST"},
+        }
+    ]
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    validate_status, validate_codes = _cli_codes("tvl_validate", path)
+    lint_status, lint_codes = _cli_codes("tvl_lint", path)
+
+    assert validate_status == 2 and lint_status == 2
+    assert {"invalid_band_tolerance", "invalid_band_alpha"} <= lint_codes
+    assert {"invalid_band_tolerance", "invalid_band_alpha"} <= validate_codes, (
+        f"tvl-validate reported {sorted(validate_codes)}; both bounds must keep "
+        "their documented code, not collapse into one schema_error"
+    )
+
+
+def test_a_plain_schema_error_is_untouched(tmp_path):
+    """A document whose only defect has no lint counterpart is unchanged."""
+    doc = copy.deepcopy(BASE)
+    doc["tvl"] = 12345
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    status, codes = _cli_codes("tvl_validate", path)
+    assert status == 2
+    assert codes == {"schema_error"}

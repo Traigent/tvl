@@ -95,9 +95,11 @@ def test_composite_with_calibrated_members_is_refused_without_chance_or_flag(
     assert _refused(payload)
     assert "composite_calibrated_member" in _strict_calibration_triggers(module)
 
-    # The refusal above is over-determined: `certificate_backed_cvar` fires too,
-    # and test_calibrated_cvar_alone_is_refused already covers that one. Without
-    # this control the test would still pass if the composite rule were deleted.
+    # The GATE refusal above is over-determined: `certificate_backed_cvar` fires
+    # too, and test_calibrated_cvar_alone_is_refused already covers that one, so
+    # `code == 2` alone no longer says anything about composites. The assertion
+    # on line above does pin that the trigger is present; this control pins that
+    # it is keyed on the composites, not raised unconditionally.
     without_composites = copy.deepcopy(module)
     without_composites.pop("composites")
     assert not [

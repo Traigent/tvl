@@ -1,4 +1,5 @@
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -24,8 +25,21 @@ def _load_schema(tool_file: Path, schema_name: str = "tvl.schema.json") -> dict[
     return load_schema(schema_name)
 
 
+# A failure of one of these keywords says only "no branch matched"; it carries
+# no diagnosis of its own, so the lints inside its subtree are the real reasons.
+# Every other keyword (``additionalProperties``, ``type``, ``required``, a bound)
+# does name a specific defect and must never be replaced by a descendant's.
+_BRANCH_KEYWORDS = frozenset({"oneOf", "anyOf", "allOf", "not"})
+
+_REQUIRED_KEY_RE = re.compile(r"^'(?P<key>[^']+)' is a required property$")
+
+
 def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return schema validation issues for the given document."""
+    """Return schema validation issues for the given document.
+
+    Entries may carry the private ``_keyword`` key; ``_restore_lint_codes`` is
+    what turns this into the public shape and strips it. Call it on the result.
+    """
     validator = Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
     from tvl.diagnostics import closed_schema_issues, runtime_syntax_issues
@@ -37,13 +51,14 @@ def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str
     for err in errors:
         code, message = "schema_error", err.message
         field_path = list(err.path)
-        if err.validator == "required" and isinstance(err.instance, dict):
-            # Point at the key to add, as docs/reference/error-codes.md promises,
-            # instead of at the object that is missing it. Only when the error
-            # names a single key, so the path stays unambiguous.
-            missing = [p for p in (err.validator_value or []) if p not in err.instance]
-            if len(missing) == 1:
-                field_path = [*field_path, missing[0]]
+        if err.validator == "required":
+            # Point at the key to add, as docs/reference/error-codes.md
+            # promises, instead of at the object that is missing it. The key
+            # comes from the message because ``validator_value`` is the whole
+            # required list, while jsonschema raises one error per missing key.
+            named = _REQUIRED_KEY_RE.match(err.message)
+            if named is not None:
+                field_path = [*field_path, named.group("key")]
         tvars = doc.get("tvars")
         if (
             err.validator == "type"
@@ -66,33 +81,48 @@ def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str
                 "message": message,
                 "path": field_path,
                 "severity": "error",
+                "_keyword": err.validator,
             }
         )
     return issues
 
 
-def _lint_errors_by_path(doc: dict[str, Any], is_pack: bool) -> dict[tuple[Any, ...], dict[str, Any]]:
-    """Index this document's error-severity lints by the path they point at.
+def _lint_errors_by_path(
+    doc: dict[str, Any], is_pack: bool, floor_provenance: Any = None
+) -> list[tuple[tuple[Any, ...], dict[str, Any]]]:
+    """This document's error-severity lints, paired with the path they point at.
 
     A schema-invalid document can break a lint's shape assumptions, so a failure
     here returns nothing and leaves the schema diagnostics exactly as they were.
+    That is the pre-fix behaviour, not a substituted default: the schema errors
+    are still reported in full.
     """
     try:
-        lint_issues = lint_pack(doc) if is_pack else lint_module(doc)
+        if is_pack:
+            lint_issues = lint_pack(doc)
+        elif floor_provenance is None:
+            lint_issues = lint_module(doc)
+        else:
+            lint_issues = lint_module(doc, floor_provenance=floor_provenance)
     except Exception:  # noqa: BLE001
-        return {}
-    index: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for issue in lint_issues:
-        if issue.get("severity", "error") != "error":
-            continue
-        path = tuple(issue.get("path") or ())
-        if path:
-            index.setdefault(path, issue)
-    return index
+        return []
+    return [
+        (tuple(issue.get("path") or ()), issue)
+        for issue in lint_issues
+        if issue.get("severity", "error") == "error" and issue.get("path")
+    ]
+
+
+def _public(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Strip the private keys ``_schema_issues`` carries for this module's use."""
+    return [{k: v for k, v in issue.items() if not k.startswith("_")} for issue in issues]
 
 
 def _restore_lint_codes(
-    issues: list[dict[str, Any]], doc: dict[str, Any], is_pack: bool
+    issues: list[dict[str, Any]],
+    doc: dict[str, Any],
+    is_pack: bool,
+    floor_provenance: Any = None,
 ) -> list[dict[str, Any]]:
     """Report the normative lint code where the schema now encodes a lint rule.
 
@@ -103,39 +133,56 @@ def _restore_lint_codes(
     diagnostics that ``docs/reference/error-codes.md`` documents by their lint
     code and that ``tvl-lint`` and ``tvl-ci-gate`` still report by that code.
 
-    Matching is on the diagnostic's own path rather than a hand-maintained table
-    of schema paths, so any future shared bound is covered with no second list to
-    update: first the longest lint path that prefixes the schema error's path,
-    then -- for a ``oneOf`` failure, which reports only the branch point -- the
-    single lint error inside that subtree. Several candidates in one subtree are
-    ambiguous, so the generic ``schema_error`` is kept rather than guessed at.
+    Matching is on the diagnostic's own path, not a hand-maintained table of
+    schema paths, so a future shared bound is covered with no second list to
+    update. Two rules, and nothing else is substituted:
+
+    * the longest lint path that is the schema error's path or an ancestor of it
+      -- the lint names the same key, or the container the key sits in;
+    * for a branch keyword (``oneOf`` and friends), which reports only the point
+      where no branch matched and diagnoses nothing itself, every lint strictly
+      inside that subtree.
+
+    Two invariants keep this lossless. A schema error with no match is reported
+    unchanged, so nothing is dropped; and each lint is consumed once, so two
+    schema errors can never collapse into one diagnostic.
     """
     if not any(issue.get("code") == "schema_error" for issue in issues):
-        return issues
-    index = _lint_errors_by_path(doc, is_pack)
+        return _public(issues)
+    index = _lint_errors_by_path(doc, is_pack, floor_provenance)
     if not index:
-        return issues
+        return _public(issues)
+
+    consumed: set[int] = set()
     merged: list[dict[str, Any]] = []
-    seen: set[tuple[Any, ...]] = set()
     for issue in issues:
-        replacement: dict[str, Any] | None = None
-        if issue.get("code") == "schema_error":
-            path = tuple(issue.get("path") or ())
-            for length in range(len(path), 0, -1):
-                replacement = index.get(path[:length])
-                if replacement is not None:
-                    break
-            if replacement is None and path:
-                inside = [v for k, v in index.items() if k[: len(path)] == path]
-                if len(inside) == 1:
-                    replacement = inside[0]
-        chosen = issue if replacement is None else dict(replacement)
-        identity = (chosen.get("code"), tuple(chosen.get("path") or ()))
-        if identity in seen:
+        if issue.get("code") != "schema_error":
+            merged.append(issue)
             continue
-        seen.add(identity)
-        merged.append(chosen)
-    return merged
+        path = tuple(issue.get("path") or ())
+        replacements: list[dict[str, Any]] = []
+        for length in range(len(path), 0, -1):
+            prefix = path[:length]
+            match = next(
+                (lint for lint_path, lint in index if lint_path == prefix and id(lint) not in consumed),
+                None,
+            )
+            if match is not None:
+                replacements = [match]
+                break
+        if not replacements and path and issue.get("_keyword") in _BRANCH_KEYWORDS:
+            replacements = [
+                lint
+                for lint_path, lint in index
+                if len(lint_path) > len(path) and lint_path[: len(path)] == path and id(lint) not in consumed
+            ]
+        if not replacements:
+            merged.append(issue)
+            continue
+        for replacement in replacements:
+            consumed.add(id(replacement))
+            merged.append(dict(replacement))
+    return _public(merged)
 
 
 def text_renderer(data: dict[str, Any]) -> None:

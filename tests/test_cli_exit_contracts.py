@@ -119,18 +119,19 @@ def test_compose_validate_matches_the_warning_only_contract(tmp_path):
     `any issue fails` rule would make the same module pass tvl-validate and
     fail tvl-compose.
     """
-    overlay = ROOT / "spec/examples/book/ch03/warning-only-overlay.overlay.yml"
+    # Both files go in tmp_path: writing a fixture into the checkout is not
+    # xdist-safe and leaves an untracked file behind if the run is interrupted.
+    base = ROOT / "spec/examples/book/ch03/every-type.tvl.yml"
+    (tmp_path / "every-type.tvl.yml").write_text(base.read_text(encoding="utf-8"), encoding="utf-8")
+    overlay = tmp_path / "warning-only.overlay.yml"
     overlay.write_text(
         "_tvl_overlay:\n  extends: every-type.tvl.yml\n\noverrides: {}\n",
         encoding="utf-8",
     )
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "tvl_tools.tvl_compose.cli", str(overlay), "--validate", "--json"],
-            capture_output=True, text=True, cwd=ROOT, check=False,
-        )
-    finally:
-        overlay.unlink(missing_ok=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_compose.cli", str(overlay), "--validate", "--json"],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads(proc.stdout)
@@ -139,3 +140,14 @@ def test_compose_validate_matches_the_warning_only_contract(tmp_path):
     codes = {issue["code"] for issue in report["validation"]["issues"]}
     assert {"unverifiable_callable_type", "unverifiable_registry_domain"} <= codes
     assert all(issue["severity"] == "warning" for issue in report["validation"]["issues"])
+
+    # Text is the default format, and the warnings used to reach the user only
+    # because the result was a failure. Succeeding must not silence them.
+    text = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_compose.cli", str(overlay), "--validate"],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
+    assert text.returncode == 0, text.stdout + text.stderr
+    rendered = text.stdout + text.stderr
+    for code in ("unverifiable_callable_type", "unverifiable_registry_domain"):
+        assert code in rendered, f"{code} is missing from the default text output"

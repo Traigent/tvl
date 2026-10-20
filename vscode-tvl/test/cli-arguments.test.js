@@ -657,6 +657,11 @@ test("lint executes the sibling in a validate directory and refuses an ambiguous
         await ext.lintDocument(doc);
         assert.match(state.errorMessages[0], /configuration error.*tvl\.lint\.path/);
         assert.equal(fs.existsSync(marker), false, "custom validator must not execute as linter");
+        assert.equal(
+            diagnosticStore.get(docPath),
+            undefined,
+            "a configuration error must clear diagnostics from the previous run",
+        );
         state.config["lint.path"] = linter;
         await ext.lintDocument(doc);
         assert.equal(state.errorMessages.length, 1);
