@@ -139,3 +139,43 @@ def test_promotion_monitor_on_another_requirement_does_not_gate_the_deploy() -> 
     with pytest.raises(RuntimeClosedError) as err:
         _check_deploy_gates(doc)
     assert err.value.code == "response_deploy_without_promotion_monitor"
+
+
+def _pack_with_deploy() -> tuple[Dict[str, Any], Dict[str, Any]]:
+    case = _case("composition/pack-deploy-cannot-borrow-module-gate.yml")
+    return copy.deepcopy(case["base"]), copy.deepcopy(case["overlay"])
+
+
+@pytest.mark.parametrize("operation", ["overlay", "meet"])
+def test_pack_deploy_cannot_borrow_the_module_gate(operation: str) -> None:
+    pack, module = _pack_with_deploy()
+    with pytest.raises(RuntimeClosedError) as err:
+        compose_runtime_documents(pack, module, operation=operation)
+    assert err.value.code == "response_deploy_without_promotion_monitor"
+    assert err.value.path == ["responses", 0, "rules", 1, "deploy"]
+    pack["responses"][0]["rules"][1]["deploy"] = "never"
+    compose_runtime_documents(pack, module, operation=operation)
+
+
+@pytest.mark.parametrize("flag", ["--pack", "--meet"])
+def test_compose_cli_validate_refuses_pack_deploy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                  capsys: pytest.CaptureFixture, flag: str) -> None:
+    import json
+    import sys
+
+    import yaml
+
+    from tvl_tools.tvl_compose.cli import main
+
+    pack, module = _pack_with_deploy()
+    module_path, pack_path = tmp_path / "module.yml", tmp_path / "pack.yml"
+    module_path.write_text(yaml.safe_dump(module))
+    pack_path.write_text(yaml.safe_dump(pack))
+    monkeypatch.setattr(sys, "argv", ["tvl-compose", str(module_path), "--json", "--validate", flag, str(pack_path)])
+    try:
+        main()
+    except SystemExit as exc:
+        assert exc.code not in (0, None)
+    result = json.loads(capsys.readouterr().out)
+    assert not result["ok"]
+    assert "response_deploy_without_promotion_monitor" in json.dumps(result)

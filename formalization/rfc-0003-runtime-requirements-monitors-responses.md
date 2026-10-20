@@ -637,7 +637,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `response_guard_not_enforceable` | E | `block_action`/`halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker; §6.5), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | `lints/guard-metric-not-enforceable.yml` |
 | `response_on_check_error_missing` | E | `block_action`/`halt_unit` without `on_check_error` | `lints/local-guard-error-policy-required.yml` |
 | `response_rule_repeat_unbounded` | E | an action other than `notify` with `repeat_after_hours` and no `max_repeats` | `lints/repeat-must-be-bounded.yml` |
-| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16); `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/deploy-promotion-monitor-on-other-requirement.yml`, `lints/pack-cannot-declare-deploy.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (absent) |
+| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16), checked on the authored pack also by `tvl-compose` before reference rewriting; `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/deploy-promotion-monitor-on-other-requirement.yml`, `lints/pack-cannot-declare-deploy.yml`, `composition/pack-deploy-cannot-borrow-module-gate.yml`, `composition/pack-deploy-rejected-in-meet.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (absent) |
 
 ### 5.9 Measurement readiness
 
@@ -1291,7 +1291,9 @@ responses:
 9. **Composition.** `deploy` is a tightenable coordinate of an `optimize` rule: `never` is tighter than `if_promoted`,
    and absent means `never`. An overlay, or a module response merging with a pack response, may change `if_promoted`
    to `never` and never the reverse (`runtime_overlay_weakens`); the raw meet takes `never` when either side has it
-   (§9.3). A `tvl_pack` has no promotion monitors (T16), so a floor cannot declare `deploy: if_promoted`.
+   (§9.3). A `tvl_pack` has no promotion monitors (T16), so a floor cannot declare `deploy: if_promoted`; composition
+   and meets check each authored pack for it before rewriting references, so a pack rule never borrows a module's
+   promotion monitor (`response_deploy_without_promotion_monitor`).
 10. **Enablement.** For staged enablement (§12) the deploy is an effectful action of its own: a platform that has not
     enabled it refuses to register a rule with `deploy: if_promoted` (`response_action_unsupported`), even when it
     executes `optimize`.
@@ -1916,7 +1918,7 @@ family. Unknown case kinds and expected assertion keys fail closed.
 |---|---|---|
 | `compatibility/` | 30 | old readers reject runtime blocks; every refusal of §11.2; pack dispatch; version rules (`runtime_version_required`, `declared_version_below_constructs`); a rule or transition keyed `on` is a `schema_error`; legacy erasure is unchanged |
 | `lints/` | 69 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
-| `composition/` | 33 | overlays that change a predicate, population, method or schedule, drop a rule, flip `on_check_error`, weaken an approval, widen repeats or change a target; widen or tighten `deploy`, its meet, and its compilation; severity order and meet; pack floor tightening; module weaker than floor; floor-only carriage and reference rewriting; unreachable meets; post-composition deadline feasibility |
+| `composition/` | 35 | overlays that change a predicate, population, method or schedule, drop a rule, flip `on_check_error`, weaken an approval, widen repeats or change a target; widen or tighten `deploy`, its meet, and its compilation; severity order and meet; pack floor tightening; module weaker than floor; floor-only carriage and reference rewriting; unreachable meets; post-composition deadline feasibility |
 | `projection/` | 15 | a canary per projection row of §8.2, unresolved alias, unavailable token map, unlisted-field refusal, closed errors without echo |
 | `latency_roundtrip/` | 2 | the `backend_v1` codec round trip of §10.3 |
 | `promotion/` | 10 | `monitor_outcomes` normalization and readiness, `missing_monitor_counts`, `chance_constraint_shadowed`, and the gate join over supplied verdicts (§6.11) |

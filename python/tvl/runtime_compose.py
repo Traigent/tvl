@@ -361,6 +361,18 @@ def _validate_floor_provenance(
             raise RuntimeClosedError("tenant_floor_outside_pack", path=["floor_provenance", idx])
 
 
+def _reject_pack_deploys(pack: Mapping[str, Any]) -> None:
+    for resp_idx, resp in enumerate(pack.get("responses") or []):
+        if not isinstance(resp, Mapping):
+            continue
+        for rule_idx, rl in enumerate(resp.get("rules") or []):
+            if isinstance(rl, Mapping) and rl.get("deploy", "never") != "never":
+                raise RuntimeClosedError(
+                    "response_deploy_without_promotion_monitor",
+                    path=["responses", resp_idx, "rules", rule_idx, "deploy"],
+                )
+
+
 def compose_runtime_documents(
     base: Mapping[str, Any],
     overlay: Mapping[str, Any],
@@ -381,6 +393,11 @@ def compose_runtime_documents(
         base_is_pack, overlay_is_pack = True, False
     if base_is_pack and overlay_is_pack and operation != "meet":
         raise RuntimeClosedError("runtime_invalid_profile")
+    # RFC 0003 §7.6 item 9: a pack has no promotion monitors, so a floor can never declare a deploy.
+    # Check the authored pack before reference rewriting lets its rule borrow a module's promotion monitor.
+    for doc in (base, overlay):
+        if "pack" in doc and "tvl" not in doc:
+            _reject_pack_deploys(doc)
     composed = copy.deepcopy(dict(overlay))
     previous_provenance = floor_provenance if floor_provenance is not None else []
     _validate_floor_provenance(previous_provenance, [overlay] if base_is_pack else [base, overlay])
