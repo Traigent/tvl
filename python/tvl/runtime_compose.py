@@ -7,6 +7,8 @@ import re
 from tvl.canonical import (
     APPROVAL_BY_RANK,
     APPROVAL_ORDER,
+    DEPLOY_BY_RANK,
+    DEPLOY_ORDER,
     RuntimeClosedError,
     SEVERITY_BY_RANK,
     SEVERITY_ORDER,
@@ -202,6 +204,16 @@ def _merge_rules(
         finite_caps = [int(cap) for cap in (mr_b, mr_o) if cap is not None]
         if finite_caps:
             merged["max_repeats"] = min(finite_caps)
+
+        if action == "optimize":
+            dep_b = DEPLOY_ORDER.get(str(br.get("deploy", "never")))
+            dep_o = DEPLOY_ORDER.get(str(orr.get("deploy", "never")))
+            if dep_b is None or dep_o is None:
+                raise RuntimeClosedError("runtime_unknown_kind", path=[*rule_path, "deploy"])
+            if not is_meet and dep_o < dep_b:
+                raise RuntimeClosedError("runtime_overlay_weakens", path=[*rule_path, "deploy"])
+            if "deploy" in br or "deploy" in orr:
+                merged["deploy"] = DEPLOY_BY_RANK[max(dep_b, dep_o)]
 
         if action == "notify":
             sev_b = SEVERITY_ORDER[str(br.get("severity", "critical"))]

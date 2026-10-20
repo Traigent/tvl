@@ -483,6 +483,11 @@ def project_runtime_declarations(
             if "target" in rl:
                 l_rl["target"] = str(rl["target"])
                 h_rl["target"] = str(rl["target"])
+            if act == "optimize":
+                # RFC 0003 §4.6/§7.6: the contract carries the deploy default explicitly.
+                dep = str(rl.get("deploy", "never"))
+                l_rl["deploy"] = dep
+                h_rl["deploy"] = dep
             if act == "notify":
                 sev = str(rl.get("severity", "critical"))
                 l_rl["severity"] = sev

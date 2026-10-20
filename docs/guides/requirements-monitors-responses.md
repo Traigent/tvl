@@ -881,7 +881,7 @@ event automatically and cannot be declared.
 |---|---|---|---|
 | `notify` | an alert to be delivered, even after the episode has closed | optional `severity`: `info`, `warning`, `critical` (default `critical`) | `none` only |
 | `open_next_step` | a recommended next step to be issued for the people or coding agent who maintain the agent | none | `none` only |
-| `optimize` | an optimisation run within a bounded grant (cost ceiling, scope, expiry). The candidate still has to pass the promotion gate | none | `standing` or `human` (default `human`) |
+| `optimize` | an optimisation run within a bounded grant (cost ceiling, scope, expiry). The candidate still has to pass the promotion gate | optional `deploy`: `never` (default) or `if_promoted` (below) | `standing` or `human` (default `human`) |
 | `rollback` | a return to an earlier certified configuration | **`target`**: `last_certified` or a 64-hex fingerprint | `standing` or `human` (default `human`) |
 | `throttle` | a cap on how much traffic is admitted | **`rate_floor`**: a number strictly between 0 and 1 | `standing` or `human` (default `human`) |
 | `degrade` | traffic routed to a fallback configuration | **`fallback`**: a 64-hex fingerprint of a certified configuration | `standing` or `human` (default `human`) |
@@ -912,6 +912,16 @@ Fields not listed for an action are rejected (`runtime_invalid_ladder`). Two mor
 resolution or withdrawal of the episode makes `resume` *possible* but never performs it. A standing grant never authorizes `suspend`.
 Installed `throttle` and `degrade` controls also need an authorized human `release`; scope closure leaves them in place.
 `rollback`, `optimize`, `throttle` and `degrade` with `approval: none` are rejected (`response_irreversible_without_approval`).
+
+**Fix and deploy.** `deploy: if_promoted` on an `optimize` rule says: if the optimisation finds a candidate that passes
+the promotion gate, deploy it. The deploy is a second, separate effect. A person approves it on its own (approving the
+optimisation does not approve the deploy), or a standing grant must name the deploy itself. At the moment of the deploy
+the episode must still be open, the contract unchanged, and the candidate's promotion result `Promote`, which needs a
+promotion monitor on the same requirement (without one the rule is rejected with
+`response_deploy_without_promotion_monitor`). If anything that authorizes it is unreachable, the deploy holds. A
+deploy never closes the episode: the episode closes only when production windows are healthy again. Only episode events
+(`episode_opened`, `episode_continued`, `episode_open_for`) may trigger it, and an overlay may only turn
+`if_promoted` into `never`.
 
 A service-level action is meaningful only while the episode (or other scope) that caused it still needs intervention: if the episode closes first, the
 queued action is cancelled. If the people or records that authorize an action cannot be reached, the rule **holds**: nothing new happens. `notify` is different:

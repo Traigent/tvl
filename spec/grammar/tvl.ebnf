@@ -197,7 +197,8 @@ rule_decl     = "{", "id", ":", runtime_ident, ",", "trigger", ":", trigger_spec
                 [ ",", "rate_floor", ":", number ],
                 [ ",", "repeat_after_hours", ":", integer ],
                 [ ",", "max_repeats", ":", integer ],
-                [ ",", "on_check_error", ":", ( "block" | "allow" ) ], "}" ;            (* C1 *)
+                [ ",", "on_check_error", ":", ( "block" | "allow" ) ],
+                [ ",", "deploy", ":", ( "never" | "if_promoted" ) ], "}" ;            (* C1; deploy: optimize only *)
 trigger_spec  = "{", "monitor", ":", runtime_ident, ",", "event", ":", event_name, [ ",", "hours", ":", integer ], "}" ;
 event_name    = "episode_opened" | "episode_continued" | "episode_open_for" | "episode_resolved" | "episode_withdrawn"
               | "recovery_overdue" | "recovery_cancelled" | "recovery_recovered" | "burn_breached"

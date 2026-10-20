@@ -406,8 +406,12 @@
         "rate_floor": { "$ref": "#/$defs/DecimalString" },
         "repeat_after_hours": { "type": "integer", "minimum": 1 },
         "max_repeats": { "type": "integer", "minimum": 1 },
-        "on_check_error": { "enum": ["block", "allow"] }
-      }
+        "on_check_error": { "enum": ["block", "allow"] },
+        "deploy": { "enum": ["never", "if_promoted"] }
+      },
+      "if": { "properties": { "do": { "const": "optimize" } } },
+      "then": { "required": ["deploy"] },
+      "else": { "not": { "required": ["deploy"] } }
     }
   }
 }
