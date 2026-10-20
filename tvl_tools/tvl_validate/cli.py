@@ -29,8 +29,21 @@ def _load_schema(tool_file: Path, schema_name: str = "tvl.schema.json") -> dict[
 # no diagnosis of its own, so the lints inside its subtree are the real reasons.
 # Every other keyword (``additionalProperties``, ``type``, ``required``, a bound)
 # does name a specific defect and must never be replaced by a descendant's.
-_BRANCH_KEYWORDS = frozenset({"oneOf", "anyOf", "allOf", "not"})
+# ``allOf`` is deliberately absent: jsonschema descends it and reports the
+# inner keyword, so ``err.validator`` is never "allOf".
+_BRANCH_KEYWORDS = frozenset({"oneOf", "anyOf", "not"})
 
+# These report a key the schema does not know about. No lint can name that key
+# -- a lint only checks keys it knows about -- so the schema error is its only
+# report, even when a lint happens to sit at the very same path. Never replace
+# one: the ancestor rule below would otherwise swallow it whole.
+_UNKNOWN_KEY_KEYWORDS = frozenset(
+    {"additionalProperties", "unevaluatedProperties", "propertyNames"}
+)
+
+# jsonschema's wording for a missing key. If upstream rewords it, the `required`
+# path extension stops firing; `test_the_required_key_pattern_matches_this_jsonschema`
+# is what turns that into a red test rather than a silent regression.
 _REQUIRED_KEY_RE = re.compile(r"^'(?P<key>[^']+)' is a required property$")
 
 
@@ -46,7 +59,13 @@ def _schema_issues(doc: dict[str, Any], schema: dict[str, Any]) -> list[dict[str
     from tvl.lints import _uses_13_constructs
 
     if _uses_13_constructs(doc) or is_pack_document(doc):
-        return runtime_syntax_issues(doc) or closed_schema_issues(errors)
+        # This channel is deliberately redacted (python/tvl/diagnostics.py): the
+        # path segments become "<entry>" and the messages are generic, because
+        # older lint text could carry customer values. Matching a redacted path
+        # against an unredacted lint path finds the wrong key, so the entries
+        # are marked to opt them out of substitution entirely.
+        closed = runtime_syntax_issues(doc) or closed_schema_issues(errors)
+        return [dict(issue, _redacted=True) for issue in closed]
     issues: list[dict[str, Any]] = []
     for err in errors:
         code, message = "schema_error", err.message
@@ -147,6 +166,8 @@ def _restore_lint_codes(
     unchanged, so nothing is dropped; and each lint is consumed once, so two
     schema errors can never collapse into one diagnostic.
     """
+    if any(issue.get("_redacted") for issue in issues):
+        return _public(issues)
     if not any(issue.get("code") == "schema_error" for issue in issues):
         return _public(issues)
     index = _lint_errors_by_path(doc, is_pack, floor_provenance)
@@ -157,6 +178,9 @@ def _restore_lint_codes(
     merged: list[dict[str, Any]] = []
     for issue in issues:
         if issue.get("code") != "schema_error":
+            merged.append(issue)
+            continue
+        if issue.get("_keyword") in _UNKNOWN_KEY_KEYWORDS:
             merged.append(issue)
             continue
         path = tuple(issue.get("path") or ())
@@ -170,16 +194,25 @@ def _restore_lint_codes(
             if match is not None:
                 replacements = [match]
                 break
+        inside: list[dict[str, Any]] = []
         if not replacements and path and issue.get("_keyword") in _BRANCH_KEYWORDS:
-            replacements = [
+            inside = [
                 lint
                 for lint_path, lint in index
                 if len(lint_path) > len(path) and lint_path[: len(path)] == path and id(lint) not in consumed
             ]
-        if not replacements:
+        if not replacements and not inside:
             merged.append(issue)
             continue
-        for replacement in replacements:
+        if inside:
+            # A branch failure names the point where no branch matched, and the
+            # lints inside it name the reasons the lint knows about -- but not
+            # necessarily all of them. An unknown key inside the branch, say,
+            # has no lint, and dropping the branch error would drop the only
+            # report of it. Keep both: the reasons, and the error that says
+            # something in here is also wrong beyond them.
+            merged.append(issue)
+        for replacement in replacements or inside:
             consumed.add(id(replacement))
             merged.append(dict(replacement))
     return _public(merged)

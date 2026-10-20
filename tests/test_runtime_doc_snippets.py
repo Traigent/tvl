@@ -11,17 +11,16 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tvl.schema import measurement_validator
 from tvl.yaml_safe import safe_load
+
 from tvl_tools.tvl_lint.cli import main as lint_main
 from tvl_tools.tvl_validate.cli import main as validate_main
-
 
 ROOT = Path(__file__).resolve().parents[1]
 GUIDE = ROOT / "docs/guides/requirements-monitors-responses.md"
 BOOK = ROOT / "tvl_book/website_content/book/chapter-06-requirements-in-production.md"
-YAML_FENCE = re.compile(r"^[ \t]*```(?:yaml|yml)[^\n]*\n(.*?)^[ \t]*```[ \t]*$", re.M | re.S)
+YAML_FENCE = re.compile(r"^[ \t]*```(?:yaml|yml)[^\n]*\n(.*?)^[ \t]*```[ \t]*$", re.MULTILINE | re.DOTALL)
 MARKER = re.compile(r"<!-- snippet: (\S+) kind=(\S+) -->\s*$")
 
 

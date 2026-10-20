@@ -270,3 +270,110 @@ def test_a_plain_schema_error_is_untouched(tmp_path):
     status, codes = _cli_codes("tvl_validate", path)
     assert status == 2
     assert codes == {"schema_error"}
+
+
+def test_a_branch_failure_keeps_a_reason_no_lint_names(tmp_path):
+    """Substituting a branch's lints must not discard the branch error itself.
+
+    A `oneOf` failure is reported only at the branch point, so it is the sole
+    report of anything inside the branch that no lint covers -- an unknown key,
+    say. Replacing it with the lints found inside would lose that.
+    """
+    doc = copy.deepcopy(BASE)
+    doc["objectives"] = [
+        {
+            "name": "quality",
+            "zz_unknown_field": 1,
+            "band": {"target": {"center": 0.5, "tol": 0}, "alpha": 0.05, "test": "TOST"},
+        }
+    ]
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_validate.cli", str(path), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode == 2
+    issues = json.loads(proc.stdout)["issues"]
+    codes = {issue["code"] for issue in issues}
+    assert "invalid_band_tolerance" in codes, f"the lint inside the branch is missing: {issues}"
+    assert "zz_unknown_field" in proc.stdout, (
+        "the unknown key is reported nowhere; the branch error was dropped "
+        f"in favour of its subtree lints: {issues}"
+    )
+
+
+def test_the_required_key_pattern_matches_this_jsonschema(tmp_path):
+    """Pin the message format the `required` path extension parses.
+
+    `_REQUIRED_KEY_RE` reads the missing key out of jsonschema's message because
+    `validator_value` is the whole required list. If upstream rewords that
+    message the extension stops firing silently, so assert it against a live
+    error rather than a remembered string.
+    """
+    from jsonschema import Draft202012Validator
+
+    from tvl_tools.tvl_validate import cli as validate_cli
+
+    schema = {"type": "object", "properties": {"a": {}}, "required": ["a"]}
+    errors = list(Draft202012Validator(schema).iter_errors({}))
+    assert len(errors) == 1
+    match = validate_cli._REQUIRED_KEY_RE.match(errors[0].message)
+    assert match is not None, f"jsonschema now words this as {errors[0].message!r}"
+    assert match.group("key") == "a"
+
+
+def test_an_unknown_key_at_a_lint_path_keeps_its_own_diagnosis(tmp_path):
+    """The same-path twin of test_an_unrelated_schema_error_keeps_its_own_diagnosis.
+
+    There the specific keyword and the lint were parent and child. Here they sit
+    at the SAME path, which the prefix rule matches -- and no lint can ever name
+    an unknown key, so swallowing the schema error loses its only report.
+    """
+    doc = copy.deepcopy(BASE)
+    doc["promotion_policy"]["require_calibration"] = {"enabled": "yes", "bogus": 1}
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_validate.cli", str(path), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode == 2
+    issues = json.loads(proc.stdout)["issues"]
+    assert any(i["code"] == "schema_error" and "bogus" in i["message"] for i in issues), (
+        f"the unknown-key error was lost to a lint at its own path: {issues}"
+    )
+
+
+def test_the_redacted_channel_is_not_substituted(tmp_path):
+    """TVL 1.3 and packs go through `closed_schema_issues`, which redacts paths.
+
+    Matching a redacted path (`<entry>`) against an unredacted lint path finds
+    the wrong key, so that channel opts out of substitution entirely and keeps
+    the generic, redacted diagnostics it was designed to emit.
+
+    HONEST LABEL: this is a GUARD, not evidence. It is green on the code before
+    the opt-out as well -- this fixture does not reach the substitution on that
+    channel. It pins the property for the future; the defect it was written for
+    was found by review on a different fixture, not by this test.
+    """
+    doc = copy.deepcopy(BASE)
+    doc["tvl"] = "1.3"
+    doc["requirements"] = [{"name": "r", "kind": "zero_tolerance", "unit": "trace"}]
+    doc["promotion_policy"]["min_effect"]["ghost_customer_key"] = -1
+    path = tmp_path / "module.tvl.yml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_validate.cli", str(path), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    payload = json.loads(proc.stdout)
+    for issue in payload["issues"]:
+        assert not any(k.startswith("_") for k in issue), f"private key leaked: {issue}"
+    # The redacted channel never carries a lint's unredacted message.
+    assert "ghost_customer_key" not in proc.stdout, (
+        "a redacted diagnostic was replaced by an unredacted lint: " + proc.stdout
+    )

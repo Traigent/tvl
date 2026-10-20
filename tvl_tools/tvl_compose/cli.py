@@ -17,6 +17,7 @@ import yaml
 
 from tvl_tools.cli_utils import (
     add_common_args,
+    format_issue_line,
     get_format,
     handle_error,
     load_yaml_safely,
@@ -667,7 +668,7 @@ def text_renderer(data: dict[str, Any]) -> None:
         # Without this, text -- the default format -- would drop every
         # diagnostic exactly when the exit code stops announcing it.
         for issue in (data.get("validation") or {}).get("issues") or []:
-            print(f"  {issue}", file=sys.stderr)
+            print(f"  {format_issue_line(issue)}", file=sys.stderr)
         if data.get("output_file"):
             print(f"Composed: {data['output_file']}")
         else:
