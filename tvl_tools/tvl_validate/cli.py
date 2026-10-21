@@ -162,9 +162,18 @@ def _restore_lint_codes(
       where no branch matched and diagnoses nothing itself, every lint strictly
       inside that subtree.
 
-    Two invariants keep this lossless. A schema error with no match is reported
-    unchanged, so nothing is dropped; and each lint is consumed once, so two
-    schema errors can never collapse into one diagnostic.
+    One invariant keeps this lossless and is covered by tests: a schema error
+    with no match is reported unchanged, so nothing is dropped.
+
+    The one-to-one consumption below (``consumed``) is a second, weaker
+    guarantee -- two schema errors cannot collapse into one diagnostic -- and
+    it is honestly defensive rather than load-bearing today. Removing both
+    ``id(lint) not in consumed`` clauses leaves the whole boundary suite green,
+    and neither a 295-case mutation fuzz nor seven hand-built multi-defect
+    modules found an input that distinguishes guarded from unguarded. It is
+    kept because it costs nothing and because a future grammar in which two
+    schema errors share one lint path would need it -- not because a test
+    proves it. Do not cite it as verified.
     """
     if any(issue.get("_redacted") for issue in issues):
         return _public(issues)
