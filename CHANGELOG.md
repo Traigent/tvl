@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-21
+
+TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Package, citation and `tvl.__version__` report 1.3.0; authored modules keep `tvl_version: "1.3"` and document format tags are unchanged. Not published to a package registry.
+
+### Language (acceptance revision)
+
+- `among` admits only a checker predicate; a metric or exact predicate there is the new lint `runtime_among_not_checker` (RFC 0003 §16.3 question 20). Membership was defined only for checker labels, and the two readings of an exact predicate select opposite populations.
+- RFC 0003 states the `u = pl = 0` condition on question 15, the deliberate exclusion of recovery triggers for `deploy`, and the reference limits the environment-label rule to `backend_v1`.
+
 ### Security
 
 - Cleared the open dependency and code-scanning findings: the website PDF build server now checks path containment with `path.relative` (a sibling directory such as `dist/public-evil` no longer passes), the website deploy checkout no longer persists credentials, the support-bot evaluator raises an explicit error instead of using `assert`, and the older locked `numpy` releases (2.2.6, 2.4.6) are gone with the Python 3.12 minimum below.
@@ -48,9 +57,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Community health files: a rewritten contributing guide, security policy and Contributor Covenant code of conduct, governance, maintainers and support documents, issue forms and a pull request template, an RFC process with an RFC template, code owners, Dependabot configuration, and a `NOTICE` file.
 - README status badges and a short example that validates and lints a module.
 
-### TVL 1.3 (draft)
+### TVL 1.3
 
-TVL 1.3 is a draft and a conservative extension of 1.2: a module without the new blocks is read exactly as before, and no 1.1 or 1.2 document gains a diagnostic.
+TVL 1.3 is a conservative extension of 1.2 (draft notes below; accepted in 1.3.0): a module without the new blocks is read exactly as before, and no 1.1 or 1.2 document gains a diagnostic.
 
 TVL 1.3 adds language only. TVL defines what each requirement, monitor and response means and what each verdict promises, and its tools check, compose and compile these declarations. It evaluates no runtime evidence and executes no response: runtime verdicts come from an evaluator outside TVL (RFC 0003 §3.5). The only verdicts a TVL tool computes are those of the release gate, for promotion monitors whose counts contain no unresolved or unplaceable units.
 

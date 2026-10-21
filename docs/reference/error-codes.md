@@ -989,6 +989,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | `runtime_max_tracked_correlations_out_of_range` | error | lint | `limits.max_tracked_correlations` is below 1 | use an integer >= 1 |
 | `runtime_burn_out_of_range` | error | lint | a burn monitor with `threshold_factor` <= 1, or with b times `max_rate` >= 1, or that can never breach at `min_samples` | choose b > 1 with b times `max_rate` < 1 and a `min_samples` that can breach |
 | `runtime_zero_tolerance_inexact` | error | lint | a `zero_tolerance` violation that is a metric or a checker rather than an exact pattern | use an exact pattern, or switch to `rate_bound` |
+| `runtime_among_not_checker` | error | lint | an `among` that is a metric or an exact pattern; 1.3 defines population membership only for checker labels | select the population with a checker, or drop `among` |
 | `runtime_zero_tolerance_incomplete` | error | lint | a `zero_tolerance` monitor declares `sampling`; a sampled window can never be complete, so `MET` would be unreachable | remove `sampling` |
 | `runtime_protocol_nondeterministic` | error | lint | a protocol has two transitions for one (state, event), an event matching two alphabet entries, an undeclared state or selector, or overlapping accepting and rejecting states | make the state machine deterministic and declare every state |
 | `runtime_tool_not_code_identifier` | error | lint | a selector `tool` is not a plain function or qualified name (a wildcard, a list item, a space) | name exactly one tool, such as `payments.charge` |

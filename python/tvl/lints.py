@@ -3437,6 +3437,7 @@ def _lint_predicate(
     issues: List[Issue],
     *,
     exact_only: bool = False,
+    checker_only: bool = False,
     checker_registry: Optional[Dict[str, Sequence[str]]] = None,
 ) -> None:
     if not isinstance(pred, dict):
@@ -3458,6 +3459,17 @@ def _lint_predicate(
             {
                 "code": "runtime_invalid_profile",
                 "message": "Predicate must specify exactly one of metric, checker, or pattern",
+                "path": path,
+                "severity": "error",
+            }
+        )
+        return
+
+    if checker_only and not has_checker:
+        issues.append(
+            {
+                "code": "runtime_among_not_checker",
+                "message": "among must be a checker predicate; 1.3 defines population membership only for checker labels",
                 "path": path,
                 "severity": "error",
             }
@@ -3951,7 +3963,7 @@ def _lint_requirements(
                     req["among"],
                     path + ["among"],
                     issues,
-                    exact_only=False,
+                    checker_only=True,
                     checker_registry=checker_registry,
                 )
             if "max_rate" in req:
@@ -4008,7 +4020,7 @@ def _lint_requirements(
                     req["among"],
                     path + ["among"],
                     issues,
-                    exact_only=False,
+                    checker_only=True,
                     checker_registry=checker_registry,
                 )
         elif kind == "recovery_time":
