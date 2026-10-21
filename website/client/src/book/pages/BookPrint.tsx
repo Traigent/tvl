@@ -20,7 +20,7 @@ function ChapterBody({ chapter }: { chapter: Chapter }) {
           <span className="run-title">{chapter.title}</span>
           <span className="run-mark">{chapter.draft ? "Draft \u2014 TVL 1.3" : "\u00a0"}</span>
         </h1>
-        {chapter.draft && <p className="book-draft-note">Draft chapter: describes TVL 1.3, which is not yet released.</p>}
+        {chapter.draft && <p className="book-draft-note">Draft chapter: this text is subject to revision.</p>}
         <Body components={mdxComponents} />
         <PredictAnswers />
         <ChapterReferences />

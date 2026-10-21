@@ -86,7 +86,7 @@ export default function Specification() {
               <Link href="/tvl-1-3">
                 <Button size="lg" variant="outline">
                   <RefreshCw className="mr-2 h-5 w-5" />
-                  TVL 1.3 (draft)
+                  TVL 1.3
                 </Button>
               </Link>
               <a

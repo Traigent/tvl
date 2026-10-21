@@ -38,17 +38,17 @@ export default function Tvl13() {
   return (
     <Layout>
       <Seo
-        title="TVL 1.3 (draft): Runtime Requirements, Monitors and Responses | Traigent"
-        description="Draft overview of TVL 1.3: runtime requirements, monitors and responses for agents in production, with the RFC, a guide and 23 examples."
+        title="TVL 1.3: Runtime Requirements, Monitors and Responses | Traigent"
+        description="Overview of accepted TVL 1.3: runtime requirements, monitors and responses for agents in production, with the RFC, a guide and 23 examples."
         path="/tvl-1-3"
       />
       <section className="py-16 bg-gradient-to-br from-primary/10 via-transparent to-primary/5">
         <div className="container">
           <div className="max-w-4xl">
             <span className="inline-block mb-4 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
-              Draft
+              Accepted · 1.3.0
             </span>
-            <h1 className="text-4xl md:text-5xl font-bold mb-6">TVL 1.3 (draft)</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-6">TVL 1.3</h1>
             <p className="text-xl text-muted-foreground mb-6">
               TVL 1.2 says what an agent configuration is allowed to be and how a candidate is promoted. TVL 1.3 adds
               what the agent must keep doing once it runs: runtime requirements, monitors and responses.
@@ -61,8 +61,7 @@ export default function Tvl13() {
               produced by an evaluator outside TVL.
             </p>
             <p className="text-base text-muted-foreground max-w-3xl leading-7">
-              <strong>Status: draft.</strong> RFC 0003 is not accepted yet. Syntax, diagnostic codes and meaning may
-              change before acceptance. TVL 1.3 is a conservative extension of 1.2: existing modules keep their meaning.
+              <strong>Status: accepted.</strong> RFC 0003 was accepted on 21 October 2026 as TVL 1.3.0. TVL 1.3 is a conservative extension of 1.2: existing modules keep their meaning.
             </p>
           </div>
         </div>
@@ -76,7 +75,7 @@ export default function Tvl13() {
               <Card className="h-full hover:border-primary/50 transition-all cursor-pointer">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />RFC 0003</CardTitle>
-                  <CardDescription className="text-sm leading-6">The draft specification: syntax, closed enums, diagnostic codes and the evaluator boundary. On GitHub.</CardDescription>
+                  <CardDescription className="text-sm leading-6">The accepted specification: syntax, closed enums, diagnostic codes and the evaluator boundary. On GitHub.</CardDescription>
                 </CardHeader>
               </Card>
             </a>
@@ -103,7 +102,7 @@ export default function Tvl13() {
               <CardHeader>
                 <CardTitle className="text-lg">In the book</CardTitle>
                 <CardDescription className="text-sm leading-6">
-                  Chapters 9 to 12 of the book cover the TVL 1.3 draft: production requirements, monitors and verdicts, responses and approvals, and overlays and packs.
+                  Chapters 9 to 12 of the book cover accepted TVL 1.3: production requirements, monitors and verdicts, responses and approvals, and overlays and packs.
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 text-sm font-medium text-primary flex items-center gap-2">

@@ -81,8 +81,8 @@ export function totalChapters(): number {
 }
 
 /**
- * "Work in progress — chapters 1–8 of 13" while chapters are planned; once every chapter
- * is written, "Complete edition — chapters 1–13 · TVL 1.3 chapters are draft (9–12)".
+ * Shows progress while chapters are planned, then the complete edition's chapter count.
+ * Appends a draft note only when numbered chapters are marked as draft.
  */
 export function editionLine(): string {
   const last = lastWrittenChapter();

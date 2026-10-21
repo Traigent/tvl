@@ -2,7 +2,7 @@
 title: "Overlays and packs"
 slug: overlays-and-packs
 order: 12
-draft: true
+draft: false
 summary: "Ordinary overlays first, then organisation packs: how a stricter bound wins and how a conflicting composition is refused."
 ---
 
@@ -18,6 +18,8 @@ For the busy season the team wants at most 3% slow replies, not 5%. They keep ve
 <Example file="ch11/strict.overlay.yml" checker="tvl-compose" expect="composed" title="The team's overlay of version 10" lines="3-7,25-29" />
 
 For the TVL 1.3 blocks, composition is tighten-only. `max_rate`, `max_unresolved_fraction`, `closure_max_age_hours`, `within_hours` and `max_stale_windows` may only go down; `confidence`, `min_samples` and `closure_windows` only up. A predicate, population, method or sampling may not change at all (`runtime_incompatible_replacement`), nor a schedule (`evaluation_schedule_mismatch`). Response rules survive with approvals no weaker, severities no lower and repeat limits (`max_repeats`) no larger (<Ref to="semantics" section="section 12.12">formal semantics</Ref>).
+
+An optimization rule's `deploy` may tighten from `if_promoted` to `never`, never the reverse; leaving it out means `never`. A pack has only runtime monitors, so it cannot declare `deploy: if_promoted` or borrow a module's promotion monitor to permit it (<Ref to="rfc-0003" section="section 7.6">RFC 0003</Ref>).
 
 <Predict question={<p>A second overlay, <code>ch11/loose.overlay.yml</code>, is identical except for <code>max_rate: 0.08</code>. What does <code>tvl-compose</code> do?</p>}>
 <p>It refuses: loosening a bound is a weakening, so it exits with status 2, writes nothing and reports `runtime_overlay_weakens` at `requirements.2.max_rate`.</p>
