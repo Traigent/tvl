@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- RFC 0004 (TVL 1.4 draft): notification-only repair outcome triggers, primary-monitor
+  `unknown_for`, and three-valued `only_while`/`unless` guards. Includes response-local references,
+  monitor inhibition cycle checks, immutable guard-set/outcome composition, hosted reference
+  projection, schema/editor copies, conformance cases and Lean guard proofs. TVL 1.3 diagnostics
+  and `backend_v1` are unchanged; compiled `/1` format tags await RFC §7.2's decision.
+
 ## [1.3.0] - 2026-10-21
 
 TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Package, citation and `tvl.__version__` report 1.3.0; authored modules keep `tvl_version: "1.3"` and document format tags are unchanged. Not published to a package registry.

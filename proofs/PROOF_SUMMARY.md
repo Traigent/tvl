@@ -570,3 +570,21 @@ rg -n '^import' Main.lean TVL --glob '*.lean'
 `Main.lean` imports every module. Mathlib and Lean stay pinned by the
 existing manifest/toolchain; the TVL 1.3 modules add no dependency. See README.md
 for the boundary and trusted-input limits.
+
+
+## RFC 0004: Reactive notification guards (TVL 1.4 draft)
+
+`TVL/Runtime/Guards.lean` is imported by `Main.lean`. The model uses strong Kleene folds,
+a validated notify-only rule type, unchanged occurrence identity/scope, and the exact monitor
+unless graph (attempt guards add no edge). These statements do not prove controller execution,
+source parsing, wire projection, attempt lifecycle or undecided-run implementation.
+
+| Statement | Class | Scope |
+|---|---|---|
+| `undecided_never_suppresses` | SUBSTANTIVE | Arbitrary valuation and guard replacement by UNDECIDED; arbitrary finite conjunction/disjunction lists, including shared guards. |
+| `notify_only` | BY-CONSTRUCTION | The validated reactive rule type has only the notify action; no effect authorization is introduced by the type. |
+| `guards_preserve_identity` | BY-CONSTRUCTION | Guard evaluation adds a delivery decision while preserving identity and scope. |
+| `no_mutual_silencing` | SUBSTANTIVE | Finite nonempty S of simultaneously triggered rules, non-FALSE only_while, no TRUE attempt inhibitor, and monitor inhibitors confined to sources in S; absence of nonempty directed cycles yields a sink and a delivered rule. The graph includes all rules, and outcome sources are supplied after validation. External inhibitors remain allowed. |
+
+No new OPEN theorem or admitted proof is used in this module. Formal semantics §13 specifies
+attempts and undecided histories relationally; this is outside these four Lean claims.
