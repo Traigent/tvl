@@ -124,9 +124,9 @@ stop_kind     = "signal_accept" | "external_accept" | "exhausted" ;  (* v1 regis
 requirements  = "requirements", ":", "[", [ req_decl, { ",", req_decl } ], "]" ;
 req_decl      = rate_req | zero_req | recovery_req | liveness_req ;                      (* SEALED *)
 rate_req      = "{", "name", ":", runtime_ident, ",", "kind", ":", "rate_bound", ",", "unit", ":", unit_kind,
-                [ ",", "among", ":", pred ], ",", "violation", ":", pred, ",", "max_rate", ":", number, "}" ;
+                [ ",", "among", ":", checker_pred ], ",", "violation", ":", pred, ",", "max_rate", ":", number, "}" ;
 zero_req      = "{", "name", ":", runtime_ident, ",", "kind", ":", "zero_tolerance", ",", "unit", ":", unit_kind,
-                [ ",", "among", ":", pred ], ",", "violation", ":", exact_pred, "}" ;
+                [ ",", "among", ":", checker_pred ], ",", "violation", ":", exact_pred, "}" ;
 recovery_req  = "{", "name", ":", runtime_ident, ",", "kind", ":", "recovery_time", ",", "unit", ":", "episode",
                 ",", "of", ":", runtime_ident, ",", "within_hours", ":", integer, "}" ;
 liveness_req  = "{", "name", ":", runtime_ident, ",", "kind", ":", "evidence_liveness", ",", "unit", ":", "window",

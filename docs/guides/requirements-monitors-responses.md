@@ -1,9 +1,8 @@
 # Requirements, Monitors and Responses (TVL 1.3)
 
-!!! warning "TVL 1.3 is a draft"
-    This guide describes the TVL 1.3 draft. Every snippet below was checked with the reference tools
+!!! note "TVL 1.3"
+    This guide describes TVL 1.3, accepted on 2026-10-21. Every snippet below was checked with the reference tools
     in this repository (`tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`, `tvl-ci-gate`).
-    Names, limits and diagnostics can still change before release.
 
 TVL up to 1.2 says what an agent configuration is allowed to be and how a candidate earns promotion.
 TVL 1.3 adds the other half: **what the agent must keep doing once it is running, and what should happen

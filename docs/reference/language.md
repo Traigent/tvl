@@ -10,7 +10,7 @@ If you are new to TVL, start with the example below and read it top to bottom on
 sections.
 
 !!! note "Language version"
-    This reference describes the core constructs of TVL, which is currently at version **1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002). Both are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
+    This reference describes the core constructs of TVL, which is currently at version **1.3**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
 
 ## A Small RAG Agent
 
@@ -626,8 +626,8 @@ For the full formal treatment, the repository also includes:
 
 ## TVL 1.3: requirements, monitors, responses
 
-!!! warning "Draft"
-    TVL 1.3 is a draft. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
+!!! note "TVL 1.3"
+    TVL 1.3 was accepted on 2026-10-21. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
     values they accept. For a guided introduction read
     [Requirements, Monitors and Responses](../guides/requirements-monitors-responses.md). The normative source is
     `formalization/rfc-0003-runtime-requirements-monitors-responses.md`, and the machine-readable shape is
@@ -690,7 +690,7 @@ Numbers mean the exact value of their decimal literal. A literal that cannot be 
 | `max_count` | integer >= 0 |
 | `fingerprint` | `^[0-9a-f]{64}$`: the fingerprint of a certified configuration |
 | `label` | `^[A-Za-z_][A-Za-z0-9_]*$`; for a catalogue checker, a member of its label list |
-| `env_label` | the environment label; trimmed and lower-cased, 1 to 64 characters |
+| `env_label` | the environment label. Under `profile: backend_v1` it must be trimmed, lower-cased and 1 to 64 characters (RFC 0003 §4.2); customer-side labels are otherwise free strings resolved through the customer's token map |
 
 An out-of-range value is the dedicated `runtime_*_out_of_range` code for that field. A value of the wrong JSON type (a string where an integer is
 required) is a `schema_error`.
@@ -715,12 +715,12 @@ an evaluator profile outside TVL determines what partial evidence justifies repo
 
 ### Predicates (`violation`, `among`)
 
-A predicate is exactly one of three families. Unknown keys are rejected.
+A predicate is exactly one of three families. Unknown keys are rejected. `among` takes only the checker family (`runtime_among_not_checker`); `violation` takes the families listed per kind.
 
 | Family | Keys | Notes |
 |---|---|---|
 | metric | `metric`, `exceeds` | `metric` is `wall_clock_latency_ms`, `cost_usd`, `total_tokens` or `tool_calls`. A unit violates when the metric is strictly greater than `exceeds`. Only under `rate_bound`. |
-| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. Only under `rate_bound`, and only for `customer_side` or `evaluation_set` evidence. |
+| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. As `violation`, only under `rate_bound`; as `among`, under `rate_bound` or `zero_tolerance`. Only for `customer_side` or `evaluation_set` evidence. |
 | exact | `pattern` and its keys, below | allowed under `rate_bound` and `zero_tolerance` |
 
 **Exact patterns**

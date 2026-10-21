@@ -50,7 +50,7 @@ For TVL to serve as a trustworthy specification language, we must establish:
 - **§9**: Promotion Semantics — acceptability, dominance, and promotion correctness
 - **§10**: Conformance Requirements — behavior required of implementations
 - **§11**: Future Work — proposed extensions, not current requirements
-- **§12**: Runtime Semantics (TVL 1.3) — draft requirements, monitors, obligations, and governed responses
+- **§12**: Runtime Semantics (TVL 1.3) — requirements, monitors, obligations, and governed responses
 
 Sections 2–6 and 9 specify **what** core TVL constructs mean; §12 specifies the optional TVL 1.3 runtime extension. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
 
@@ -85,7 +85,7 @@ The formal semantics and soundness proofs in this document apply to the **core T
 
 **cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the Lean proof tree (`proofs/`) simply predates RFC 0001 and RFC 0002 and has never been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/*.lean` mentions `composite`, `cvar`, or `policy`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
 
-**Runtime extension scope (TVL 1.3, DRAFT)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
+**Runtime extension scope (TVL 1.3, accepted 2026-10-21)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
 
 ### 1.5 Field Categorization and Semantic Layers
 
@@ -1508,7 +1508,7 @@ An implementation MAY use the informative SMT encoding in §8, another solver en
 
 ### 10.6 Runtime Monitor Requirements
 
-An implementation claiming support for the draft TVL 1.3 language MUST:
+An implementation claiming support for the TVL 1.3 language MUST:
 
 1. Parse and validate the three runtime blocks and `tvl_pack` with the schema/lint layering and closed diagnostics of RFC 0003 §5; check the sealed kind/source/phase/method combinations and references in §12.1; refuse unsupported constructs at every reader entrypoint rather than ignoring or stripping them.
 2. Leave every TVL 1.2 module, diagnostic and promotion result unchanged (§12.13, Theorem 12.1).
@@ -1554,7 +1554,7 @@ Connecting TVL to verification frameworks:
 
 | | |
 |---|---|
-| **Status** | **DRAFT** — RFC 0003; design decisions D1–D5 recorded 2026-10-16 (RFC 0003 §16.1) |
+| **Status** | **Accepted** 2026-10-21 with RFC 0003; design decisions D1–D5 recorded 2026-10-16 (RFC 0003 §16.1) |
 | **Target language version** | TVL 1.3, conservative extension of TVL 1.2 |
 | **Semantic layers** | Requirements → unit predicates on complete histories → window verdicts → episodes and obligations → declared responses |
 | **Defined here** | The meaning of runtime declarations on complete histories, the meaning of every parameter, and the contract each verdict, episode, obligation state and response effect must satisfy |
@@ -1656,7 +1656,7 @@ A legal bounded-response assignment is an injective map from matching `a` events
 
 For a DFA `(Q,Σ,δ,q₀,F,R)`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
 
-The population expression `among` is interpreted as a membership test `A_q(h)`: for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
+The population expression `among` is interpreted as a membership test `A_q(h)`. In 1.3 `among` is always a checker predicate (RFC 0003 §16.3 question 20; a metric or exact predicate there is `runtime_among_not_checker`): for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
 
 **Prefix-fixed violations.** The violations of `absence`, `bounded_existence`, `precedence` and a `protocol` reaching a rejecting state are fixed by a finite prefix of the history: once a prefix violates, every extension violates. The violations of `bounded_response`, a `protocol` ending outside its accepting states, a metric threshold and a checker label are not; they depend on the whole unit. Only prefix-fixed violations can be acted on before an effect (§12.10).
 
@@ -1912,7 +1912,7 @@ No declared action is silently inert: a platform that cannot execute a declared 
 
 ### 12.12 Refinement, Meet, Reachability, and Packs
 
-**Definition 12.26 (Refinement order)**. Write `A ⊑_rt B` to mean A is at least as strict as B, after canonical name/effective-key resolution under RFC §9.4, including pack-to-module reference rewriting and retained floor provenance. Compatibility first requires identical predicate, unit, population expression, evidence source, `deployment_environment`, attribution rule, `resolution`, decision method, `decision.model`, `threshold_factor`, and schedule. Schedule includes alignment, window width, grace, horizon and false-alarm allocation. Sampling mode/rate, single-producer, checker/DFA and resource-limit contracts must be identical unless a separate verified refinement rule exists; this draft supplies none. Changing an immutable component is an incompatible replacement, not an ordered numeric update.
+**Definition 12.26 (Refinement order)**. Write `A ⊑_rt B` to mean A is at least as strict as B, after canonical name/effective-key resolution under RFC §9.4, including pack-to-module reference rewriting and retained floor provenance. Compatibility first requires identical predicate, unit, population expression, evidence source, `deployment_environment`, attribution rule, `resolution`, decision method, `decision.model`, `threshold_factor`, and schedule. Schedule includes alignment, window width, grace, horizon and false-alarm allocation. Sampling mode/rate, single-producer, checker/DFA and resource-limit contracts must be identical unless a separate verified refinement rule exists; this revision supplies none. Changing an immutable component is an incompatible replacement, not an ordered numeric update.
 
 For compatible entries the coordinate orders are:
 
@@ -1927,7 +1927,7 @@ For compatible entries the coordinate orders are:
 | `within_hours` | `T_A ≤ T_B` | minimum |
 | `max_stale_windows` | `L_A ≤ L_B` | minimum |
 
-For responses, A must retain every base rule of B under the same `rule.id`, trigger, action, target, fallback, rate floor, and `on_check_error`; approval cannot weaken, repeat bounds cannot widen, and on `optimize` rules `deploy` cannot widen: it is ordered `never` stricter than `if_promoted`, with absent normalized to `never`. Standing grants are not TVL declarations, so refinement never compares them. On `notify` rules, severity is a coordinate ordered `info < warning < critical`, with absent severity normalized to `critical` before comparison (RFC §4.6). Require `severity_A ≥ severity_B`; lowering is rejected after default filling, including when either side omits severity. Non-`notify` rules have no severity coordinate. Additional rules must themselves be well-formed. `repeat_after_hours` is immutable in this draft; a retained `max_repeats` may only decrease, and no repeat is added to a rule that had none. An omitted mandatory base rule is not an empty or more permissive override. Equal names with different immutable fields fail composition rather than creating parallel conflicting definitions.
+For responses, A must retain every base rule of B under the same `rule.id`, trigger, action, target, fallback, rate floor, and `on_check_error`; approval cannot weaken, repeat bounds cannot widen, and on `optimize` rules `deploy` cannot widen: it is ordered `never` stricter than `if_promoted`, with absent normalized to `never`. Standing grants are not TVL declarations, so refinement never compares them. On `notify` rules, severity is a coordinate ordered `info < warning < critical`, with absent severity normalized to `critical` before comparison (RFC §4.6). Require `severity_A ≥ severity_B`; lowering is rejected after default filling, including when either side omits severity. Non-`notify` rules have no severity coordinate. Additional rules must themselves be well-formed. `repeat_after_hours` is immutable in this revision; a retained `max_repeats` may only decrease, and no repeat is added to a rule that had none. An omitted mandatory base rule is not an empty or more permissive override. Equal names with different immutable fields fail composition rather than creating parallel conflicting definitions.
 
 **Definition 12.27 (Partial composition)**. On compatible coordinates the raw meet `A ⊓ B` takes the table's bounds, unions declarations/rules by canonical identity, takes the stronger required approval, takes `never` as the `deploy` of each compatible retained `optimize` rule unless both sides have `if_promoted`, takes the maximum normalized severity on each compatible retained `notify` rule, and takes the smaller `max_repeats` of each compatible retained rule. Cross-namespace/effective-key collisions are rejected. The raw meet is the greatest lower bound in this product order, before feasibility validation:
 
@@ -2092,7 +2092,7 @@ Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j
 | Callable type used | `unverifiable_callable_type` |
 | Float precision inadequate | `inadequate_precision` |
 
-### B.4 Runtime Validation and Lint Codes (TVL 1.3, DRAFT)
+### B.4 Runtime Validation and Lint Codes (TVL 1.3)
 
 [RFC 0003 §5](rfc-0003-runtime-requirements-monitors-responses.md#5-static-semantics-diagnostics) is the single normative source for TVL 1.3 diagnostic codes, conditions, and severities. This appendix does not define aliases or a second registry. The following are only cross-references for codes explicitly used in §12; all other runtime diagnostics, syntax-level enums, and lexical constraints are specified in the RFC. These references do not assert that an implementation already emits the diagnostics.
 

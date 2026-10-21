@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT** — not accepted; syntax, codes and meaning may change before acceptance. Design decisions D1–D5 recorded 2026-10-16 (§16.1). Draft revision 2026-10-21 adds `optimize.deploy` (§7.6) |
+| **Status** | **Accepted** 2026-10-21 (TVL 1.3.0). Design decisions D1–D5 recorded 2026-10-16 (§16.1); revision 2026-10-21 adds `optimize.deploy` (§7.6) and restricts `among` to checker predicates (§16.3 question 20) |
 | **Target language version** | TVL 1.3 (conservative extension of 1.2) |
-| **Tracking** | not assigned in this draft |
+| **Tracking** | not assigned |
 | **Builds on** | RFC 0001 (ACCEPTED): bindings, certificates, strict promotion, the shared namespace · RFC 0002 (ACCEPTED): closed shapes with exact diagnostics, sealed catalogues, shape-versus-registry layering |
 | **Companion** | formal semantics §12 "Runtime Semantics (TVL 1.3)" in `formalization/tvl-formal-semantics.md`. **Division of authority:** §12 is the authority for meaning — unit predicates on complete histories, the verdict contract, populations and windows, episodes and obligations, the declarative meaning of responses, composition order, projection, denotation and theorem statements; this RFC is the authority for syntax, closed enums, lexical forms, diagnostic codes, document schemas and CLI contracts. §12 refers to §4.2 and §5 here instead of restating them |
 | **Language and evaluators** | TVL states what a requirement means and what each verdict promises. Verdicts are produced by an **evaluator profile** outside TVL (§3.5). This RFC does not specify how an evaluator decides from partial evidence, how it tracks episodes and obligations, or how a controller executes responses |
@@ -181,9 +181,9 @@ tvl_pack    = rec("tvl_version": "\"1.3\"", "pack": rec("module": ident),
 
 requirements= "requirements", ":", list(req) ;
 req         = rate_req | zero_req | recovery_req | liveness_req ;                          (* SEALED *)
-rate_req    = rec("name": ident, "kind": "rate_bound", "unit": unit_kind, ["among": pred],
+rate_req    = rec("name": ident, "kind": "rate_bound", "unit": unit_kind, ["among": checker_pred],
                   "violation": pred, "max_rate": prob_open) ;
-zero_req    = rec("name": ident, "kind": "zero_tolerance", "unit": unit_kind, ["among": pred],
+zero_req    = rec("name": ident, "kind": "zero_tolerance", "unit": unit_kind, ["among": checker_pred],
                   "violation": exact_pred) ;
 recovery_req= rec("name": ident, "kind": "recovery_time", "unit": "episode", "of": ident, "within_hours": pos_int) ;
 liveness_req= rec("name": ident, "kind": "evidence_liveness", "unit": "window", "of": ident,
@@ -386,7 +386,8 @@ Each rule names the diagnostic of §5 it emits.
 - **T3 compatibility.** Kind, source, phase and method follow §4.3 (`runtime_invalid_profile`).
 - **T4 content.** A `checker_pred` (as `violation` or `among`) requires `source: customer_side`, or
   `source: evaluation_set` evaluated customer-side; on `backend_trace_metadata` it is
-  `runtime_content_on_backend_source`.
+  `runtime_content_on_backend_source`. `among` itself is a `checker_pred` (`runtime_among_not_checker`): 1.3 defines
+  population membership only for checker labels (formal semantics §12, membership `A_q`).
 - **T5 zero tolerance.** `zero_tolerance.violation` is an `exact_pred` (`runtime_zero_tolerance_inexact`); a
   `zero_tolerance` monitor declares no `sampling` (`runtime_zero_tolerance_incomplete`).
 - **T6 sampling.** `sampling: unverified` is allowed only with `backend_trace_metadata`; `head_sampled_declared` and
@@ -584,6 +585,7 @@ shape-versus-registry layering of RFC 0001 and RFC 0002 (`T:spec/grammar/tvl.sch
 | `runtime_max_tracked_correlations_out_of_range` | E | `limits.max_tracked_correlations` < 1 | `lints/correlation-limit-domain.yml` |
 | `runtime_burn_out_of_range` | E | burn monitor with b ≤ 1, bθ ≥ 1, or no k ≤ `min_samples` that breaches against bθ | `lints/burn-threshold-out-of-range.yml` |
 | `runtime_zero_tolerance_inexact` | E | a `zero_tolerance` violation that is not an `exact_pred` | `lints/zero-tolerance-metric-inexact.yml` |
+| `runtime_among_not_checker` | E | an `among` that is a metric or exact predicate rather than a `checker_pred` | `lints/among-not-checker.yml` |
 | `runtime_zero_tolerance_incomplete` | E | a `zero_tolerance` monitor declares sampling: a sampled window is never complete, so MET is unreachable and episodes never close (§6.9) | `lints/zero-tolerance-sampling-forbidden.yml` |
 | `runtime_protocol_nondeterministic` | E | a protocol violates T12 | `lints/protocol-overlap.yml` |
 | `runtime_tool_not_code_identifier` | E | a selector `tool` that is not a `code_ident` | `lints/tool-identifier-lexical.yml` |
@@ -1283,8 +1285,9 @@ responses:
    obligation. After a deploy the episode stays open until healthy production windows resolve it; further BREACHED
    windows keep it open, and the response's other rules keep their meaning.
 7. **Triggers.** `deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`
-   (`runtime_invalid_ladder`): the effect-time checks need an open episode of a primary monitor, and burn, liveness,
-   recovery and unit scopes do not supply one.
+   (`runtime_invalid_ladder`): the effect-time checks need an open episode of a primary monitor. Burn, liveness and
+   unit scopes do not supply one; a recovery obligation does have an originating episode (§7.4), and recovery triggers
+   are excluded deliberately in this revision (§16.3 question 18).
 8. **Projection.** The hosted rule carries `deploy` as its closed enum on every `optimize` rule, `never` filled in where
    it is omitted (§4.6, §8.2), so the contract digest binds the declared mode. Approvals, grants, candidate
    fingerprints and gate records are not TVL documents and do not cross with the contract.
@@ -2228,8 +2231,9 @@ Each is settled here by the most conservative reading and needs confirmation at 
     revocation without that key revokes nothing.
 14. **Metrics other than latency.** `cost_usd`, `total_tokens` and `tool_calls` are the unit's values as its producer
     records them; TVL does not define how they are measured.
-15. **Release-gate reason for zero tolerance without `complete: true`.** The release gate reports
-    `UNKNOWN(incomplete)` (not `engine_required`): completeness is the harness's attestation, and no evaluator can
+15. **Release-gate reason for zero tolerance without `complete: true`.** For valid counts with u = 0 and pl = 0, the
+    release gate reports `UNKNOWN(incomplete)` (not `engine_required`; with u > 0 or pl > 0 the first row of §6.11
+    applies and the reason is `engine_required`): completeness is the harness's attestation, and no evaluator can
     supply it.
 16. **Lateness allowance.** 2W after `due(w)` for every evaluator profile in 1.3 (§6.8); a different allowance would be
     a revision of this RFC.
@@ -2242,6 +2246,10 @@ Each is settled here by the most conservative reading and needs confirmation at 
 19. **Contract digests of existing `optimize` rules.** Filling `deploy: never` changes the compiled form, and so the
     contract digest, of every module with an `optimize` rule compiled before this revision. The first scope enables only
     `notify` and `open_next_step` (§12), so a platform that follows it has registered no such contract.
+20. **Population membership.** `among` admits only a `checker_pred` (`runtime_among_not_checker`, §4.4 T4). For metric
+    and exact predicates the violation reading and the satisfaction reading select opposite populations (for
+    `absence` of `error`, units with an error versus units without one), and no 1.3 example needs either. A later
+    revision may admit them with an explicit membership definition.
 
 ## Appendix A. Spelling decisions
 
