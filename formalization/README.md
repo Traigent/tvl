@@ -13,6 +13,7 @@ This directory holds the formal semantics of TVL and the RFCs that change the la
 | [0001](rfc-0001-knob-bindings-cvars-policies.md) | Knob Bindings: Calibrated Variables (`cvars`) and `policies` | Accepted (2026-06-05) | TVL 1.1 |
 | [0002](rfc-0002-composite-knobs.md) | Composite Knobs: a sealed control-flow algebra and a named pattern catalog | Accepted (2026-06-06) | TVL 1.2 |
 | [0003](rfc-0003-runtime-requirements-monitors-responses.md) | Runtime Requirements, Monitors and Responses | Accepted (2026-10-21) | TVL 1.3 |
+| [0004](rfc-0004-reactive-outcomes-and-guards.md) | Reactive Outcomes and Guards: telling people when the repair loop needs them | Draft | TVL 1.4 |
 
 The status column is read from each RFC's header; the RFC is the authority if they ever differ.
 
