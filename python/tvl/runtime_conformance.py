@@ -23,6 +23,7 @@ def _check(condition: bool, message: str = "Runtime conformance assertion failed
 
 
 _ALLOWED_EXPECTED_KEYS_BY_KIND = {'compose': {'absent_diagnostics', 'floor_matches', 'error', 'composed_fields'},
+ 'trace': {'notifications'},
  'join': {'promotion_decision', 'error'},
  'lint': {'absent_diagnostics', 'diagnostics'},
  'measurement': {'normalized_monitor_outcomes', 'readiness_issues'},
@@ -49,6 +50,14 @@ def run_runtime_conformance_case(case, *, case_path=None):
     _check(allowed_keys is not None, f"Unsupported input kind: {kind}")
     _check(isinstance(expected, Mapping) and bool(expected) and set(expected) <= allowed_keys,
            f"Unknown or disallowed expected keys for {kind}")
+    if kind == "trace":
+        from tvl.runtime_trace import notification_trace
+        _check(set(inp) == {"kind", "history"}, "Unknown trace input key")
+        _check("module" in case, "Trace needs a module")
+        actual = notification_trace(case["module"], inp["history"])
+        _check(actual == expected["notifications"],
+               f"Notification sequence mismatch: actual={actual!r}, expected={expected['notifications']!r}")
+        return
     if kind == "toolchain":
         if inp.get("reader") == "pre_13":
             tool_keys = {"exit_code", "error"}
@@ -453,6 +462,7 @@ LANGUAGE_FAMILY_GLOBS = {'language/codec': ('latency_roundtrip/*.yml',),
 
 _ALLOWED_EXPECTED_KEYS_BY_KIND["schema"] = {"schema_valid"}
 LANGUAGE_FAMILY_GLOBS["language/report_shape"] = ("report_schema/*.yml",)
+LANGUAGE_FAMILY_GLOBS["language/semantic_trace"] = ("semantic_traces/*.yml",)
 
 
 def run_language_conformance_families(cases_root=None):

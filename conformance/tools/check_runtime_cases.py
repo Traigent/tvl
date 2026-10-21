@@ -28,6 +28,7 @@ CASES = ROOT / "conformance/cases/runtime"
 
 INPUT_KEYS = {'compose': 'operation post_validate_without_provenance', 'lint': 'operation', 'projection': 'token_map checker_labels local_artifacts requested_fields', 'roundtrip': 'operation monitor backend_profile', 'toolchain': 'entrypoint reader arguments document_yaml measurement_role monitor_outcomes measurement_format', 'measurement': 'role monitor_outcomes legacy_decision', 'join': 'legacy_decision monitor_verdicts', 'schema': 'instance'}
 EXPECTED_KEYS = set().union(*_ALLOWED_EXPECTED_KEYS_BY_KIND.values())
+INPUT_KEYS["trace"] = "history"
 ENVELOPE_KEYS = set("case_format family description spec_refs module pack base overlay input expected".split())
 
 

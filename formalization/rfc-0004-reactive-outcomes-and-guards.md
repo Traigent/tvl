@@ -296,16 +296,24 @@ valid `guard-only-while-notify.yml`; `guard-on-optimize-rejected.yml`; `guard-un
 `pack-guard-absorbed-monitor-rewritten.yml`, `outcome-trigger-immutable.yml`. Projection:
 `outcome-and-guard-closed-enums.yml`.
 
-Semantic traces (relational cases: a recorded history and the expected events, no engine): attempt closed by episode
-closure records no outcome; attempt closed by response revision while awaiting deploy approval records no outcome and
-closes `attempt_open`; deploy write fails then succeeds on a retry of the same occurrence records no `deploy_failed`;
-invalid promotion evidence gives `optimize_failed`, not `optimize_no_candidate`; one promoted and one invalid
-candidate give no failure outcome; optimization approval expiring after the optimization started still records its
-outcome; deploy approval declined before the deploy closes the attempt with no deploy outcome; an initial counted
-window followed by MET fires `unknown_for` when `hours` equals `tumbling_hours`; unreachable authority gives no
-outcome; undecided run continues across a window without usable evidence and fires; `unknown_for` and `stale` both fire
-on intermittent evidence; an UNDECIDED guard does not suppress; `attempt_open` is seen by a rule fired by the same
-evaluation. Every 1.3 case passes unchanged.
+Semantic traces (relational cases: a recorded history and the expected events, no engine),
+executable under [`conformance/cases/runtime/semantic_traces/`](../conformance/cases/runtime/semantic_traces/):
+
+- [attempt closed by episode closure records no outcome](../conformance/cases/runtime/semantic_traces/attempt-closed-by-episode-closure-records-no-outcome.yml);
+- [attempt closed by response revision while awaiting deploy approval records no outcome and closes `attempt_open`](../conformance/cases/runtime/semantic_traces/attempt-closed-by-response-revision-awaiting-deploy-approval.yml);
+- [deploy write fails then succeeds on a retry of the same occurrence records no `deploy_failed`](../conformance/cases/runtime/semantic_traces/deploy-write-fails-then-succeeds-on-same-occurrence-retry.yml);
+- [invalid promotion evidence gives `optimize_failed`, not `optimize_no_candidate`](../conformance/cases/runtime/semantic_traces/invalid-promotion-evidence-gives-optimize-failed.yml);
+- [one promoted and one invalid candidate give no failure outcome](../conformance/cases/runtime/semantic_traces/one-promoted-and-one-invalid-candidate-give-no-failure.yml);
+- [optimization approval expiring after the optimization started still records its outcome](../conformance/cases/runtime/semantic_traces/optimization-approval-expires-after-start-still-records-outcome.yml);
+- [deploy approval declined before the deploy closes the attempt with no deploy outcome](../conformance/cases/runtime/semantic_traces/deploy-approval-declined-before-start-closes-without-outcome.yml);
+- [an initial counted window followed by MET fires `unknown_for` when `hours` equals `tumbling_hours`](../conformance/cases/runtime/semantic_traces/initial-counted-window-followed-by-met-fires-unknown-for.yml);
+- [unreachable authority gives no outcome](../conformance/cases/runtime/semantic_traces/unreachable-authority-gives-no-outcome.yml);
+- [undecided run continues across a window without usable evidence and fires](../conformance/cases/runtime/semantic_traces/undecided-run-continues-across-window-without-usable-evidence.yml);
+- [`unknown_for` and `stale` both fire on intermittent evidence](../conformance/cases/runtime/semantic_traces/unknown-for-and-stale-both-fire-on-intermittent-evidence.yml);
+- [an UNDECIDED guard does not suppress](../conformance/cases/runtime/semantic_traces/undecided-guard-does-not-suppress.yml);
+- [`attempt_open` is seen by a rule fired by the same evaluation](../conformance/cases/runtime/semantic_traces/attempt-open-visible-to-rule-fired-by-same-evaluation.yml);
+
+Every 1.3 case passes unchanged.
 
 ## 6. Alternatives considered
 
