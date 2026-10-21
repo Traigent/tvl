@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT** — not accepted; syntax, codes and meaning may change before acceptance |
+| **Status** | **Accepted** 2026-10-21 (TVL 1.4.0) |
 | **Target language version** | TVL 1.4 (conservative extension of 1.3) |
-| **Tracking** | not assigned in this draft |
+| **Tracking** | not assigned |
 | **Builds on** | RFC 0003 (Accepted 2026-10-21, TVL 1.3) |
-| **Companion** | formal semantics §13 (to be written with this RFC) |
+| **Companion** | [formal semantics §13](tvl-formal-semantics.md#13-reactive-outcomes-and-notification-guards-tvl-14) |
 | **Conformance** | `conformance/cases/runtime/` (cases listed in §5) |
 
 ## 1. Motivation
@@ -234,8 +234,8 @@ repair runs (the inhibition pattern below) is intended.
         severity: critical
 ```
 
-Triggering on `episode_continued` re-checks at each further breached window, so the page arrives once the provider
-recovers or the fix ends while latency stays breached.
+Triggering on `episode_continued` re-checks at each further breached window, so the page arrives
+once the provider has recovered and no repair attempt remains open, while latency stays breached.
 
 ### 2.5 Diagnostics
 
@@ -276,16 +276,21 @@ A `/2` artifact without a projected 1.4 construct is refused, including one carr
 For every input accepted by TVL 1.3.0 (commit `bcd20f6dd`), canonical hosted and local artifacts, including digests,
 remain byte-identical for the same token map, checker registry, packs and toolchain version. This includes authored
 `"1.4"` modules without runtime blocks, which 1.3.0 accepted and compiled to version `"1.3"` and `/1`.
+The TVL 1.4.0 compiler defaults `toolchain.version` to `"1.4.0"`, rather than `"1.3.0"`. With otherwise identical
+inputs, a 1.3 module's hosted artifact is byte-identical except for this field and any checked packs' derived
+`pack_contract_digest` values; its local artifact differs only in the derived `contract_digest`. With no checked
+packs, the hosted artifact differs only in `toolchain.version`. Consumers that pin accepted toolchain versions
+must add `"1.4.0"`. Explicitly pinning `toolchain_version="1.3.0"` preserves the historical canonical bytes and digests.
 Verdict, episode, liveness, obligation and action states stay separate facts (RFC 0003 §11.6); an outcome event is a
 recorded action state, never a verdict.
 
 ## 4. Semantics and proofs
 
-Formal semantics §13 will define the attempt lifecycle and its outcome function (§2.2), the undecided-run relation
+Formal semantics §13 defines the attempt lifecycle and its outcome function (§2.2), the undecided-run relation
 over window records (§2.3), and guard evaluation as a function into {TRUE, FALSE, UNDECIDED} with Kleene connectives
 and the `notify` resolution of §2.4.
 
-Lean (new `proofs/TVL/Runtime/Guards.lean`), each with its intended class:
+Lean (`proofs/TVL/Runtime/Guards.lean`) formalizes the following statements, each with its recorded class:
 
 - `undecided_never_suppresses` (SUBSTANTIVE, small): for every guard valuation, replacing any guard's value by
   UNDECIDED never turns "delivered" into "suppressed". A truth-table property of the resolution; it says nothing

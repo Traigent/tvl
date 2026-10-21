@@ -10,7 +10,7 @@ If you are new to TVL, start with the example below and read it top to bottom on
 sections.
 
 !!! note "Language version"
-    This reference describes the core constructs of TVL, which is currently at version **1.3**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
+    This reference describes the core constructs of TVL, which is currently at version **1.4**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004, described below; accepted 2026-10-21). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
 
 ## A Small RAG Agent
 
@@ -944,7 +944,7 @@ separate authority and it changes no deployment by itself.
 | `evidence_liveness` obligation | `stale`, `live_again` |
 | promotion | none |
 
-#### Reactive notifications (TVL 1.4 DRAFT, RFC 0004)
+#### Reactive notifications (TVL 1.4, RFC 0004)
 
 Declare `tvl_version: "1.4"` when a rule uses any of the following, including empty guard lists.
 All require `do: notify` (`runtime_notify_only`). TVL 1.3 documents keep their diagnostics.
@@ -955,17 +955,20 @@ All require `do: notify` (`runtime_notify_only`). TVL 1.3 documents keep their d
   triggers fire once per attempt; neither repeat field is allowed. Packs cannot declare them.
 - `trigger: {monitor: latency, event: unknown_for, hours: 6}` requires a primary runtime monitor
   and hours at least its tumbling duration. It reports UNKNOWN windows with usable evidence, by
-  window time, once per undecided run. Windows without usable evidence neither count nor end
+  window time, once per undecided run. An UNKNOWN window without usable evidence neither counts nor ends
   the run; MET, BREACHED or an effective-key change ends it. A single counted window can fire.
   Repeats are allowed. This differs from `stale`; both may fire on intermittent evidence.
 - `only_while: [{monitor: errors, state: episode_open}]` is a conjunction;
   `unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]` is a
   disjunction. These are the only guard forms. Monitor guards require primary runtime monitors;
-  attempt guards require an optimize rule of the same response, and are forbidden in packs.
+  attempt guards require an optimize rule of the same response, and are forbidden in packs. Open attempts
+  from earlier response revisions count if that optimize rule id exists in the current response revision.
 
 An attempt opens when optimize fires, including while approval is pending; it closes at its last
 applicable outcome, successful repair/deploy, scope closure, response revision change before a
 pending effect, or decline/expiry of the next effect's approval before that effect starts.
+If the scope closes or the response revision changes after an effect has started, that effect
+finishes and records its result, then the attempt closes; no later effect starts.
 Waiting for approval or unreachable authority keeps it open with no outcome. Expiry after start
 still allows that effect's outcome. Promote takes precedence over invalid evidence in another
 candidate; without any Promote, invalid evidence gives `optimize_failed`, not NoDecision.
@@ -1033,11 +1036,15 @@ The `/1` contract and local schemas are frozen at TVL 1.3.0 and require `tvl_ver
 Previously accepted inputs retain their canonical bytes for the same compiler inputs and toolchain version,
 including authored `"1.4"` modules without runtime blocks. Without projected new constructs, declarations compile
 to `/1` and version `"1.3"`, regardless of authored version, as in 1.3.0.
+The 1.4.0 compiler defaults `toolchain.version` to `"1.4.0"`. Compared with a 1.3.0 compilation,
+only this hosted field, any checked packs' derived `pack_contract_digest` values, and local
+`contract_digest` change. Pin `toolchain_version="1.3.0"` for historical bytes and digests;
+consumers that pin toolchain versions must add `"1.4.0"` (RFC 0004 §3).
 Outcome triggers, `unknown_for`, and nonempty projected `only_while`/`unless` guards select `/2` and version `"1.4"`.
 Empty guard lists are omitted by projection. A `/2` artifact without projected new constructs is refused,
 even if it carries version `"1.4"`.
 Validators dispatch by `format`; `/1` refuses every 1.4 field, and unknown format tags are refused.
-See RFC 0004 §3 and §7.2; the RFC remains DRAFT.
+See RFC 0004 §3 and §7.2; the RFC was accepted on 2026-10-21 as TVL 1.4.0.
 
 Token-map `namespace` values are `module`, `requirement`, `monitor`, `response`, `rule`, `environment`, `selector_ref`, `checker`, `state`. In every
 namespace except `checker` the `hosted` value matches `^[A-Za-z0-9_-]{1,128}$`; in `checker`, `local` is a customer checker id and `hosted` is

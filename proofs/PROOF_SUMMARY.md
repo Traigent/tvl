@@ -572,7 +572,7 @@ existing manifest/toolchain; the TVL 1.3 modules add no dependency. See README.m
 for the boundary and trusted-input limits.
 
 
-## RFC 0004: Reactive notification guards (TVL 1.4 draft)
+## RFC 0004: Reactive notification guards (TVL 1.4)
 
 `TVL/Runtime/Guards.lean` is imported by `Main.lean`. The model uses strong Kleene folds,
 a validated notify-only rule type, unchanged occurrence identity/scope, and the exact monitor

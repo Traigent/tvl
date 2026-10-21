@@ -2019,7 +2019,7 @@ Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j
 
 ## 13. Reactive Outcomes and Notification Guards (TVL 1.4)
 
-This section formalizes RFC 0004 §§2–4. It extends §12 without changing verdict, episode,
+This section formalizes RFC 0004 §§2–4, accepted on 2026-10-21 as TVL 1.4.0. It extends §12 without changing verdict, episode,
 liveness, obligation or action states. It specifies recorded-history relations, not an executing
 controller. The static compiler accepts these declarations; runtime execution is external.
 
@@ -2047,6 +2047,8 @@ its deploy outcome if optimization produced a promoted candidate and `deploy: if
 otherwise its optimize outcome. It also closes on successful optimization with a promoted
 candidate under `deploy: never`, or successful deployment. Closing the originating scope or
 changing the response revision before a pending effect closes the attempt without an outcome.
+If the scope closes or the response revision changes after an effect has started, the attempt
+stays open until that effect finishes and records its result, then closes; no later effect starts.
 Decline or expiry of approval for the next effect, before that effect starts, also closes it
 without an outcome. Expiry after an effect starts does not close the attempt; the running
 effect still records its outcome. Pending approval and unreachable authority keep it open.
@@ -2074,7 +2076,7 @@ it cannot start, retry or escalate a repair.
 
 **Definition 13.5 (Counted window).** A primary runtime monitor's window is counted iff its
 verdict is UNKNOWN and it has usable evidence (Definition 12.20). Windows are ordered by
-window start, never evaluation time. A window without usable evidence neither counts nor ends
+window start, never evaluation time. An UNKNOWN window without usable evidence neither counts nor ends
 a run; liveness remains a distinct fact.
 
 **Definition 13.6 (Undecided run relation).** A run begins at the first counted window after the
@@ -2096,7 +2098,8 @@ is TRUE if m has an open episode for the same agent and environment, FALSE if m 
 evaluated for them and has none (resolved and withdrawn are closed), UNDECIDED if its state
 cannot be established. m must be a primary runtime monitor in the document or composed pack.
 An `attempt_open(r)` guard is TRUE if an attempt of optimize rule r of the same response is
-open, FALSE if none is open, UNDECIDED if this cannot be established.
+open, FALSE if none is open, UNDECIDED if this cannot be established. Open attempts from earlier
+response revisions count if r's optimize rule id exists in the current response revision.
 
 **Definition 13.8 (Kleene connectives).** Conjunction is FALSE if either operand is FALSE, TRUE
 if both are TRUE, UNDECIDED otherwise. Disjunction is TRUE if either operand is TRUE, FALSE if
@@ -2154,7 +2157,11 @@ Hosted projection carries only closed outcome/event/state enums and hosted monit
 The local program keeps local references. `backend_v1` remains unchanged and carries no responses.
 TVL 1.3 declarations retain their diagnostics. Every input accepted by TVL 1.3.0 retains byte-identical canonical
 artifacts for the same compiler inputs and toolchain version, including authored `"1.4"` modules without runtime
-blocks. The `/1` schemas are frozen at 1.3.0 and require `tvl_version: "1.3"`.
+blocks. The default toolchain version changes to `"1.4.0"`: compared with a 1.3.0 compilation,
+only hosted `toolchain.version`, any checked packs' derived `pack_contract_digest` values, and
+local `contract_digest` change. Pinning `toolchain_version="1.3.0"` preserves historical bytes and
+digests; consumers that pin toolchain versions must add `"1.4.0"` (RFC 0004 §3).
+The `/1` schemas are frozen at 1.3.0 and require `tvl_version: "1.3"`.
 Projected outcome triggers, `unknown_for`, or nonempty guards select `/2` and version `"1.4"`. Without these constructs,
 artifacts use `/1` and version `"1.3"`, regardless of authored version. Empty guard lists are omitted by projection.
 A `/2` artifact without a projected 1.4 construct is refused, even with version `"1.4"`.
