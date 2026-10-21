@@ -3258,7 +3258,10 @@ _HOURS_DIVISORS = {1, 2, 3, 4, 6, 8, 12, 24}
 _BACKEND_HOURS = {1, 3, 6, 12, 24}
 _BACKEND_CONFIDENCES = {Fraction(9, 10), Fraction(95, 100), Fraction(99, 100)}
 
+_OUTCOME_EVENTS = {"optimize_no_candidate", "optimize_failed", "deploy_refused", "deploy_failed"}
+
 _TRIGGER_EVENTS = {
+    "unknown_for",
     "episode_opened",
     "episode_continued",
     "episode_open_for",
@@ -3288,6 +3291,9 @@ _SEVERITIES = {"info", "warning", "critical"}
 _ON_CHECK_ERRORS = {"block", "allow"}
 _SUSPEND_FALLBACKS = {"static_unavailable", "route_to_human"}
 _SUSPEND_ESCALATION_EVENTS = {"episode_continued", "episode_open_for", "recovery_overdue"}
+_DEPLOY_MODES = {"never", "if_promoted"}
+# RFC 0003 §7.6: a deploy is a service effect of an episode scope, so only episode events may carry it.
+_DEPLOY_EPISODE_EVENTS = {"episode_opened", "episode_continued", "episode_open_for"}
 
 
 def _address_runtime_issues(issues: list[Issue], start: int = 0) -> None:
@@ -3346,12 +3352,12 @@ def _lint_runtime_version(doc: dict[str, Any], issues: list[Issue]) -> None:
         issues.append(
             {
                 "code": "runtime_version_required",
-                "message": "TVL 1.3 constructs and packs require tvl_version: '1.3'",
+                "message": "Runtime constructs and packs require tvl_version: '1.3' (or '1.4' with RFC 0004 constructs)",
                 "path": ["tvl_version"],
                 "severity": "error",
             }
         )
-    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") != "1.3":
+    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") not in {"1.3", "1.4"}:
         issues.append(
             {
                 "code": "declared_version_below_constructs",
@@ -3360,6 +3366,29 @@ def _lint_runtime_version(doc: dict[str, Any], issues: list[Issue]) -> None:
                 "severity": "error",
             }
         )
+
+    elif doc.get("tvl_version") == "1.3" and _uses_14_constructs(doc):
+        issues.append({
+            "code": "declared_version_below_constructs",
+            "message": 'Reactive outcomes and guards require tvl_version: "1.4"',
+            "path": ["tvl_version"], "severity": "error",
+        })
+
+
+def _uses_14_constructs(doc: dict[str, Any]) -> bool:
+    responses = doc.get("responses")
+    for resp in responses if isinstance(responses, list) else []:
+        if not isinstance(resp, dict) or not isinstance(resp.get("rules"), list):
+            continue
+        for rule in resp["rules"]:
+            if not isinstance(rule, dict):
+                continue
+            trigger = rule.get("trigger")
+            if "only_while" in rule or "unless" in rule or (
+                isinstance(trigger, dict) and ("rule" in trigger or trigger.get("event") == "unknown_for")
+            ):
+                return True
+    return False
 
 
 def _selector_canonical(sel: dict[str, Any]) -> tuple[Any, ...]:
@@ -3471,6 +3500,7 @@ def _lint_predicate(
     issues: list[Issue],
     *,
     exact_only: bool = False,
+    checker_only: bool = False,
     checker_registry: dict[str, Sequence[str]] | None = None,
 ) -> None:
     if not isinstance(pred, dict):
@@ -3492,6 +3522,17 @@ def _lint_predicate(
             {
                 "code": "runtime_invalid_profile",
                 "message": "Predicate must specify exactly one of metric, checker, or pattern",
+                "path": path,
+                "severity": "error",
+            }
+        )
+        return
+
+    if checker_only and not has_checker:
+        issues.append(
+            {
+                "code": "runtime_among_not_checker",
+                "message": "among must be a checker predicate; 1.3 defines population membership only for checker labels",
                 "path": path,
                 "severity": "error",
             }
@@ -3986,7 +4027,7 @@ def _lint_requirements(
                     req["among"],
                     path + ["among"],
                     issues,
-                    exact_only=False,
+                    checker_only=True,
                     checker_registry=checker_registry,
                 )
             if "max_rate" in req:
@@ -4043,7 +4084,7 @@ def _lint_requirements(
                     req["among"],
                     path + ["among"],
                     issues,
-                    exact_only=False,
+                    checker_only=True,
                     checker_registry=checker_registry,
                 )
         elif kind == "recovery_time":
@@ -5180,6 +5221,7 @@ def _emitted_events_for_monitor(mon: dict[str, Any], req: dict[str, Any] | None)
     role = _monitor_role(mon, req)
     if role in {"primary_rate", "primary_zero"}:
         events = {
+            "unknown_for",
             "episode_opened",
             "episode_continued",
             "episode_open_for",
@@ -5225,6 +5267,7 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
         if isinstance(m, dict) and isinstance(m.get("name"), str)
     }
     legacy_names = _legacy_module_names(doc)
+    guard_edges: list[tuple[str, str, list[Any]]] = []
     seen_resp_names: set[str] = set()
 
     for r_idx, resp in enumerate(resps):
@@ -5274,6 +5317,7 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
             )
             continue
 
+        rules_by_id = {r.get("id"): r for r in rules if isinstance(r, dict) and isinstance(r.get("id"), str)}
         seen_rule_ids: set[str] = set()
         for rule_idx, rule in enumerate(rules):
             path = r_path + ["rules", rule_idx]
@@ -5323,6 +5367,9 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
                         "severity": "error",
                     }
                 )
+            elif "rule" in trigger:
+                t_event = trigger.get("event")
+                _lint_outcome_trigger(doc, rule, rules_by_id, path, issues)
             else:
                 mon_name = trigger.get("monitor")
                 t_event = trigger.get("event")
@@ -5347,18 +5394,19 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
                     )
                 else:
                     t_req = reqs_by_name.get(t_mon.get("requirement", ""))
-                    if (
-                        isinstance(t_event, str) and t_event in _TRIGGER_EVENTS
-                        and t_event not in _emitted_events_for_monitor(t_mon, t_req)
-                    ):
-                        issues.append(
-                            {
-                                "code": "runtime_ref_kind_mismatch",
-                                "message": "Monitor does not emit this trigger event",
-                                "path": path + ["trigger", "event"],
-                                "severity": "error",
-                            }
-                        )
+                    if isinstance(t_event, str) and t_event in _TRIGGER_EVENTS:
+                        if t_event == "unknown_for" and _monitor_role(t_mon, t_req) not in {"primary_rate", "primary_zero"}:
+                            issues.append({"code": "runtime_invalid_ladder", "message": "unknown_for requires a primary runtime monitor",
+                                           "path": path + ["trigger", "event"], "severity": "error"})
+                        elif t_event not in _emitted_events_for_monitor(t_mon, t_req):
+                            issues.append(
+                                {
+                                    "code": "runtime_ref_kind_mismatch",
+                                    "message": "Monitor does not emit this trigger event",
+                                    "path": path + ["trigger", "event"],
+                                    "severity": "error",
+                                }
+                            )
                 if "hours" in trigger:
                     t_hours = trigger.get("hours")
                     if not _is_int_strict(t_hours) or t_hours < 1:
@@ -5370,24 +5418,33 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
                                 "severity": "error",
                             }
                         )
-                    if t_event != "episode_open_for":
+                    if t_event not in {"episode_open_for", "unknown_for"}:
                         issues.append(
                             {
                                 "code": "runtime_invalid_ladder",
-                                "message": "trigger.hours is only permitted with event: episode_open_for",
+                                "message": "trigger.hours is only permitted with episode_open_for or unknown_for",
                                 "path": path + ["trigger", "hours"],
                                 "severity": "error",
                             }
                         )
-                elif t_event == "episode_open_for":
+                elif t_event in {"episode_open_for", "unknown_for"}:
                     issues.append(
                         {
                             "code": "runtime_invalid_ladder",
-                            "message": "event: episode_open_for requires trigger.hours",
+                            "message": "This event requires trigger.hours",
                             "path": path + ["trigger"],
                             "severity": "error",
                         }
                     )
+
+            if isinstance(trigger, dict) and trigger.get("event") == "unknown_for" and t_mon is not None:
+                window = t_mon.get("window")
+                window_hours = window.get("tumbling_hours") if isinstance(window, dict) else (6 if t_mon.get("profile") == "backend_v1" else None)
+                hours = trigger.get("hours")
+                if _is_int_strict(hours) and _is_int_strict(window_hours) and hours < window_hours:
+                    issues.append({"code": "runtime_trigger_hours_out_of_range", "message": "unknown_for hours must be at least tumbling_hours",
+                                   "path": path + ["trigger", "hours"], "severity": "error"})
+            _lint_reactive_guards(doc, rule, rules_by_id, mons_by_name, reqs_by_name, path, issues, guard_edges)
 
             action = rule.get("do")
             if not isinstance(action, str) or action not in _ACTIONS:
@@ -5573,6 +5630,44 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
             elif "on_check_error" in rule:
                 invalid_parameter("on_check_error", "on_check_error is permitted only on block_action or halt_unit")
 
+            if "deploy" in rule:
+                deploy = rule.get("deploy")
+                if action != "optimize":
+                    invalid_parameter("deploy", "deploy is permitted only on optimize")
+                elif not isinstance(deploy, str) or deploy not in _DEPLOY_MODES:
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Expected deploy: never, if_promoted",
+                            "path": path + ["deploy"],
+                            "severity": "error",
+                        }
+                    )
+                elif deploy == "if_promoted":
+                    if t_event not in _DEPLOY_EPISODE_EVENTS:
+                        issues.append(
+                            {
+                                "code": "runtime_invalid_ladder",
+                                "message": "deploy: if_promoted requires an episode trigger (episode_opened, episode_continued, or episode_open_for)",
+                                "path": path + ["trigger", "event"],
+                                "severity": "error",
+                            }
+                        )
+                    gate_req = t_mon.get("requirement") if t_mon is not None else None
+                    has_gate = isinstance(gate_req, str) and any(
+                        isinstance(m, dict) and m.get("phase") == "promotion" and m.get("requirement") == gate_req
+                        for m in mons_by_name.values()
+                    )
+                    if t_mon is not None and not has_gate:
+                        issues.append(
+                            {
+                                "code": "response_deploy_without_promotion_monitor",
+                                "message": "deploy: if_promoted requires a promotion monitor on the trigger monitor's requirement",
+                                "path": path + ["deploy"],
+                                "severity": "error",
+                            }
+                        )
+
             has_repeat_after = "repeat_after_hours" in rule
             has_max_repeats = "max_repeats" in rule
             if has_repeat_after:
@@ -5608,3 +5703,103 @@ def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
                         "severity": "error",
                     }
                 )
+
+
+    _lint_guard_cycles(guard_edges, issues)
+
+
+def _rule_source_monitor(rule: dict[str, Any], rules: dict[str, Any]) -> str | None:
+    trigger = rule.get("trigger")
+    if not isinstance(trigger, dict):
+        return None
+    if "rule" in trigger:
+        target = rules.get(trigger["rule"]) if isinstance(trigger["rule"], str) else None
+        trigger = target.get("trigger") if isinstance(target, dict) and target.get("do") == "optimize" else None
+    return trigger.get("monitor") if isinstance(trigger, dict) and isinstance(trigger.get("monitor"), str) else None
+
+
+def _lint_outcome_trigger(doc: dict[str, Any], rule: dict[str, Any], rules: dict[str, Any],
+                          path: list[Any], issues: list[Issue]) -> None:
+    trigger = rule["trigger"]
+    def error(code: str, message: str, field: str = "trigger") -> None:
+        issues.append({"code": code, "message": message, "path": path + [field], "severity": "error"})
+    event = trigger.get("event")
+    if not isinstance(event, str) or event not in _OUTCOME_EVENTS:
+        error("runtime_unknown_kind", "Unknown outcome event")
+    if set(trigger) != {"rule", "event"}:
+        error("runtime_invalid_ladder", "An outcome trigger has only rule and event")
+    target = rules.get(trigger.get("rule")) if isinstance(trigger.get("rule"), str) else None
+    if target is None:
+        error("runtime_missing_ref", "Outcome trigger requires a rule in the same response")
+    elif target is rule or target.get("do") != "optimize":
+        error("runtime_ref_kind_mismatch", "Outcome trigger must name another optimize rule")
+    elif event in {"deploy_refused", "deploy_failed"} and target.get("deploy", "never") != "if_promoted":
+        error("runtime_invalid_ladder", "Deploy outcomes require deploy: if_promoted")
+    if "repeat_after_hours" in rule or "max_repeats" in rule:
+        error("runtime_invalid_ladder", "Outcome triggers cannot repeat")
+    if "pack" in doc and "tvl" not in doc:
+        error("runtime_invalid_ladder", "Packs cannot declare outcome triggers")
+
+
+def _lint_reactive_guards(doc: dict[str, Any], rule: dict[str, Any], rules: dict[str, Any],
+                          monitors: dict[str, Any], requirements: dict[str, Any], path: list[Any],
+                          issues: list[Issue], edges: list[tuple[str, str, list[Any]]]) -> None:
+    trigger = rule.get("trigger")
+    reactive = "only_while" in rule or "unless" in rule or (
+        isinstance(trigger, dict) and ("rule" in trigger or trigger.get("event") == "unknown_for"))
+    if reactive and rule.get("do") != "notify":
+        issues.append({"code": "runtime_notify_only", "message": "Reactive outcomes and guards are notify-only",
+                       "path": path + ["do"], "severity": "error"})
+    source = _rule_source_monitor(rule, rules)
+    for field in ("only_while", "unless"):
+        if field not in rule:
+            continue
+        guards = rule[field]
+        if not isinstance(guards, list):
+            issues.append({"code": "runtime_invalid_profile", "message": "Guards must be a list",
+                           "path": path + [field], "severity": "error"})
+            continue
+        for idx, guard in enumerate(guards):
+            gpath = path + [field, idx]
+            def issue(code: str, message: str, severity: str = "error") -> None:
+                issues.append({"code": code, "message": message, "path": gpath, "severity": severity})
+            if not isinstance(guard, dict) or set(guard) not in ({"monitor", "state"}, {"rule", "state"}):
+                issue("runtime_unknown_kind", "Expected a sealed episode_open or attempt_open guard")
+                continue
+            key, state = ("monitor", "episode_open") if "monitor" in guard else ("rule", "attempt_open")
+            if guard.get("state") != state:
+                issue("runtime_unknown_kind", "Unknown guard state for this reference kind")
+                continue
+            name = guard[key]
+            target = (monitors if key == "monitor" else rules).get(name) if isinstance(name, str) else None
+            if key == "rule" and "pack" in doc and "tvl" not in doc:
+                issue("runtime_invalid_ladder", "Packs cannot declare attempt_open guards")
+            if target is None:
+                issue("runtime_missing_ref", "Guard reference is not declared in its scope")
+            elif key == "rule" and target.get("do") != "optimize":
+                issue("runtime_ref_kind_mismatch", "attempt_open requires an optimize rule in the same response")
+            elif key == "monitor" and _monitor_role(target, requirements.get(target.get("requirement"))) not in {"primary_rate", "primary_zero"}:
+                issue("runtime_ref_kind_mismatch", "episode_open requires a primary runtime monitor")
+            if key == "monitor" and source is not None and isinstance(name, str):
+                if field == "unless":
+                    edges.append((source, name, gpath))
+                elif source == name:
+                    issue("runtime_guard_redundant", "only_while on the source monitor is redundant", "warning")
+
+
+def _lint_guard_cycles(edges: list[tuple[str, str, list[Any]]], issues: list[Issue]) -> None:
+    graph: dict[str, set[str]] = {}
+    for source, target, _ in edges:
+        graph.setdefault(source, set()).add(target)
+    # Each edge is cyclic iff its target can reach its source (including self-loops).
+    for source, target, path in edges:
+        pending, visited = [target], set()
+        while pending:
+            node = pending.pop()
+            if node == source:
+                issues.append({"code": "runtime_guard_cycle", "message": "Cycle in notification unless monitor graph",
+                               "path": path, "severity": "error"})
+                break
+            if node not in visited:
+                visited.add(node)
+                pending.extend(graph.get(node, ()))

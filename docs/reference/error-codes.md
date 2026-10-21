@@ -926,7 +926,7 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 
 These codes belong to the TVL 1.3 requirements, monitors and responses (see the
 [guide](../guides/requirements-monitors-responses.md) and the
-[language reference](language.md#tvl-13-requirements-monitors-responses)). TVL 1.3 is a draft; codes can still change.
+[language reference](language.md#tvl-13-requirements-monitors-responses)). TVL 1.3 was accepted on 2026-10-21; a change to these codes is a language revision.
 
 Every diagnostic has the same shape as the codes above: `{ code, message, path, severity }`. In text mode a line looks like
 `[runtime_window_out_of_range] monitors.0.window.tumbling_hours: tumbling_hours 5 is outside its allowed domain`, and `path` points at the key to fix. Severity is
@@ -940,7 +940,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
 | compile | `tvl-compile-runtime` |
 | gate | `tvl-measure-validate`, `tvl-ci-gate` |
-| platform | defined by the draft for the platform that registers or evaluates your contract; no tool in this repository produces it |
+| platform | defined by RFC 0003 for the platform that registers or evaluates your contract; no tool in this repository produces it |
 
 !!! note "Message text"
     Some tools print only the code, for example `Error: requirement_weaker_than_floor`, with no path. The code, not the wording, is the stable part.
@@ -950,8 +950,8 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
 | `unsupported_construct` | error | various tools | a tool met a 1.3 construct it does not implement (`requirements`, `monitors`, `responses`, `tvl_pack`, `monitor_outcomes`, `runtime_report`) and refused instead of ignoring it. The first construct found is named. | use a tool that supports the construct (for a pack: `tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`), or remove the construct for that tool |
-| `runtime_version_required` | error | lint | the document uses `requirements`, `monitors` or `responses`, or is a `tvl_pack`, and has no `tvl_version` | add `tvl_version: "1.3"` |
-| `declared_version_below_constructs` | error | lint | `tvl_version` is present but is not the string `"1.3"`; an unquoted `1.3` is a number | write `tvl_version: "1.3"` with quotes |
+| `runtime_version_required` | error | lint | the document uses `requirements`, `monitors` or `responses`, or is a `tvl_pack`, and has no `tvl_version` | add `tvl_version: "1.4"` for reactive constructs, otherwise "1.3" or "1.4" |
+| `declared_version_below_constructs` | error | lint | `tvl_version` is not a supported quoted runtime version, or reactive constructs use "1.3"; unquoted versions are numbers | use "1.4" for reactive constructs, otherwise "1.3" or "1.4", quoted |
 | `runtime_unsupported_capability` | error | platform | the target platform has not enabled the monitor's kind, source, method or predicate class | change the declaration to something the platform supports, or ask the platform to enable it |
 | `response_action_unsupported` | error | platform | the target platform cannot carry out a rule's action | remove the rule or pick an action the platform supports |
 
@@ -961,15 +961,15 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 |---|---|---|---|---|
 | `runtime_name_collision` | error | lint, compose | a duplicate name within the requirement, monitor or response namespace; a runtime name equal to a tvar, cvar, policy or composite name; or a pack name that clashes with a different module declaration | rename one of them |
 | `response_rule_id_duplicate` | error | lint | two rules of one response share an `id` | give each rule a unique `id` |
-| `runtime_missing_ref` | error | lint | `monitor.requirement`, `of` or `trigger.monitor` names nothing | fix the name or declare the missing item |
-| `runtime_ref_kind_mismatch` | error | lint | a reference points at the wrong kind of thing: `recovery_time.of` at a monitor with no episode, `evidence_liveness.of` at a monitor with no windows, or a `trigger.event` the monitor never emits | point at the right monitor, or pick an event that monitor emits (guide, section 7) |
+| `runtime_missing_ref` | error | lint | `monitor.requirement`, `of`, `trigger.monitor`, outcome `trigger.rule`, guard `monitor` or response-local guard `rule` names nothing | fix the name or declare the missing item |
+| `runtime_ref_kind_mismatch` | error | lint | a reference points at the wrong kind of thing: `recovery_time.of` at a monitor with no episode, `evidence_liveness.of` at a monitor with no windows, a `trigger.event` the monitor never emits, an outcome naming itself or a non-optimize rule, or a guard naming a non-primary monitor or non-optimize rule | point at the right monitor, or pick an event that monitor emits (guide, section 7) |
 | `runtime_dependency_cycle` | error | lint | requirements and monitors refer to each other in a cycle | break the cycle: an obligation (`of`) must not depend on itself |
 
 ### Kinds, profiles and values
 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
-| `runtime_unknown_kind` | error | lint, compile | a value outside a sealed list: a requirement kind, unit, pattern, metric, event type, status, checker id or label, source, method, model, sampling mode, attribution or resolution rule, profile, phase, trigger event, `correlate_by`, `unlisted`, `mode`, approval, severity or `on_check_error`. Also an unbound customer checker or label at compile time. | use a value from the reference table; check the spelling |
+| `runtime_unknown_kind` | error | lint, compile | a value outside a sealed list: a requirement kind, unit, pattern, metric, event type, status, checker id or label, source, method, model, sampling mode, attribution or resolution rule, profile, phase, trigger event, `correlate_by`, `unlisted`, `mode`, approval, severity, `on_check_error` or `deploy`. Also an unbound customer checker or label at compile time. | use a value from the reference table; check the spelling |
 | `response_unknown_action` | error | lint | `do` is not one of the nine actions; `record` is implicit and cannot be declared | use `notify`, `open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`, `block_action` or `halt_unit` |
 | `runtime_invalid_profile` | error | lint, compile | the combination of kind, source, phase and method is not allowed; a field is missing or forbidden for the monitor's role; a key of another variant is present; sampling is not allowed for the source; a stateful pattern has no `limits`; a selector field is on the wrong event; or a number cannot be read exactly | compare the monitor to the role table in the reference; the message names the role |
 | `runtime_legacy_profile_override` | error | lint | under `profile: backend_v1`, a field or value other than the frozen ones | remove the field, or drop `profile: backend_v1` and declare the monitor in full |
@@ -990,13 +990,14 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | `runtime_max_stale_windows_out_of_range` | error | lint | `max_stale_windows` is below 1 | use an integer >= 1 |
 | `runtime_within_ms_out_of_range` | error | lint | `within_ms` is below 1 | use an integer >= 1 |
 | `runtime_max_count_out_of_range` | error | lint | `max_count` is below 0 | use an integer >= 0 |
-| `runtime_trigger_hours_out_of_range` | error | lint | `trigger.hours` is below 1 | use an integer >= 1 |
+| `runtime_trigger_hours_out_of_range` | error | lint | `trigger.hours` is below 1, or unknown_for hours is below the monitor tumbling_hours | use an integer >= 1, and for `unknown_for` at least the monitor's `tumbling_hours` |
 | `runtime_repeat_after_hours_out_of_range` | error | lint | `repeat_after_hours` is below 1 | use an integer >= 1 |
 | `runtime_max_repeats_out_of_range` | error | lint | `max_repeats` is below 1 | use an integer >= 1 |
 | `runtime_max_active_obligations_out_of_range` | error | lint | `limits.max_active_obligations` is below 1 | use an integer >= 1 |
 | `runtime_max_tracked_correlations_out_of_range` | error | lint | `limits.max_tracked_correlations` is below 1 | use an integer >= 1 |
 | `runtime_burn_out_of_range` | error | lint | a burn monitor with `threshold_factor` <= 1, or with b times `max_rate` >= 1, or that can never breach at `min_samples` | choose b > 1 with b times `max_rate` < 1 and a `min_samples` that can breach |
 | `runtime_zero_tolerance_inexact` | error | lint | a `zero_tolerance` violation that is a metric or a checker rather than an exact pattern | use an exact pattern, or switch to `rate_bound` |
+| `runtime_among_not_checker` | error | lint | an `among` that is a metric or an exact pattern; 1.3 defines population membership only for checker labels | select the population with a checker, or drop `among` |
 | `runtime_zero_tolerance_incomplete` | error | lint | a `zero_tolerance` monitor declares `sampling`; a sampled window can never be complete, so `MET` would be unreachable | remove `sampling` |
 | `runtime_protocol_nondeterministic` | error | lint | a protocol has two transitions for one (state, event), an event matching two alphabet entries, an undeclared state or selector, or overlapping accepting and rejecting states | make the state machine deterministic and declare every state |
 | `runtime_tool_not_code_identifier` | error | lint | a selector `tool` is not a plain function or qualified name (a wildcard, a list item, a space) | name exactly one tool, such as `payments.charge` |
@@ -1023,7 +1024,7 @@ A value of the wrong JSON type, for example a string where an integer is require
 | `runtime_duplicate_key` | error | lint | two monitors have the same effective key (same predicate, source, environment, attribution, method and `threshold_factor`), or two monitors serve one obligation | keep one, or change what they measure; use a burn monitor for a second tier |
 | `recovery_deadline_impossible` | error | lint, compose | `within_hours` is less than `closure_windows * tumbling_hours`, so an episode could never close in time (equal is fine; also checked on the composed result) | raise `within_hours` or shorten the window or `closure_windows` |
 | `tenant_floor_outside_pack` | error | lint | a module monitor declares `applies_to: tenant_floor`, which only a pack may do | remove `applies_to`, or move the monitor into a `tvl_pack` |
-| `runtime_incompatible_replacement` | error | compose | an overlay, pack or meet changed an immutable part: predicate, population, source, environment, method, sampling, `threshold_factor`, `single_producer` or `limits` | change only tightenable numbers, or declare a new requirement |
+| `runtime_incompatible_replacement` | error | compose | an overlay, pack or meet changed an immutable part: predicate, population, source, environment, method, sampling, `threshold_factor`, `single_producer`, `limits`, an outcome trigger, `only_while` set or `unless` set | change only tightenable numbers, or declare a new requirement |
 | `runtime_overlay_weakens` | error | compose | an overlay drops a base declaration or rule, loosens a number, lowers a notification severity, weakens an approval, or widens a repeat bound; the same for a module response against a same-named pack response | keep every base item and only tighten |
 
 ### Projection and compile
@@ -1038,7 +1039,7 @@ A value of the wrong JSON type, for example a string where an integer is require
 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
-| `runtime_invalid_ladder` | error | lint | an action parameter is missing, not allowed for the action or ill-typed (`target` only on `rollback`, `fallback` only on `suspend` and `degrade`, `rate_floor` only on `throttle`, `severity` only on `notify`, `on_check_error` only on the guards, `max_repeats` without `repeat_after_hours`, a fingerprint that is not 64 lowercase hex characters); `trigger.hours` present without `episode_open_for`, or missing with it; an approval the action does not allow; or a remote service action on a terminal-scope event or `unit_violation` | compare the rule with the action and trigger tables in the reference; terminal events can notify, but cannot authorize a remote service action |
+| `runtime_invalid_ladder` | error | lint | RFC 0004: deploy outcome without if_promoted, repeats on an outcome, outcome or attempt guard in a pack, unknown_for on a non-primary monitor;  an action parameter is missing, not allowed for the action or ill-typed (`target` only on `rollback`, `fallback` only on `suspend` and `degrade`, `rate_floor` only on `throttle`, `severity` only on `notify`, `on_check_error` only on the guards, `deploy` only on `optimize`, `max_repeats` without `repeat_after_hours`, a fingerprint that is not 64 lowercase hex characters); `trigger.hours` present unless `episode_open_for` or `unknown_for`, or missing with either; `deploy: if_promoted` on an event other than `episode_opened`, `episode_continued` or `episode_open_for`; an approval the action does not allow; or a remote service action on a terminal-scope event or `unit_violation` | compare the rule with the action and trigger tables in the reference; terminal events can notify, but cannot authorize a remote service action |
 | `response_suspend_without_human` | error | lint | `suspend` without an explicit `approval: human`, including an omitted approval | write `approval: human` explicitly |
 | `response_suspend_unconfirmed` | error | lint | `suspend` triggered by an event other than `episode_continued`, `episode_open_for` or `recovery_overdue` | trigger on one of those three events |
 | `response_irreversible_without_approval` | error | lint | `optimize`, `rollback`, `throttle` or `degrade` with `approval: none` | use `standing` or `human` |
@@ -1046,6 +1047,14 @@ A value of the wrong JSON type, for example a string where an integer is require
 | `response_guard_not_enforceable` | error | lint | `block_action` or `halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | use a guard only on `absence`, `bounded_existence`, `precedence` or `protocol`, on `unit_violation` |
 | `response_on_check_error_missing` | error | lint | a guard without `on_check_error` | choose `block` (fail closed) or `allow` |
 | `response_rule_repeat_unbounded` | error | lint | an action other than `notify` repeats without `max_repeats` | add `max_repeats` |
+| `response_deploy_without_promotion_monitor` | error | lint, compile | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor (always the case in a `tvl_pack`) | add a `phase: promotion` monitor on that requirement, or use `deploy: never` |
+| `runtime_notify_only` | error | lint | outcome trigger, unknown_for, only_while or unless on a non-notify rule | use do: notify |
+| `runtime_guard_cycle` | error | lint | cycle (including self-loop) in the unless monitor graph, using the referenced optimize rule's source for outcome rules; attempts add no edge | remove mutual/self inhibition |
+| `runtime_guard_redundant` | warning | lint | only_while names the rule's own source monitor | omit the redundant guard |
+
+Reactive constructs require the quoted version "1.4"; using "1.3" yields
+`declared_version_below_constructs`. Unknown outcome events/guard states use `runtime_unknown_kind`
+(the compiled schemas reject them too). Guards have sealed reference/state shapes.
 
 ### Measurement and reports
 

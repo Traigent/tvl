@@ -513,9 +513,11 @@ Each entry uses exactly one class. A helper's class concerns only its own statem
 | `compiled_contract_correct_statement` | `TVL/Runtime/Compiler.lean` | OPEN | Normalized-language compiler target; no actual source parser, normalization or wire-projection proof. |
 | `raw_bounds_glb` | `TVL/Runtime/Compose.lean` | SUBSTANTIVE |  |
 | `checked_bounds_meet_iff` | `TVL/Runtime/Compose.lean` | BY-CONSTRUCTION |  |
-| `compose_partial_statement` | `TVL/Runtime/Compose.lean` | OPEN | OPEN static normalized-contract GLB/reachability target. Authored rule identity/survival, approval/severity order, repeat bounds and provenance remain; platform grants and registration are external. Catalogue-wide refinement is unproved. |
+| `compose_partial_statement` | `TVL/Runtime/Compose.lean` | OPEN | OPEN static normalized-contract GLB/reachability target. Authored rule identity/survival, approval/severity/deploy order, repeat bounds and provenance remain; platform grants and registration are external. Catalogue-wide refinement is unproved. |
 | `severity_meet_glb` | `TVL/Runtime/Declarations.lean` | SUBSTANTIVE |  |
 | `absent_notify_severity` | `TVL/Runtime/Declarations.lean` | BY-CONSTRUCTION |  |
+| `deploy_meet_glb` | `TVL/Runtime/Declarations.lean` | SUBSTANTIVE | `optimize.deploy` order (`never` stricter than `if_promoted`, RFC 0003 §7.6); finite case analysis, like `severity_meet_glb`. |
+| `absent_deploy` | `TVL/Runtime/Declarations.lean` | BY-CONSTRUCTION |  |
 | `conservative_extension` | `TVL/Runtime/Extension.lean` | BY-CONSTRUCTION | Empty-runtime embedding preserves the semantic product model and gate join. |
 | `no_promotion_monitors` | `TVL/Runtime/Extension.lean` | BY-CONSTRUCTION |  |
 | `structural_projection` | `TVL/Runtime/Extension.lean` | BY-CONSTRUCTION | Stored legacy fields are projected unchanged. Runtime spelling exclusion from source Γ/generated variables is not modeled or proved. |
@@ -537,8 +539,8 @@ Each entry uses exactly one class. A helper's class concerns only its own statem
   per-event bounds and a predesignated allocation; it needs no independence.
 - `compose_partial_statement` is OPEN and ranges over static normalized
   contracts; its record and validity predicate carry no enabled actions.
-  `NormalizedRule` contains only authored identity, approval, repeat bounds and
-  severity. Rule survival and the approval/severity orders are stated; standing
+  `NormalizedRule` contains only authored identity, approval, repeat bounds,
+  severity and `deploy`. Rule survival and the approval/severity/deploy orders are stated; standing
   grants (their scopes, limits and expiry, and any order on them) are outside this
   library. Static composition neither compares grants nor checks enabled
   capabilities.
@@ -568,3 +570,21 @@ rg -n '^import' Main.lean TVL --glob '*.lean'
 `Main.lean` imports every module. Mathlib and Lean stay pinned by the
 existing manifest/toolchain; the TVL 1.3 modules add no dependency. See README.md
 for the boundary and trusted-input limits.
+
+
+## RFC 0004: Reactive notification guards (TVL 1.4 draft)
+
+`TVL/Runtime/Guards.lean` is imported by `Main.lean`. The model uses strong Kleene folds,
+a validated notify-only rule type, unchanged occurrence identity/scope, and the exact monitor
+unless graph (attempt guards add no edge). These statements do not prove controller execution,
+source parsing, wire projection, attempt lifecycle or undecided-run implementation.
+
+| Statement | Class | Scope |
+|---|---|---|
+| `undecided_never_suppresses` | SUBSTANTIVE | Arbitrary valuation and guard replacement by UNDECIDED; arbitrary finite conjunction/disjunction lists, including shared guards. |
+| `notify_only` | BY-CONSTRUCTION | The validated reactive rule type has only the notify action; no effect authorization is introduced by the type. |
+| `guards_preserve_identity` | BY-CONSTRUCTION | Guard evaluation adds a delivery decision while preserving identity and scope. |
+| `no_mutual_silencing` | SUBSTANTIVE | Finite nonempty S of simultaneously triggered rules, non-FALSE only_while, no TRUE attempt inhibitor, and monitor inhibitors confined to sources in S; absence of nonempty directed cycles yields a sink and a delivered rule. The graph includes all rules, and outcome sources are supplied after validation. External inhibitors remain allowed. |
+
+No new OPEN theorem or admitted proof is used in this module. Formal semantics §13 specifies
+attempts and undecided histories relationally; this is outside these four Lean claims.

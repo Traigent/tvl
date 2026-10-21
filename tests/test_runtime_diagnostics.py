@@ -290,7 +290,10 @@ def test_template_includes_pack_and_default_environment(tmp_path, capsys) -> Non
 @pytest.mark.parametrize("definition,field", [("RequirementDecl", "kind"), ("PredicateDecl", "pattern"), ("SelectorDecl", "event"),
     ("TriggerDecl", "event"), ("RuleDecl", "do"), ("MonitorDecl", "phase"), ("EvidenceDecl", "source"), ("DecisionDecl", "method")])
 def test_editor_hints_preserve_normative_lint_codes(definition, field, tmp_path, monkeypatch) -> None:
-    hints = load_schema()["$defs"][definition]["properties"][field]
+    declaration = load_schema()["$defs"][definition]
+    if definition == "TriggerDecl":
+        declaration = declaration["oneOf"][0]  # monitor-trigger editor hints
+    hints = declaration["properties"][field]
     assert hints["examples"] == hints["x-enum"] and "enum" not in hints
     doc = example(7)
     targets = {"RequirementDecl": doc["requirements"][0], "PredicateDecl": doc["requirements"][0]["violation"],

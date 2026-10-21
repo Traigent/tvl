@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT** — not accepted; syntax, codes and meaning may change before acceptance. Design decisions D1–D5 recorded 2026-10-16 (§16.1) |
+| **Status** | **Accepted** 2026-10-21 (TVL 1.3.0). Design decisions D1–D5 recorded 2026-10-16 (§16.1); revision 2026-10-21 adds `optimize.deploy` (§7.6) and restricts `among` to checker predicates (§16.3 question 20) |
 | **Target language version** | TVL 1.3 (conservative extension of 1.2) |
-| **Tracking** | not assigned in this draft |
+| **Tracking** | not assigned |
 | **Builds on** | RFC 0001 (ACCEPTED): bindings, certificates, strict promotion, the shared namespace · RFC 0002 (ACCEPTED): closed shapes with exact diagnostics, sealed catalogues, shape-versus-registry layering |
 | **Companion** | formal semantics §12 "Runtime Semantics (TVL 1.3)" in `formalization/tvl-formal-semantics.md`. **Division of authority:** §12 is the authority for meaning — unit predicates on complete histories, the verdict contract, populations and windows, episodes and obligations, the declarative meaning of responses, composition order, projection, denotation and theorem statements; this RFC is the authority for syntax, closed enums, lexical forms, diagnostic codes, document schemas and CLI contracts. §12 refers to §4.2 and §5 here instead of restating them |
 | **Language and evaluators** | TVL states what a requirement means and what each verdict promises. Verdicts are produced by an **evaluator profile** outside TVL (§3.5). This RFC does not specify how an evaluator decides from partial evidence, how it tracks episodes and obligations, or how a controller executes responses |
@@ -181,9 +181,9 @@ tvl_pack    = rec("tvl_version": "\"1.3\"", "pack": rec("module": ident),
 
 requirements= "requirements", ":", list(req) ;
 req         = rate_req | zero_req | recovery_req | liveness_req ;                          (* SEALED *)
-rate_req    = rec("name": ident, "kind": "rate_bound", "unit": unit_kind, ["among": pred],
+rate_req    = rec("name": ident, "kind": "rate_bound", "unit": unit_kind, ["among": checker_pred],
                   "violation": pred, "max_rate": prob_open) ;
-zero_req    = rec("name": ident, "kind": "zero_tolerance", "unit": unit_kind, ["among": pred],
+zero_req    = rec("name": ident, "kind": "zero_tolerance", "unit": unit_kind, ["among": checker_pred],
                   "violation": exact_pred) ;
 recovery_req= rec("name": ident, "kind": "recovery_time", "unit": "episode", "of": ident, "within_hours": pos_int) ;
 liveness_req= rec("name": ident, "kind": "evidence_liveness", "unit": "window", "of": ident,
@@ -232,7 +232,8 @@ rule        = rec("id": ident, "trigger": trigger, "do": action, ["approval": "n
                   ["target": "last_certified" | fingerprint], ["severity": severity],
                   ["fallback": "static_unavailable" | "route_to_human" | fingerprint],
                   ["rate_floor": prob_open], ["repeat_after_hours": pos_int], ["max_repeats": pos_int],
-                  ["on_check_error": "block" | "allow"]) ;
+                  ["on_check_error": "block" | "allow"], ["deploy": "never" | "if_promoted"]) ;
+                                         (* deploy: on optimize only, §7.6 *)
 trigger     = rec("monitor": ident, "event": event_name, ["hours": pos_int]) ;
 event_name  = "episode_opened" | "episode_continued" | "episode_open_for" | "episode_resolved" | "episode_withdrawn"
             | "recovery_overdue" | "recovery_cancelled" | "recovery_recovered" | "burn_breached"
@@ -299,6 +300,7 @@ violation where it appears in a compiled or exchanged document (§11.4). Formal 
 | `status` | `running`, `completed`, `failed`, `rejected`; the last three are final | `sel.status`; `unit_end` and `tool_result` events |
 | `event_type` (`agent_trace_v1`) | `unit_start`, `unit_end`, `tool_call`, `tool_result`, `model_call`, `handoff`, `error`, `authorization_granted`, `authorization_revoked` | `sel.event` (meanings in §6.3) |
 | `severity` | `info`, `warning`, `critical` | `notify` rules |
+| `deploy` | `never`, `if_promoted` | `optimize` rules (§7.6) |
 | scope kind | `episode`, `recovery`, `burn`, `liveness`, `unit` | event scopes (§4.7) |
 | episode terminal outcome | `resolved`, `withdrawn` | episode records |
 | withdrawal reason | `requirement_weakened`, `requirement_retired`, `agent_retired`, `floor_removed` | episode records; retirement records use the last three |
@@ -384,7 +386,8 @@ Each rule names the diagnostic of §5 it emits.
 - **T3 compatibility.** Kind, source, phase and method follow §4.3 (`runtime_invalid_profile`).
 - **T4 content.** A `checker_pred` (as `violation` or `among`) requires `source: customer_side`, or
   `source: evaluation_set` evaluated customer-side; on `backend_trace_metadata` it is
-  `runtime_content_on_backend_source`.
+  `runtime_content_on_backend_source`. `among` itself is a `checker_pred` (`runtime_among_not_checker`): 1.3 defines
+  population membership only for checker labels (formal semantics §12, membership `A_q`).
 - **T5 zero tolerance.** `zero_tolerance.violation` is an `exact_pred` (`runtime_zero_tolerance_inexact`); a
   `zero_tolerance` monitor declares no `sampling` (`runtime_zero_tolerance_incomplete`).
 - **T6 sampling.** `sampling: unverified` is allowed only with `backend_trace_metadata`; `head_sampled_declared` and
@@ -421,7 +424,8 @@ Each rule names the diagnostic of §5 it emits.
   `trigger.hours` is present iff `event: episode_open_for` (`runtime_invalid_ladder`).
 - **T15 actions.** Parameters and approvals follow §7.2 and §7.3 (`runtime_invalid_ladder`,
   `response_suspend_without_human`, `response_suspend_unconfirmed`, `response_irreversible_without_approval`,
-  `response_guard_not_enforceable`, `response_on_check_error_missing`, `response_rule_repeat_unbounded`).
+  `response_guard_not_enforceable`, `response_on_check_error_missing`, `response_rule_repeat_unbounded`,
+  `response_deploy_without_promotion_monitor`; §7.6 for `deploy`).
 - **T16 scope.** A module monitor has `applies_to: agent`, the default; `tenant_floor` in a module is
   `tenant_floor_outside_pack`. A pack monitor declares `applies_to: tenant_floor` explicitly and has `phase: runtime`;
   an omitted `applies_to`, `applies_to: agent`, or a promotion monitor in a pack is `runtime_invalid_profile`.
@@ -463,7 +467,8 @@ has a default: an author who omits one gets `runtime_invalid_profile`, not a sil
 
 ### 4.6 Defaults
 
-Defaults are exactly those of §4.2 and §4.5, plus `severity: critical` for a `notify` rule whose severity is absent.
+Defaults are exactly those of §4.2 and §4.5, plus `severity: critical` for a `notify` rule whose severity is absent
+and `deploy: never` for an `optimize` rule whose `deploy` is absent (§7.6).
 Severity is ordered `info < warning < critical`; normalization fills this default before comparison or composition.
 Non-`notify` rules have no severity coordinate. The compiled contract carries every value explicitly, defaults
 included, so the contract digest never depends on a tool's default table.
@@ -552,7 +557,7 @@ shape-versus-registry layering of RFC 0001 and RFC 0002 (`T:spec/grammar/tvl.sch
 
 | Code | Sev. | Trigger | Case |
 |---|---|---|---|
-| `runtime_unknown_kind` | E | a value outside a sealed registry or closed enum: requirement kind, unit kind, pattern, metric, event type, status, checker id, checker label (§4.2.2), source, method, model, sampling mode, attribution rule, resolution rule, profile, phase, trigger event, `correlate_by`, `unlisted`, `mode`, approval, severity, `on_check_error` | `lints/closed-catalogue-label.yml`, `lints/closed-checker-id.yml`, `lints/closed-kind-enum.yml`, `lints/closed-selector-status.yml`, `lints/closed-severity.yml` |
+| `runtime_unknown_kind` | E | a value outside a sealed registry or closed enum: requirement kind, unit kind, pattern, metric, event type, status, checker id, checker label (§4.2.2), source, method, model, sampling mode, attribution rule, resolution rule, profile, phase, trigger event, `correlate_by`, `unlisted`, `mode`, approval, severity, `on_check_error`, `deploy` | `lints/closed-catalogue-label.yml`, `lints/closed-checker-id.yml`, `lints/closed-kind-enum.yml`, `lints/closed-selector-status.yml`, `lints/closed-severity.yml`, `lints/deploy-closed-enum.yml` |
 | `response_unknown_action` | E | `do` outside the sealed action set, including `record` (implicit, never declarable) | `lints/unknown-response-action.yml` |
 | `runtime_invalid_profile` | E | kind/source/phase/method outside §4.3; a field required or forbidden by §4.5, or a key of another variant (T8); sampling not allowed for the source (T6); `backend_trace_metadata` without `backend_v1`; `limits` missing for a stateful pattern (T13); `single_producer` without an `exact_pred`; selector field on the wrong event (T11); pack monitor scope or phase (T16); a numeric literal whose exact value cannot be recovered (§4.2) | `lints/decimal-literal-unrecoverable-rejected.yml`, `lints/stateful-pattern-needs-limits.yml` |
 | `runtime_legacy_profile_override` | E | under `profile: backend_v1`, any field or value other than the frozen ones (T1, §10.1) | `lints/legacy-method-frozen.yml` |
@@ -580,6 +585,7 @@ shape-versus-registry layering of RFC 0001 and RFC 0002 (`T:spec/grammar/tvl.sch
 | `runtime_max_tracked_correlations_out_of_range` | E | `limits.max_tracked_correlations` < 1 | `lints/correlation-limit-domain.yml` |
 | `runtime_burn_out_of_range` | E | burn monitor with b ≤ 1, bθ ≥ 1, or no k ≤ `min_samples` that breaches against bθ | `lints/burn-threshold-out-of-range.yml` |
 | `runtime_zero_tolerance_inexact` | E | a `zero_tolerance` violation that is not an `exact_pred` | `lints/zero-tolerance-metric-inexact.yml` |
+| `runtime_among_not_checker` | E | an `among` that is a metric or exact predicate rather than a `checker_pred` | `lints/among-not-checker.yml` |
 | `runtime_zero_tolerance_incomplete` | E | a `zero_tolerance` monitor declares sampling: a sampled window is never complete, so MET is unreachable and episodes never close (§6.9) | `lints/zero-tolerance-sampling-forbidden.yml` |
 | `runtime_protocol_nondeterministic` | E | a protocol violates T12 | `lints/protocol-overlap.yml` |
 | `runtime_tool_not_code_identifier` | E | a selector `tool` that is not a `code_ident` | `lints/tool-identifier-lexical.yml` |
@@ -611,7 +617,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `recovery_deadline_impossible` | E | `within_hours < K_close · W`, with K_close = max(K of the `of` monitor, K of any composed floor or meet input) (§6.13) | `lints/impossible-recovery-deadline.yml`, `composition/meet-recovery-deadline-impossible.yml`; boundary `lints/recovery-deadline-equality-feasible.yml` (absent) |
 | `tenant_floor_outside_pack` | E | an authored module monitor declares `applies_to: tenant_floor` (a composed module is linted with its floor provenance instead, §9.4) | `composition/composed-module-without-provenance-fails.yml`, `lints/tenant-floor-outside-pack.yml` |
 | `runtime_incompatible_replacement` | E | an overlay, a pack composition or a meet changes an immutable identity field of §9.1 | `composition/method-change.yml`, `composition/population-change.yml`, `composition/predicate-change.yml` |
-| `runtime_overlay_weakens` | E | an overlay drops a base requirement, monitor, response or rule; loosens a number against its tightening order; or weakens a rule (§9.3), including a module response that weakens a same-named pack response | `composition/change-target.yml`, `composition/drop-required-rule.yml`, `composition/flip-on-check-error.yml`, `composition/pack-severity-cannot-decrease.yml`, `composition/severity-absent-base-cannot-lower.yml`, `composition/severity-cannot-decrease.yml`, `composition/weaken-approval.yml`, `composition/widen-repeat-bound.yml` |
+| `runtime_overlay_weakens` | E | an overlay drops a base requirement, monitor, response or rule; loosens a number against its tightening order; or weakens a rule (§9.3, including `deploy`: `never` → `if_promoted`), including a module response that weakens a same-named pack response | `composition/change-target.yml`, `composition/drop-required-rule.yml`, `composition/flip-on-check-error.yml`, `composition/pack-severity-cannot-decrease.yml`, `composition/severity-absent-base-cannot-lower.yml`, `composition/severity-cannot-decrease.yml`, `composition/weaken-approval.yml`, `composition/widen-repeat-bound.yml`, `composition/deploy-cannot-widen.yml`, `composition/deploy-omitted-base-cannot-widen.yml` |
 
 ### 5.7 Privacy
 
@@ -625,7 +631,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 
 | Code | Sev. | Trigger | Case |
 |---|---|---|---|
-| `runtime_invalid_ladder` | E | an action parameter missing, forbidden or ill-typed for its action (§7.2: `target` required on and only on `rollback`; `fallback` required on `suspend` (an enum) and `degrade` (a fingerprint) only; `rate_floor` required on `throttle` only; `severity` on `notify` only; `on_check_error` on `block_action`/`halt_unit` only; `max_repeats` without `repeat_after_hours`; a malformed fingerprint); `trigger.hours` present iff `episode_open_for`; an approval value not permitted for the action (§7.3); or a remote service action (`open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`) triggered by `episode_resolved`, `episode_withdrawn`, `recovery_cancelled`, `recovery_recovered`, `live_again` or `unit_violation`, which cannot authorize it (§7.4) | `lints/invalid-ladder-parameters.yml`; `tests/test_runtime_diagnostics.py::test_resolved_event_can_notify_but_cannot_rollback` |
+| `runtime_invalid_ladder` | E | an action parameter missing, forbidden or ill-typed for its action (§7.2: `target` required on and only on `rollback`; `fallback` required on `suspend` (an enum) and `degrade` (a fingerprint) only; `rate_floor` required on `throttle` only; `severity` on `notify` only; `on_check_error` on `block_action`/`halt_unit` only; `deploy` on `optimize` only; `max_repeats` without `repeat_after_hours`; a malformed fingerprint); `trigger.hours` present iff `episode_open_for`; `deploy: if_promoted` triggered by an event other than `episode_opened`, `episode_continued` or `episode_open_for` (§7.6); an approval value not permitted for the action (§7.3); or a remote service action (`open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`) triggered by `episode_resolved`, `episode_withdrawn`, `recovery_cancelled`, `recovery_recovered`, `live_again` or `unit_violation`, which cannot authorize it (§7.4) | `lints/invalid-ladder-parameters.yml`, `lints/deploy-only-on-optimize.yml`, `lints/deploy-needs-episode-trigger.yml`; `tests/test_runtime_diagnostics.py::test_resolved_event_can_notify_but_cannot_rollback` |
 | `response_suspend_without_human` | E | `suspend` without an explicit `approval: human`, including an omitted `approval` (D2) | `lints/suspend-human-required.yml` |
 | `response_suspend_unconfirmed` | E | `suspend` triggered by an event other than `episode_continued`, `episode_open_for` or `recovery_overdue` (§7.2) | `lints/suspend-needs-escalation.yml` |
 | `response_irreversible_without_approval` | E | `optimize`, `rollback`, `throttle` or `degrade` with `approval: none` | `lints/repair-needs-approval.yml` |
@@ -633,6 +639,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `response_guard_not_enforceable` | E | `block_action`/`halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker; §6.5), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | `lints/guard-metric-not-enforceable.yml` |
 | `response_on_check_error_missing` | E | `block_action`/`halt_unit` without `on_check_error` | `lints/local-guard-error-policy-required.yml` |
 | `response_rule_repeat_unbounded` | E | an action other than `notify` with `repeat_after_hours` and no `max_repeats` | `lints/repeat-must-be-bounded.yml` |
+| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16), checked on the authored pack also by `tvl-compose` before reference rewriting; `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/deploy-promotion-monitor-on-other-requirement.yml`, `lints/pack-cannot-declare-deploy.yml`, `composition/pack-deploy-cannot-borrow-module-gate.yml`, `composition/pack-deploy-rejected-in-meet.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (absent) |
 
 ### 5.9 Measurement readiness
 
@@ -1106,7 +1113,7 @@ is not declarable.
 | 0 | (record) | the originating event is recorded | always | — | append-only correction | recorded locally |
 | 1 | `notify` | deliver an alert with the rule's `severity` | an alert event | none | acknowledge or mute delivery only | local log |
 | 2 | `open_next_step` | open a recommended next step for the people or coding agent who maintain the agent, toward restoring the requirement (below) | an open episode | none to open; acting on the step needs its own authority | withdrawn when the episode closes | pending |
-| 3 | `optimize` | start a bounded optimization of the agent's configuration, carried out by the customer's coding agent | a next step issued; a bounded grant (cost ceiling, scope, expiry) | standing grant or human | cancel an unfinished run; spend is not undone; a candidate must pass the promotion gate before it is deployed | waits |
+| 3 | `optimize` | start a bounded optimization of the agent's configuration, carried out by the customer's coding agent | a next step issued; a bounded grant (cost ceiling, scope, expiry) | standing grant or human | cancel an unfinished run; spend is not undone; a candidate is deployed only by a separate deploy effect (`deploy: if_promoted`, §7.6) after it passes the promotion gate | waits; a pending deploy holds |
 | 3 | `rollback` | redeploy the certified `target` configuration through the customer's SDK | target eligible now (below) | standing grant or human | roll forward only through a new promotion | hold |
 | 4 | `throttle` | cap the deployment's admission rate at `rate_floor` times its unthrottled admission rate (below) | a declared `rate_floor` | standing grant or human | an authorized human `release` | hold |
 | 4 | `degrade` | route new work to the certified `fallback` configuration | `fallback` eligible now, as a rollback target | standing grant or human | an authorized human `release` | hold |
@@ -1140,8 +1147,8 @@ burn, liveness and unit events have no episode scope.
 
 **Parameters.** `rollback` requires `target`; `suspend` requires `fallback` from {`static_unavailable`,
 `route_to_human`}; `degrade` requires `fallback` as a fingerprint; `throttle` requires `rate_floor`; `notify` may carry
-`severity` (default `critical`, §4.6); `block_action` and `halt_unit` require `on_check_error`. No other action takes
-these fields (`runtime_invalid_ladder`).
+`severity` (default `critical`, §4.6); `block_action` and `halt_unit` require `on_check_error`; `optimize` may carry
+`deploy` (default `never`, §7.6). No other action takes these fields (`runtime_invalid_ladder`).
 
 ### 7.3 Approval levels and authority (D2)
 
@@ -1152,8 +1159,9 @@ these fields (`runtime_invalid_ladder`).
 | `human` | `optimize`, `rollback`, `throttle`, `degrade` (the default for these), `suspend` (required) | an authorized human approves each occurrence; for `suspend`, per episode, always |
 
 A **standing grant** is an owner-signed authority record outside TVL documents. It binds: the agent, the controller
-identity, the contract digest, the scope, the eligible target fingerprints, the issue time and an expiry at most 30 days
-later (expiry exclusive), a maximum occurrence count and, for `optimize`, a cost limit. Every binding and remaining limit
+identity, the contract digest, the scope, the effect it authorizes (an action, or the deploy effect of an `optimize`
+rule, §7.6), the eligible target fingerprints, the issue time and an expiry at most 30 days later (expiry exclusive), a
+maximum occurrence count and, for `optimize`, a cost limit. Every binding and remaining limit
 must hold at the time of the effect (§7.4). A module cannot name an approver or a grant; both are supplied when the
 contract is registered and operated.
 
@@ -1214,6 +1222,85 @@ decides: `block` blocks or halts (fail closed); `allow` lets the effect proceed 
 `on_check_error` has no default. A unit with `among` false is never blocked. Local guards keep working when remote
 authority is unreachable.
 
+### 7.6 Deploying an optimize candidate (`deploy`)
+
+An `optimize` rule may declare `deploy: never | if_promoted`; the default is `never` (§4.6). It states whether a
+candidate that the rule's optimization finds may replace the configuration running in production. Under `never` the
+response stops at the candidate: deploying it, if anyone does, is an ordinary promotion outside this response. Under
+`if_promoted` the rule declares a second service effect, the **deploy**, with the meaning below. The deploy is never
+part of the optimization effect: authority for the optimization is not authority for its deploy, and a deploy
+authorizes nothing else.
+
+```yaml
+responses:
+  - name: latency_repair
+    rules:
+      - id: fix
+        trigger: {monitor: latency_prod, event: episode_opened}
+        do: optimize
+        approval: human          # each effect is approved on its own
+        deploy: if_promoted      # requires a promotion monitor on latency_prod's requirement
+```
+
+1. **Occurrence.** A deploy occurrence is identified by (response, rule id, scope, optimize occurrence j, candidate
+   fingerprint); rule ids are unique only within their response (§4.8).
+   Each optimize occurrence yields at most one deploy occurrence. Retries and redeliveries of a deploy occurrence are
+   the same occurrence; a repeat of the rule (§7.4) is a new optimize occurrence and may yield a new deploy occurrence,
+   which needs authority again. The rule never deploys a candidate that none of its own occurrences produced.
+2. **Approval.** The rule's `approval` (default `human`) applies to each effect separately. Under `human`, an authorized
+   human approves each deploy occurrence; approving the optimization is not approving its deploy. The approval binds
+   the episode, the candidate fingerprint, the digest of the candidate's promotion-gate result, the contract digest and
+   the precondition by which the platform detects a concurrent change of the deployed configuration (for example an
+   expected head generation). Under `standing`, a deploy takes place under a standing grant that names the deploy
+   effect of this rule (§7.3: own occurrence limit, expiry at most 30 days after issue); a grant that covers only the
+   optimization does not authorize the deploy, which then needs a human approval of that occurrence, as under `human`.
+   Under a grant, the controller records the same bindings for the occurrence before the effect — the occurrence key,
+   candidate fingerprint, gate-result digest, contract digest, grant and deployment precondition — and every retry of
+   the occurrence reuses that record; a changed candidate, gate result or precondition is a different occurrence or
+   no deploy.
+   `approval: none` is rejected for `optimize` and therefore for its deploy (`response_irreversible_without_approval`).
+3. **Effect-time checks.** At the time of the effect every condition below holds, or nothing is deployed:
+   1. the service-effect conditions of §7.4 item 2 for the originating episode: the rule still exists in the current
+      response revision with `deploy: if_promoted`, the contract digest is current, the approval or grant is valid and
+      unexpired, and the episode is still open;
+   2. the candidate was produced by an optimize occurrence of this rule in this episode;
+   3. the candidate has a configuration fingerprint, and its promotion decision is `Promote` under the gate join of
+      §6.11 — the existing decision joined with every promotion monitor of the module, which includes at least one on
+      the trigger monitor's requirement (`response_deploy_without_promotion_monitor`) — computed from the candidate's
+      measurement bundle for that fingerprint under the current contract digest. `NoDecision` and `Reject` never deploy,
+      and a gate result computed under another contract digest is not current;
+   4. the candidate is not a configuration that breached in an open episode (as for rollback targets, §7.2);
+   5. the deployment precondition bound to the occurrence (by its human approval, or by the record made under a
+      grant) still holds, checked atomically with the deploy write; a stale precondition writes nothing.
+4. **Hold when unreachable.** While the controller, the approver, grant verification or the record of the candidate's
+   promotion decision is unreachable, no deploy starts (§7.3). A deploy that has not taken place when its episode closes
+   or its response revision changes never takes place (§7.4). The candidate stays on the customer side and nothing in
+   production changes.
+5. **Failure.** A deploy refused or failed at the time of the effect changes nothing in production, is not retried with
+   another candidate, and is reported as the action state of its occurrence (§11.6). No rollback follows
+   automatically, and the configuration that breached in the open episode stays ineligible as a rollback target (§7.2).
+6. **A deploy never closes a breach.** An episode ends only as §6.12 states: by `closure_windows` consecutive MET
+   windows of its production monitor, or by withdrawal. A deploy, its approval, its promotion-gate result and any
+   evaluation-set evidence never count toward closure, never resolve an episode and never satisfy a recovery
+   obligation. After a deploy the episode stays open until healthy production windows resolve it; further BREACHED
+   windows keep it open, and the response's other rules keep their meaning.
+7. **Triggers.** `deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`
+   (`runtime_invalid_ladder`): the effect-time checks need an open episode of a primary monitor. Burn, liveness and
+   unit scopes do not supply one; a recovery obligation does have an originating episode (§7.4), and recovery triggers
+   are excluded deliberately in this revision (§16.3 question 18).
+8. **Projection.** The hosted rule carries `deploy` as its closed enum on every `optimize` rule, `never` filled in where
+   it is omitted (§4.6, §8.2), so the contract digest binds the declared mode. Approvals, grants, candidate
+   fingerprints and gate records are not TVL documents and do not cross with the contract.
+9. **Composition.** `deploy` is a tightenable coordinate of an `optimize` rule: `never` is tighter than `if_promoted`,
+   and absent means `never`. An overlay, or a module response merging with a pack response, may change `if_promoted`
+   to `never` and never the reverse (`runtime_overlay_weakens`); the raw meet takes `never` when either side has it
+   (§9.3). A `tvl_pack` has no promotion monitors (T16), so a floor cannot declare `deploy: if_promoted`; composition
+   and meets check each authored pack for it before rewriting references, so a pack rule never borrows a module's
+   promotion monitor (`response_deploy_without_promotion_monitor`).
+10. **Enablement.** For staged enablement (§12) the deploy is an effectful action of its own: a platform that has not
+    enabled it refuses to register a rule with `deploy: if_promoted` (`response_action_unsupported`), even when it
+    executes `optimize`.
+
 ## 8. Where it runs, what crosses, what is certified
 
 ### 8.1 Placement
@@ -1246,7 +1333,7 @@ customer side's; no tool mints a token in place of a missing mapping.
 | tool names in selectors | as is, validated `code_ident`s (code identifiers are not customer content) |
 | decimal parameters | minimal decimal strings (§4.2.1) |
 | integer parameters, counts and durations | JSON integers |
-| enums, event types, statuses, method, model and sampling names | as is |
+| enums, event types, statuses, method, model and sampling names; `deploy` (always present on `optimize`, §7.6) | as is |
 | SDK unit ids | never individually; only inside the report's `units_commitment` |
 
 Serialization rejects any unresolved alias (`runtime_unresolved_alias`) and fails closed if the token map is
@@ -1325,12 +1412,15 @@ obligation bounds (formal semantics Definition 12.26).
 ### 9.3 Responses survive composition
 
 Every base rule must survive with the same trigger, action, `target`, `fallback`, `rate_floor` and `on_check_error`;
-an approval no weaker (`none < standing < human`); a normalized `notify` severity no lower
+an approval no weaker (`none < standing < human`); an `optimize` `deploy` no wider (`never` is tighter than
+`if_promoted`, absent = `never`, §7.6); a normalized `notify` severity no lower
 (`info < warning < critical`, absent = `critical`, §4.6); and
 repeat bounds no wider: `repeat_after_hours` is immutable, `max_repeats` may only decrease, and no repeat is added to
 a rule that had none (formal semantics Definition 12.26). A violation is `runtime_overlay_weakens`. Standing grants are
 not part of TVL documents, so TVL composition never compares them; how a platform treats a re-issued grant is outside
-TVL (§3.5). For compatible retained `notify` rules the raw meet takes the maximum normalized severity; overlay and floor
+TVL (§3.5). For compatible retained `optimize` rules the raw meet takes `never` when either side has it
+(`composition/deploy-meet-takes-never.yml`, `composition/deploy-may-tighten.yml`). For compatible retained `notify`
+rules the raw meet takes the maximum normalized severity; overlay and floor
 checks reject lowering before taking that meet, rather than silently repairing a weakening overlay. Added `notify`
 rules receive the same explicit default.
 
@@ -1587,7 +1677,8 @@ The only document that crosses to the hosted side at registration. Its digest is
 normalized source declaration — every default of §4.6 filled in, so `applies_to`, `attribution`, `resolution`,
 `model` and the like are always present; an optional key with neither a value nor a default is omitted, never `null` —
 with each leaf in its hosted form of §8.2: names and references as `ref`, decimal parameters as `dec`, integers as JSON
-integers, labels of customer checkers as `nat` indices, the environment as `ref`, everything else as its closed enum.
+integers, labels of customer checkers as `nat` indices, the environment as `ref`, everything else as its closed enum. Every
+`optimize` rule carries `deploy`, and no other rule does (`tvl-runtime-contract.schema.json`, `tvl-runtime-local.schema.json`).
 Hence a projection pointer `P` into the normalized declarations denotes `/declarations` + `P` in the contract
 (Appendix A).
 
@@ -1728,7 +1819,8 @@ closed object whose properties are the union of its variants' keys in §4.1 — 
 `checker`, `label_in`, `pattern`, `a`, `b`, `max_count`, `mode`, `correlate_by`, `within_ms`, `alphabet`, `states`,
 `start`, `transitions`, `accepting`, `rejecting`, `unlisted`; Monitor: `name`, `requirement`, `phase`, `profile`,
 `applies_to`, `evidence`, `window`, `decision`, `episode`, `limits`, `single_producer`; Rule: `id`, `trigger`, `do`,
-`approval`, `target`, `severity`, `fallback`, `rate_floor`, `repeat_after_hours`, `max_repeats`, `on_check_error` —
+`approval`, `target`, `severity`, `fallback`, `rate_floor`, `repeat_after_hours`, `max_repeats`, `on_check_error`,
+`deploy` —
 with the JSON types of §4.1 (integers for `nat` and `pos_int` fields, numbers for decimal fields, strings for enums and
 names, the string-or-object union for `sampling`), the always-required keys of §5.1, and the `ident` pattern on runtime
 names and name references.
@@ -1762,7 +1854,8 @@ tvl-compile-runtime DOCUMENT [--pack PACK.yml]... --emit-token-map-template
 - `--checkers`: a `tvl-checker-registry/1` file; required iff a customer checker id occurs (`runtime_unknown_kind`).
 - Steps, in order, stopping at the first step with an error: (1) schema and lints, as `tvl-validate`, with the checker
   registry when given; (2) composition with each `--pack` (§9.4–§9.5); each pack is also validated and compiled with
-  the same token map, and its contract digest is recorded in `packs_checked`; (3) projection with the token map
+  the same token map, and its contract digest is recorded in `packs_checked`; the composed module is checked again for
+  `response_deploy_without_promotion_monitor` (§7.6); (3) projection with the token map
   (§8.2): `runtime_unresolved_alias`, `runtime_unsafe_egress`; (4) write `DIR/runtime-contract.json` (§11.4.1) and
   `DIR/runtime-local.json` (§11.4.4) as canonical JSON. Nothing is written unless every step passes.
 - A module's contract carries only its own (agent-scope) monitors after composition, with the tightened fields and
@@ -1803,7 +1896,8 @@ with that platform. Registration is outside TVL; this section states what TVL re
 
 - **No silent rungs.** A registration that declares a monitor whose kind, source, method or predicate class the
   platform has not enabled is refused with `runtime_unsupported_capability`; a rule whose action the platform cannot
-  execute is refused with `response_action_unsupported`; a rollback target or degrade fallback without a valid
+  execute is refused with `response_action_unsupported`, and so is a rule with `deploy: if_promoted` on a platform that
+  has not enabled the deploy effect (§7.6); a rollback target or degrade fallback without a valid
   configuration-attributed certificate may be refused with `response_rollback_target_uncertified` (§5.8). Nothing is
   accepted as a silent no-op. These codes belong to the closed vocabulary of §5 so that every platform reports
   refusals the same way; no TVL tool emits them.
@@ -1826,9 +1920,9 @@ family. Unknown case kinds and expected assertion keys fail closed.
 | Family | Cases | What passing shows |
 |---|---|---|
 | `compatibility/` | 30 | old readers reject runtime blocks; every refusal of §11.2; pack dispatch; version rules (`runtime_version_required`, `declared_version_below_constructs`); a rule or transition keyed `on` is a `schema_error`; legacy erasure is unchanged |
-| `lints/` | 61 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
-| `composition/` | 27 | overlays that change a predicate, population, method or schedule, drop a rule, flip `on_check_error`, weaken an approval, widen repeats or change a target; severity order and meet; pack floor tightening; module weaker than floor; floor-only carriage and reference rewriting; unreachable meets; post-composition deadline feasibility |
-| `projection/` | 14 | a canary per projection row of §8.2, unresolved alias, unavailable token map, unlisted-field refusal, closed errors without echo |
+| `lints/` | 69 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
+| `composition/` | 35 | overlays that change a predicate, population, method or schedule, drop a rule, flip `on_check_error`, weaken an approval, widen repeats or change a target; widen or tighten `deploy`, its meet, and its compilation; severity order and meet; pack floor tightening; module weaker than floor; floor-only carriage and reference rewriting; unreachable meets; post-composition deadline feasibility |
+| `projection/` | 15 | a canary per projection row of §8.2, unresolved alias, unavailable token map, unlisted-field refusal, closed errors without echo |
 | `latency_roundtrip/` | 2 | the `backend_v1` codec round trip of §10.3 |
 | `promotion/` | 10 | `monitor_outcomes` normalization and readiness, `missing_monitor_counts`, `chance_constraint_shadowed`, and the gate join over supplied verdicts (§6.11) |
 | `report_schema/` | 4 | the closed shape of `tvl-runtime-report/1` (§11.4.3) |
@@ -1859,6 +1953,7 @@ mechanised.
 | `horizon_false_alarm` | 12.7 | finite union bound over predesignated looks, without independence | `horizon_false_alarm` (`Runtime/BinomialGeneric.lean`): SUBSTANTIVE |
 | `compose_partial` | 12.8 | the raw meet is the greatest lower bound; validated composition succeeds iff the meet is reachable | `compose_partial_statement` (`Runtime/Compose.lean`): OPEN; its numeric-bounds part `raw_bounds_glb`: SUBSTANTIVE; `checked_bounds_meet_iff`: BY-CONSTRUCTION |
 | `severity_meet_glb` | 12.9 | absent `notify` severity is `critical`; the severity meet is the greatest lower bound | `severity_meet_glb` (`Runtime/Declarations.lean`): SUBSTANTIVE; `absent_notify_severity` (same file): BY-CONSTRUCTION |
+| `deploy_meet_glb` | 12.8 | absent `optimize` deploy is `never`; the deploy meet is the greatest lower bound; a deploy coordinate is valid only on `optimize` | `deploy_meet_glb` (`Runtime/Declarations.lean`): SUBSTANTIVE; `absent_deploy` (same file): BY-CONSTRUCTION; the coordinate is part of `RuleTightens`, `rawRuleMeet` and `ValidReachableContract` (`Runtime/Compose.lean`), whose statement stays OPEN |
 | `backend_profile_roundtrip` | 12.10 | lift ∘ lower = id on valid hosted profiles | `backend_profile_roundtrip` (`Runtime/Backend.lean`): BY-CONSTRUCTION, under supplied bijective codecs |
 | `compiled_contract_correct_statement` | 12.11 | compilation preserves normalized declarations (an open target) | `compiled_contract_correct_statement` (`Runtime/Compiler.lean`): OPEN |
 | float `_v1` versus rational `_v2` agreement | deferred | — | — |
@@ -2096,7 +2191,7 @@ measured; closure itself can still be delayed by evaluation lag, which §6.13 re
 | 21 | Throttle and degrade release | an authorized human, as for `resume` | §7.3 |
 | 22 | Severity under composition | ordered `info < warning < critical`, absent = `critical`; maximum in a raw meet; no lowering | §4.6, §9.3 |
 | 23 | `last_certified` | the latest certificate for the agent at the time of the effect; hold and notify if ineligible, never a fallback | §7.2 |
-| 24 | `optimize` candidates | deploying a candidate is a separate effect that passes the promotion gate and the same authority checks | §7.2 |
+| 24 | `optimize` candidates | deploying a candidate is a separate effect, declared by `deploy: if_promoted`, that passes the joined promotion gate and its own authority checks; it never closes an episode | §7.2, §7.6 |
 | 25 | Legacy CLIs | for pre-1.3 documents every existing CLI keeps its exact prior behaviour | §11.2 |
 | 26 | Compilation and enablement | the compiler compiles any valid specification; capability, certificate and enablement checks happen at registration | §11.5, §12 |
 
@@ -2136,11 +2231,25 @@ Each is settled here by the most conservative reading and needs confirmation at 
     revocation without that key revokes nothing.
 14. **Metrics other than latency.** `cost_usd`, `total_tokens` and `tool_calls` are the unit's values as its producer
     records them; TVL does not define how they are measured.
-15. **Release-gate reason for zero tolerance without `complete: true`.** The release gate reports
-    `UNKNOWN(incomplete)` (not `engine_required`): completeness is the harness's attestation, and no evaluator can
+15. **Release-gate reason for zero tolerance without `complete: true`.** For valid counts with u = 0 and pl = 0, the
+    release gate reports `UNKNOWN(incomplete)` (not `engine_required`; with u > 0 or pl > 0 the first row of §6.11
+    applies and the reason is `engine_required`): completeness is the harness's attestation, and no evaluator can
     supply it.
 16. **Lateness allowance.** 2W after `due(w)` for every evaluator profile in 1.3 (§6.8); a different allowance would be
     a revision of this RFC.
+17. **One approval for optimize and deploy.** A rule's single `approval` governs both effects, each approved separately;
+    under `standing`, a deploy without a grant naming it needs a human (§7.6). A separate `deploy_approval` field is
+    not added; "optimize automatically, deploy only after a human approves" is expressed by a grant that covers only
+    the optimization.
+18. **Deploy triggers.** Only episode events may carry `deploy: if_promoted` (§7.6 item 7); a deploy from a
+    `recovery_overdue` trigger, whose scope also has an episode, is not admitted in this revision.
+19. **Contract digests of existing `optimize` rules.** Filling `deploy: never` changes the compiled form, and so the
+    contract digest, of every module with an `optimize` rule compiled before this revision. The first scope enables only
+    `notify` and `open_next_step` (§12), so a platform that follows it has registered no such contract.
+20. **Population membership.** `among` admits only a `checker_pred` (`runtime_among_not_checker`, §4.4 T4). For metric
+    and exact predicates the violation reading and the satisfaction reading select opposite populations (for
+    `absence` of `error`, units with an error versus units without one), and no 1.3 example needs either. A later
+    revision may admit them with an explicit membership definition.
 
 ## Appendix A. Spelling decisions
 

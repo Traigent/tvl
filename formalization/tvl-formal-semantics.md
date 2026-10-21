@@ -50,7 +50,7 @@ For TVL to serve as a trustworthy specification language, we must establish:
 - **§9**: Promotion Semantics — acceptability, dominance, and promotion correctness
 - **§10**: Conformance Requirements — behavior required of implementations
 - **§11**: Future Work — proposed extensions, not current requirements
-- **§12**: Runtime Semantics (TVL 1.3) — draft requirements, monitors, obligations, and governed responses
+- **§12**: Runtime Semantics (TVL 1.3) — requirements, monitors, obligations, and governed responses
 
 Sections 2–6 and 9 specify **what** core TVL constructs mean; §12 specifies the optional TVL 1.3 runtime extension. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
 
@@ -85,7 +85,7 @@ The formal semantics and soundness proofs in this document apply to the **core T
 
 **cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the Lean proof tree (`proofs/`) simply predates RFC 0001 and RFC 0002 and has never been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/*.lean` mentions `composite`, `cvar`, or `policy`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
 
-**Runtime extension scope (TVL 1.3, DRAFT)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
+**Runtime extension scope (TVL 1.3, accepted 2026-10-21)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
 
 ### 1.5 Field Categorization and Semantic Layers
 
@@ -1508,7 +1508,7 @@ An implementation MAY use the informative SMT encoding in §8, another solver en
 
 ### 10.6 Runtime Monitor Requirements
 
-An implementation claiming support for the draft TVL 1.3 language MUST:
+An implementation claiming support for the TVL 1.3 language MUST:
 
 1. Parse and validate the three runtime blocks and `tvl_pack` with the schema/lint layering and closed diagnostics of RFC 0003 §5; check the sealed kind/source/phase/method combinations and references in §12.1; refuse unsupported constructs at every reader entrypoint rather than ignoring or stripping them.
 2. Leave every TVL 1.2 module, diagnostic and promotion result unchanged (§12.13, Theorem 12.1).
@@ -1554,7 +1554,7 @@ Connecting TVL to verification frameworks:
 
 | | |
 |---|---|
-| **Status** | **DRAFT** — RFC 0003; design decisions D1–D5 recorded 2026-10-16 (RFC 0003 §16.1) |
+| **Status** | **Accepted** 2026-10-21 with RFC 0003; design decisions D1–D5 recorded 2026-10-16 (RFC 0003 §16.1) |
 | **Target language version** | TVL 1.3, conservative extension of TVL 1.2 |
 | **Semantic layers** | Requirements → unit predicates on complete histories → window verdicts → episodes and obligations → declared responses |
 | **Defined here** | The meaning of runtime declarations on complete histories, the meaning of every parameter, and the contract each verdict, episode, obligation state and response effect must satisfy |
@@ -1656,7 +1656,7 @@ A legal bounded-response assignment is an injective map from matching `a` events
 
 For a DFA `(Q,Σ,δ,q₀,F,R)`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
 
-The population expression `among` is interpreted as a membership test `A_q(h)`: for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
+The population expression `among` is interpreted as a membership test `A_q(h)`. In 1.3 `among` is always a checker predicate (RFC 0003 §16.3 question 20; a metric or exact predicate there is `runtime_among_not_checker`): for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
 
 **Prefix-fixed violations.** The violations of `absence`, `bounded_existence`, `precedence` and a `protocol` reaching a rejecting state are fixed by a finite prefix of the history: once a prefix violates, every extension violates. The violations of `bounded_response`, a `protocol` ending outside its accepting states, a metric threshold and a checker label are not; they depend on the whole unit. Only prefix-fixed violations can be acted on before an effect (§12.10).
 
@@ -1846,7 +1846,7 @@ Project `LIVE↦MET` and `STALE↦BREACHED`. `stale` marks the monitor becoming 
 | 0 | implicit record | the originating event is recorded; not declarable | — |
 | 1 | `notify` | deliver an alert with the rule's `severity` | `none` |
 | 2 | `open_next_step` | open a recommended next step for the people or coding agent who maintain the agent, toward restoring the requirement; it is withdrawn when the episode closes. Opening it changes nothing in production; acting on it is a separate action with its own authority | `none` |
-| 3 | `optimize` | start a bounded optimization of the agent's configuration; its candidate must pass the promotion gate before deployment | `standing` or `human` |
+| 3 | `optimize` | start a bounded optimization of the agent's configuration; with `deploy: if_promoted` (default `never`), also deploy its candidate as a separate service effect (below) | `standing` or `human`, for each effect separately |
 | 3 | `rollback` | redeploy the `target` configuration, which must be eligible now (Definition 12.24) | `standing` or `human` |
 | 4 | `throttle` | lower the deployment's admission rate to at most `rate_floor` times its unthrottled admission rate | `standing` or `human` |
 | 4 | `degrade` | route new work to the certified `fallback` configuration, which must be eligible now | `standing` or `human` |
@@ -1889,7 +1889,9 @@ Every other remote action has **service-effect authority**: at the time of its e
 | liveness | the state is still `STALE` |
 | unit | never, for a remote service effect: a unit event authorizes only `notify` and the local guards |
 
-A service effect that has not taken place when its scope closes or its response revision changes never takes place. Terminal recovery and liveness events can notify, but cannot create a new service-effect scope. A unit guard is the local exception: it acts on its installed rule and current evidence, without a reachable remote authority.
+A service effect that has not taken place when its scope closes or its response revision changes never takes place. Terminal recovery and liveness events can notify, but cannot create a new service-effect scope.
+
+**Deploying an optimize candidate.** An `optimize` rule with `deploy: if_promoted` declares a second service effect of its episode scope, the deploy (RFC §7.6). A deploy occurrence is `(response, rule.id, episode, j, fp)` for optimize occurrence `j` and candidate fingerprint `fp`, at most one per optimize occurrence (rule IDs are response-local). Its authority is its own: a human approval of that occurrence, or a standing grant that names the deploy of this rule; authority for the optimization is not authority for the deploy. Either way the occurrence is bound, before the effect and for all its retries, to `fp`, the gate-result digest, the contract digest and the deployment precondition. It takes place only if, at the time of the effect, the service-effect conditions above hold for the episode (rule and `deploy: if_promoted` still current, contract current, authority valid, episode open), `fp` came from an optimize occurrence of this rule in this episode, the promotion join of Definition 12.15 over `fp`'s measurement bundle under the current contract is `Promote` (the module has a promotion monitor on the trigger's requirement), `fp` did not breach in an open episode, and the bound deployment precondition still holds when the deploy is written (checked atomically); otherwise nothing is deployed. Unreachable authority or promotion records hold it. A deploy is a repair attempt, not resolution: it never counts toward episode closure (Definition 12.17) or a recovery obligation (Definition 12.18); only production windows close the episode. A unit guard is the local exception: it acts on its installed rule and current evidence, without a reachable remote authority.
 
 ### 12.11 Controls, Eligibility, and Release
 
@@ -1910,7 +1912,7 @@ No declared action is silently inert: a platform that cannot execute a declared 
 
 ### 12.12 Refinement, Meet, Reachability, and Packs
 
-**Definition 12.26 (Refinement order)**. Write `A ⊑_rt B` to mean A is at least as strict as B, after canonical name/effective-key resolution under RFC §9.4, including pack-to-module reference rewriting and retained floor provenance. Compatibility first requires identical predicate, unit, population expression, evidence source, `deployment_environment`, attribution rule, `resolution`, decision method, `decision.model`, `threshold_factor`, and schedule. Schedule includes alignment, window width, grace, horizon and false-alarm allocation. Sampling mode/rate, single-producer, checker/DFA and resource-limit contracts must be identical unless a separate verified refinement rule exists; this draft supplies none. Changing an immutable component is an incompatible replacement, not an ordered numeric update.
+**Definition 12.26 (Refinement order)**. Write `A ⊑_rt B` to mean A is at least as strict as B, after canonical name/effective-key resolution under RFC §9.4, including pack-to-module reference rewriting and retained floor provenance. Compatibility first requires identical predicate, unit, population expression, evidence source, `deployment_environment`, attribution rule, `resolution`, decision method, `decision.model`, `threshold_factor`, and schedule. Schedule includes alignment, window width, grace, horizon and false-alarm allocation. Sampling mode/rate, single-producer, checker/DFA and resource-limit contracts must be identical unless a separate verified refinement rule exists; this revision supplies none. Changing an immutable component is an incompatible replacement, not an ordered numeric update.
 
 For compatible entries the coordinate orders are:
 
@@ -1925,9 +1927,9 @@ For compatible entries the coordinate orders are:
 | `within_hours` | `T_A ≤ T_B` | minimum |
 | `max_stale_windows` | `L_A ≤ L_B` | minimum |
 
-For responses, A must retain every base rule of B under the same `rule.id`, trigger, action, target, fallback, rate floor, and `on_check_error`; approval cannot weaken and repeat bounds cannot widen. Standing grants are not TVL declarations, so refinement never compares them. On `notify` rules, severity is a coordinate ordered `info < warning < critical`, with absent severity normalized to `critical` before comparison (RFC §4.6). Require `severity_A ≥ severity_B`; lowering is rejected after default filling, including when either side omits severity. Non-`notify` rules have no severity coordinate. Additional rules must themselves be well-formed. `repeat_after_hours` is immutable in this draft; a retained `max_repeats` may only decrease, and no repeat is added to a rule that had none. An omitted mandatory base rule is not an empty or more permissive override. Equal names with different immutable fields fail composition rather than creating parallel conflicting definitions.
+For responses, A must retain every base rule of B under the same `rule.id`, trigger, action, target, fallback, rate floor, and `on_check_error`; approval cannot weaken, repeat bounds cannot widen, and on `optimize` rules `deploy` cannot widen: it is ordered `never` stricter than `if_promoted`, with absent normalized to `never`. Standing grants are not TVL declarations, so refinement never compares them. On `notify` rules, severity is a coordinate ordered `info < warning < critical`, with absent severity normalized to `critical` before comparison (RFC §4.6). Require `severity_A ≥ severity_B`; lowering is rejected after default filling, including when either side omits severity. Non-`notify` rules have no severity coordinate. Additional rules must themselves be well-formed. `repeat_after_hours` is immutable in this revision; a retained `max_repeats` may only decrease, and no repeat is added to a rule that had none. An omitted mandatory base rule is not an empty or more permissive override. Equal names with different immutable fields fail composition rather than creating parallel conflicting definitions.
 
-**Definition 12.27 (Partial composition)**. On compatible coordinates the raw meet `A ⊓ B` takes the table's bounds, unions declarations/rules by canonical identity, takes the stronger required approval, takes the maximum normalized severity on each compatible retained `notify` rule, and takes the smaller `max_repeats` of each compatible retained rule. Cross-namespace/effective-key collisions are rejected. The raw meet is the greatest lower bound in this product order, before feasibility validation:
+**Definition 12.27 (Partial composition)**. On compatible coordinates the raw meet `A ⊓ B` takes the table's bounds, unions declarations/rules by canonical identity, takes the stronger required approval, takes `never` as the `deploy` of each compatible retained `optimize` rule unless both sides have `if_promoted`, takes the maximum normalized severity on each compatible retained `notify` rule, and takes the smaller `max_repeats` of each compatible retained rule. Cross-namespace/effective-key collisions are rejected. The raw meet is the greatest lower bound in this product order, before feasibility validation:
 
 ```
 A ⊓ B ⊑_rt A,     A ⊓ B ⊑_rt B,
@@ -2015,6 +2017,146 @@ Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j
 
 ---
 
+## 13. Reactive Outcomes and Notification Guards (TVL 1.4)
+
+This section formalizes RFC 0004 §§2–4. It extends §12 without changing verdict, episode,
+liveness, obligation or action states. It specifies recorded-history relations, not an executing
+controller. The static compiler accepts these declarations; runtime execution is external.
+
+### 13.1 Syntax and validity
+
+A reactive rule is a rule with an outcome trigger, `unknown_for`, `only_while`, or `unless`
+(including an empty guard list). It requires `tvl_version: "1.4"` and action `notify`.
+An outcome trigger is exactly `{rule: r, event: e}`, where r is another optimize rule in the
+same response and e belongs to the sealed set
+{`optimize_no_candidate`, `optimize_failed`, `deploy_refused`, `deploy_failed`}.
+Deploy outcomes require r's `deploy: if_promoted`. Neither repeat coordinate may occur on
+an outcome-triggered rule. Packs own neither outcome triggers nor `attempt_open` guards.
+The remaining validity conditions and diagnostic codes are RFC 0004 §2.5.
+
+### 13.2 Attempts and terminal outcomes
+
+**Definition 13.1 (Attempt identity).** An attempt's key is
+(response, response revision, optimize rule id, originating scope, optimize occurrence j).
+It includes that optimize occurrence and the separate deploy occurrence it may yield (§12.10).
+Retries of one occurrence preserve its key. The attempt opens when the optimize occurrence
+fires, before approval if approval is pending.
+
+**Definition 13.2 (Attempt closure).** The attempt closes at its last applicable recorded outcome:
+its deploy outcome if optimization produced a promoted candidate and `deploy: if_promoted`,
+otherwise its optimize outcome. It also closes on successful optimization with a promoted
+candidate under `deploy: never`, or successful deployment. Closing the originating scope or
+changing the response revision before a pending effect closes the attempt without an outcome.
+Decline or expiry of approval for the next effect, before that effect starts, also closes it
+without an outcome. Expiry after an effect starts does not close the attempt; the running
+effect still records its outcome. Pending approval and unreachable authority keep it open.
+
+**Definition 13.3 (Optimize outcome function).** For an open attempt, after terminal evaluation,
+let P mean some candidate's joined gate returned Promote, N mean normal completion, and
+V mean every candidate's promotion evidence was valid. In precedence order:
+
+1. P implies no failure outcome, even if another candidate had invalid evidence.
+2. Otherwise ¬N or ¬V gives `optimize_failed` (error, cancellation, cost limit, or invalid evidence).
+3. Otherwise `optimize_no_candidate` (including an empty candidate set, or only Reject/NoDecision).
+
+Invalid evidence is a repair failure, not a NoDecision gate result.
+
+**Definition 13.4 (Deploy outcome function).** At effect time, a failed §12.10 check gives
+`deploy_refused` with no deployment. Checks that hold followed by terminal failure of the write
+give `deploy_failed`, with production unchanged. A supporting evaluator profile declares a
+finite retry bound (count or time); only exhaustion records failure. A retry that later succeeds
+records no `deploy_failed`. A hold or unreachable state is never an outcome. Each attempt
+records at most one optimize outcome and at most one deploy outcome, each terminal for its
+occurrence. An outcome trigger fires once per attempt when its named outcome is recorded;
+it cannot start, retry or escalate a repair.
+
+### 13.3 Undecided runs
+
+**Definition 13.5 (Counted window).** A primary runtime monitor's window is counted iff its
+verdict is UNKNOWN and it has usable evidence (Definition 12.20). Windows are ordered by
+window start, never evaluation time. A window without usable evidence neither counts nor ends
+a run; liveness remains a distinct fact.
+
+**Definition 13.6 (Undecided run relation).** A run begins at the first counted window after the
+latest MET or BREACHED window, or the first counted window if none was decided. It continues
+across uncounted windows and ends at the next MET or BREACHED window or effective-key change.
+For first counted window a and latest counted window b, `unknown_for(h)` fires at the first
+evaluation for which end(b) − start(a) ≥ h hours. In particular a single counted window fires
+when h equals its tumbling duration, even if the next window is MET. Corrections change the run
+only through corrected evaluator records; delivered notifications are not withdrawn.
+The scope is `unknown_run`, keyed by (monitor ref, first counted window). h is a positive integer
+at least `tumbling_hours`; only primary runtime monitors emit it. Repeats re-notify while the run
+persists. `unknown_for` and `stale` may both fire under intermittent evidence; neither implies
+the other.
+
+### 13.4 Three-valued guards and notification resolution
+
+**Definition 13.7 (Valuation).** Values are TRUE, FALSE, UNDECIDED. An `episode_open(m)` guard
+is TRUE if m has an open episode for the same agent and environment, FALSE if m has been
+evaluated for them and has none (resolved and withdrawn are closed), UNDECIDED if its state
+cannot be established. m must be a primary runtime monitor in the document or composed pack.
+An `attempt_open(r)` guard is TRUE if an attempt of optimize rule r of the same response is
+open, FALSE if none is open, UNDECIDED if this cannot be established.
+
+**Definition 13.8 (Kleene connectives).** Conjunction is FALSE if either operand is FALSE, TRUE
+if both are TRUE, UNDECIDED otherwise. Disjunction is TRUE if either operand is TRUE, FALSE if
+both are FALSE, UNDECIDED otherwise. Empty conjunction is TRUE and empty disjunction FALSE.
+Let O be the conjunction of `only_while` and U the disjunction of `unless`. Delivery is
+(O ≠ FALSE) ∧ (U ≠ TRUE). UNDECIDED never suppresses.
+
+**Definition 13.9 (Evaluation time and identity).** Evaluate once per occurrence at its trigger,
+over recorded state after every occurrence fired by that evaluation. Thus a notification sees
+an attempt opened by the same evaluation. Record the decision with the event; delivery retains
+event authority. Each repeat evaluates again. A suppressed occurrence is never delivered later
+merely because a guard changed: `episode_continued` or a repeat is needed. Guards preserve the
+original trigger, scope and occurrence identity, and do not define a composite lifecycle.
+
+### 13.5 The unless graph and proof scope
+
+**Definition 13.10 (Edges).** The source of a notify rule is its trigger monitor, or for an
+outcome trigger, the trigger monitor of the referenced optimize rule. For each episode_open(m)
+guard in its `unless`, add source → m. Attempt guards add no edge. The graph spans responses;
+a nonempty path from a monitor to itself, including a self-loop, is `runtime_guard_cycle`.
+An `only_while` guard on the source monitor is `runtime_guard_redundant` (warning), not an edge.
+
+**Theorem 13.1 (`undecided_never_suppresses`, SUBSTANTIVE).** For every valuation and guard,
+replacing its value by UNDECIDED cannot turn delivered into suppressed. Mechanized for arbitrary
+finite guard lists, including a guard shared by both lists, using their Kleene folds.
+
+**Theorem 13.2 (`notify_only`, BY-CONSTRUCTION).** Valid reactive syntax has only action notify.
+This is a typed semantic model of validated rules, not a parser/compiler correctness proof.
+
+**Theorem 13.3 (`guards_preserve_identity`, BY-CONSTRUCTION).** Evaluation attaches a delivery
+decision to the original occurrence identity and scope without changing either.
+
+**Theorem 13.4 (`no_mutual_silencing`, SUBSTANTIVE).** For any finite nonempty set S of notify
+rules triggered by one evaluation, assume each `only_while` is not FALSE, each attempt guard in
+`unless` is not TRUE, and each episode guard in `unless` names a source monitor of S. If the
+unless graph is acyclic, some rule of S is delivered. Proof: its finite set of source monitors
+has a sink under the transitive edge relation; that source cannot have any monitor guard in
+`unless` inside S, and its attempt guards cannot suppress. External inhibition is deliberately
+excluded by the premise, not prohibited by the language. Lean uses absence of a nonempty path
+to itself as acyclicity and proves the sink argument; it assumes no delivery engine.
+
+All four statements are in `proofs/TVL/Runtime/Guards.lean`; classes and limitations are recorded
+in `proofs/PROOF_SUMMARY.md`. Attempt and run relations above are not mechanized engine proofs.
+
+### 13.6 Composition and projection
+
+Pack monitor absorption rewrites guard.monitor through the same alias map as trigger.monitor.
+Guard lists are sets of canonical guards; order and duplicates do not affect equality or compiled
+contract digest. Outcome triggers and both guard sets are immutable under overlays and meets:
+changes yield `runtime_incompatible_replacement`. Packs may guard only over their own primary
+monitors; attempt guards and outcome triggers are rejected before rewriting can borrow module
+rules. Post-composition checks still reject cycles, wrong kinds and missing references.
+
+Hosted projection carries only closed outcome/event/state enums and hosted monitor/rule references.
+The local program keeps local references. `backend_v1` remains unchanged and carries no responses.
+TVL 1.3 declarations retain their diagnostics. The existing `/1` format tags are retained pending
+RFC 0004 §7.2; consumers' compatibility with 1.4 compiled contracts is not claimed.
+
+---
+
 ## Appendix A: Notation Summary
 
 | Symbol | Meaning |
@@ -2090,7 +2232,7 @@ Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j
 | Callable type used | `unverifiable_callable_type` |
 | Float precision inadequate | `inadequate_precision` |
 
-### B.4 Runtime Validation and Lint Codes (TVL 1.3, DRAFT)
+### B.4 Runtime Validation and Lint Codes (TVL 1.3)
 
 [RFC 0003 §5](rfc-0003-runtime-requirements-monitors-responses.md#5-static-semantics-diagnostics) is the single normative source for TVL 1.3 diagnostic codes, conditions, and severities. This appendix does not define aliases or a second registry. The following are only cross-references for codes explicitly used in §12; all other runtime diagnostics, syntax-level enums, and lexical constraints are specified in the RFC. These references do not assert that an implementation already emits the diagnostics.
 

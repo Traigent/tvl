@@ -12,7 +12,8 @@ This directory holds the formal semantics of TVL and the RFCs that change the la
 |-----|-------|--------|----------------|
 | [0001](rfc-0001-knob-bindings-cvars-policies.md) | Knob Bindings: Calibrated Variables (`cvars`) and `policies` | Accepted (2026-06-05) | TVL 1.1 |
 | [0002](rfc-0002-composite-knobs.md) | Composite Knobs: a sealed control-flow algebra and a named pattern catalog | Accepted (2026-06-06) | TVL 1.2 |
-| [0003](rfc-0003-runtime-requirements-monitors-responses.md) | Runtime Requirements, Monitors and Responses | Draft | TVL 1.3 |
+| [0003](rfc-0003-runtime-requirements-monitors-responses.md) | Runtime Requirements, Monitors and Responses | Accepted (2026-10-21) | TVL 1.3 |
+| [0004](rfc-0004-reactive-outcomes-and-guards.md) | Reactive Outcomes and Guards: telling people when the repair loop needs them | Draft | TVL 1.4 |
 
 The status column is read from each RFC's header; the RFC is the authority if they ever differ.
 
@@ -31,7 +32,7 @@ Draft / Proposed → Withdrawn
 - **Draft** — being written; open to change. Opened as a pull request.
 - **Proposed** — the author considers it complete and asks for a decision. The pull request stays open for review.
 - **Accepted** — the maintainers accepted the design. The pull request merges with the status set to Accepted and the date (RFC 0001 and RFC 0002 keep Accepted as their header status).
-- **Final** — implemented in the tools, covered by conformance cases, and shipped in a language version (a draft RFC may land on `main` marked Draft while a draft language version is developed, as with RFC 0003).
+- **Final** — implemented in the tools, covered by conformance cases, and shipped in a language version (a draft RFC may land on `main` marked Draft while a draft language version is developed, as RFC 0003 did before its acceptance).
 - **Rejected** — the maintainers declined it; the reason is recorded in the RFC.
 - **Withdrawn** — the author withdrew it.
 

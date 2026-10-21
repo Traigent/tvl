@@ -5,11 +5,34 @@ from __future__ import annotations
 import copy
 from tvl.canonical import RuntimeClosedError, canonical_json_digest
 from tvl.diagnostics import closed_lint_issue, closed_schema_issues, runtime_syntax_issues
-from tvl.lints import _CUSTOMER_CHECKER_RE, _RUNTIME_IDENT_RE, lint_module, lint_pack
+from tvl.lints import _CUSTOMER_CHECKER_RE, _RUNTIME_IDENT_RE, _rule_source_monitor, lint_module, lint_pack
 from tvl.runtime_compose import compose_runtime_documents
 from tvl.runtime_projection import project_runtime_declarations, validate_projected_contract
 from tvl.schema import pack_validator, runtime_local_validator, validator as module_validator
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+
+
+def _check_deploy_gates(doc: Mapping[str, Any]) -> None:
+    """Fail closed unless every ``deploy: if_promoted`` rule keeps a promotion monitor on its requirement."""
+    mons = {
+        str(m.get("name")): m for m in doc.get("monitors") or [] if isinstance(m, Mapping)
+    }
+    gated = {
+        m.get("requirement") for m in mons.values() if m.get("phase") == "promotion"
+    }
+    for resp_idx, resp in enumerate(doc.get("responses") or []):
+        if not isinstance(resp, Mapping):
+            continue
+        for rule_idx, rl in enumerate(resp.get("rules") or []):
+            if not isinstance(rl, Mapping) or rl.get("deploy", "never") == "never":
+                continue
+            path = ["responses", resp_idx, "rules", rule_idx, "deploy"]
+            if rl.get("do") != "optimize" or rl.get("deploy") != "if_promoted":
+                raise RuntimeClosedError("runtime_invalid_ladder", path=path)
+            trig = rl.get("trigger") if isinstance(rl.get("trigger"), Mapping) else {}
+            mon = mons.get(str(trig.get("monitor")))
+            if mon is None or mon.get("requirement") not in gated:
+                raise RuntimeClosedError("response_deploy_without_promotion_monitor", path=path)
 
 
 def compile_runtime_document(
@@ -116,12 +139,13 @@ def compile_runtime_document(
             for resp in composed_doc.get("responses") or []:
                 if not isinstance(resp, Mapping):
                     continue
+                response_rules = {rl["id"]: rl for rl in resp.get("rules") or []}
                 kept_rules = [
                     copy.deepcopy(dict(rl))
                     for rl in (resp.get("rules") or [])
                     if isinstance(rl, Mapping)
                     and isinstance(rl.get("trigger"), Mapping)
-                    and str(rl["trigger"].get("monitor")) in agent_mon_names
+                    and _rule_source_monitor(dict(rl), response_rules) in agent_mon_names
                 ]
                 if kept_rules:
                     resp_copy = copy.deepcopy(dict(resp))
@@ -144,6 +168,12 @@ def compile_runtime_document(
                 }
             )
 
+    # Composition may rewrite rules and drop floor monitors: re-check every deploy gate (RFC 0003 §7.6)
+    _check_deploy_gates(working_doc)
+    # Composition already validates guards against the full composed document. A retained
+    # agent notification can reference a floor monitor supplied by a checked pack contract;
+    # do not require that monitor's evaluator to appear again in this agent contract.
+
     # Step 3: Projection with token map (§8.2)
     if (
         not isinstance(token_map_doc, Mapping)
@@ -160,7 +190,7 @@ def compile_runtime_document(
 
     contract: Dict[str, Any] = {
         "format": "tvl-runtime-contract/1",
-        "tvl_version": "1.3",
+        "tvl_version": working_doc["tvl_version"],
         "document": "pack" if is_pack else "module",
         "declarations": hosted_decls,
         "backend_profiles": backend_profiles,
@@ -195,7 +225,7 @@ def compile_runtime_document(
 
     local_prog: Dict[str, Any] = {
         "format": "tvl-runtime-local/1",
-        "tvl_version": "1.3",
+        "tvl_version": working_doc["tvl_version"],
         "document": "pack" if is_pack else "module",
         "contract_digest": contract_digest,
         "source_digest": canonical_json_digest(local_decls),

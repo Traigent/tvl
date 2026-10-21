@@ -38,6 +38,13 @@ APPROVAL_ORDER = {"none": 0, "standing": 1, "human": 2}
 APPROVAL_BY_RANK = {0: "none", 1: "standing", 2: "human"}
 
 
+# RFC 0003 §9.3: higher rank is stricter; an absent optimize deploy is "never".
+DEPLOY_ORDER = {"if_promoted": 0, "never": 1}
+
+
+DEPLOY_BY_RANK = {0: "if_promoted", 1: "never"}
+
+
 # Lexical types of RFC 0003 §4.2.1 (public; shared with evaluator profiles).
 REF_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
@@ -128,3 +135,9 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 def canonical_json_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def canonical_guards(guards: Any) -> list[dict[str, Any]]:
+    """RFC 0004 §2.6: guard order and duplicates have no semantic significance."""
+    by_key = {canonical_json_str(guard): dict(guard) for guard in guards}
+    return [by_key[key] for key in sorted(by_key)]

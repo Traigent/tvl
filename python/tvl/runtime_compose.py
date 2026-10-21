@@ -7,10 +7,13 @@ import re
 from tvl.canonical import (
     APPROVAL_BY_RANK,
     APPROVAL_ORDER,
+    DEPLOY_BY_RANK,
+    DEPLOY_ORDER,
     RuntimeClosedError,
     SEVERITY_BY_RANK,
     SEVERITY_ORDER,
     canonical_json_digest,
+    canonical_guards,
     minimal_decimal_str,
     to_fraction,
 )
@@ -172,6 +175,11 @@ def _merge_rules(
 
         orr = over_by_id[rid]
         rule_path = [*path, "rules", over_rules.index(orr)]
+        for field in ("only_while", "unless"):
+            if canonical_guards(br.get(field, [])) != canonical_guards(orr.get(field, [])):
+                raise RuntimeClosedError("runtime_incompatible_replacement", path=[*rule_path, field])
+        if ("rule" in br.get("trigger", {}) or "rule" in orr.get("trigger", {})) and br.get("trigger") != orr.get("trigger"):
+            raise RuntimeClosedError("runtime_incompatible_replacement", path=[*rule_path, "trigger"])
         for key in ("trigger", "do", "target", "fallback", "on_check_error"):
             if orr.get(key) != br.get(key):
                 raise RuntimeClosedError("runtime_overlay_weakens", path=[*rule_path, key])
@@ -196,12 +204,25 @@ def _merge_rules(
                 raise RuntimeClosedError("runtime_overlay_weakens", path=[*rule_path, "max_repeats"])
 
         merged = copy.deepcopy(orr)
+        for field in ("only_while", "unless"):
+            if field in merged:
+                merged[field] = canonical_guards(merged[field])
         if "approval" in br or "approval" in orr:
             merged["approval"] = APPROVAL_BY_RANK[max(app_b, app_o)]
         # An absent cap is unbounded, so a meet retains either finite cap.
         finite_caps = [int(cap) for cap in (mr_b, mr_o) if cap is not None]
         if finite_caps:
             merged["max_repeats"] = min(finite_caps)
+
+        if action == "optimize":
+            dep_b = DEPLOY_ORDER.get(str(br.get("deploy", "never")))
+            dep_o = DEPLOY_ORDER.get(str(orr.get("deploy", "never")))
+            if dep_b is None or dep_o is None:
+                raise RuntimeClosedError("runtime_unknown_kind", path=[*rule_path, "deploy"])
+            if not is_meet and dep_o < dep_b:
+                raise RuntimeClosedError("runtime_overlay_weakens", path=[*rule_path, "deploy"])
+            if "deploy" in br or "deploy" in orr:
+                merged["deploy"] = DEPLOY_BY_RANK[max(dep_b, dep_o)]
 
         if action == "notify":
             sev_b = SEVERITY_ORDER[str(br.get("severity", "critical"))]
@@ -349,6 +370,37 @@ def _validate_floor_provenance(
             raise RuntimeClosedError("tenant_floor_outside_pack", path=["floor_provenance", idx])
 
 
+def _check_authored_pack_rules(pack: Mapping[str, Any]) -> None:
+    for resp_idx, resp in enumerate(pack.get("responses") or []):
+        if not isinstance(resp, Mapping):
+            continue
+        for rule_idx, rl in enumerate(resp.get("rules") or []):
+            if isinstance(rl, Mapping):
+                trig = rl.get("trigger") or {}
+                if "rule" in trig or any(
+                    isinstance(g, Mapping) and "rule" in g
+                    for field in ("only_while", "unless") for g in rl.get(field, [])
+                ):
+                    raise RuntimeClosedError("runtime_invalid_ladder", path=["responses", resp_idx, "rules", rule_idx])
+            if isinstance(rl, Mapping) and rl.get("deploy", "never") != "never":
+                raise RuntimeClosedError(
+                    "response_deploy_without_promotion_monitor",
+                    path=["responses", resp_idx, "rules", rule_idx, "deploy"],
+                )
+
+    # A composed module must not lend its monitors to an authored pack guard (§2.4/§7.3).
+    if any(
+        isinstance(rule, Mapping) and ("only_while" in rule or "unless" in rule)
+        for response in pack.get("responses") or [] if isinstance(response, Mapping)
+        for rule in response.get("rules") or []
+    ):
+        for issue in lint_pack(dict(pack)):
+            if issue.get("severity") == "error" and any(
+                field in issue.get("path", []) for field in ("only_while", "unless")
+            ):
+                raise RuntimeClosedError(issue["code"], path=issue["path"], message=issue["message"])
+
+
 def compose_runtime_documents(
     base: Mapping[str, Any],
     overlay: Mapping[str, Any],
@@ -369,6 +421,11 @@ def compose_runtime_documents(
         base_is_pack, overlay_is_pack = True, False
     if base_is_pack and overlay_is_pack and operation != "meet":
         raise RuntimeClosedError("runtime_invalid_profile")
+    # RFC 0003 §7.6 item 9: a pack has no promotion monitors, so a floor can never declare a deploy.
+    # Check the authored pack before reference rewriting lets its rule borrow a module's promotion monitor.
+    for doc in (base, overlay):
+        if "pack" in doc and "tvl" not in doc:
+            _check_authored_pack_rules(doc)
     composed = copy.deepcopy(dict(overlay))
     previous_provenance = floor_provenance if floor_provenance is not None else []
     _validate_floor_provenance(previous_provenance, [overlay] if base_is_pack else [base, overlay])
@@ -523,6 +580,10 @@ def compose_runtime_documents(
                 trig = rl.get("trigger")
                 if isinstance(trig, dict) and str(trig.get("monitor")) in alias_map:
                     trig["monitor"] = alias_map[str(trig["monitor"])]
+                for field in ("only_while", "unless"):
+                    for guard in rl.get(field, []):
+                        if "monitor" in guard and guard["monitor"] in alias_map:
+                            guard["monitor"] = alias_map[guard["monitor"]]
                 if rl.get("do") == "notify":
                     rl["severity"] = rl.get("severity", "critical")
             r_name = str(pr_copy["name"])

@@ -21,7 +21,12 @@
   ],
   "properties": {
     "format": { "const": "tvl-runtime-local/1" },
-    "tvl_version": { "const": "1.3" },
+    "tvl_version": {
+      "enum": [
+        "1.3",
+        "1.4"
+      ]
+    },
     "document": { "enum": ["module", "pack"] },
     "contract_digest": { "$ref": "#/$defs/Fingerprint" },
     "source_digest": { "$ref": "#/$defs/Fingerprint" },
@@ -352,29 +357,63 @@
       "properties": {
         "id": { "$ref": "#/$defs/RuntimeIdent" },
         "trigger": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["monitor", "event"],
-          "properties": {
-            "monitor": { "$ref": "#/$defs/RuntimeIdent" },
-            "event": {
-              "enum": [
-                "episode_opened",
-                "episode_continued",
-                "episode_open_for",
-                "episode_resolved",
-                "episode_withdrawn",
-                "recovery_overdue",
-                "recovery_cancelled",
-                "recovery_recovered",
-                "burn_breached",
-                "stale",
-                "live_again",
-                "unit_violation"
-              ]
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "monitor",
+                "event"
+              ],
+              "properties": {
+                "monitor": {
+                  "$ref": "#/$defs/RuntimeIdent"
+                },
+                "event": {
+                  "enum": [
+                    "episode_opened",
+                    "episode_continued",
+                    "episode_open_for",
+                    "episode_resolved",
+                    "episode_withdrawn",
+                    "recovery_overdue",
+                    "recovery_cancelled",
+                    "recovery_recovered",
+                    "burn_breached",
+                    "stale",
+                    "live_again",
+                    "unit_violation",
+                    "unknown_for"
+                  ]
+                },
+                "hours": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
             },
-            "hours": { "type": "integer", "minimum": 1 }
-          }
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rule",
+                "event"
+              ],
+              "properties": {
+                "rule": {
+                  "$ref": "#/$defs/RuntimeIdent"
+                },
+                "event": {
+                  "enum": [
+                    "optimize_no_candidate",
+                    "optimize_failed",
+                    "deploy_refused",
+                    "deploy_failed"
+                  ]
+                }
+              }
+            }
+          ]
         },
         "do": {
           "enum": [
@@ -406,8 +445,60 @@
         "rate_floor": { "$ref": "#/$defs/DecimalString" },
         "repeat_after_hours": { "type": "integer", "minimum": 1 },
         "max_repeats": { "type": "integer", "minimum": 1 },
-        "on_check_error": { "enum": ["block", "allow"] }
-      }
+        "on_check_error": { "enum": ["block", "allow"] },
+        "deploy": { "enum": ["never", "if_promoted"] },
+        "only_while": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LocalGuard"
+          }
+        },
+        "unless": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LocalGuard"
+          }
+        }
+      },
+      "if": { "properties": { "do": { "const": "optimize" } } },
+      "then": { "required": ["deploy"] },
+      "else": { "not": { "required": ["deploy"] } }
+    },
+    "LocalGuard": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "monitor",
+            "state"
+          ],
+          "properties": {
+            "monitor": {
+              "$ref": "#/$defs/RuntimeIdent"
+            },
+            "state": {
+              "const": "episode_open"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rule",
+            "state"
+          ],
+          "properties": {
+            "rule": {
+              "$ref": "#/$defs/RuntimeIdent"
+            },
+            "state": {
+              "const": "attempt_open"
+            }
+          }
+        }
+      ]
     }
   }
 }

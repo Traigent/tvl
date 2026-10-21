@@ -1,9 +1,8 @@
 # Requirements, Monitors and Responses (TVL 1.3)
 
-!!! warning "TVL 1.3 is a draft"
-    This guide describes the TVL 1.3 draft. Every snippet below was checked with the reference tools
+!!! note "TVL 1.3"
+    This guide describes TVL 1.3, accepted on 2026-10-21. Every snippet below was checked with the reference tools
     in this repository (`tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`, `tvl-ci-gate`).
-    Names, limits and diagnostics can still change before release.
 
 TVL up to 1.2 says what an agent configuration is allowed to be and how a candidate earns promotion.
 TVL 1.3 adds the other half: **what the agent must keep doing once it is running, and what should happen
@@ -881,7 +880,7 @@ event automatically and cannot be declared.
 |---|---|---|---|
 | `notify` | an alert to be delivered, even after the episode has closed | optional `severity`: `info`, `warning`, `critical` (default `critical`) | `none` only |
 | `open_next_step` | a recommended next step to be issued for the people or coding agent who maintain the agent | none | `none` only |
-| `optimize` | an optimisation run within a bounded grant (cost ceiling, scope, expiry). The candidate still has to pass the promotion gate | none | `standing` or `human` (default `human`) |
+| `optimize` | an optimisation run within a bounded grant (cost ceiling, scope, expiry). The candidate still has to pass the promotion gate | optional `deploy`: `never` (default) or `if_promoted` (below) | `standing` or `human` (default `human`) |
 | `rollback` | a return to an earlier certified configuration | **`target`**: `last_certified` or a 64-hex fingerprint | `standing` or `human` (default `human`) |
 | `throttle` | a cap on how much traffic is admitted | **`rate_floor`**: a number strictly between 0 and 1 | `standing` or `human` (default `human`) |
 | `degrade` | traffic routed to a fallback configuration | **`fallback`**: a 64-hex fingerprint of a certified configuration | `standing` or `human` (default `human`) |
@@ -912,6 +911,16 @@ Fields not listed for an action are rejected (`runtime_invalid_ladder`). Two mor
 resolution or withdrawal of the episode makes `resume` *possible* but never performs it. A standing grant never authorizes `suspend`.
 Installed `throttle` and `degrade` controls also need an authorized human `release`; scope closure leaves them in place.
 `rollback`, `optimize`, `throttle` and `degrade` with `approval: none` are rejected (`response_irreversible_without_approval`).
+
+**Fix and deploy.** `deploy: if_promoted` on an `optimize` rule says: if the optimisation finds a candidate that passes
+the promotion gate, deploy it. The deploy is a second, separate effect. A person approves it on its own (approving the
+optimisation does not approve the deploy), or a standing grant must name the deploy itself. At the moment of the deploy
+the episode must still be open, the contract unchanged, and the candidate's promotion result `Promote`, which needs a
+promotion monitor on the same requirement (without one the rule is rejected with
+`response_deploy_without_promotion_monitor`). If anything that authorizes it is unreachable, the deploy holds. A
+deploy never closes the episode: the episode closes only when production windows are healthy again. Only episode events
+(`episode_opened`, `episode_continued`, `episode_open_for`) may trigger it, and an overlay may only turn
+`if_promoted` into `never`.
 
 A service-level action is meaningful only while the episode (or other scope) that caused it still needs intervention: if the episode closes first, the
 queued action is cancelled. If the people or records that authorize an action cannot be reached, the rule **holds**: nothing new happens. `notify` is different:
@@ -1289,3 +1298,24 @@ the token map, the checker bodies and which constructs a platform has enabled. T
 * [Error codes](../reference/error-codes.md#tvl-13-diagnostics): what each diagnostic means and what to do
 * The examples in [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3): 23 worked modules, from a latency promise to refund workflows and consent-gated exports
 * [Chapter 6 of the book](https://github.com/Traigent/tvl/blob/main/tvl_book/website_content/book/chapter-06-requirements-in-production.md): the same ideas as stories
+
+
+## Reactive notifications (TVL 1.4)
+
+With `tvl_version: "1.4"`, a notification may report an optimize rule's terminal outcome:
+`trigger: {rule: fix, event: optimize_no_candidate}`. Other outcomes are `optimize_failed`,
+`deploy_refused`, `deploy_failed`; the latter two require `deploy: if_promoted` on fix.
+The rule must be in the same response. Outcome notifications cannot repeat.
+
+Use `trigger: {monitor: latency, event: unknown_for, hours: 6}` to report prolonged UNKNOWN
+verdicts with usable evidence on a primary monitor (hours ≥ its tumbling duration).
+`stale` still means missing usable evidence; both may fire.
+
+Notifications can use `only_while: [{monitor: errors, state: episode_open}]` or
+`unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]`.
+Only a known FALSE conjunction or known TRUE inhibition suppresses: UNDECIDED still delivers.
+Use `episode_continued` or repeats to recheck; a suppressed occurrence is not replayed later.
+Mutual/self monitor inhibition is rejected. Attempt guards do not add inhibition graph edges.
+Packs may use their own monitor guards, but no outcome triggers or attempt guards.
+These constructs are notify-only; they add no production effect authority. See the language
+reference and formal semantics §13 for the attempt lifecycle, evaluation ordering and limits.
