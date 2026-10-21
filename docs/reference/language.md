@@ -885,7 +885,7 @@ A response is `{ name, rules }`. A rule is:
 | Key | Type | Required | Notes |
 |---|---|---|---|
 | `id` | `ident` | yes | unique within its response (`response_rule_id_duplicate`) |
-| `trigger` | `{ monitor, event, [hours] }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and forbidden otherwise. |
+| `trigger` | `{ monitor, event, [hours] }` or (1.4) `{ rule, event }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and `unknown_for`, and forbidden otherwise. |
 | `do` | action | yes | the sealed action set below. `record` is implicit and cannot be declared (`response_unknown_action`). |
 | `approval` | `none`, `standing`, `human` | yes for `suspend`, otherwise no | allowed values and defaults by action, below |
 | `target` | `last_certified` or `fingerprint` | `rollback` only | |
@@ -943,6 +943,48 @@ separate authority and it changes no deployment by itself.
 | `recovery_time` obligation | `recovery_overdue`, `recovery_cancelled`, `recovery_recovered` |
 | `evidence_liveness` obligation | `stale`, `live_again` |
 | promotion | none |
+
+#### Reactive notifications (TVL 1.4, RFC 0004)
+
+Declare `tvl_version: "1.4"` when a rule uses any of the following, including empty guard lists.
+All require `do: notify` (`runtime_notify_only`). TVL 1.3 documents keep their diagnostics.
+
+- `trigger: {rule: fix, event: optimize_no_candidate}` names another optimize rule in the same
+  response. The closed outcome set is `optimize_no_candidate`, `optimize_failed`, `deploy_refused`,
+  `deploy_failed`. Deploy outcomes require `deploy: if_promoted` on that optimize rule. Outcome
+  triggers fire once per attempt; neither repeat field is allowed. Packs cannot declare them.
+- `trigger: {monitor: latency, event: unknown_for, hours: 6}` requires a primary runtime monitor
+  and hours at least its tumbling duration. It reports UNKNOWN windows with usable evidence, by
+  window time, once per undecided run. Windows without usable evidence neither count nor end
+  the run; MET, BREACHED or an effective-key change ends it. A single counted window can fire.
+  Repeats are allowed. This differs from `stale`; both may fire on intermittent evidence.
+- `only_while: [{monitor: errors, state: episode_open}]` is a conjunction;
+  `unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]` is a
+  disjunction. These are the only guard forms. Monitor guards require primary runtime monitors;
+  attempt guards require an optimize rule of the same response, and are forbidden in packs.
+
+An attempt opens when optimize fires, including while approval is pending; it closes at its last
+applicable outcome, successful repair/deploy, scope closure, response revision change before a
+pending effect, or decline/expiry of the next effect's approval before that effect starts.
+Waiting for approval or unreachable authority keeps it open with no outcome. Expiry after start
+still allows that effect's outcome. Promote takes precedence over invalid evidence in another
+candidate; without any Promote, invalid evidence gives `optimize_failed`, not NoDecision.
+A deploy failure is terminal only after the evaluator profile's finite retry bound is exhausted.
+
+Guards use strong Kleene logic (TRUE, FALSE, UNDECIDED). Deliver unless `only_while` is FALSE or
+`unless` is TRUE; UNDECIDED never suppresses. Evaluate once per occurrence after all occurrences
+fired by that evaluation, so a newly opened attempt is visible. Each repeat rechecks; a suppressed
+occurrence is not delivered later when its guard changes. Use `episode_continued` or repeats to
+recheck. Guards preserve trigger, scope and occurrence identity and grant no effect authority.
+
+The unless graph adds an edge from each guarded notification's source monitor to every monitor
+in its `unless`. For outcome rules, use the referenced optimize rule's trigger monitor. Cycles,
+including self-loops, are `runtime_guard_cycle`; attempt guards add no edges. An `only_while` on
+its own source is `runtime_guard_redundant` (warning). Conjunction guards may be symmetric.
+Guard sets and outcome triggers are immutable under overlays and meets; list order/duplicates
+are immaterial. Absorbed pack monitor aliases are rewritten in guards too. Hosted projection
+uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled `/1` format tags
+are retained while RFC §7.2 is open; compiled consumer compatibility is not claimed.
 
 ### Verdicts, states and reasons
 

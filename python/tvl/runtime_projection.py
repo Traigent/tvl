@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from tvl.backend_profile_codec import to_backend_profile
-from tvl.canonical import RuntimeClosedError, HOSTED_CHECKER_RE, REF_RE, minimal_decimal_str
+from tvl.canonical import canonical_guards, RuntimeClosedError, HOSTED_CHECKER_RE, REF_RE, minimal_decimal_str
 from tvl.lints import _monitor_role
 from tvl.diagnostics import field_path
 from tvl.schema import runtime_contract_validator
@@ -58,7 +58,13 @@ def token_map_template(documents: Sequence[Mapping[str, Any]]) -> Dict[str, Any]
             add("response", resp["name"])
             for rule in resp["rules"]:
                 add("rule", rule["id"])
-                add("monitor", rule["trigger"]["monitor"])
+                trigger = rule["trigger"]
+                key = "rule" if "rule" in trigger else "monitor"
+                add(key, trigger[key])
+                for field in ("only_while", "unless"):
+                    for guard in rule.get(field, []):
+                        key = "monitor" if "monitor" in guard else "rule"
+                        add(key, guard[key])
     return {"format": "tvl-token-map/1", "tokens": [entries[key] for key in sorted(entries)]}
 
 
@@ -466,11 +472,12 @@ def project_runtime_declarations(
             rid = str(rl["id"])
             h_rid = _resolve_token(lookup, "rule", rid, ["responses", resp_idx, "rules", rule_idx, "id"])
             trig = rl["trigger"]
-            t_mon_loc = str(trig["monitor"])
-            t_mon_host = _resolve_token(lookup, "monitor", t_mon_loc, ["responses", resp_idx, "rules", rule_idx, "trigger", "monitor"])
+            t_key = "rule" if "rule" in trig else "monitor"
+            t_loc = str(trig[t_key])
+            t_host = _resolve_token(lookup, t_key, t_loc, ["responses", resp_idx, "rules", rule_idx, "trigger", t_key])
             t_ev = str(trig["event"])
-            l_trig: Dict[str, Any] = {"monitor": t_mon_loc, "event": t_ev}
-            h_trig: Dict[str, Any] = {"monitor": t_mon_host, "event": t_ev}
+            l_trig: Dict[str, Any] = {t_key: t_loc, "event": t_ev}
+            h_trig: Dict[str, Any] = {t_key: t_host, "event": t_ev}
             if "hours" in trig:
                 l_trig["hours"] = int(trig["hours"])
                 h_trig["hours"] = int(trig["hours"])
@@ -480,6 +487,16 @@ def project_runtime_declarations(
             app = str(rl.get("approval", def_app))
             l_rl: Dict[str, Any] = {"id": rid, "trigger": l_trig, "do": act, "approval": app}
             h_rl: Dict[str, Any] = {"id": h_rid, "trigger": h_trig, "do": act, "approval": app}
+            for field in ("only_while", "unless"):
+                if not rl.get(field):
+                    continue  # an empty guard list means no guard (RFC 0004 §2.6): same digest as absent
+                l_rl[field] = canonical_guards(rl[field])
+                h_rl[field] = []
+                for guard_idx, guard in enumerate(l_rl[field]):
+                    key = "monitor" if "monitor" in guard else "rule"
+                    hosted_ref = _resolve_token(lookup, key, str(guard[key]), ["responses", resp_idx, "rules", rule_idx, field, guard_idx, key])
+                    h_rl[field].append({key: hosted_ref, "state": guard["state"]})
+                h_rl[field] = canonical_guards(h_rl[field])
             if "target" in rl:
                 l_rl["target"] = str(rl["target"])
                 h_rl["target"] = str(rl["target"])
@@ -585,9 +602,18 @@ def validate_projected_contract(
                 for drl, hrl in zip(d_rules, h_rules):
                     if hrl.get("id") != by_ns.get(("rule", str(drl.get("id")))):
                         raise RuntimeClosedError("runtime_unsafe_egress")
-                    d_mon = str((drl.get("trigger") or {}).get("monitor", ""))
-                    if (hrl.get("trigger") or {}).get("monitor") != by_ns.get(("monitor", d_mon)):
+                    dt = drl.get("trigger") or {}
+                    key = "rule" if "rule" in dt else "monitor"
+                    if (hrl.get("trigger") or {}).get(key) != by_ns.get((key, str(dt.get(key, "")))):
                         raise RuntimeClosedError("runtime_unsafe_egress")
+                    for field in ("only_while", "unless"):
+                        expected_guards = []
+                        for guard in drl.get(field, []):
+                            key = "monitor" if "monitor" in guard else "rule"
+                            expected_guards.append({key: by_ns.get((key, str(guard[key]))), "state": guard["state"]})
+                        if canonical_guards(hrl.get(field, [])) != canonical_guards(expected_guards):
+                            raise RuntimeClosedError("runtime_unsafe_egress")
+
 
 
 def resolve_json_pointer(doc: Any, pointer: str) -> Any:

@@ -135,3 +135,9 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 def canonical_json_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def canonical_guards(guards: Any) -> list[dict[str, Any]]:
+    """RFC 0004 §2.6: guard order and duplicates have no semantic significance."""
+    by_key = {canonical_json_str(guard): dict(guard) for guard in guards}
+    return [by_key[key] for key in sorted(by_key)]

@@ -125,7 +125,7 @@ def run_runtime_conformance_case(case, *, case_path=None):
             inject_projection_fields(hosted_decls, inp.get("requested_fields"))
             contract_slice = {
                 "format": "tvl-runtime-contract/1",
-                "tvl_version": "1.3",
+                "tvl_version": doc.get("tvl_version", "1.3"),
                 "document": "pack" if "pack" in case else "module",
                 "declarations": hosted_decls,
                 "backend_profiles": bp_entries,

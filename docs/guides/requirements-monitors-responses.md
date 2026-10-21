@@ -1298,3 +1298,24 @@ the token map, the checker bodies and which constructs a platform has enabled. T
 * [Error codes](../reference/error-codes.md#tvl-13-diagnostics): what each diagnostic means and what to do
 * The examples in [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3): 23 worked modules, from a latency promise to refund workflows and consent-gated exports
 * [Chapter 6 of the book](https://github.com/Traigent/tvl/blob/main/tvl_book/website_content/book/chapter-06-requirements-in-production.md): the same ideas as stories
+
+
+## Reactive notifications (TVL 1.4)
+
+With `tvl_version: "1.4"`, a notification may report an optimize rule's terminal outcome:
+`trigger: {rule: fix, event: optimize_no_candidate}`. Other outcomes are `optimize_failed`,
+`deploy_refused`, `deploy_failed`; the latter two require `deploy: if_promoted` on fix.
+The rule must be in the same response. Outcome notifications cannot repeat.
+
+Use `trigger: {monitor: latency, event: unknown_for, hours: 6}` to report prolonged UNKNOWN
+verdicts with usable evidence on a primary monitor (hours ≥ its tumbling duration).
+`stale` still means missing usable evidence; both may fire.
+
+Notifications can use `only_while: [{monitor: errors, state: episode_open}]` or
+`unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]`.
+Only a known FALSE conjunction or known TRUE inhibition suppresses: UNDECIDED still delivers.
+Use `episode_continued` or repeats to recheck; a suppressed occurrence is not replayed later.
+Mutual/self monitor inhibition is rejected. Attempt guards do not add inhibition graph edges.
+Packs may use their own monitor guards, but no outcome triggers or attempt guards.
+These constructs are notify-only; they add no production effect authority. See the language
+reference and formal semantics §13 for the attempt lifecycle, evaluation ordering and limits.

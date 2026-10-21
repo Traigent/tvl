@@ -2017,6 +2017,146 @@ Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j
 
 ---
 
+## 13. Reactive Outcomes and Notification Guards (TVL 1.4)
+
+This section formalizes RFC 0004 §§2–4. It extends §12 without changing verdict, episode,
+liveness, obligation or action states. It specifies recorded-history relations, not an executing
+controller. The static compiler accepts these declarations; runtime execution is external.
+
+### 13.1 Syntax and validity
+
+A reactive rule is a rule with an outcome trigger, `unknown_for`, `only_while`, or `unless`
+(including an empty guard list). It requires `tvl_version: "1.4"` and action `notify`.
+An outcome trigger is exactly `{rule: r, event: e}`, where r is another optimize rule in the
+same response and e belongs to the sealed set
+{`optimize_no_candidate`, `optimize_failed`, `deploy_refused`, `deploy_failed`}.
+Deploy outcomes require r's `deploy: if_promoted`. Neither repeat coordinate may occur on
+an outcome-triggered rule. Packs own neither outcome triggers nor `attempt_open` guards.
+The remaining validity conditions and diagnostic codes are RFC 0004 §2.5.
+
+### 13.2 Attempts and terminal outcomes
+
+**Definition 13.1 (Attempt identity).** An attempt's key is
+(response, response revision, optimize rule id, originating scope, optimize occurrence j).
+It includes that optimize occurrence and the separate deploy occurrence it may yield (§12.10).
+Retries of one occurrence preserve its key. The attempt opens when the optimize occurrence
+fires, before approval if approval is pending.
+
+**Definition 13.2 (Attempt closure).** The attempt closes at its last applicable recorded outcome:
+its deploy outcome if optimization produced a promoted candidate and `deploy: if_promoted`,
+otherwise its optimize outcome. It also closes on successful optimization with a promoted
+candidate under `deploy: never`, or successful deployment. Closing the originating scope or
+changing the response revision before a pending effect closes the attempt without an outcome.
+Decline or expiry of approval for the next effect, before that effect starts, also closes it
+without an outcome. Expiry after an effect starts does not close the attempt; the running
+effect still records its outcome. Pending approval and unreachable authority keep it open.
+
+**Definition 13.3 (Optimize outcome function).** For an open attempt, after terminal evaluation,
+let P mean some candidate's joined gate returned Promote, N mean normal completion, and
+V mean every candidate's promotion evidence was valid. In precedence order:
+
+1. P implies no failure outcome, even if another candidate had invalid evidence.
+2. Otherwise ¬N or ¬V gives `optimize_failed` (error, cancellation, cost limit, or invalid evidence).
+3. Otherwise `optimize_no_candidate` (including an empty candidate set, or only Reject/NoDecision).
+
+Invalid evidence is a repair failure, not a NoDecision gate result.
+
+**Definition 13.4 (Deploy outcome function).** At effect time, a failed §12.10 check gives
+`deploy_refused` with no deployment. Checks that hold followed by terminal failure of the write
+give `deploy_failed`, with production unchanged. A supporting evaluator profile declares a
+finite retry bound (count or time); only exhaustion records failure. A retry that later succeeds
+records no `deploy_failed`. A hold or unreachable state is never an outcome. Each attempt
+records at most one optimize outcome and at most one deploy outcome, each terminal for its
+occurrence. An outcome trigger fires once per attempt when its named outcome is recorded;
+it cannot start, retry or escalate a repair.
+
+### 13.3 Undecided runs
+
+**Definition 13.5 (Counted window).** A primary runtime monitor's window is counted iff its
+verdict is UNKNOWN and it has usable evidence (Definition 12.20). Windows are ordered by
+window start, never evaluation time. A window without usable evidence neither counts nor ends
+a run; liveness remains a distinct fact.
+
+**Definition 13.6 (Undecided run relation).** A run begins at the first counted window after the
+latest MET or BREACHED window, or the first counted window if none was decided. It continues
+across uncounted windows and ends at the next MET or BREACHED window or effective-key change.
+For first counted window a and latest counted window b, `unknown_for(h)` fires at the first
+evaluation for which end(b) − start(a) ≥ h hours. In particular a single counted window fires
+when h equals its tumbling duration, even if the next window is MET. Corrections change the run
+only through corrected evaluator records; delivered notifications are not withdrawn.
+The scope is `unknown_run`, keyed by (monitor ref, first counted window). h is a positive integer
+at least `tumbling_hours`; only primary runtime monitors emit it. Repeats re-notify while the run
+persists. `unknown_for` and `stale` may both fire under intermittent evidence; neither implies
+the other.
+
+### 13.4 Three-valued guards and notification resolution
+
+**Definition 13.7 (Valuation).** Values are TRUE, FALSE, UNDECIDED. An `episode_open(m)` guard
+is TRUE if m has an open episode for the same agent and environment, FALSE if m has been
+evaluated for them and has none (resolved and withdrawn are closed), UNDECIDED if its state
+cannot be established. m must be a primary runtime monitor in the document or composed pack.
+An `attempt_open(r)` guard is TRUE if an attempt of optimize rule r of the same response is
+open, FALSE if none is open, UNDECIDED if this cannot be established.
+
+**Definition 13.8 (Kleene connectives).** Conjunction is FALSE if either operand is FALSE, TRUE
+if both are TRUE, UNDECIDED otherwise. Disjunction is TRUE if either operand is TRUE, FALSE if
+both are FALSE, UNDECIDED otherwise. Empty conjunction is TRUE and empty disjunction FALSE.
+Let O be the conjunction of `only_while` and U the disjunction of `unless`. Delivery is
+(O ≠ FALSE) ∧ (U ≠ TRUE). UNDECIDED never suppresses.
+
+**Definition 13.9 (Evaluation time and identity).** Evaluate once per occurrence at its trigger,
+over recorded state after every occurrence fired by that evaluation. Thus a notification sees
+an attempt opened by the same evaluation. Record the decision with the event; delivery retains
+event authority. Each repeat evaluates again. A suppressed occurrence is never delivered later
+merely because a guard changed: `episode_continued` or a repeat is needed. Guards preserve the
+original trigger, scope and occurrence identity, and do not define a composite lifecycle.
+
+### 13.5 The unless graph and proof scope
+
+**Definition 13.10 (Edges).** The source of a notify rule is its trigger monitor, or for an
+outcome trigger, the trigger monitor of the referenced optimize rule. For each episode_open(m)
+guard in its `unless`, add source → m. Attempt guards add no edge. The graph spans responses;
+a nonempty path from a monitor to itself, including a self-loop, is `runtime_guard_cycle`.
+An `only_while` guard on the source monitor is `runtime_guard_redundant` (warning), not an edge.
+
+**Theorem 13.1 (`undecided_never_suppresses`, SUBSTANTIVE).** For every valuation and guard,
+replacing its value by UNDECIDED cannot turn delivered into suppressed. Mechanized for arbitrary
+finite guard lists, including a guard shared by both lists, using their Kleene folds.
+
+**Theorem 13.2 (`notify_only`, BY-CONSTRUCTION).** Valid reactive syntax has only action notify.
+This is a typed semantic model of validated rules, not a parser/compiler correctness proof.
+
+**Theorem 13.3 (`guards_preserve_identity`, BY-CONSTRUCTION).** Evaluation attaches a delivery
+decision to the original occurrence identity and scope without changing either.
+
+**Theorem 13.4 (`no_mutual_silencing`, SUBSTANTIVE).** For any finite nonempty set S of notify
+rules triggered by one evaluation, assume each `only_while` is not FALSE, each attempt guard in
+`unless` is not TRUE, and each episode guard in `unless` names a source monitor of S. If the
+unless graph is acyclic, some rule of S is delivered. Proof: its finite set of source monitors
+has a sink under the transitive edge relation; that source cannot have any monitor guard in
+`unless` inside S, and its attempt guards cannot suppress. External inhibition is deliberately
+excluded by the premise, not prohibited by the language. Lean uses absence of a nonempty path
+to itself as acyclicity and proves the sink argument; it assumes no delivery engine.
+
+All four statements are in `proofs/TVL/Runtime/Guards.lean`; classes and limitations are recorded
+in `proofs/PROOF_SUMMARY.md`. Attempt and run relations above are not mechanized engine proofs.
+
+### 13.6 Composition and projection
+
+Pack monitor absorption rewrites guard.monitor through the same alias map as trigger.monitor.
+Guard lists are sets of canonical guards; order and duplicates do not affect equality or compiled
+contract digest. Outcome triggers and both guard sets are immutable under overlays and meets:
+changes yield `runtime_incompatible_replacement`. Packs may guard only over their own primary
+monitors; attempt guards and outcome triggers are rejected before rewriting can borrow module
+rules. Post-composition checks still reject cycles, wrong kinds and missing references.
+
+Hosted projection carries only closed outcome/event/state enums and hosted monitor/rule references.
+The local program keeps local references. `backend_v1` remains unchanged and carries no responses.
+TVL 1.3 declarations retain their diagnostics. The existing `/1` format tags are retained pending
+RFC 0004 §7.2; consumers' compatibility with 1.4 compiled contracts is not claimed.
+
+---
+
 ## Appendix A: Notation Summary
 
 | Symbol | Meaning |
