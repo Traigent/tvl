@@ -16,12 +16,7 @@
   ],
   "properties": {
     "format": { "const": "tvl-runtime-contract/1" },
-    "tvl_version": {
-      "enum": [
-        "1.3",
-        "1.4"
-      ]
-    },
+    "tvl_version": { "const": "1.3" },
     "document": { "enum": ["module", "pack"] },
     "declarations": { "$ref": "#/$defs/HostedDeclarations" },
     "backend_profiles": {
@@ -316,63 +311,29 @@
       "properties": {
         "id": { "$ref": "#/$defs/Ref" },
         "trigger": {
-          "oneOf": [
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "monitor",
-                "event"
-              ],
-              "properties": {
-                "monitor": {
-                  "$ref": "#/$defs/Ref"
-                },
-                "event": {
-                  "enum": [
-                    "episode_opened",
-                    "episode_continued",
-                    "episode_open_for",
-                    "episode_resolved",
-                    "episode_withdrawn",
-                    "recovery_overdue",
-                    "recovery_cancelled",
-                    "recovery_recovered",
-                    "burn_breached",
-                    "stale",
-                    "live_again",
-                    "unit_violation",
-                    "unknown_for"
-                  ]
-                },
-                "hours": {
-                  "type": "integer",
-                  "minimum": 1
-                }
-              }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["monitor", "event"],
+          "properties": {
+            "monitor": { "$ref": "#/$defs/Ref" },
+            "event": {
+              "enum": [
+                "episode_opened",
+                "episode_continued",
+                "episode_open_for",
+                "episode_resolved",
+                "episode_withdrawn",
+                "recovery_overdue",
+                "recovery_cancelled",
+                "recovery_recovered",
+                "burn_breached",
+                "stale",
+                "live_again",
+                "unit_violation"
+              ]
             },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "rule",
-                "event"
-              ],
-              "properties": {
-                "rule": {
-                  "$ref": "#/$defs/Ref"
-                },
-                "event": {
-                  "enum": [
-                    "optimize_no_candidate",
-                    "optimize_failed",
-                    "deploy_refused",
-                    "deploy_failed"
-                  ]
-                }
-              }
-            }
-          ]
+            "hours": { "type": "integer", "minimum": 1 }
+          }
         },
         "do": {
           "enum": [
@@ -405,19 +366,7 @@
         "repeat_after_hours": { "type": "integer", "minimum": 1 },
         "max_repeats": { "type": "integer", "minimum": 1 },
         "on_check_error": { "enum": ["block", "allow"] },
-        "deploy": { "enum": ["never", "if_promoted"] },
-        "only_while": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/HostedGuard"
-          }
-        },
-        "unless": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/HostedGuard"
-          }
-        }
+        "deploy": { "enum": ["never", "if_promoted"] }
       },
       "if": { "properties": { "do": { "const": "optimize" } } },
       "then": { "required": ["deploy"] },
@@ -475,42 +424,6 @@
           }
         }
       }
-    },
-    "HostedGuard": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "monitor",
-            "state"
-          ],
-          "properties": {
-            "monitor": {
-              "$ref": "#/$defs/Ref"
-            },
-            "state": {
-              "const": "episode_open"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "rule",
-            "state"
-          ],
-          "properties": {
-            "rule": {
-              "$ref": "#/$defs/Ref"
-            },
-            "state": {
-              "const": "attempt_open"
-            }
-          }
-        }
-      ]
     }
   }
 }

@@ -97,7 +97,7 @@ def run_cli(
     argv: Optional[Sequence[str]] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     parser = argparse.ArgumentParser(
-        description="Compile a TVL 1.3 module or pack into tvl-runtime-contract/1 and tvl-runtime-local/1"
+        description="Compile a TVL module or pack into version-tagged runtime contract and local artifacts"
     )
     parser.add_argument("file", type=Path, help="Path to TVL 1.3 module or pack YAML")
     parser.add_argument("--token-map", type=Path, help="Path to tvl-token-map/1 JSON")

@@ -4,6 +4,7 @@ from fractions import Fraction
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence, Set, Tuple
+from tvl.canonical import canonical_json_digest
 from tvl.lints import lint_module, lint_pack
 from tvl.measurement import prepare_measurement_bundle
 from tvl.runtime import (
@@ -27,7 +28,7 @@ _ALLOWED_EXPECTED_KEYS_BY_KIND = {'compose': {'absent_diagnostics', 'floor_match
  'join': {'promotion_decision', 'error'},
  'lint': {'absent_diagnostics', 'diagnostics'},
  'measurement': {'normalized_monitor_outcomes', 'readiness_issues'},
- 'projection': {'forbidden_substrings', 'projected_fields', 'error'},
+ 'projection': {'forbidden_substrings', 'projected_fields', 'contract_digest', 'error'},
  'roundtrip': {'backend_profile',
                'evaluation_metadata',
                'legacy_projection',
@@ -133,8 +134,8 @@ def run_runtime_conformance_case(case, *, case_path=None):
             from tvl.conformance_helpers import inject_projection_fields
             inject_projection_fields(hosted_decls, inp.get("requested_fields"))
             contract_slice = {
-                "format": "tvl-runtime-contract/1",
-                "tvl_version": doc.get("tvl_version", "1.3"),
+                "format": inp.get("contract_format", "tvl-runtime-contract/2" if doc.get("tvl_version") == "1.4" else "tvl-runtime-contract/1"),
+                "tvl_version": inp.get("contract_version", "1.4" if doc.get("tvl_version") == "1.4" else "1.3"),
                 "document": "pack" if "pack" in case else "module",
                 "declarations": hosted_decls,
                 "backend_profiles": bp_entries,
@@ -158,6 +159,8 @@ def run_runtime_conformance_case(case, *, case_path=None):
             return
 
         _check("error" not in expected, f"Expected error {expected['error'] if 'error' in expected else None}, got success")
+        if "contract_digest" in expected:
+            _check(canonical_json_digest(contract_slice) == expected["contract_digest"], "Canonical contract bytes differ from the frozen digest")
         if "projected_fields" in expected:
             for ptr, exp_val in expected["projected_fields"].items():
                 got_val = resolve_json_pointer(contract_slice, ptr)
@@ -351,8 +354,8 @@ def _run_toolchain_conformance_case(case: Mapping[str, Any]) -> None:
             if exit_code == 0:
                 emitted_contract = json.loads((out_dir / "runtime-contract.json").read_text(encoding="utf-8"))
                 emitted_local = json.loads((out_dir / "runtime-local.json").read_text(encoding="utf-8"))
-                _check(not list(runtime_contract_validator().iter_errors(emitted_contract)), "Emitted contract failed schema")
-                _check(not list(runtime_local_validator().iter_errors(emitted_local)), "Emitted local failed schema")
+                _check(not list(runtime_contract_validator(emitted_contract["format"]).iter_errors(emitted_contract)), "Emitted contract failed schema")
+                _check(not list(runtime_local_validator(emitted_local["format"]).iter_errors(emitted_local)), "Emitted local failed schema")
                 if "composed_fields" in expected:
                     for ptr, exp_val in expected["composed_fields"].items():
                         got_val = resolve_json_pointer(emitted_local, ptr)

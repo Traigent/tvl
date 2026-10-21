@@ -188,9 +188,13 @@ def compile_runtime_document(
         checker_labels=checker_labels_list,
     )
 
+    # The frozen /1 schemas admit only tvl_version 1.3. Preserve that wire format
+    # exactly; a 1.4 declaration uses /2 even without a reactive construct (RFC 0004 §3).
+    compiled_version = "1.4" if working_doc.get("tvl_version") == "1.4" else "1.3"
+    format_version = "2" if compiled_version == "1.4" else "1"
     contract: Dict[str, Any] = {
-        "format": "tvl-runtime-contract/1",
-        "tvl_version": working_doc["tvl_version"],
+        "format": f"tvl-runtime-contract/{format_version}",
+        "tvl_version": compiled_version,
         "document": "pack" if is_pack else "module",
         "declarations": hosted_decls,
         "backend_profiles": backend_profiles,
@@ -224,8 +228,8 @@ def compile_runtime_document(
                 )
 
     local_prog: Dict[str, Any] = {
-        "format": "tvl-runtime-local/1",
-        "tvl_version": working_doc["tvl_version"],
+        "format": f"tvl-runtime-local/{format_version}",
+        "tvl_version": compiled_version,
         "document": "pack" if is_pack else "module",
         "contract_digest": contract_digest,
         "source_digest": canonical_json_digest(local_decls),
@@ -245,7 +249,7 @@ def compile_runtime_document(
         used_tokens=used_tokens,
         checker_labels=checker_labels_list,
     )
-    if list(runtime_local_validator().iter_errors(local_prog)):
+    if list(runtime_local_validator(local_prog["format"]).iter_errors(local_prog)):
         raise RuntimeClosedError("runtime_invalid_profile")
 
     return contract, local_prog, issues

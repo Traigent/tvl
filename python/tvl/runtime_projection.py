@@ -548,8 +548,8 @@ def validate_projected_contract(
     used_tokens: Optional[Sequence[Mapping[str, str]]] = None,
     checker_labels: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> None:
-    """Validate a projected tvl-runtime-contract/1 against the closed schema and token-mapping invariants."""
-    if list(runtime_contract_validator().iter_errors(dict(contract))):
+    """Validate the tagged closed schema and token-mapping invariants."""
+    if list(runtime_contract_validator(contract.get("format", "")).iter_errors(dict(contract))):
         raise RuntimeClosedError("runtime_unsafe_egress")
 
     if used_tokens is not None:

@@ -2152,8 +2152,10 @@ rules. Post-composition checks still reject cycles, wrong kinds and missing refe
 
 Hosted projection carries only closed outcome/event/state enums and hosted monitor/rule references.
 The local program keeps local references. `backend_v1` remains unchanged and carries no responses.
-TVL 1.3 declarations retain their diagnostics. The existing `/1` format tags are retained pending
-RFC 0004 §7.2; consumers' compatibility with 1.4 compiled contracts is not claimed.
+TVL 1.3 declarations retain their diagnostics and byte-identical canonical `/1` artifacts for the same compiler
+inputs and toolchain version; the authored `"1.4"` exception below also overrides historical byte identity. The `/1` schemas are frozen at 1.3.0 and require `tvl_version: "1.3"`.
+TVL 1.4 constructs use `/2`; conservatively, any contract carrying `tvl_version: "1.4"` uses `/2`, even without new
+constructs. A 1.3 contract retagged `/2` is refused. See RFC 0004 §3 and its closed format decision in §7.2.
 
 ---
 

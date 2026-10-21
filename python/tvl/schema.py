@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from jsonschema import Draft202012Validator
+from tvl.canonical import RuntimeClosedError
 from pathlib import Path
 import json
 
@@ -34,12 +35,25 @@ def pack_validator() -> Draft202012Validator:
     return validator("tvl-pack.schema.json")
 
 
-def runtime_contract_validator() -> Draft202012Validator:
-    return validator("tvl-runtime-contract.schema.json")
+def runtime_contract_validator(format_tag: str = "tvl-runtime-contract/1") -> Draft202012Validator:
+    """Select a closed schema by its exchange tag; unknown tags fail closed."""
+    schemas = {
+        "tvl-runtime-contract/1": "tvl-runtime-contract.schema.json",
+        "tvl-runtime-contract/2": "tvl-runtime-contract-v2.schema.json",
+    }
+    if not isinstance(format_tag, str) or format_tag not in schemas:
+        raise RuntimeClosedError("runtime_unsafe_egress")
+    return validator(schemas[format_tag])
 
 
-def runtime_local_validator() -> Draft202012Validator:
-    return validator("tvl-runtime-local.schema.json")
+def runtime_local_validator(format_tag: str = "tvl-runtime-local/1") -> Draft202012Validator:
+    schemas = {
+        "tvl-runtime-local/1": "tvl-runtime-local.schema.json",
+        "tvl-runtime-local/2": "tvl-runtime-local-v2.schema.json",
+    }
+    if not isinstance(format_tag, str) or format_tag not in schemas:
+        raise RuntimeClosedError("runtime_invalid_profile")
+    return validator(schemas[format_tag])
 
 
 def runtime_report_validator() -> Draft202012Validator:

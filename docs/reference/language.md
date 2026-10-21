@@ -983,8 +983,8 @@ including self-loops, are `runtime_guard_cycle`; attempt guards add no edges. An
 its own source is `runtime_guard_redundant` (warning). Conjunction guards may be symmetric.
 Guard sets and outcome triggers are immutable under overlays and meets; list order/duplicates
 are immaterial. Absorbed pack monitor aliases are rewritten in guards too. Hosted projection
-uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled `/1` format tags
-are retained while RFC §7.2 is open; compiled consumer compatibility is not claimed.
+uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled contracts use `/1` for version 1.3 and `/2` for version 1.4, including the conservative
+version exception for 1.4 declarations without new constructs (see Companion documents below and RFC 0004 §3).
 
 ### Verdicts, states and reasons
 
@@ -1024,10 +1024,21 @@ maps it to `NoDecision`. Legacy modules keep their previous gate behaviour.
 |---|---|---|
 | token map | `tvl-token-map/1` | `{ format, tokens: [{ namespace, local, hosted }] }`. Customer side. Gives each name an opaque reference. `tvl-compile-runtime --token-map`. |
 | checker registry | `tvl-checker-registry/1` | `{ format, checkers: [{ checker, labels }] }`. Customer side. Binds each `customer:<name>` to its closed, ordered label list. `tvl-compile-runtime --checkers`. |
-| compiled contract | `tvl-runtime-contract/1` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schema: `spec/grammar/tvl-runtime-contract.schema.json`. |
-| compiled local form | `tvl-runtime-local/1` | `runtime-local.json`, customer side. Schema: `spec/grammar/tvl-runtime-local.schema.json`. |
+| compiled contract | `tvl-runtime-contract/1`, `tvl-runtime-contract/2` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schemas: `spec/grammar/tvl-runtime-contract.schema.json` (`/1`), `tvl-runtime-contract-v2.schema.json` (`/2`). |
+| compiled local form | `tvl-runtime-local/1`, `tvl-runtime-local/2` | `runtime-local.json`, customer side. Schemas: `spec/grammar/tvl-runtime-local.schema.json` (`/1`), `tvl-runtime-local-v2.schema.json` (`/2`). |
 | window report | `tvl-runtime-report/1` | produced by customer-side monitors. Schema: `spec/grammar/tvl-runtime-report.schema.json`. |
 | measurement bundle | `monitor_outcomes` | `monitor_outcomes.<promotion monitor name>: { n, k, [u], [pl], [complete] }` (integers >= 0; `complete` boolean) in the bundle given to `tvl-measure-validate` and `tvl-ci-gate`. Schema: `spec/grammar/tvl-measurement.schema.json`. |
+
+The `/1` contract and local schemas are frozen at TVL 1.3.0 and require `tvl_version: "1.3"`;
+Previously accepted inputs other than authored `"1.4"` retain their canonical bytes for the same compiler inputs
+and toolchain version; older or omitted declarations compile to version `"1.3"`, as in 1.3.0.
+Outcome triggers, `unknown_for`, and projected `only_while`/`unless` guards use `/2`.
+The conservative version exception is explicit: a `tvl_version: "1.4"` document with no new construct also uses `/2`,
+because `/1` permits only version `"1.3"`. This overrides historical byte identity for `"1.4"` modules without
+runtime blocks: 1.3.0 accepted those but emitted version `"1.3"` and `/1`. `/2` requires version `"1.4"`;
+a 1.3 contract retagged `/2` is refused.
+Validators dispatch by `format`; `/1` refuses every 1.4 field, and unknown format tags are refused.
+An empty guard list is omitted during projection. See RFC 0004 §3 and §7.2; the RFC remains DRAFT.
 
 Token-map `namespace` values are `module`, `requirement`, `monitor`, `response`, `rule`, `environment`, `selector_ref`, `checker`, `state`. In every
 namespace except `checker` the `hosted` value matches `^[A-Za-z0-9_-]{1,128}$`; in `checker`, `local` is a customer checker id and `hosted` is
