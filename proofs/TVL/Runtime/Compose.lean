@@ -78,6 +78,8 @@ structure NormalizedRule where
   approval : Approval
   maxRepeats : ℕ
   severity : Severity
+  /-- Normalized `deploy` (absent = `never`); meaningful only on `optimize`. -/
+  deploy : DeployMode
 
 def approvalRank : Approval → ℕ
   | .none => 0 | .standing => 1 | .human => 2
@@ -85,13 +87,15 @@ def approvalRank : Approval → ℕ
 def RuleTightens (a b : NormalizedRule) : Prop :=
   a.identity = b.identity ∧ approvalRank b.approval ≤ approvalRank a.approval ∧
   a.maxRepeats ≤ b.maxRepeats ∧
-  (b.identity.action = .notify → b.severity.rank ≤ a.severity.rank)
+  (b.identity.action = .notify → b.severity.rank ≤ a.severity.rank) ∧
+  b.deploy.rank ≤ a.deploy.rank
 
 def rawRuleMeet (a b : NormalizedRule) : NormalizedRule :=
   { identity := a.identity,
     approval := if approvalRank a.approval ≤ approvalRank b.approval then b.approval else a.approval,
     maxRepeats := min a.maxRepeats b.maxRepeats,
-    severity := severityMeet a.severity b.severity }
+    severity := severityMeet a.severity b.severity,
+    deploy := deployMeet a.deploy b.deploy }
 
 structure ContractIdentity where
   /-- Canonical predicate/unit/population/source/environment/attribution/checker,
@@ -143,14 +147,15 @@ def ValidReachableContract (c : NormalizedContract) : Prop :=
   (∀ id ∈ c.floorMonitors, (c.floorProvenance id).isSome = true) ∧
   (∀ id r, c.rules id = some r →
     (r.identity.action = .suspend → r.approval = .human) ∧
-    (r.approval = .none → nonePermitted r.identity.action))
+    (r.approval = .none → nonePermitted r.identity.action) ∧
+    (r.deploy = .ifPromoted → r.identity.action = .optimize))
 
 noncomputable def composeContracts (a b : NormalizedContract) : Option NormalizedContract := by
   classical
   exact if ContractCompatible a b ∧ ValidReachableContract (rawContractMeet a b)
     then some (rawContractMeet a b) else none
 
-/-- OPEN: this concrete finite rule model includes approval/severity order,
+/-- OPEN: this concrete finite rule model includes approval/severity/deploy order,
     repeat bounds, declaration union and floor provenance, but its WF/reachability predicate is
     only the rational static fragment. Catalogue-wide validator refinement
     remains OPEN; platform grants and registration are outside TVL composition. -/

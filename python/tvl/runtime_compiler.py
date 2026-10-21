@@ -12,6 +12,29 @@ from tvl.schema import pack_validator, runtime_local_validator, validator as mod
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 
+def _check_deploy_gates(doc: Mapping[str, Any]) -> None:
+    """Fail closed unless every ``deploy: if_promoted`` rule keeps a promotion monitor on its requirement."""
+    mons = {
+        str(m.get("name")): m for m in doc.get("monitors") or [] if isinstance(m, Mapping)
+    }
+    gated = {
+        m.get("requirement") for m in mons.values() if m.get("phase") == "promotion"
+    }
+    for resp_idx, resp in enumerate(doc.get("responses") or []):
+        if not isinstance(resp, Mapping):
+            continue
+        for rule_idx, rl in enumerate(resp.get("rules") or []):
+            if not isinstance(rl, Mapping) or rl.get("deploy", "never") == "never":
+                continue
+            path = ["responses", resp_idx, "rules", rule_idx, "deploy"]
+            if rl.get("do") != "optimize" or rl.get("deploy") != "if_promoted":
+                raise RuntimeClosedError("runtime_invalid_ladder", path=path)
+            trig = rl.get("trigger") if isinstance(rl.get("trigger"), Mapping) else {}
+            mon = mons.get(str(trig.get("monitor")))
+            if mon is None or mon.get("requirement") not in gated:
+                raise RuntimeClosedError("response_deploy_without_promotion_monitor", path=path)
+
+
 def compile_runtime_document(
     doc: Mapping[str, Any],
     *,
@@ -143,6 +166,9 @@ def compile_runtime_document(
                     "pack_contract_digest": canonical_json_digest(p_contract),
                 }
             )
+
+    # Composition may rewrite rules and drop floor monitors: re-check every deploy gate (RFC 0003 §7.6)
+    _check_deploy_gates(working_doc)
 
     # Step 3: Projection with token map (§8.2)
     if (

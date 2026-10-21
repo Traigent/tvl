@@ -3251,6 +3251,9 @@ _SEVERITIES = {"info", "warning", "critical"}
 _ON_CHECK_ERRORS = {"block", "allow"}
 _SUSPEND_FALLBACKS = {"static_unavailable", "route_to_human"}
 _SUSPEND_ESCALATION_EVENTS = {"episode_continued", "episode_open_for", "recovery_overdue"}
+_DEPLOY_MODES = {"never", "if_promoted"}
+# RFC 0003 §7.6: a deploy is a service effect of an episode scope, so only episode events may carry it.
+_DEPLOY_EPISODE_EVENTS = {"episode_opened", "episode_continued", "episode_open_for"}
 
 
 def _address_runtime_issues(issues: List[Issue], start: int = 0) -> None:
@@ -5522,6 +5525,44 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                         )
             elif "on_check_error" in rule:
                 invalid_parameter("on_check_error", "on_check_error is permitted only on block_action or halt_unit")
+
+            if "deploy" in rule:
+                deploy = rule.get("deploy")
+                if action != "optimize":
+                    invalid_parameter("deploy", "deploy is permitted only on optimize")
+                elif not isinstance(deploy, str) or deploy not in _DEPLOY_MODES:
+                    issues.append(
+                        {
+                            "code": "runtime_unknown_kind",
+                            "message": "Expected deploy: never, if_promoted",
+                            "path": path + ["deploy"],
+                            "severity": "error",
+                        }
+                    )
+                elif deploy == "if_promoted":
+                    if t_event not in _DEPLOY_EPISODE_EVENTS:
+                        issues.append(
+                            {
+                                "code": "runtime_invalid_ladder",
+                                "message": "deploy: if_promoted requires an episode trigger (episode_opened, episode_continued, or episode_open_for)",
+                                "path": path + ["trigger", "event"],
+                                "severity": "error",
+                            }
+                        )
+                    gate_req = t_mon.get("requirement") if t_mon is not None else None
+                    has_gate = isinstance(gate_req, str) and any(
+                        isinstance(m, dict) and m.get("phase") == "promotion" and m.get("requirement") == gate_req
+                        for m in mons_by_name.values()
+                    )
+                    if t_mon is not None and not has_gate:
+                        issues.append(
+                            {
+                                "code": "response_deploy_without_promotion_monitor",
+                                "message": "deploy: if_promoted requires a promotion monitor on the trigger monitor's requirement",
+                                "path": path + ["deploy"],
+                                "severity": "error",
+                            }
+                        )
 
             has_repeat_after = "repeat_after_hours" in rule
             has_max_repeats = "max_repeats" in rule

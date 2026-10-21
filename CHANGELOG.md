@@ -20,6 +20,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - The website no longer ships the app builder's editor runtime or its source-location attributes, and the unused builder template leftovers (login dialog, maps component, OAuth helper) are gone.
 
+### Added
+
+- RFC 0003 (draft revision): an `optimize` response rule may declare `deploy: never | if_promoted` (default `never`). `if_promoted` declares deploying the candidate as a separate service effect with its own occurrence and approval, effect-time checks (open episode, current contract, `Promote` from the joined promotion gate), hold when unreachable, tighten-only composition, and no effect on episode closure. Lints `response_deploy_without_promotion_monitor` and `runtime_invalid_ladder`; schemas, compiler, conformance cases and the Lean rule model carry the new coordinate.
+
 ### Changed
 
 - Python 3.12 or newer is required: `requires-python` is now `>=3.12`. Python 3.10 reached end of life in October 2026, and the fixed `numpy` releases need Python 3.12.

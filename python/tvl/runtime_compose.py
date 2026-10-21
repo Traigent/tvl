@@ -7,6 +7,8 @@ import re
 from tvl.canonical import (
     APPROVAL_BY_RANK,
     APPROVAL_ORDER,
+    DEPLOY_BY_RANK,
+    DEPLOY_ORDER,
     RuntimeClosedError,
     SEVERITY_BY_RANK,
     SEVERITY_ORDER,
@@ -203,6 +205,16 @@ def _merge_rules(
         if finite_caps:
             merged["max_repeats"] = min(finite_caps)
 
+        if action == "optimize":
+            dep_b = DEPLOY_ORDER.get(str(br.get("deploy", "never")))
+            dep_o = DEPLOY_ORDER.get(str(orr.get("deploy", "never")))
+            if dep_b is None or dep_o is None:
+                raise RuntimeClosedError("runtime_unknown_kind", path=[*rule_path, "deploy"])
+            if not is_meet and dep_o < dep_b:
+                raise RuntimeClosedError("runtime_overlay_weakens", path=[*rule_path, "deploy"])
+            if "deploy" in br or "deploy" in orr:
+                merged["deploy"] = DEPLOY_BY_RANK[max(dep_b, dep_o)]
+
         if action == "notify":
             sev_b = SEVERITY_ORDER[str(br.get("severity", "critical"))]
             sev_o = SEVERITY_ORDER[str(orr.get("severity", "critical"))]
@@ -349,6 +361,18 @@ def _validate_floor_provenance(
             raise RuntimeClosedError("tenant_floor_outside_pack", path=["floor_provenance", idx])
 
 
+def _reject_pack_deploys(pack: Mapping[str, Any]) -> None:
+    for resp_idx, resp in enumerate(pack.get("responses") or []):
+        if not isinstance(resp, Mapping):
+            continue
+        for rule_idx, rl in enumerate(resp.get("rules") or []):
+            if isinstance(rl, Mapping) and rl.get("deploy", "never") != "never":
+                raise RuntimeClosedError(
+                    "response_deploy_without_promotion_monitor",
+                    path=["responses", resp_idx, "rules", rule_idx, "deploy"],
+                )
+
+
 def compose_runtime_documents(
     base: Mapping[str, Any],
     overlay: Mapping[str, Any],
@@ -369,6 +393,11 @@ def compose_runtime_documents(
         base_is_pack, overlay_is_pack = True, False
     if base_is_pack and overlay_is_pack and operation != "meet":
         raise RuntimeClosedError("runtime_invalid_profile")
+    # RFC 0003 §7.6 item 9: a pack has no promotion monitors, so a floor can never declare a deploy.
+    # Check the authored pack before reference rewriting lets its rule borrow a module's promotion monitor.
+    for doc in (base, overlay):
+        if "pack" in doc and "tvl" not in doc:
+            _reject_pack_deploys(doc)
     composed = copy.deepcopy(dict(overlay))
     previous_provenance = floor_provenance if floor_provenance is not None else []
     _validate_floor_provenance(previous_provenance, [overlay] if base_is_pack else [base, overlay])

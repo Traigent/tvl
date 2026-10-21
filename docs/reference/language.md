@@ -904,7 +904,7 @@ A parameter that does not belong to the action, or is missing, is `runtime_inval
 |---|---|---|---|
 | `notify` | `none` | `severity` | any event |
 | `open_next_step` | `none` | none | active-scope events only (below); an open episode is needed for an effect |
-| `optimize` | `standing`, `human` (`human`) | none | active-scope events only (below); a next step must have been issued |
+| `optimize` | `standing`, `human` (`human`) | `deploy`: `never` (default) or `if_promoted` | active-scope events only (below); a next step must have been issued; `deploy: if_promoted` only on `episode_opened`, `episode_continued`, `episode_open_for` |
 | `rollback` | `standing`, `human` (`human`) | `target` (required) | active-scope events only (below) |
 | `throttle` | `standing`, `human` (`human`) | `rate_floor` (required) | active-scope events only (below) |
 | `degrade` | `standing`, `human` (`human`) | `fallback` fingerprint (required) | active-scope events only (below) |
@@ -921,6 +921,12 @@ preconditions and a scope requiring intervention when it happens (RFC §7.4).
 `optimize`, `rollback`, `throttle` and `degrade` with `approval: none` are `response_irreversible_without_approval`; `suspend` with an approval other
 than `human`, or with `approval` omitted, is `response_suspend_without_human`. A standing grant (an owner-signed record, at most 30 days, outside TVL documents) never
 authorizes `suspend`.
+
+`optimize` with `deploy: if_promoted` also deploys the candidate it finds, as a separate service effect (RFC §7.6): it
+needs its own human approval (or a standing grant that names the deploy), a still-open episode, a current contract, and
+a `Promote` result of the promotion gate join for that candidate, which requires a promotion monitor on the trigger
+monitor's requirement (`response_deploy_without_promotion_monitor` otherwise). A deploy never closes the episode;
+only healthy production windows do. Overlays may change `if_promoted` to `never`, never the reverse.
 
 `suspend` is latched: resolution or withdrawal makes human `resume` eligible, never automatic. An installed
 `throttle` or `degrade` also remains until an authorized human `release`. Multiple throttles use the smallest
@@ -1000,6 +1006,7 @@ combined with `--token-map` or `--out-dir`.
 | `sampling` on `customer_side` | census (every unit in scope) |
 | `precedence.mode` / `correlate_by` / protocol `unlisted` | `single_use` / `unit` / `reject` |
 | `notify.severity` | `critical` |
+| `optimize.deploy` | `never` |
 | `approval` | `none` for `notify`, `open_next_step`, `block_action`, `halt_unit`; `human` for `optimize`, `rollback`, `throttle`, `degrade`; explicit `human` required for `suspend` |
 | `min_samples` (zero tolerance, promotion) | 1 |
 | `max_unresolved_fraction` (promotion `rate_bound`) | 0 |
