@@ -84,12 +84,14 @@ holding while authority is unreachable (RFC 0003 §7.3) keeps the attempt open a
 
 **Outcomes.** Each attempt records at most one optimize outcome and at most one deploy outcome. Outcomes are terminal
 for their occurrence: a controller records one only when no retry of the same occurrence can change it (a retry of one
-occurrence is the same occurrence, RFC 0003 §7.4 item 1). How many times a controller retries one occurrence, and when
-it gives up, is its evaluator profile's (RFC 0003 §3.5); giving up is what records `deploy_failed`.
+occurrence is the same occurrence, RFC 0003 §7.4 item 1). How a controller retries one occurrence is its evaluator profile's (RFC 0003 §3.5), but
+a profile that supports this RFC states a **finite** retry bound (a count or a time) for deploy occurrences; reaching it
+records `deploy_failed`.
 
-**Precedence for one optimization.** If the gate returned `Promote` for any candidate, the optimization records no
-failure outcome. Otherwise, if the run did not finish normally (error, cancellation, cost limit) or any candidate's
-promotion evidence was invalid, it records `optimize_failed`. Otherwise it records `optimize_no_candidate`.
+**Precedence for one optimization.** The optimize outcome is decided in this order, and the table below describes
+each outcome only within it: (1) if the gate returned `Promote` for any candidate, the optimization records no failure
+outcome; (2) otherwise, if the run did not finish normally (error, cancellation, cost limit) or any candidate's
+promotion evidence was invalid, `optimize_failed`; (3) otherwise `optimize_no_candidate`.
 
 | Event | Recorded when (all while the attempt is open) |
 |---|---|
@@ -276,8 +278,9 @@ Lean (new `proofs/TVL/Runtime/Guards.lean`), each with its intended class:
   RFC authorizes or starts an effect.
 - `guards_preserve_identity` (BY-CONSTRUCTION): guard evaluation does not change a rule's occurrence identity or scope.
 - `no_mutual_silencing` (SUBSTANTIVE): if the `unless` graph is acyclic, then for any nonempty set S of `notify` rules
-  triggered by the same evaluation, each of whose `only_while` is not FALSE and whose `unless` `episode_open` guards
-  name only source monitors of S (with those monitors' episodes open), at least one rule of S is delivered. Silencing by a monitor outside S (the provider pattern) is intended and not excluded.
+  triggered by the same evaluation, each of whose `only_while` is not FALSE, whose `attempt_open` guards in `unless` are not
+  TRUE, and whose `episode_open` guards in `unless` name only source monitors of S, at least one rule of S is
+  delivered. Silencing by a monitor outside S (the provider pattern) is intended and not excluded.
 
 ## 5. Conformance
 
