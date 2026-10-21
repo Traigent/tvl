@@ -6,9 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-21
+
+TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semantics §13 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.4.0; authored modules using the new constructs declare `tvl_version: "1.4"`. Projected constructs select `/1` or `/2` as described below. Not published to a package registry.
+
 ### Added
 
-- RFC 0004 (TVL 1.4 draft): notification-only repair outcome triggers, primary-monitor
+- RFC 0004 (TVL 1.4): notification-only repair outcome triggers, primary-monitor
   `unknown_for`, and three-valued `only_while`/`unless` guards. Includes response-local references,
   monitor inhibition cycle checks, immutable guard-set/outcome composition, hosted reference
   projection, schema/editor copies, conformance cases and Lean guard proofs. TVL 1.3 diagnostic codes
@@ -17,9 +21,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   for projected 1.4 constructs, selected and validated by format tag, with identical editor copies. Only projected
   outcome triggers, `unknown_for`, or nonempty guards select `/2` and version `"1.4"`; all other declarations use
   `/1` and version `"1.3"`, including authored `"1.4"` declarations. Every input accepted by 1.3.0 retains byte-identical
-  canonical artifacts. `/1` with 1.4 fields and `/2` without projected 1.4 constructs are refused.
+  canonical artifacts for the same compiler inputs and toolchain version. The new default `toolchain.version`
+  is `"1.4.0"`; compared with 1.3.0, only that hosted field, any checked packs' derived `pack_contract_digest`
+  values, and local `contract_digest` change. Consumers pinning toolchain versions must add `"1.4.0"`;
+  explicitly pinning `toolchain_version="1.3.0"` preserves historical bytes and digests.
+  `/1` with 1.4 fields and `/2` without projected 1.4 constructs are refused.
   Success outcomes, pack guards over module monitors, and tracking manual deployment after `deploy: never`
-  are recorded as limitations of 1.4; RFC status stays DRAFT.
+  are recorded as limitations of 1.4.
 
 ## [1.3.0] - 2026-10-21
 

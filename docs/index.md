@@ -45,7 +45,7 @@ TVL is the contract boundary for governed adaptation in AI agents. A TVL module 
 The public language contract defines what these requirements mean. Search algorithms, candidate scheduling, sample allocation, and internal solver representations remain implementation choices.
 
 !!! note "Language version"
-    The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002). Both are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. These guides focus on the core constructs; the RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](reference/error-codes.md).
+    The current language version is **TVL 1.4**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime requirements, monitors and responses (RFC 0003); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. These guides focus on the core constructs; the RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](reference/error-codes.md).
 
 ## A Valid TVL Example
 

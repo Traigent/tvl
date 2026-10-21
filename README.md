@@ -4,7 +4,7 @@
 [![CodeQL](https://github.com/Traigent/tvl/actions/workflows/codeql.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/codeql.yml)
 [![Lean proofs](https://github.com/Traigent/tvl/actions/workflows/lean-proofs.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/lean-proofs.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Spec: 1.3](https://img.shields.io/badge/spec-1.3-informational.svg)](CHANGELOG.md)
+[![Spec: 1.4](https://img.shields.io/badge/spec-1.4-informational.svg)](CHANGELOG.md)
 
 **Tuned Variables Language (TVL)** is a typed, machine-checkable language for specifying what an AI agent must achieve, what parts of its design may vary, and what evidence is required before a candidate may be accepted.
 
@@ -132,7 +132,7 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml
 
 ## Language version
 
-The current language version is **TVL 1.3**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and the strict `promotion_policy.require_calibration` mode ([RFC 0001](formalization/rfc-0001-knob-bindings-cvars-policies.md)); TVL 1.2 added `composites` ([RFC 0002](formalization/rfc-0002-composite-knobs.md)); TVL 1.3 added runtime requirements, monitors and responses ([RFC 0003](formalization/rfc-0003-runtime-requirements-monitors-responses.md), above). All are conservative extensions: a module that uses none of these constructs (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The user guides focus on the core constructs; every diagnostic the validators emit, including those for the 1.1 and 1.2 constructs, is listed in the [error code catalog](docs/reference/error-codes.md). See the [changelog](CHANGELOG.md) for details.
+The current language version is **TVL 1.4**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and the strict `promotion_policy.require_calibration` mode ([RFC 0001](formalization/rfc-0001-knob-bindings-cvars-policies.md)); TVL 1.2 added `composites` ([RFC 0002](formalization/rfc-0002-composite-knobs.md)); TVL 1.3 added runtime requirements, monitors and responses ([RFC 0003](formalization/rfc-0003-runtime-requirements-monitors-responses.md), above); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards ([RFC 0004](formalization/rfc-0004-reactive-outcomes-and-guards.md), accepted 2026-10-21, and [formal semantics §13](formalization/tvl-formal-semantics.md#13-reactive-outcomes-and-notification-guards-tvl-14)). All are conservative extensions: a module that uses none of these constructs (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The user guides focus on the core constructs; every diagnostic the validators emit, including those for the 1.1 and 1.2 constructs, is listed in the [error code catalog](docs/reference/error-codes.md). See the [changelog](CHANGELOG.md) for details.
 
 ## Repository map
 
@@ -143,7 +143,7 @@ The current language version is **TVL 1.3**. TVL 1.1 added calibrated variables 
 - `tests/` and `conformance/` — executable validation and compatibility cases
 - `vscode-tvl/` and `editor_shared/` — editor support
 - `website/` — source for [tvl-lang.org](https://tvl-lang.org)
-- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note; the TVL 1.3 language results are listed in its *Runtime (TVL 1.3)* section)
+- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note; the TVL 1.3 language results and TVL 1.4 guard results are listed in its *Runtime (TVL 1.3)* and *RFC 0004* sections)
 
 ## Start here
 
