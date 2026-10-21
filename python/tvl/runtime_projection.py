@@ -246,6 +246,15 @@ def _normalize_predicate_local_and_hosted(
     raise RuntimeClosedError("runtime_unknown_kind")
 
 
+def has_projected_reactive_construct(declarations: Mapping[str, Any]) -> bool:
+    """Whether normalized declarations require the TVL 1.4 runtime wire format."""
+    return any(
+        "rule" in rule["trigger"] or rule["trigger"]["event"] == "unknown_for"
+        or rule.get("only_while") or rule.get("unless")
+        for response in declarations["responses"] for rule in response["rules"]
+    )
+
+
 def project_runtime_declarations(
     doc: Mapping[str, Any],
     *,
@@ -548,8 +557,8 @@ def validate_projected_contract(
     used_tokens: Optional[Sequence[Mapping[str, str]]] = None,
     checker_labels: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> None:
-    """Validate a projected tvl-runtime-contract/1 against the closed schema and token-mapping invariants."""
-    if list(runtime_contract_validator().iter_errors(dict(contract))):
+    """Validate the tagged closed schema and token-mapping invariants."""
+    if list(runtime_contract_validator(contract.get("format", "")).iter_errors(dict(contract))):
         raise RuntimeClosedError("runtime_unsafe_egress")
 
     if used_tokens is not None:

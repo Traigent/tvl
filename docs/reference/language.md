@@ -944,7 +944,7 @@ separate authority and it changes no deployment by itself.
 | `evidence_liveness` obligation | `stale`, `live_again` |
 | promotion | none |
 
-#### Reactive notifications (TVL 1.4, RFC 0004)
+#### Reactive notifications (TVL 1.4 DRAFT, RFC 0004)
 
 Declare `tvl_version: "1.4"` when a rule uses any of the following, including empty guard lists.
 All require `do: notify` (`runtime_notify_only`). TVL 1.3 documents keep their diagnostics.
@@ -983,8 +983,8 @@ including self-loops, are `runtime_guard_cycle`; attempt guards add no edges. An
 its own source is `runtime_guard_redundant` (warning). Conjunction guards may be symmetric.
 Guard sets and outcome triggers are immutable under overlays and meets; list order/duplicates
 are immaterial. Absorbed pack monitor aliases are rewritten in guards too. Hosted projection
-uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled `/1` format tags
-are retained while RFC §7.2 is open; compiled consumer compatibility is not claimed.
+uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled contracts with projected 1.4 constructs
+use `/2` and version `"1.4"`; all others use `/1` and version `"1.3"` (see Companion documents below and RFC 0004 §3).
 
 ### Verdicts, states and reasons
 
@@ -1024,10 +1024,20 @@ maps it to `NoDecision`. Legacy modules keep their previous gate behaviour.
 |---|---|---|
 | token map | `tvl-token-map/1` | `{ format, tokens: [{ namespace, local, hosted }] }`. Customer side. Gives each name an opaque reference. `tvl-compile-runtime --token-map`. |
 | checker registry | `tvl-checker-registry/1` | `{ format, checkers: [{ checker, labels }] }`. Customer side. Binds each `customer:<name>` to its closed, ordered label list. `tvl-compile-runtime --checkers`. |
-| compiled contract | `tvl-runtime-contract/1` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schema: `spec/grammar/tvl-runtime-contract.schema.json`. |
-| compiled local form | `tvl-runtime-local/1` | `runtime-local.json`, customer side. Schema: `spec/grammar/tvl-runtime-local.schema.json`. |
+| compiled contract | `tvl-runtime-contract/1`, `tvl-runtime-contract/2` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schemas: `spec/grammar/tvl-runtime-contract.schema.json` (`/1`), `tvl-runtime-contract-v2.schema.json` (`/2`). |
+| compiled local form | `tvl-runtime-local/1`, `tvl-runtime-local/2` | `runtime-local.json`, customer side. Schemas: `spec/grammar/tvl-runtime-local.schema.json` (`/1`), `tvl-runtime-local-v2.schema.json` (`/2`). |
 | window report | `tvl-runtime-report/1` | produced by customer-side monitors. Schema: `spec/grammar/tvl-runtime-report.schema.json`. |
 | measurement bundle | `monitor_outcomes` | `monitor_outcomes.<promotion monitor name>: { n, k, [u], [pl], [complete] }` (integers >= 0; `complete` boolean) in the bundle given to `tvl-measure-validate` and `tvl-ci-gate`. Schema: `spec/grammar/tvl-measurement.schema.json`. |
+
+The `/1` contract and local schemas are frozen at TVL 1.3.0 and require `tvl_version: "1.3"`.
+Previously accepted inputs retain their canonical bytes for the same compiler inputs and toolchain version,
+including authored `"1.4"` modules without runtime blocks. Without projected new constructs, declarations compile
+to `/1` and version `"1.3"`, regardless of authored version, as in 1.3.0.
+Outcome triggers, `unknown_for`, and nonempty projected `only_while`/`unless` guards select `/2` and version `"1.4"`.
+Empty guard lists are omitted by projection. A `/2` artifact without projected new constructs is refused,
+even if it carries version `"1.4"`.
+Validators dispatch by `format`; `/1` refuses every 1.4 field, and unknown format tags are refused.
+See RFC 0004 §3 and §7.2; the RFC remains DRAFT.
 
 Token-map `namespace` values are `module`, `requirement`, `monitor`, `response`, `rule`, `environment`, `selector_ref`, `checker`, `state`. In every
 namespace except `checker` the `hosted` value matches `^[A-Za-z0-9_-]{1,128}$`; in `checker`, `local` is a customer checker id and `hosted` is

@@ -37,8 +37,8 @@ def test_compile_new_constructs_and_preserve_hosted_reference_bindings():
     d = module()
     c, local, _ = compile_runtime_document(d, token_map_doc=tokens(d))
     assert c['tvl_version'] == local['tvl_version'] == '1.4'
-    assert not list(runtime_contract_validator().iter_errors(c))
-    assert not list(runtime_local_validator().iter_errors(local))
+    assert not list(runtime_contract_validator(c["format"]).iter_errors(c))
+    assert not list(runtime_local_validator(local["format"]).iter_errors(local))
     rules = c['declarations']['responses'][0]['rules']
     assert rules[1]['trigger'] == {'rule': rules[0]['id'], 'event': 'optimize_no_candidate'}
     assert rules[1]['unless'] == [{'rule': rules[0]['id'], 'state': 'attempt_open'}]
@@ -155,7 +155,7 @@ def test_compiled_enums_are_closed(artifact, location, value):
     if location == 'outcome': rules[1]['trigger']['event'] = value
     elif location == 'monitor_event': rules[2]['trigger']['event'] = value
     else: rules[1]['unless'][0]['state'] = value
-    v = runtime_contract_validator() if artifact == 'hosted' else runtime_local_validator()
+    v = runtime_contract_validator(a['format']) if artifact == 'hosted' else runtime_local_validator(a['format'])
     assert list(v.iter_errors(a))
 
 
@@ -206,7 +206,7 @@ def test_authored_schema_seals_guard_shapes_and_trigger_alternatives():
     assert list(validator().iter_errors(d))
 
 
-@pytest.mark.parametrize('name', ['tvl.schema.json','tvl-pack.schema.json'])
+@pytest.mark.parametrize('name', ['tvl.schema.json', 'tvl-pack.schema.json', 'tvl-runtime-contract.schema.json', 'tvl-runtime-local.schema.json', 'tvl-runtime-contract-v2.schema.json', 'tvl-runtime-local-v2.schema.json'])
 def test_editor_schema_copies_identical(name):
     source = (ROOT/'spec/grammar'/name).read_bytes()
     for directory in ['editor_shared/vscode/schemas','vscode-tvl/schemas']:

@@ -124,7 +124,11 @@ input:
     local: opt_default
     hosted: opaque_rule_opt_default
 expected:
+  # Canonical hosted bytes emitted by bcd20f6dd (TVL 1.3.0), same module/token map.
+  contract_digest: 1efa96d31e9953dd82eeffb12ca440507bfb0b62aa585b22b6765d9edcc9bdcb
   projected_fields:
+    /format: tvl-runtime-contract/1
+    /tvl_version: '1.3'
     /declarations/responses/0/rules/1/deploy: if_promoted
     /declarations/responses/0/rules/2/deploy: never
   forbidden_substrings: []

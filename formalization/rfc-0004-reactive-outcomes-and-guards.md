@@ -79,6 +79,8 @@ approval has been given, until the first of:
   §7.6 item 2) — is declined or expires **before that effect starts**. Expiry after an effect has started does not
   close the attempt; that effect still records its outcome.
 
+If the originating scope closes or the response revision changes after the optimization or deploy has started, the attempt stays open until that effect records its outcome or succeeds, and then closes; no later effect starts.
+
 The third group records **no outcome**: either nothing is left to repair, or a person decided. Waiting for approval or
 holding while authority is unreachable (RFC 0003 §7.3) keeps the attempt open and records nothing.
 
@@ -141,8 +143,8 @@ responses:
 (`runtime_invalid_ladder`; burn monitors are UNKNOWN whenever they do not breach, RFC 0003 §6.10).
 
 **Counted windows.** A window of m counts toward an undecided run iff its verdict is `UNKNOWN` **and** it carried usable
-evidence (RFC 0003 §6.14, formal semantics Definition 12.20). A window without usable evidence is liveness's fact: it
-neither counts toward nor ends a run.
+evidence (RFC 0003 §6.14, formal semantics Definition 12.20). An `UNKNOWN` window without usable evidence is liveness's fact: it
+neither counts toward nor ends a run. Any MET or BREACHED window ends a run, whether or not it carried usable evidence.
 
 **Run.** Order m's windows by window start (not by evaluation time). A run begins at the first counted window after
 m's latest `MET` or `BREACHED` window (or at m's first counted window, if m has no decided window) and continues across windows that do
@@ -169,6 +171,8 @@ guard never changes the rule's trigger, scope or occurrence identity (RFC 0003 �
 |---|---|---|
 | `{monitor: m, state: episode_open}` | m has an open episode (RFC 0003 §6.12) for the same agent and environment | m is evaluated for them and has no open episode (a withdrawn or resolved episode is closed) |
 | `{rule: r, state: attempt_open}` | an attempt of `optimize` rule r (same response) is open (§2.2) | no attempt of r is open |
+
+An `attempt_open` guard must name an `optimize` rule in the current response revision; an open attempt from an earlier revision still counts when that rule id exists in the current revision.
 
 UNDECIDED otherwise: the controller cannot establish the state (m not registered or not yet evaluated, records
 unavailable). For example, a pack rule absorbed into an agent's contract may keep an `only_while` guard on a floor
@@ -258,9 +262,20 @@ recovers or the fix ends while latency stays breached.
 ## 3. Compatibility
 
 A conservative extension of TVL 1.3: every 1.3 module, pack and diagnostic keeps its meaning, and no 1.3 document gains
-a diagnostic. A 1.3 reader rejects a 1.4 authored document through the closed root schema and `unsupported_construct`
-(RFC 0003 §11.2). Compiled contracts gain optional fields; whether their format tags change so that a 1.3 consumer
-refuses a 1.4 contract is open (§7), and compatibility for compiled consumers is not claimed until it is settled.
+a diagnostic. A 1.3 reader rejects 1.4 constructs through its closed schemas and `unsupported_construct`
+(RFC 0003 §11.2). Compiled contracts carrying an outcome trigger, `unknown_for`, `only_while` or `unless` use
+`tvl-runtime-contract/2` and `tvl-runtime-local/2`, with the closed `tvl-runtime-contract-v2.schema.json` and
+`tvl-runtime-local-v2.schema.json` schemas. The `/1` schemas retain their exact TVL 1.3.0 bytes and refuse all 1.4
+fields; readers select the schema by `format` and refuse unknown tags.
+
+Format selection depends only on projected constructs: an outcome trigger, `unknown_for`, or a nonempty
+`only_while`/`unless` guard list selects `/2` with `tvl_version: "1.4"`. Without these constructs, even an authored
+`"1.4"` module or pack compiles to `/1` with `tvl_version: "1.3"`. Empty guard lists are omitted by projection.
+A `/2` artifact without a projected 1.4 construct is refused, including one carrying version `"1.4"`.
+
+For every input accepted by TVL 1.3.0 (commit `bcd20f6dd`), canonical hosted and local artifacts, including digests,
+remain byte-identical for the same token map, checker registry, packs and toolchain version. This includes authored
+`"1.4"` modules without runtime blocks, which 1.3.0 accepted and compiled to version `"1.3"` and `/1`.
 Verdict, episode, liveness, obligation and action states stay separate facts (RFC 0003 §11.6); an outcome event is a
 recorded action state, never a verdict.
 
@@ -294,18 +309,30 @@ valid `guard-only-while-notify.yml`; `guard-on-optimize-rejected.yml`; `guard-un
 (`runtime_guard_cycle`); `guard-redundant-warning.yml`; `guard-ref-missing.yml`; `version-1-4-required.yml`;
 `version-omitted.yml`. Composition: `guard-immutable-under-overlay.yml`, `guard-set-order-insensitive.yml`,
 `pack-guard-absorbed-monitor-rewritten.yml`, `outcome-trigger-immutable.yml`. Projection:
-`outcome-and-guard-closed-enums.yml`.
+`outcome-and-guard-closed-enums.yml` (`/2`); `deploy-mode-closed.yml` (`/1`, frozen 1.3.0 canonical digest);
+`format-v1-refuses-reactive-fields.yml`; `format-v2-refuses-13-without-reactive-construct.yml`;
+`format-v1-version-14-without-reactive-construct.yml` (authored 1.4 without projected new constructs).
 
-Semantic traces (relational cases: a recorded history and the expected events, no engine): attempt closed by episode
-closure records no outcome; attempt closed by response revision while awaiting deploy approval records no outcome and
-closes `attempt_open`; deploy write fails then succeeds on a retry of the same occurrence records no `deploy_failed`;
-invalid promotion evidence gives `optimize_failed`, not `optimize_no_candidate`; one promoted and one invalid
-candidate give no failure outcome; optimization approval expiring after the optimization started still records its
-outcome; deploy approval declined before the deploy closes the attempt with no deploy outcome; an initial counted
-window followed by MET fires `unknown_for` when `hours` equals `tumbling_hours`; unreachable authority gives no
-outcome; undecided run continues across a window without usable evidence and fires; `unknown_for` and `stale` both fire
-on intermittent evidence; an UNDECIDED guard does not suppress; `attempt_open` is seen by a rule fired by the same
-evaluation. Every 1.3 case passes unchanged.
+Semantic traces (relational cases: a recorded history and the expected events, no engine),
+executable under [`conformance/cases/runtime/semantic_traces/`](../conformance/cases/runtime/semantic_traces/):
+
+- [attempt closed by episode closure records no outcome](../conformance/cases/runtime/semantic_traces/attempt-closed-by-episode-closure-records-no-outcome.yml);
+- [attempt closed by response revision while awaiting deploy approval records no outcome and closes `attempt_open`](../conformance/cases/runtime/semantic_traces/attempt-closed-by-response-revision-awaiting-deploy-approval.yml);
+- [deploy write fails then succeeds on a retry of the same occurrence records no `deploy_failed`](../conformance/cases/runtime/semantic_traces/deploy-write-fails-then-succeeds-on-same-occurrence-retry.yml);
+- [invalid promotion evidence gives `optimize_failed`, not `optimize_no_candidate`](../conformance/cases/runtime/semantic_traces/invalid-promotion-evidence-gives-optimize-failed.yml);
+- [one promoted and one invalid candidate give no failure outcome](../conformance/cases/runtime/semantic_traces/one-promoted-and-one-invalid-candidate-give-no-failure.yml);
+- [optimization approval expiring after the optimization started still records its outcome](../conformance/cases/runtime/semantic_traces/optimization-approval-expires-after-start-still-records-outcome.yml);
+- [deploy approval declined before the deploy closes the attempt with no deploy outcome](../conformance/cases/runtime/semantic_traces/deploy-approval-declined-before-start-closes-without-outcome.yml);
+- [an initial counted window followed by MET fires `unknown_for` when `hours` equals `tumbling_hours`](../conformance/cases/runtime/semantic_traces/initial-counted-window-followed-by-met-fires-unknown-for.yml);
+- [unreachable authority gives no outcome](../conformance/cases/runtime/semantic_traces/unreachable-authority-gives-no-outcome.yml);
+- [undecided run continues across a window without usable evidence and fires](../conformance/cases/runtime/semantic_traces/undecided-run-continues-across-window-without-usable-evidence.yml);
+- [`unknown_for` and `stale` both fire on intermittent evidence](../conformance/cases/runtime/semantic_traces/unknown-for-and-stale-both-fire-on-intermittent-evidence.yml);
+- [an UNDECIDED guard does not suppress](../conformance/cases/runtime/semantic_traces/undecided-guard-does-not-suppress.yml);
+- [`attempt_open` is seen by a rule fired by the same evaluation](../conformance/cases/runtime/semantic_traces/attempt-open-visible-to-rule-fired-by-same-evaluation.yml).
+
+A trace records every due repeat instant; when and how a late controller delivers missed repeats is outside this relation.
+
+Every 1.3 case passes unchanged.
 
 ## 6. Alternatives considered
 
@@ -326,12 +353,11 @@ CloudWatch's separate `INSUFFICIENT_DATA` alarm state; guards use Kleene's stron
 `only_while` following Datadog composite conjunction and `unless` following Alertmanager inhibition, which mutes
 notifications only and documents the mutual-inhibition trap.
 
-## 7. Open questions
+## 7. Recorded decisions and limitations
 
-1. **Success outcomes** (§6): deferred; add if teams ask for "fix shipped" notifications.
-2. **Contract format tags.** Whether the hosted and local contract tags move to `/2` when they carry 1.4 fields, so a
-   1.3 consumer refuses rather than ignores them.
-3. **Guards in packs over module monitors.** Disallowed in this draft; a floor could want "page the tenant floor unless
-   the agent's own episode is open".
+1. **Success outcomes** (§6): deferred beyond 1.4; no success notification trigger.
+2. **Contract format tags — closed, ruling A.** Projected new constructs use `/2` and version `"1.4"`; without them,
+   artifacts use frozen `/1` and version `"1.3"`, regardless of authored version. Refusal rules are recorded in §3.
+3. **Guards in packs over module monitors.** Disallowed in 1.4; pack guards may name only pack monitors.
 4. **`attempt_open` for `deploy: never`.** The attempt closes when a promoted candidate exists; the candidate's later
-   manual deployment is outside the response and not tracked.
+   manual deployment is outside the response and untracked in 1.4.

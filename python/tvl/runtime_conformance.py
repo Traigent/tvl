@@ -4,8 +4,10 @@ from fractions import Fraction
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence, Set, Tuple
+from tvl.canonical import canonical_json_digest
 from tvl.lints import lint_module, lint_pack
 from tvl.measurement import prepare_measurement_bundle
+from tvl.runtime_projection import has_projected_reactive_construct
 from tvl.runtime import (
     RuntimeClosedError, compose_runtime_documents, erase_runtime_extensions,
     from_backend_revision, join_promotion_decisions, minimal_decimal_str,
@@ -23,10 +25,11 @@ def _check(condition: bool, message: str = "Runtime conformance assertion failed
 
 
 _ALLOWED_EXPECTED_KEYS_BY_KIND = {'compose': {'absent_diagnostics', 'floor_matches', 'error', 'composed_fields'},
+ 'trace': {'notifications'},
  'join': {'promotion_decision', 'error'},
  'lint': {'absent_diagnostics', 'diagnostics'},
  'measurement': {'normalized_monitor_outcomes', 'readiness_issues'},
- 'projection': {'forbidden_substrings', 'projected_fields', 'error'},
+ 'projection': {'forbidden_substrings', 'projected_fields', 'contract_digest', 'error'},
  'roundtrip': {'backend_profile',
                'evaluation_metadata',
                'legacy_projection',
@@ -49,6 +52,14 @@ def run_runtime_conformance_case(case, *, case_path=None):
     _check(allowed_keys is not None, f"Unsupported input kind: {kind}")
     _check(isinstance(expected, Mapping) and bool(expected) and set(expected) <= allowed_keys,
            f"Unknown or disallowed expected keys for {kind}")
+    if kind == "trace":
+        from tvl.runtime_trace import notification_trace
+        _check(set(inp) == {"kind", "history"}, "Unknown trace input key")
+        _check("module" in case, "Trace needs a module")
+        actual = notification_trace(case["module"], inp["history"])
+        _check(actual == expected["notifications"],
+               f"Notification sequence mismatch: actual={actual!r}, expected={expected['notifications']!r}")
+        return
     if kind == "toolchain":
         if inp.get("reader") == "pre_13":
             tool_keys = {"exit_code", "error"}
@@ -123,9 +134,10 @@ def run_runtime_conformance_case(case, *, case_path=None):
             )
             from tvl.conformance_helpers import inject_projection_fields
             inject_projection_fields(hosted_decls, inp.get("requested_fields"))
+            has_reactive_construct = has_projected_reactive_construct(hosted_decls)
             contract_slice = {
-                "format": "tvl-runtime-contract/1",
-                "tvl_version": doc.get("tvl_version", "1.3"),
+                "format": inp.get("contract_format", "tvl-runtime-contract/2" if has_reactive_construct else "tvl-runtime-contract/1"),
+                "tvl_version": inp.get("contract_version", "1.4" if has_reactive_construct else "1.3"),
                 "document": "pack" if "pack" in case else "module",
                 "declarations": hosted_decls,
                 "backend_profiles": bp_entries,
@@ -149,6 +161,8 @@ def run_runtime_conformance_case(case, *, case_path=None):
             return
 
         _check("error" not in expected, f"Expected error {expected['error'] if 'error' in expected else None}, got success")
+        if "contract_digest" in expected:
+            _check(canonical_json_digest(contract_slice) == expected["contract_digest"], "Canonical contract bytes differ from the frozen digest")
         if "projected_fields" in expected:
             for ptr, exp_val in expected["projected_fields"].items():
                 got_val = resolve_json_pointer(contract_slice, ptr)
@@ -342,8 +356,8 @@ def _run_toolchain_conformance_case(case: Mapping[str, Any]) -> None:
             if exit_code == 0:
                 emitted_contract = json.loads((out_dir / "runtime-contract.json").read_text(encoding="utf-8"))
                 emitted_local = json.loads((out_dir / "runtime-local.json").read_text(encoding="utf-8"))
-                _check(not list(runtime_contract_validator().iter_errors(emitted_contract)), "Emitted contract failed schema")
-                _check(not list(runtime_local_validator().iter_errors(emitted_local)), "Emitted local failed schema")
+                _check(not list(runtime_contract_validator(emitted_contract["format"]).iter_errors(emitted_contract)), "Emitted contract failed schema")
+                _check(not list(runtime_local_validator(emitted_local["format"]).iter_errors(emitted_local)), "Emitted local failed schema")
                 if "composed_fields" in expected:
                     for ptr, exp_val in expected["composed_fields"].items():
                         got_val = resolve_json_pointer(emitted_local, ptr)
@@ -453,6 +467,7 @@ LANGUAGE_FAMILY_GLOBS = {'language/codec': ('latency_roundtrip/*.yml',),
 
 _ALLOWED_EXPECTED_KEYS_BY_KIND["schema"] = {"schema_valid"}
 LANGUAGE_FAMILY_GLOBS["language/report_shape"] = ("report_schema/*.yml",)
+LANGUAGE_FAMILY_GLOBS["language/semantic_trace"] = ("semantic_traces/*.yml",)
 
 
 def run_language_conformance_families(cases_root=None):

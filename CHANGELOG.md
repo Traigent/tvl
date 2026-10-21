@@ -12,7 +12,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `unknown_for`, and three-valued `only_while`/`unless` guards. Includes response-local references,
   monitor inhibition cycle checks, immutable guard-set/outcome composition, hosted reference
   projection, schema/editor copies, conformance cases and Lean guard proofs. TVL 1.3 diagnostic codes
-  and `backend_v1` are unchanged (some messages are reworded); compiled `/1` format tags await RFC §7.2's decision.
+  and `backend_v1` are unchanged (some messages are reworded).
+- Closed RFC 0004 §7.2 under owner ruling A: frozen 1.3.0 `/1` hosted/local schemas and separate `/2` schemas
+  for projected 1.4 constructs, selected and validated by format tag, with identical editor copies. Only projected
+  outcome triggers, `unknown_for`, or nonempty guards select `/2` and version `"1.4"`; all other declarations use
+  `/1` and version `"1.3"`, including authored `"1.4"` declarations. Every input accepted by 1.3.0 retains byte-identical
+  canonical artifacts. `/1` with 1.4 fields and `/2` without projected 1.4 constructs are refused.
+  Success outcomes, pack guards over module monitors, and tracking manual deployment after `deploy: never`
+  are recorded as limitations of 1.4; RFC status stays DRAFT.
 
 ## [1.3.0] - 2026-10-21
 

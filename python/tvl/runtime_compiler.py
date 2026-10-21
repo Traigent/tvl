@@ -7,7 +7,7 @@ from tvl.canonical import RuntimeClosedError, canonical_json_digest
 from tvl.diagnostics import closed_lint_issue, closed_schema_issues, runtime_syntax_issues
 from tvl.lints import _CUSTOMER_CHECKER_RE, _RUNTIME_IDENT_RE, _rule_source_monitor, lint_module, lint_pack
 from tvl.runtime_compose import compose_runtime_documents
-from tvl.runtime_projection import project_runtime_declarations, validate_projected_contract
+from tvl.runtime_projection import has_projected_reactive_construct, project_runtime_declarations, validate_projected_contract
 from tvl.schema import pack_validator, runtime_local_validator, validator as module_validator
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -188,9 +188,14 @@ def compile_runtime_document(
         checker_labels=checker_labels_list,
     )
 
+    # Select the wire format from projected constructs, not the authored version.
+    # Empty guards are omitted by projection and preserve the frozen /1 artifacts.
+    has_reactive_construct = has_projected_reactive_construct(hosted_decls)
+    compiled_version = "1.4" if has_reactive_construct else "1.3"
+    format_version = "2" if has_reactive_construct else "1"
     contract: Dict[str, Any] = {
-        "format": "tvl-runtime-contract/1",
-        "tvl_version": working_doc["tvl_version"],
+        "format": f"tvl-runtime-contract/{format_version}",
+        "tvl_version": compiled_version,
         "document": "pack" if is_pack else "module",
         "declarations": hosted_decls,
         "backend_profiles": backend_profiles,
@@ -224,8 +229,8 @@ def compile_runtime_document(
                 )
 
     local_prog: Dict[str, Any] = {
-        "format": "tvl-runtime-local/1",
-        "tvl_version": working_doc["tvl_version"],
+        "format": f"tvl-runtime-local/{format_version}",
+        "tvl_version": compiled_version,
         "document": "pack" if is_pack else "module",
         "contract_digest": contract_digest,
         "source_digest": canonical_json_digest(local_decls),
@@ -245,7 +250,7 @@ def compile_runtime_document(
         used_tokens=used_tokens,
         checker_labels=checker_labels_list,
     )
-    if list(runtime_local_validator().iter_errors(local_prog)):
+    if list(runtime_local_validator(local_prog["format"]).iter_errors(local_prog)):
         raise RuntimeClosedError("runtime_invalid_profile")
 
     return contract, local_prog, issues

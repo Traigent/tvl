@@ -26,8 +26,9 @@ CASES = ROOT / "conformance/cases/runtime"
 # RFC 13's case locations, extended by the probes added during Appendix A
 # alignment. A case's family field remains its directory name (Appendix A14).
 
-INPUT_KEYS = {'compose': 'operation post_validate_without_provenance', 'lint': 'operation', 'projection': 'token_map checker_labels local_artifacts requested_fields', 'roundtrip': 'operation monitor backend_profile', 'toolchain': 'entrypoint reader arguments document_yaml measurement_role monitor_outcomes measurement_format', 'measurement': 'role monitor_outcomes legacy_decision', 'join': 'legacy_decision monitor_verdicts', 'schema': 'instance'}
+INPUT_KEYS = {'compose': 'operation post_validate_without_provenance', 'lint': 'operation', 'projection': 'token_map checker_labels local_artifacts requested_fields contract_format contract_version', 'roundtrip': 'operation monitor backend_profile', 'toolchain': 'entrypoint reader arguments document_yaml measurement_role monitor_outcomes measurement_format', 'measurement': 'role monitor_outcomes legacy_decision', 'join': 'legacy_decision monitor_verdicts', 'schema': 'instance'}
 EXPECTED_KEYS = set().union(*_ALLOWED_EXPECTED_KEYS_BY_KIND.values())
+INPUT_KEYS["trace"] = "history"
 ENVELOPE_KEYS = set("case_format family description spec_refs module pack base overlay input expected".split())
 
 
@@ -90,7 +91,7 @@ def check_case(path: Path, known_codes: set[str]) -> dict:
     relative = path.relative_to(CASES)
     require(any(relative.match(glob) for globs in FAMILIES.values() for glob in globs), "unmapped enablement family")
     for pointer in expected.get("projected_fields", {}):
-        require(pointer.startswith("/declarations/"), "projection pointer outside hosted declarations")
+        require(pointer.startswith("/declarations/") or pointer in {"/format", "/tvl_version"}, "projection pointer outside hosted declarations/format/version")
     for key in payload:
         doc = case[key]
         for response in doc.get("responses", []):
