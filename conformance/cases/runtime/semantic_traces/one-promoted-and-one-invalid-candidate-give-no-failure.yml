@@ -144,6 +144,14 @@ input:
         rule: fix
         scope: episode-1
         occurrence: 0
+        fact: approval
+        effect: optimize
+        state: granted
+      - response: repair
+        revision: '1'
+        rule: fix
+        scope: episode-1
+        occurrence: 0
         fact: started
     - instant: 1
       optimizations:
@@ -167,6 +175,14 @@ input:
         event: continued
     - instant: 3
       optimizations:
+      - response: repair
+        revision: '1'
+        rule: fix
+        scope: episode-1
+        occurrence: 0
+        fact: approval
+        effect: deploy
+        state: granted
       - response: repair
         revision: '1'
         rule: fix

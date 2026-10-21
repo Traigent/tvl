@@ -78,12 +78,13 @@ class _Attempt:
     promoted: bool = False
     deploy_started: bool = False
     scope_closed: bool = False
+    optimize_approved: bool = False
+    deploy_approved: bool = False
 
     def close_pending(self) -> None:
-        # RFC 0003 §7.2: optimize's effect is starting the run. A started run
-        # still records its result; a later deploy remains a pending effect.
+        # A started effect still records its result; no later effect may start.
         self.scope_closed = True
-        if not self.started or self.finished:
+        if not (self.started and not self.finished) and not self.deploy_started:
             self.open = False
 
 
@@ -164,8 +165,6 @@ class _Trace:
         _require(record["end"] <= instant, "window ends after evaluation")
         _enum(record["verdict"], "MET BREACHED UNKNOWN")
         _require(type(record["usable"]) is bool, "usable must be boolean")
-        _require(record["usable"] or record["verdict"] == "UNKNOWN",
-                 "decided window requires usable evidence")
         self.windows.setdefault(record["monitor"], {})[record["start"]] = dict(record)
         # Evaluation is known; episode boundaries remain the recorded authority.
         self.episodes.setdefault(record["monitor"], None)
@@ -250,6 +249,8 @@ class _Trace:
         event = None
         if fact == "started":
             _require(not attempt.started, "optimization already started")
+            _require(rule.get("approval", "human") != "human" or attempt.optimize_approved,
+                     "optimization start requires approval grant")
             attempt.started = True
         elif fact == "finished":
             _require(attempt.started and not attempt.finished, "optimization not running")
@@ -262,6 +263,13 @@ class _Trace:
             _require(not deploy or (attempt.promoted and attempt.deploy == "if_promoted"),
                      "deploy approval before promotion")
             started = attempt.deploy_started if deploy else attempt.started
+            approved = attempt.deploy_approved if deploy else attempt.optimize_approved
+            _require(record["state"] != "expired" or approved,
+                     "approval expiry requires a prior grant")
+            if deploy:
+                attempt.deploy_approved = record["state"] == "granted"
+            else:
+                attempt.optimize_approved = record["state"] == "granted"
             if record["state"] in {"declined", "expired"} and not started:
                 attempt.open = False
         elif fact == "authority":
@@ -270,6 +278,8 @@ class _Trace:
             _require(attempt.promoted and attempt.deploy == "if_promoted", "deploy without promoted candidate")
             if fact == "deploy_started":
                 _require(not attempt.deploy_started, "deploy already started")
+                _require(rule.get("approval", "human") != "human" or attempt.deploy_approved,
+                         "deploy start requires approval grant")
                 attempt.deploy_started = True
             else:
                 if record["checks"] != "passed":
@@ -293,22 +303,22 @@ class _Trace:
                 return None
             return self.episodes.get(name) is not None if name in self.episodes else None
         return any(a.open for key, a in self.attempts.items()
-                   if key[0] == response and key[1] == self.revisions[response] and key[2] == guard["rule"])
+                   if key[0] == response and key[2] == guard["rule"])
 
-    def unknown_runs(self, monitor: str) -> list[tuple[int, int]]:
+    def unknown_runs(self, monitor: str) -> list[tuple[int, int, bool]]:
         runs = []
         first = last = None
         for window in sorted(self.windows.get(monitor, {}).values(), key=lambda w: w["start"]):
             if window["verdict"] != "UNKNOWN":
                 if first is not None:
-                    runs.append((first, last))
+                    runs.append((first, last, False))
                 first = last = None
             elif window["usable"]:
                 if first is None:
                     first = window["start"]
                 last = window["end"]
         if first is not None:
-            runs.append((first, last))
+            runs.append((first, last, True))
         return runs
 
     def notifications(self, instant: int) -> list[dict]:
@@ -324,10 +334,9 @@ class _Trace:
                 monitor = trigger["monitor"]
                 runs = self.unknown_runs(monitor)
                 scopes = [(monitor, self.monitor_keys[monitor], first)
-                          for first, last in runs if last - first >= trigger["hours"]]
-                windows = self.windows.get(monitor, {})
-                if runs and windows and max(windows.values(), key=lambda w: w["start"])["verdict"] == "UNKNOWN":
-                    active.add((monitor, self.monitor_keys[monitor], runs[-1][0]))
+                          for first, last, _ in runs if last - first >= trigger["hours"]]
+                active = {(monitor, self.monitor_keys[monitor], first)
+                          for first, _, is_open in runs if is_open}
             else:
                 source = trigger.get("rule", trigger.get("monitor"))
                 namespace = response if "rule" in trigger else "monitor"

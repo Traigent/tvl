@@ -86,6 +86,8 @@ def test_approval_closes_only_before_the_next_effect_starts(state, effect):
     case = load_case(name)
     records = evaluations(case)[1]['optimizations']
     records[0]['state'] = state
+    if effect == 'deploy' and state == 'expired':
+        records.insert(0, dict(records[0], state='granted'))
     if effect == 'optimize':
         # Preserve the after-start outcome even on a decline.
         assert run(case)[0]['event'] == 'optimize_failed'
@@ -124,7 +126,7 @@ def test_candidate_uses_existing_rfc0003_promotion_join(legacy, verdicts):
 def test_deploy_checks_and_finite_retry_exhaustion(checks, write, exhausted, expected):
     case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
     evaluations(case)[:] = evaluations(case)[:2]
-    record = evaluations(case)[1]['optimizations'][1]
+    record = next(r for r in evaluations(case)[1]['optimizations'] if r['fact'] == 'deploy_result')
     record.update(checks=checks, write=write, retries_exhausted=exhausted)
     events = run(case)
     if expected:
@@ -138,7 +140,7 @@ def test_deploy_approval_expiry_after_write_started_preserves_terminal_outcome()
     records = evaluations(case)[1]['optimizations']
     approval = deepcopy(records[0])
     approval.update(fact='approval', effect='deploy', state='expired')
-    records.insert(1, approval)
+    records.insert(2, approval)
     records[-1]['retries_exhausted'] = True
     evaluations(case)[:] = evaluations(case)[:2]
     assert run(case)[0]['event'] == 'deploy_failed'
@@ -175,8 +177,7 @@ def test_no_usable_window_does_not_count_and_met_ends_run():
     assert run(case) == []
     case = load_case('undecided-run-continues-across-window-without-usable-evidence')
     evaluations(case)[1]['windows'][0]['verdict'] = 'MET'
-    with pytest.raises(TraceError, match='decided window requires usable evidence'):
-        run(case)
+    assert run(case) == []
 
 
 def test_monitor_revision_resets_unknown_run():
@@ -266,7 +267,7 @@ def test_unrecognized_fact_and_inconsistent_effect_facts_fail_closed():
     with pytest.raises(TraceError):
         run(case)
     case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
-    evaluations(case)[1]['optimizations'][1]['checks'] = 'refused'
+    next(r for r in evaluations(case)[1]['optimizations'] if r['fact'] == 'deploy_result')['checks'] = 'refused'
     with pytest.raises(TraceError, match='write without passed checks'):
         run(case)
 
@@ -374,4 +375,129 @@ def test_monitor_guard_uses_recorded_episode_state(field, state):
 def test_decided_usable_window_ends_unknown_run():
     case = load_case('undecided-run-continues-across-window-without-usable-evidence')
     evaluations(case)[1]['windows'][0].update(verdict='MET',usable=True)
+    assert run(case) == []
+
+
+@pytest.mark.parametrize('verdict', ['MET', 'BREACHED'])
+@pytest.mark.parametrize('usable', [False, True])
+def test_unknown_repeat_does_not_revive_a_run_ended_before_unusable_unknown(verdict, usable):
+    case = load_case('initial-counted-window-followed-by-met-fires-unknown-for')
+    rule = case['module']['responses'][0]['rules'][0]
+    rule.update(repeat_after_hours=12)
+    first = deepcopy(evaluations(case)[0]['windows'][0])
+    evaluations(case)[:] = [
+        dict(instant=6, windows=[first]),
+        dict(instant=12, windows=[dict(first, start=6, end=12, verdict=verdict, usable=usable)]),
+        dict(instant=18, windows=[dict(first, start=12, end=18, usable=False)]),
+    ]
+    assert run(case) == [dict(response='repair', rule='undecided', event='unknown_for', instant=6)]
+
+
+@pytest.mark.parametrize('boundary', ['episode', 'response'])
+@pytest.mark.parametrize('write', ['failed', 'succeeded'])
+def test_started_deploy_records_result_after_scope_closure(boundary, write):
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    # Evaluation order is episodes then optimize facts: start at 1, close at 2,
+    # and record the terminal result at 3 to express start-before-closure.
+    first, start, result, continued = evaluations(case)
+    start.pop('episodes')
+    start['optimizations'] = [r for r in start['optimizations'] if r['fact'] != 'deploy_result']
+    closed = dict(instant=2)
+    if boundary == 'episode':
+        closed['episodes'] = [dict(monitor='monitor_main', scope='episode-1', event='closed', reason='resolved')]
+    else:
+        closed['revisions'] = [dict(kind='response', name='repair', value='2')]
+    result['instant'] = 3
+    result['optimizations'][0].update(write=write, retries_exhausted=True)
+    # A late contradictory result cannot create a second outcome.
+    late = dict(instant=4, optimizations=[dict(result['optimizations'][0], write='failed')])
+    evaluations(case)[:] = [first, start, closed, result, late]
+    expected = ([dict(response='repair', rule='deploy_failed', event='deploy_failed', instant=3)]
+                if write == 'failed' else [])
+    assert run(case) == expected
+
+
+@pytest.mark.parametrize('effect', ['optimize', 'deploy'])
+def test_attempt_guard_sees_started_effect_from_old_response_revision(effect):
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    first, start, result, continued = evaluations(case)
+    if effect == 'optimize':
+        finished = first['optimizations'].pop()
+        result = dict(instant=3, optimizations=[dict(finished, completion='cost_limit', candidates=[])])
+        evaluations(case)[:] = [first]
+    else:
+        start.pop('episodes')
+        start['optimizations'] = [r for r in start['optimizations'] if r['fact'] != 'deploy_result']
+        result['instant'] = 3
+        evaluations(case)[:] = [first, start]
+    continued['instant'] = 2
+    continued['revisions'] = [dict(kind='response', name='repair', value='2')]
+    evaluations(case).extend([continued, result, dict(instant=4, episodes=deepcopy(continued['episodes']))])
+    expected = ([dict(response='repair', rule='optimize_failed', event='optimize_failed', instant=3)]
+                if effect == 'optimize' else [])
+    expected.append(dict(response='repair', rule='page_unless_repair', event='episode_continued', instant=4))
+    assert run(case) == expected
+
+
+def test_revision_pending_fixture_observes_closure_before_late_record(monkeypatch):
+    from tvl.runtime_trace import _Attempt
+
+    case = load_case('attempt-closed-by-response-revision-awaiting-deploy-approval')
+    assert not evaluations(case)[1].get('optimizations')
+    assert run(case) == case['expected']['notifications']
+    monkeypatch.setattr(_Attempt, 'close_pending', lambda self: None)
+    assert run(case) != case['expected']['notifications']
+
+
+@pytest.mark.parametrize('effect', ['optimize', 'deploy'])
+def test_human_approved_effect_start_requires_a_grant(effect):
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    for evaluation in evaluations(case):
+        evaluation['optimizations'] = [r for r in evaluation.get('optimizations', [])
+                                       if not (r['fact'] == 'approval' and r['effect'] == effect)]
+    with pytest.raises(TraceError, match='start requires approval grant'):
+        run(case)
+
+
+@pytest.mark.parametrize('effect', ['optimize', 'deploy'])
+def test_never_granted_approval_cannot_expire(effect):
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    for evaluation in evaluations(case):
+        for record in evaluation.get('optimizations', []):
+            if record['fact'] == 'approval' and record['effect'] == effect:
+                record['state'] = 'expired'
+    with pytest.raises(TraceError, match='approval expiry requires a prior grant'):
+        run(case)
+
+
+@pytest.mark.parametrize('effect', ['optimize', 'deploy'])
+def test_omitted_approval_still_requires_a_human_grant(effect):
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    case['module']['responses'][0]['rules'][0].pop('approval')
+    for evaluation in evaluations(case):
+        evaluation['optimizations'] = [r for r in evaluation.get('optimizations', [])
+                                       if not (r['fact'] == 'approval' and r['effect'] == effect)]
+    with pytest.raises(TraceError, match='start requires approval grant'):
+        run(case)
+
+
+def test_standing_approval_does_not_require_human_grant_records():
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    case['module']['responses'][0]['rules'][0]['approval'] = 'standing'
+    for evaluation in evaluations(case):
+        evaluation['optimizations'] = [r for r in evaluation.get('optimizations', []) if r['fact'] != 'approval']
+    assert run(case) == case['expected']['notifications']
+
+
+@pytest.mark.parametrize('boundary', ['episode', 'response'])
+def test_scope_closes_during_optimization_prevents_a_later_deploy_effect(boundary):
+    case = load_case('one-promoted-and-one-invalid-candidate-give-no-failure')
+    closed = evaluations(case)[1]
+    if boundary == 'episode':
+        closed['episodes'] = [dict(monitor='monitor_main', scope='episode-1', event='closed', reason='resolved')]
+    else:
+        closed['revisions'] = [dict(kind='response', name='repair', value='2')]
+    deploy = evaluations(case)[3]
+    deploy['optimizations'][-1].update(write='failed', retries_exhausted=True)
+    evaluations(case)[:] = evaluations(case)[:2] + [deploy]
     assert run(case) == []

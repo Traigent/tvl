@@ -79,6 +79,8 @@ approval has been given, until the first of:
   §7.6 item 2) — is declined or expires **before that effect starts**. Expiry after an effect has started does not
   close the attempt; that effect still records its outcome.
 
+If the originating scope closes or the response revision changes after the optimization or deploy has started, the attempt stays open until that effect records its outcome or succeeds, and then closes; no later effect starts.
+
 The third group records **no outcome**: either nothing is left to repair, or a person decided. Waiting for approval or
 holding while authority is unreachable (RFC 0003 §7.3) keeps the attempt open and records nothing.
 
@@ -141,8 +143,8 @@ responses:
 (`runtime_invalid_ladder`; burn monitors are UNKNOWN whenever they do not breach, RFC 0003 §6.10).
 
 **Counted windows.** A window of m counts toward an undecided run iff its verdict is `UNKNOWN` **and** it carried usable
-evidence (RFC 0003 §6.14, formal semantics Definition 12.20). A window without usable evidence is liveness's fact: it
-neither counts toward nor ends a run.
+evidence (RFC 0003 §6.14, formal semantics Definition 12.20). An `UNKNOWN` window without usable evidence is liveness's fact: it
+neither counts toward nor ends a run. Any MET or BREACHED window ends a run, whether or not it carried usable evidence.
 
 **Run.** Order m's windows by window start (not by evaluation time). A run begins at the first counted window after
 m's latest `MET` or `BREACHED` window (or at m's first counted window, if m has no decided window) and continues across windows that do
@@ -329,7 +331,9 @@ executable under [`conformance/cases/runtime/semantic_traces/`](../conformance/c
 - [undecided run continues across a window without usable evidence and fires](../conformance/cases/runtime/semantic_traces/undecided-run-continues-across-window-without-usable-evidence.yml);
 - [`unknown_for` and `stale` both fire on intermittent evidence](../conformance/cases/runtime/semantic_traces/unknown-for-and-stale-both-fire-on-intermittent-evidence.yml);
 - [an UNDECIDED guard does not suppress](../conformance/cases/runtime/semantic_traces/undecided-guard-does-not-suppress.yml);
-- [`attempt_open` is seen by a rule fired by the same evaluation](../conformance/cases/runtime/semantic_traces/attempt-open-visible-to-rule-fired-by-same-evaluation.yml);
+- [`attempt_open` is seen by a rule fired by the same evaluation](../conformance/cases/runtime/semantic_traces/attempt-open-visible-to-rule-fired-by-same-evaluation.yml).
+
+A trace records every due repeat instant; when and how a late controller delivers missed repeats is outside this relation.
 
 Every 1.3 case passes unchanged.
 
