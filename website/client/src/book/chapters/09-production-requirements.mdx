@@ -2,7 +2,7 @@
 title: "In production: requirements"
 slug: production-requirements
 order: 9
-draft: true
+draft: false
 summary: "Rules about what an agent does while it runs: what a requirement counts, rate bounds against zero tolerance, which traffic a rule covers, the catalogue of event patterns, and recovery and liveness in window time."
 ---
 
@@ -10,10 +10,6 @@ summary: "Rules about what an agent does while it runs: what a requirement count
 
 - What a requirement counts; "rarely" (a rate bound) against "never" (zero tolerance); how `among` picks the traffic.
 - The catalogue of predicates, how approvals match actions, and recovery and liveness in window time.
-
-<Callout kind="warning" title="TVL 1.3 is a draft">
-  <p>Chapters 9 to 12 describe a draft; names and diagnostics can change. TVL states what requirements mean and what verdicts promise. Production verdicts come from an <Term id="evaluator-profile">evaluator profile</Term> outside TVL. TVL's tools check, compose and compile declarations and decide promotion monitors (chapter 10); compiling turns nothing on.</p>
-</Callout>
 
 <h2 id="ch9-blocks">After the gate: what must keep holding</h2>
 
@@ -33,7 +29,11 @@ Chapter 6 accepted up to 5% slow replies; one unapproved large refund is one too
 | Violation | any predicate below | event patterns only |
 | Sampled traffic | allowed | never: a sample can miss the one bad unit |
 
-A zero-tolerance metric or label is refused (`runtime_zero_tolerance_inexact`). The slow-reply limit becomes a rate bound on traces: at most 5% take longer than 10,000 ms; the chance constraint stays in `promotion_policy`. "Of the tickets the bot must refuse, at most 5% get an answer" needs `among`, which selects the <Term id="population">population</Term> (<Ref to="semantics" section="section 12.3">formal semantics</Ref>). Both fields ask a checker, code or a model you run that labels each unit, here `traigent.refusal.v1`: `among` asks "must this be refused?", `violation` "did the bot comply?". A unit outside `among` is not counted; one whose membership is unknown is unresolved, never quietly excluded. TVL claims nothing about a checker's accuracy.
+A zero-tolerance metric or label is refused (`runtime_zero_tolerance_inexact`). The slow-reply limit becomes a rate bound on traces: at most 5% take longer than 10,000 ms; the chance constraint stays in `promotion_policy`.
+
+"Of the tickets the bot must refuse, at most 5% get an answer" needs `among`, which selects the <Term id="population">population</Term> (<Ref to="semantics" section="section 12.3">formal semantics</Ref>). `among` takes only a checker predicate, `checker` with `label_in`; a metric or event pattern is refused (`runtime_among_not_checker`, <Ref to="rfc-0003" section="section 16.3, question 20">RFC 0003</Ref>).
+
+Both fields here ask a checker, code or a model you run that labels each unit, `traigent.refusal.v1`: `among` asks "must this be refused?", `violation` "did the bot comply?". A unit outside `among` is not counted; one whose membership is unknown is unresolved, never quietly excluded. TVL claims nothing about a checker's accuracy.
 
 <h2 id="ch9-catalogue">The catalogue</h2>
 
@@ -49,7 +49,7 @@ A `violation` is one predicate from a sealed list (meaning in <Ref to="semantics
 | `bounded_response` | an `a` lacks its own `b` within `within_ms` | an escalation with no hand-off in 5 min |
 | `protocol` | events break a declared order of steps, or the unit ends unfinished | refund before the policy check |
 
-An `absence`, `bounded_existence`, `precedence` or `protocol` violation is final the moment it happens, so chapter 11's in-process guard may act on it before the effect. A missing response, a metric or a label is known only at the end.
+An `absence`, `bounded_existence` or `precedence` violation cannot be undone by later events. Neither can a `protocol` reaching a rejecting state. Chapter 11's in-process guard may act on these before the effect. A protocol that merely ends outside its accepting states is different: that violation is known only at the end, as is a missing response, a metric or a label.
 
 <h2 id="ch9-match">Approvals, matched and revoked</h2>
 

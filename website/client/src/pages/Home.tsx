@@ -312,7 +312,7 @@ export default function Home() {
                   <CardDescription>
                     A short, visual book with runnable examples and a
                     downloadable PDF. 13 chapters, from first spec to running TVL in
-                    CI. Chapters 9 to 12 cover the TVL 1.3 draft.
+                    CI. Chapters 9 to 12 cover the accepted TVL 1.3 specification.
                   </CardDescription>
                 </CardHeader>
               </Card>

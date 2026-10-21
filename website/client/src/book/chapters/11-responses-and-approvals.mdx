@@ -2,13 +2,14 @@
 title: "Responses and approvals"
 slug: responses-and-approvals
 order: 11
-draft: true
+draft: false
 summary: "The response ladder and who must approve each step; declaring an action is not permission to run it, and permission is not running it."
 ---
 
 <h2 id="ch11-learn">What you'll learn</h2>
 
 - The response ladder; the approval levels `none`, `standing` and `human`; why a suspension needs a person and stays after recovery.
+- When an optimization candidate may be deployed, and why deploying it never proves recovery.
 
 <h2 id="ch11-ladder">The ladder</h2>
 
@@ -22,7 +23,7 @@ flowchart LR
   R0["0 · record<br/>automatic"] --> R1["1 · notify<br/>none"] --> R2["2 · open_next_step<br/>none"] --> R3["3 · optimize, rollback<br/>standing or human"] --> R4["4 · throttle, degrade<br/>standing or human"] --> R5["5 · suspend<br/>human, always"]`}
 />
 
-The actions mean: `notify`, an alert with a `severity`; `open_next_step`, a suggested next step for the maintainers; `optimize`, a bounded optimization whose candidate must pass the gate; `rollback`, a return to a certified configuration that is eligible then; `throttle`, admissions cut to `rate_floor` (a fraction) of normal; `degrade`, new work sent to a certified fallback; `suspend`, no new work, existing work finished under `static_unavailable` or `route_to_human`. The guards `block_action` and `halt_unit` suppress the violating event, or stop the unit, before the effect.
+The actions mean: `notify`, an alert with a `severity`; `open_next_step`, a suggested next step for the maintainers; `optimize`, a bounded optimization that produces a candidate; `rollback`, a return to a certified configuration that is eligible then; `throttle`, admissions cut to `rate_floor` (a fraction) of normal; `degrade`, new work sent to a certified fallback; `suspend`, no new work, existing work finished under `static_unavailable` or `route_to_human`. The guards `block_action` and `halt_unit` suppress the violating event, or stop the unit, before the effect.
 
 <h2 id="ch11-approval">Who may decide</h2>
 
@@ -40,6 +41,22 @@ Version 10 uses rungs 1, 2, 3 and 5:
 
 `episode_open_for` with `hours: 6` fires once if the episode is still open after six hours. Version 10's refund guard, `block_action` on `unit_violation`, has `on_check_error: block`, which has no default: a guard that cannot decide in time blocks the refund ("fails closed").
 
+<h2 id="ch11-optimize">Optimize: a candidate, then a separate deploy</h2>
+
+An `optimize` rule may set `deploy: never` or `deploy: if_promoted` (<Ref to="rfc-0003" section="section 7.6">RFC 0003</Ref>). The default, `never`, stops at a candidate. Deploying it outside this response is an ordinary promotion.
+
+With `if_promoted`, deployment is a separate effect. The rule's `approval` applies to each effect on its own. Under `human`, a person approves the optimization and the deploy separately. A standing grant must name the deploy effect to cover it; a grant for optimization alone leaves the deploy needing a human.
+
+The triggering monitor's requirement must also have a promotion monitor (`response_deploy_without_promotion_monitor`). The candidate must come from this rule in this episode and earn Promote from the joined gate under the current contract, including every promotion monitor. Reject and NoDecision never deploy.
+
+At deployment, the contract and authority must still be current, the episode still open, and the deployed configuration unchanged from the recorded precondition. A configuration that breached in an open episode is ineligible.
+
+`deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`. Recovery, burn, liveness and unit triggers cannot use it.
+
+If authority or the gate record cannot be reached, the deploy waits. A refused or failed deploy changes nothing in production and is not retried with another candidate. No rollback follows automatically.
+
+A deploy never closes a breach or satisfies a recovery promise. Its promotion evidence is about the evaluation set. The episode stays open until enough consecutive MET production windows resolve it, or it is withdrawn; withdrawal is not recovery.
+
 <h2 id="ch11-suspend">Suspend: a person, and no automatic return</h2>
 
 Suspend, the top rung, needs `approval: human` per episode, even under a standing grant, and an event showing the trouble persisted: `episode_continued` (a further BREACHED window), `episode_open_for` or `recovery_overdue`, never `episode_opened` alone. It is latched: once the episode resolves or is withdrawn, a person may resume; nothing else lifts it (<Ref to="semantics" section="section 12.11">formal semantics</Ref>). Suspension stops new admissions and drains existing work; any window containing no units is UNKNOWN(insufficient), never MET: empty traffic cannot establish recovery or lift the suspension.
@@ -55,5 +72,6 @@ Suspend, the top rung, needs `approval: human` per episode, even under a standin
 <KeyTakeaways>
   <ul>
     <li>One monitor event, one action from a sealed ladder. Repairs need a standing grant at least; suspend needs a person, and only a human resume lifts it. Declaring is not permitting.</li>
+    <li>An optimization and its deploy need separate authority. Only a promoted candidate may deploy; only production evidence can establish recovery.</li>
   </ul>
 </KeyTakeaways>
