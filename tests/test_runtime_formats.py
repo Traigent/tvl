@@ -1,4 +1,4 @@
-"""Frozen 1.3 wire bytes and conservative RFC 0004 format dispatch."""
+"""Frozen 1.3 wire bytes and construct-based RFC 0004 format dispatch."""
 from __future__ import annotations
 
 import copy
@@ -37,7 +37,7 @@ def test_13_compiles_to_frozen_130_canonical_bytes():
         assert canonical_json_str(actual).encode() == expected.read_bytes()
 
 
-@pytest.mark.parametrize('version', [None, '1.0', '1.1', '1.2', 1.2, '1.3'])
+@pytest.mark.parametrize('version', [None, '1.0', '1.1', '1.2', 1.2, '1.3', '1.4'])
 def test_legacy_module_without_runtime_keeps_130_compiled_version(version):
     case = safe_load((CASES / 'deploy-mode-closed.yml').read_text())
     doc = case['module']
@@ -76,7 +76,7 @@ def test_each_14_construct_alone_uses_v2(field):
 
 
 @pytest.mark.parametrize('has_runtime', [False, True])
-def test_14_without_new_constructs_uses_v2_version_exception(has_runtime):
+def test_14_without_new_constructs_uses_frozen_v1(has_runtime):
     case = safe_load((CASES / 'deploy-mode-closed.yml').read_text())
     doc = case['module']
     doc['tvl_version'] = '1.4'
@@ -87,10 +87,27 @@ def test_14_without_new_constructs_uses_v2_version_exception(has_runtime):
         doc, token_map_doc={'format': 'tvl-token-map/1', 'tokens': case['input']['token_map']},
     )
     for kind, artifact in [('contract', contract), ('local', local)]:
-        assert artifact['format'] == f'tvl-runtime-{kind}/2'
-        assert artifact['tvl_version'] == '1.4'
+        assert artifact['format'] == f'tvl-runtime-{kind}/1'
+        assert artifact['tvl_version'] == '1.3'
     validate_projected_contract(contract)
     assert not list(runtime_local_validator(local['format']).iter_errors(local))
+
+
+@pytest.mark.parametrize('field', ['only_while', 'unless'])
+def test_empty_guards_alone_keep_frozen_v1_artifacts(field):
+    case = safe_load((CASES / 'deploy-mode-closed.yml').read_text())
+    doc = case['module']
+    doc['tvl_version'] = '1.4'
+    rule = doc['responses'][0]['rules'][0]
+    rule['do'] = 'notify'
+    token_map = {'format': 'tvl-token-map/1', 'tokens': case['input']['token_map']}
+    expected = compile_runtime_document(doc, token_map_doc=token_map)[:2]
+    rule[field] = []
+    actual = compile_runtime_document(doc, token_map_doc=token_map)[:2]
+    for kind, artifact, unguarded in zip(['contract', 'local'], actual, expected):
+        assert artifact['format'] == f'tvl-runtime-{kind}/1'
+        assert artifact['tvl_version'] == '1.3'
+        assert canonical_json_str(artifact) == canonical_json_str(unguarded)
 
 
 @pytest.mark.parametrize('kind', ['contract', 'local'])
@@ -113,10 +130,14 @@ def test_v1_refuses_each_14_field_even_with_13_version(kind, field):
 
 
 @pytest.mark.parametrize('kind', ['contract', 'local'])
-def test_v2_refuses_retagged_13_without_new_constructs(kind):
+@pytest.mark.parametrize('guards', [None, 'only_while', 'unless'])
+def test_v2_refuses_retagged_artifact_without_new_constructs(kind, guards):
     contract, local = compile_case()
     artifact = contract if kind == 'contract' else local
     artifact['format'] = f'tvl-runtime-{kind}/2'
+    artifact['tvl_version'] = '1.4'
+    if guards:
+        artifact['declarations']['responses'][0]['rules'][0][guards] = []
     factory = runtime_contract_validator if kind == 'contract' else runtime_local_validator
     assert list(factory(artifact['format']).iter_errors(artifact))
     if kind == 'contract':

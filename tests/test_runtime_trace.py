@@ -489,6 +489,23 @@ def test_standing_approval_does_not_require_human_grant_records():
     assert run(case) == case['expected']['notifications']
 
 
+@pytest.mark.parametrize('effect', ['optimize', 'deploy'])
+def test_standing_approval_expiry_without_grant_closes_unstarted_effect_silently(effect):
+    case = load_case('deploy-write-fails-then-succeeds-on-same-occurrence-retry')
+    case['module']['responses'][0]['rules'][0]['approval'] = 'standing'
+    first, second = evaluations(case)[:2]
+    expiry = dict(first['optimizations'][0], fact='approval', effect=effect, state='expired')
+    first['optimizations'] = [r for r in first['optimizations'] if r['fact'] != 'approval']
+    if effect == 'optimize':
+        first['optimizations'] = [first['optimizations'][0], expiry]
+        second['optimizations'] = []
+    else:
+        second['optimizations'] = [expiry]
+    evaluations(case)[:] = [first, second]
+    # The continued-episode page observes the closed attempt; expiry emits no outcome.
+    assert run(case) == [dict(response='repair', rule='page_unless_repair', event='episode_continued', instant=1)]
+
+
 @pytest.mark.parametrize('boundary', ['episode', 'response'])
 def test_scope_closes_during_optimization_prevents_a_later_deploy_effect(boundary):
     case = load_case('one-promoted-and-one-invalid-candidate-give-no-failure')

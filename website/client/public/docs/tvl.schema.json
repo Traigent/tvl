@@ -45,7 +45,7 @@
     },
     "tvl_version": {
       "type": ["string", "number"],
-      "description": "Declared language version; runtime lints require 1.4 for reactive outcomes and guards, otherwise 1.3 or 1.4."
+      "description": "Optional declared language version."
     },
     "environment": {
       "type": "object",
@@ -1039,150 +1039,18 @@
         "rate_floor": { "type": "number" },
         "repeat_after_hours": { "type": "integer" },
         "max_repeats": { "type": "integer" },
-        "on_check_error": { "type": "string" },
-        "deploy": { "type": "string" },
-        "only_while": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/GuardDecl"
-          }
-        },
-        "unless": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/GuardDecl"
-          }
-        }
+        "on_check_error": { "type": "string" }
       }
     },
     "TriggerDecl": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "monitor",
-            "event"
-          ],
-          "properties": {
-            "monitor": {
-              "$ref": "#/$defs/RuntimeIdent"
-            },
-            "event": {
-              "type": "string",
-              "examples": [
-                "burn_breached",
-                "episode_continued",
-                "episode_open_for",
-                "episode_opened",
-                "episode_resolved",
-                "episode_withdrawn",
-                "live_again",
-                "recovery_cancelled",
-                "recovery_overdue",
-                "recovery_recovered",
-                "stale",
-                "unit_violation",
-                "unknown_for"
-              ],
-              "x-enum": [
-                "burn_breached",
-                "episode_continued",
-                "episode_open_for",
-                "episode_opened",
-                "episode_resolved",
-                "episode_withdrawn",
-                "live_again",
-                "recovery_cancelled",
-                "recovery_overdue",
-                "recovery_recovered",
-                "stale",
-                "unit_violation",
-                "unknown_for"
-              ]
-            },
-            "hours": {
-              "type": "integer"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "rule",
-            "event"
-          ],
-          "properties": {
-            "rule": {
-              "$ref": "#/$defs/RuntimeIdent"
-            },
-            "event": {
-              "type": "string",
-              "x-enum": [
-                "optimize_no_candidate",
-                "optimize_failed",
-                "deploy_refused",
-                "deploy_failed"
-              ],
-              "examples": [
-                "optimize_no_candidate",
-                "optimize_failed",
-                "deploy_refused",
-                "deploy_failed"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    "GuardDecl": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "monitor",
-            "state"
-          ],
-          "properties": {
-            "monitor": {
-              "$ref": "#/$defs/RuntimeIdent"
-            },
-            "state": {
-              "type": "string",
-              "examples": [
-                "episode_open"
-              ],
-              "x-enum": [
-                "episode_open"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "rule",
-            "state"
-          ],
-          "properties": {
-            "rule": {
-              "$ref": "#/$defs/RuntimeIdent"
-            },
-            "state": {
-              "type": "string",
-              "examples": [
-                "attempt_open"
-              ],
-              "x-enum": [
-                "attempt_open"
-              ]
-            }
-          }
-        }
-      ]
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monitor", "event"],
+      "properties": {
+        "monitor": { "$ref": "#/$defs/RuntimeIdent" },
+        "event": { "type": "string", "examples": ["burn_breached", "episode_continued", "episode_open_for", "episode_opened", "episode_resolved", "episode_withdrawn", "live_again", "recovery_cancelled", "recovery_overdue", "recovery_recovered", "stale", "unit_violation"], "x-enum": ["burn_breached", "episode_continued", "episode_open_for", "episode_opened", "episode_resolved", "episode_withdrawn", "live_again", "recovery_cancelled", "recovery_overdue", "recovery_recovered", "stale", "unit_violation"] },
+        "hours": { "type": "integer" }
+      }
     }
   }
 }

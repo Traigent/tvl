@@ -1,6 +1,6 @@
 case_format: tvl-runtime-case/1
 family: projection
-description: A 1.3 contract without reactive constructs cannot be retagged /2
+description: A contract without reactive constructs cannot be retagged /2 even with version 1.4
 spec_refs:
 - formalization/rfc-0004-reactive-outcomes-and-guards.md#3
 module:
@@ -122,6 +122,6 @@ input:
     local: opt_default
     hosted: opaque_rule_opt_default
   contract_format: tvl-runtime-contract/2
-  contract_version: '1.3'
+  contract_version: '1.4'
 expected:
   error: runtime_unsafe_egress

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Mapping, Sequence, Set, Tuple
 from tvl.canonical import canonical_json_digest
 from tvl.lints import lint_module, lint_pack
 from tvl.measurement import prepare_measurement_bundle
+from tvl.runtime_projection import has_projected_reactive_construct
 from tvl.runtime import (
     RuntimeClosedError, compose_runtime_documents, erase_runtime_extensions,
     from_backend_revision, join_promotion_decisions, minimal_decimal_str,
@@ -133,9 +134,10 @@ def run_runtime_conformance_case(case, *, case_path=None):
             )
             from tvl.conformance_helpers import inject_projection_fields
             inject_projection_fields(hosted_decls, inp.get("requested_fields"))
+            has_reactive_construct = has_projected_reactive_construct(hosted_decls)
             contract_slice = {
-                "format": inp.get("contract_format", "tvl-runtime-contract/2" if doc.get("tvl_version") == "1.4" else "tvl-runtime-contract/1"),
-                "tvl_version": inp.get("contract_version", "1.4" if doc.get("tvl_version") == "1.4" else "1.3"),
+                "format": inp.get("contract_format", "tvl-runtime-contract/2" if has_reactive_construct else "tvl-runtime-contract/1"),
+                "tvl_version": inp.get("contract_version", "1.4" if has_reactive_construct else "1.3"),
                 "document": "pack" if "pack" in case else "module",
                 "declarations": hosted_decls,
                 "backend_profiles": bp_entries,

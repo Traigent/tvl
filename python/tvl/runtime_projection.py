@@ -246,6 +246,15 @@ def _normalize_predicate_local_and_hosted(
     raise RuntimeClosedError("runtime_unknown_kind")
 
 
+def has_projected_reactive_construct(declarations: Mapping[str, Any]) -> bool:
+    """Whether normalized declarations require the TVL 1.4 runtime wire format."""
+    return any(
+        "rule" in rule["trigger"] or rule["trigger"]["event"] == "unknown_for"
+        or rule.get("only_while") or rule.get("unless")
+        for response in declarations["responses"] for rule in response["rules"]
+    )
+
+
 def project_runtime_declarations(
     doc: Mapping[str, Any],
     *,

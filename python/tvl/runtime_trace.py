@@ -264,7 +264,7 @@ class _Trace:
                      "deploy approval before promotion")
             started = attempt.deploy_started if deploy else attempt.started
             approved = attempt.deploy_approved if deploy else attempt.optimize_approved
-            _require(record["state"] != "expired" or approved,
+            _require(rule.get("approval", "human") != "human" or record["state"] != "expired" or approved,
                      "approval expiry requires a prior grant")
             if deploy:
                 attempt.deploy_approved = record["state"] == "granted"

@@ -99,7 +99,7 @@ def run_cli(
     parser = argparse.ArgumentParser(
         description="Compile a TVL module or pack into version-tagged runtime contract and local artifacts"
     )
-    parser.add_argument("file", type=Path, help="Path to TVL 1.3 module or pack YAML")
+    parser.add_argument("file", type=Path, help="Path to TVL 1.3 or 1.4 module or pack YAML")
     parser.add_argument("--token-map", type=Path, help="Path to tvl-token-map/1 JSON")
     parser.add_argument("--out-dir", type=Path, help="Output directory for compiled artifacts")
     parser.add_argument("--emit-token-map-template", action="store_true",

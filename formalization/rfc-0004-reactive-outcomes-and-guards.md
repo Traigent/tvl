@@ -172,6 +172,8 @@ guard never changes the rule's trigger, scope or occurrence identity (RFC 0003 �
 | `{monitor: m, state: episode_open}` | m has an open episode (RFC 0003 §6.12) for the same agent and environment | m is evaluated for them and has no open episode (a withdrawn or resolved episode is closed) |
 | `{rule: r, state: attempt_open}` | an attempt of `optimize` rule r (same response) is open (§2.2) | no attempt of r is open |
 
+An `attempt_open` guard must name an `optimize` rule in the current response revision; an open attempt from an earlier revision still counts when that rule id exists in the current revision.
+
 UNDECIDED otherwise: the controller cannot establish the state (m not registered or not yet evaluated, records
 unavailable). For example, a pack rule absorbed into an agent's contract may keep an `only_while` guard on a floor
 monitor that the agent's own program does not evaluate; locally that guard is UNDECIDED and so never suppresses. The lists combine with Kleene's strong three-valued logic: `only_while` is the conjunction of its guards,
@@ -260,25 +262,20 @@ recovers or the fix ends while latency stays breached.
 ## 3. Compatibility
 
 A conservative extension of TVL 1.3: every 1.3 module, pack and diagnostic keeps its meaning, and no 1.3 document gains
-a diagnostic. A 1.3 reader rejects a 1.4 authored document through the closed root schema and `unsupported_construct`
+a diagnostic. A 1.3 reader rejects 1.4 constructs through its closed schemas and `unsupported_construct`
 (RFC 0003 §11.2). Compiled contracts carrying an outcome trigger, `unknown_for`, `only_while` or `unless` use
 `tvl-runtime-contract/2` and `tvl-runtime-local/2`, with the closed `tvl-runtime-contract-v2.schema.json` and
 `tvl-runtime-local-v2.schema.json` schemas. The `/1` schemas retain their exact TVL 1.3.0 bytes and refuse all 1.4
 fields; readers select the schema by `format` and refuse unknown tags.
 
-**Version exception (owner ruling A, conservative reading).** The frozen `/1` schemas require
-`tvl_version: "1.3"`. Therefore every contract carrying `tvl_version: "1.4"` uses `/2`, including a 1.4-declared
-module or pack with no 1.4 construct. This is effectively option C for that case, an explicit exception to the
-construct-only rule; `/2` requires `tvl_version: "1.4"`, so a 1.3 contract without new constructs retagged `/2` is
-refused. An empty guard list is omitted by projection and has no effect on this version exception.
+Format selection depends only on projected constructs: an outcome trigger, `unknown_for`, or a nonempty
+`only_while`/`unless` guard list selects `/2` with `tvl_version: "1.4"`. Without these constructs, even an authored
+`"1.4"` module or pack compiles to `/1` with `tvl_version: "1.3"`. Empty guard lists are omitted by projection.
+A `/2` artifact without a projected 1.4 construct is refused, including one carrying version `"1.4"`.
 
-For inputs accepted by TVL 1.3.0 (commit `bcd20f6dd`) whose authored `tvl_version` is not `"1.4"`, canonical hosted
-and local artifacts, including digests, remain byte-identical for the same token map, checker registry, packs and
-toolchain version. As in 1.3.0, older or omitted language declarations compile with artifact version `"1.3"`.
-The version exception also overrides historical byte identity: 1.3.0 accepted `"1.4"` declarations without runtime
-blocks and emitted `"1.3"` artifacts, but these now carry `"1.4"` and `/2`. It rejected `"1.4"` declarations with
-runtime blocks. Thus literal construct-only tagging and byte identity for every previously accepted 1.4 declaration
-cannot both hold alongside frozen `/1` schemas and the preserved `"1.4"` artifact version.
+For every input accepted by TVL 1.3.0 (commit `bcd20f6dd`), canonical hosted and local artifacts, including digests,
+remain byte-identical for the same token map, checker registry, packs and toolchain version. This includes authored
+`"1.4"` modules without runtime blocks, which 1.3.0 accepted and compiled to version `"1.3"` and `/1`.
 Verdict, episode, liveness, obligation and action states stay separate facts (RFC 0003 §11.6); an outcome event is a
 recorded action state, never a verdict.
 
@@ -314,7 +311,7 @@ valid `guard-only-while-notify.yml`; `guard-on-optimize-rejected.yml`; `guard-un
 `pack-guard-absorbed-monitor-rewritten.yml`, `outcome-trigger-immutable.yml`. Projection:
 `outcome-and-guard-closed-enums.yml` (`/2`); `deploy-mode-closed.yml` (`/1`, frozen 1.3.0 canonical digest);
 `format-v1-refuses-reactive-fields.yml`; `format-v2-refuses-13-without-reactive-construct.yml`;
-`format-v2-version-14-without-reactive-construct.yml` (the conservative version exception).
+`format-v1-version-14-without-reactive-construct.yml` (authored 1.4 without projected new constructs).
 
 Semantic traces (relational cases: a recorded history and the expected events, no engine),
 executable under [`conformance/cases/runtime/semantic_traces/`](../conformance/cases/runtime/semantic_traces/):
@@ -359,8 +356,8 @@ notifications only and documents the mutual-inhibition trap.
 ## 7. Recorded decisions and limitations
 
 1. **Success outcomes** (§6): deferred beyond 1.4; no success notification trigger.
-2. **Contract format tags — closed, ruling A.** New constructs use `/2`; `/1` is frozen at 1.3.0. The conservative
-   `tvl_version: "1.4"` exception and refusal rules are recorded in §3.
+2. **Contract format tags — closed, ruling A.** Projected new constructs use `/2` and version `"1.4"`; without them,
+   artifacts use frozen `/1` and version `"1.3"`, regardless of authored version. Refusal rules are recorded in §3.
 3. **Guards in packs over module monitors.** Disallowed in 1.4; pack guards may name only pack monitors.
 4. **`attempt_open` for `deploy: never`.** The attempt closes when a promoted candidate exists; the candidate's later
    manual deployment is outside the response and untracked in 1.4.
