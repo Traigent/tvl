@@ -4,7 +4,7 @@
 [![CodeQL](https://github.com/Traigent/tvl/actions/workflows/codeql.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/codeql.yml)
 [![Lean proofs](https://github.com/Traigent/tvl/actions/workflows/lean-proofs.yml/badge.svg)](https://github.com/Traigent/tvl/actions/workflows/lean-proofs.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Spec: 1.2 · 1.3 draft](https://img.shields.io/badge/spec-1.2%20%C2%B7%201.3%20draft-informational.svg)](CHANGELOG.md)
+[![Spec: 1.3](https://img.shields.io/badge/spec-1.3-informational.svg)](CHANGELOG.md)
 
 **Tuned Variables Language (TVL)** is a typed, machine-checkable language for specifying what an AI agent must achieve, what parts of its design may vary, and what evidence is required before a candidate may be accepted.
 
@@ -101,15 +101,15 @@ TVL can be the specification layer for a verifiable certificate. A defensible cl
 
 Passing a TVL gate means that the candidate met the declared requirements under that pinned contract and evidence. It does not by itself prove universal safety, correctness, or performance outside that scope. See [AI Agent Requirements and Certification](docs/agent-requirements.md).
 
-## TVL 1.3 (draft): requirements in production
+## TVL 1.3: requirements in production
 
-TVL 1.3 is a draft, conservative extension of TVL 1.2: a module without the new blocks means exactly what it meant before. It adds three optional blocks: `requirements` (what must keep holding once the agent runs, such as "at most 5% of traces take longer than 2 s" or "the agent never calls a forbidden tool"), `monitors` (which evidence checks a requirement, before release or in production, and with what statistics) and `responses` (what should happen when a monitor reports a breach, from a notification to a human-approved suspend). A separate `tvl_pack` document carries organisation floors that modules can only tighten.
+TVL 1.3 (accepted 2026-10-21) is a conservative extension of TVL 1.2: a module without the new blocks means exactly what it meant before. It adds three optional blocks: `requirements` (what must keep holding once the agent runs, such as "at most 5% of traces take longer than 2 s" or "the agent never calls a forbidden tool"), `monitors` (which evidence checks a requirement, before release or in production, and with what statistics) and `responses` (what should happen when a monitor reports a breach, from a notification to a human-approved suspend). A separate `tvl_pack` document carries organisation floors that modules can only tighten.
 
 TVL states what these declarations mean and what each verdict promises; its tools validate, compose and compile them, and `tvl-ci-gate` decides promotion monitors from fully resolved evaluation-set counts. Evaluating runtime evidence and carrying out responses is outside the language ([RFC 0003 §3.5](formalization/rfc-0003-runtime-requirements-monitors-responses.md)).
 
 - Guide: [Requirements, Monitors and Responses](docs/guides/requirements-monitors-responses.md)
 - Book: [Chapter 6 · Requirements in Production](tvl_book/website_content/book/chapter-06-requirements-in-production.md)
-- Specification: [RFC 0003](formalization/rfc-0003-runtime-requirements-monitors-responses.md) (DRAFT) and [formal semantics §12](formalization/tvl-formal-semantics.md)
+- Specification: [RFC 0003](formalization/rfc-0003-runtime-requirements-monitors-responses.md) (Accepted) and [formal semantics §12](formalization/tvl-formal-semantics.md)
 - Examples: [`spec/examples/runtime-1.3/`](spec/examples/runtime-1.3/)
 
 ## Quick start
@@ -132,7 +132,7 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml
 
 ## Language version
 
-The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and the strict `promotion_policy.require_calibration` mode ([RFC 0001](formalization/rfc-0001-knob-bindings-cvars-policies.md)); TVL 1.2 added `composites` ([RFC 0002](formalization/rfc-0002-composite-knobs.md)). Both are conservative extensions: a module that uses none of these constructs (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The user guides focus on the core constructs; every diagnostic the validators emit, including those for the 1.1 and 1.2 constructs, is listed in the [error code catalog](docs/reference/error-codes.md). See the [changelog](CHANGELOG.md) for details.
+The current language version is **TVL 1.3**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and the strict `promotion_policy.require_calibration` mode ([RFC 0001](formalization/rfc-0001-knob-bindings-cvars-policies.md)); TVL 1.2 added `composites` ([RFC 0002](formalization/rfc-0002-composite-knobs.md)); TVL 1.3 added runtime requirements, monitors and responses ([RFC 0003](formalization/rfc-0003-runtime-requirements-monitors-responses.md), above). All are conservative extensions: a module that uses none of these constructs (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The user guides focus on the core constructs; every diagnostic the validators emit, including those for the 1.1 and 1.2 constructs, is listed in the [error code catalog](docs/reference/error-codes.md). See the [changelog](CHANGELOG.md) for details.
 
 ## Repository map
 
@@ -143,7 +143,7 @@ The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables 
 - `tests/` and `conformance/` — executable validation and compatibility cases
 - `vscode-tvl/` and `editor_shared/` — editor support
 - `website/` — source for [tvl-lang.org](https://tvl-lang.org)
-- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note; the draft TVL 1.3 language results are listed in its *Runtime (TVL 1.3)* section)
+- `proofs/` — Lean mechanization for selected results (pre-RFC-0001/0002 core subset; `cvars`/`policies`/`composites` are not yet formalized, see `proofs/PROOF_SUMMARY.md`'s coverage note; the TVL 1.3 language results are listed in its *Runtime (TVL 1.3)* section)
 
 ## Start here
 
@@ -152,7 +152,7 @@ The current language version is **TVL 1.2**. TVL 1.1 added calibrated variables 
 3. [Language Reference](docs/reference/language.md)
 4. [Semantics and Verification Reference](docs/reference/verification.md)
 5. [Agent Evaluation and Promotion Evidence](docs/guides/statistical-validation-guide.md)
-6. [Requirements, Monitors and Responses (TVL 1.3 draft)](docs/guides/requirements-monitors-responses.md)
+6. [Requirements, Monitors and Responses (TVL 1.3)](docs/guides/requirements-monitors-responses.md)
 7. [Complete examples](spec/examples/)
 
 ## Specification boundary

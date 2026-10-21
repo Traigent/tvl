@@ -918,7 +918,7 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 
 These codes belong to the TVL 1.3 requirements, monitors and responses (see the
 [guide](../guides/requirements-monitors-responses.md) and the
-[language reference](language.md#tvl-13-requirements-monitors-responses)). TVL 1.3 is a draft; codes can still change.
+[language reference](language.md#tvl-13-requirements-monitors-responses)). TVL 1.3 was accepted on 2026-10-21; a change to these codes is a language revision.
 
 Every diagnostic has the same shape as the codes above: `{ code, message, path, severity }`. In text mode a line looks like
 `[runtime_window_out_of_range] monitors.0.window.tumbling_hours: tumbling_hours 5 is outside its allowed domain`, and `path` points at the key to fix. Severity is
@@ -932,7 +932,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
 | compile | `tvl-compile-runtime` |
 | gate | `tvl-measure-validate`, `tvl-ci-gate` |
-| platform | defined by the draft for the platform that registers or evaluates your contract; no tool in this repository produces it |
+| platform | defined by RFC 0003 for the platform that registers or evaluates your contract; no tool in this repository produces it |
 
 !!! note "Message text"
     Some tools print only the code, for example `Error: requirement_weaker_than_floor`, with no path. The code, not the wording, is the stable part.
