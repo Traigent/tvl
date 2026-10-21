@@ -488,8 +488,8 @@ def project_runtime_declarations(
             l_rl: Dict[str, Any] = {"id": rid, "trigger": l_trig, "do": act, "approval": app}
             h_rl: Dict[str, Any] = {"id": h_rid, "trigger": h_trig, "do": act, "approval": app}
             for field in ("only_while", "unless"):
-                if field not in rl:
-                    continue
+                if not rl.get(field):
+                    continue  # an empty guard list means no guard (RFC 0004 §2.6): same digest as absent
                 l_rl[field] = canonical_guards(rl[field])
                 h_rl[field] = []
                 for guard_idx, guard in enumerate(l_rl[field]):

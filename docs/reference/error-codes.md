@@ -982,7 +982,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | `runtime_max_stale_windows_out_of_range` | error | lint | `max_stale_windows` is below 1 | use an integer >= 1 |
 | `runtime_within_ms_out_of_range` | error | lint | `within_ms` is below 1 | use an integer >= 1 |
 | `runtime_max_count_out_of_range` | error | lint | `max_count` is below 0 | use an integer >= 0 |
-| `runtime_trigger_hours_out_of_range` | error | lint | `trigger.hours` is below 1, or unknown_for hours is below the monitor tumbling_hours | use an integer >= 1 |
+| `runtime_trigger_hours_out_of_range` | error | lint | `trigger.hours` is below 1, or unknown_for hours is below the monitor tumbling_hours | use an integer >= 1, and for `unknown_for` at least the monitor's `tumbling_hours` |
 | `runtime_repeat_after_hours_out_of_range` | error | lint | `repeat_after_hours` is below 1 | use an integer >= 1 |
 | `runtime_max_repeats_out_of_range` | error | lint | `max_repeats` is below 1 | use an integer >= 1 |
 | `runtime_max_active_obligations_out_of_range` | error | lint | `limits.max_active_obligations` is below 1 | use an integer >= 1 |

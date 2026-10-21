@@ -3315,7 +3315,7 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
         issues.append(
             {
                 "code": "runtime_version_required",
-                "message": "TVL 1.3 constructs and packs require tvl_version: '1.3'",
+                "message": "Runtime constructs and packs require tvl_version: '1.3' (or '1.4' with RFC 0004 constructs)",
                 "path": ["tvl_version"],
                 "severity": "error",
             }
@@ -5390,7 +5390,8 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     )
 
             if isinstance(trigger, dict) and trigger.get("event") == "unknown_for" and t_mon is not None:
-                window_hours = (t_mon.get("window") or {}).get("tumbling_hours", 6 if t_mon.get("profile") == "backend_v1" else None)
+                window = t_mon.get("window")
+                window_hours = window.get("tumbling_hours") if isinstance(window, dict) else (6 if t_mon.get("profile") == "backend_v1" else None)
                 hours = trigger.get("hours")
                 if _is_int_strict(hours) and _is_int_strict(window_hours) and hours < window_hours:
                     issues.append({"code": "runtime_trigger_hours_out_of_range", "message": "unknown_for hours must be at least tumbling_hours",

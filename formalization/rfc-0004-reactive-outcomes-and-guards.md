@@ -171,7 +171,8 @@ guard never changes the rule's trigger, scope or occurrence identity (RFC 0003 ย
 | `{rule: r, state: attempt_open}` | an attempt of `optimize` rule r (same response) is open (ยง2.2) | no attempt of r is open |
 
 UNDECIDED otherwise: the controller cannot establish the state (m not registered or not yet evaluated, records
-unavailable). The lists combine with Kleene's strong three-valued logic: `only_while` is the conjunction of its guards,
+unavailable). For example, a pack rule absorbed into an agent's contract may keep an `only_while` guard on a floor
+monitor that the agent's own program does not evaluate; locally that guard is UNDECIDED and so never suppresses. The lists combine with Kleene's strong three-valued logic: `only_while` is the conjunction of its guards,
 `unless` the disjunction of its guards.
 
 **Resolution for `notify`.** The occurrence is delivered unless `only_while` is FALSE or `unless` is TRUE. An UNDECIDED

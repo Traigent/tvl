@@ -268,3 +268,52 @@ def test_authored_reactive_enum_hints_preserve_unknown_kind_diagnostics(kind):
         compile_runtime_document(d, token_map_doc=None)
     assert exc.value.code == 'runtime_unknown_kind'
     assert 'CANARY' not in exc.value.message
+
+
+def test_lint_pack_alone_rejects_attempt_open_guard():
+    case = safe_load((CASES / 'composition/compile-pack-keeps-composed-responses.yml').read_text())
+    pack = case['base']; pack['tvl_version'] = '1.4'
+    pack['responses'][0]['rules'][0]['unless'] = [{'rule': 'opt', 'state': 'attempt_open'}]
+    assert 'runtime_invalid_ladder' in codes(pack)
+
+
+def test_attempt_guard_adds_no_edge_even_when_rule_id_equals_a_monitor_name():
+    d = module(); rules = d['responses'][0]['rules']
+    opt_id = rules[0]['id']
+    for r in rules:
+        if r.get('trigger', {}).get('rule') == opt_id:
+            r['trigger']['rule'] = 'monitor_other'
+        for f in ('only_while', 'unless'):
+            for g in r.get(f, []):
+                if g.get('rule') == opt_id:
+                    g['rule'] = 'monitor_other'
+    rules[0]['id'] = 'monitor_other'
+    d['responses'].append({'name': 'other', 'rules': [{'id': 'back', 'trigger': {'monitor': 'monitor_other', 'event': 'episode_opened'}, 'do': 'notify', 'unless': [{'monitor': 'monitor_main', 'state': 'episode_open'}]}]})
+    assert 'runtime_guard_cycle' not in codes(d)
+
+
+@pytest.mark.parametrize('operation', ['overlay', 'meet'])
+def test_guard_order_reversed_does_not_change_comparison_or_digest(operation):
+    b = module(); r0 = b['responses'][0]['rules'][1]
+    r0['unless'] = [{'rule': 'opt', 'state': 'attempt_open'}, {'monitor': 'monitor_other', 'state': 'episode_open'}]
+    o = copy.deepcopy(b); o['responses'][0]['rules'][1]['unless'].reverse()
+    composed, _ = compose_runtime_documents(b, o, operation=operation)
+    a, _, _ = compile_runtime_document(b, token_map_doc=tokens(b))
+    c, _, _ = compile_runtime_document(composed, token_map_doc=tokens(b))
+    assert canonical_json_digest(a) == canonical_json_digest(c)
+
+
+def test_empty_guard_list_compiles_like_absent():
+    b = module(); r = b['responses'][0]['rules'][2]
+    r.pop('only_while', None); r.pop('unless', None)
+    o = copy.deepcopy(b); o['responses'][0]['rules'][2]['only_while'] = []
+    a, _, _ = compile_runtime_document(b, token_map_doc=tokens(b))
+    c, _, _ = compile_runtime_document(o, token_map_doc=tokens(o))
+    assert canonical_json_digest(a) == canonical_json_digest(c)
+
+
+def test_unknown_for_with_non_mapping_window_does_not_crash():
+    d = module()
+    mon = next(m for m in d['monitors'] if m['name'] == d['responses'][0]['rules'][2]['trigger']['monitor'])
+    mon['window'] = [1]
+    assert codes(d)
