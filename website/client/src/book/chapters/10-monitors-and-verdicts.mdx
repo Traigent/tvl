@@ -13,6 +13,8 @@ summary: "What the three verdicts MET, BREACHED and UNKNOWN each promise, how wi
 
 <h2 id="ch10-monitor">A monitor binds evidence</h2>
 
+The <Term id="contract-monitor">contract monitor</Term> evaluates requirements against evidence and reports MET, BREACHED or UNKNOWN.
+
 TVL defines what each verdict promises. Production verdicts come from an <Term id="evaluator-profile">evaluator profile</Term> outside TVL, which must keep those promises; TVL's own tools decide only promotion monitors, from complete counts. A <Term id="monitor">monitor</Term> says which evidence checks one requirement, and how (<Ref to="rfc-0003" section="sections 3.2 and 4.5">RFC 0003</Ref>). Version 9 gives `slow_replies` two: `slow_replies_gate` judges the candidate once on the evaluation set (`phase: promotion`), and `slow_replies_prod` judges live traffic (`phase: runtime`):
 
 <Example file="ch10/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 9: the runtime monitor" lines="178-190" />

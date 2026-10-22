@@ -103,6 +103,8 @@ Passing a TVL gate means that the candidate met the declared requirements under 
 
 ## TVL 1.3: requirements in production
 
+**TVL Reactive Contracts** brings together runtime requirements, monitors, response policies, the promotion gate and approvals under the tagline **“monitor requirements, govern adaptation.”** The contract monitor gives a verdict; local guards `block_action` and `halt_unit` act in process before the effect. A **reactive rule** retains its narrower §13 meaning: an outcome-trigger/notify-only rule inside a reactive contract.
+
 TVL 1.3 (accepted 2026-10-21) is a conservative extension of TVL 1.2: a module without the new blocks means exactly what it meant before. It adds three optional blocks: `requirements` (what must keep holding once the agent runs, such as "at most 5% of traces take longer than 2 s" or "the agent never calls a forbidden tool"), `monitors` (which evidence checks a requirement, before release or in production, and with what statistics) and `responses` (what should happen when a monitor reports a breach, from a notification to a human-approved suspend). A separate `tvl_pack` document carries organisation floors that modules can only tighten.
 
 TVL states what these declarations mean and what each verdict promises; its tools validate, compose and compile them, and `tvl-ci-gate` decides promotion monitors from fully resolved evaluation-set counts. Evaluating runtime evidence and carrying out responses is outside the language ([RFC 0003 §3.5](formalization/rfc-0003-runtime-requirements-monitors-responses.md)).

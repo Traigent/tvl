@@ -4,6 +4,12 @@
     This guide describes TVL 1.3, accepted on 2026-10-21. Every snippet below was checked with the reference tools
     in this repository (`tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`, `tvl-ci-gate`).
 
+**TVL Reactive Contracts** names the runtime layer: requirements, monitors, responses, the promotion gate and approvals. Its tagline is **“monitor requirements, govern adaptation.”** This vocabulary combines event-condition-action (ECA) rules from active databases, runtime verification, the MAPE-K monitor-analyze-plan-execute loop over shared knowledge (Kephart & Chess, 2003), canary promotion and statistical process control.
+
+The **contract monitor** comes from runtime verification (Leucker & Schallhart, 2009): it evaluates requirements and returns MET, BREACHED or UNKNOWN; the monitor itself does not block actions. A **response policy**, following ECA rules, maps a monitor event to one action from TVL's sealed response ladder: 0 `record` (implicit, not declarable), 1 `notify`, 2 `open_next_step`, 3 `optimize` (optionally with `deploy: if_promoted`) or `rollback`, 4 `throttle` or `degrade`, and 5 `suspend`; the local guards `block_action` and `halt_unit` act in process, before the effect. The response ladder and approval rules below govern each action.
+
+The **promotion gate**, drawing on progressive delivery and canary analysis such as Argo Rollouts and Flagger, checks epsilon-Pareto evidence for “not worse than the incumbent” within declared margins, alongside the other promotion conditions. A **recorded approval grant** makes human approval an explicit artifact, following access-control practice. **Control limits and a false-alarm budget**, from statistical process control and control charts, connect the binomial test to an alarm budget over the declared horizon under the decision method's assumptions.
+
 TVL up to 1.2 says what an agent configuration is allowed to be and how a candidate earns promotion.
 TVL 1.3 adds the other half: **what the agent must keep doing once it is running, and what should happen
 when it stops doing it.**
