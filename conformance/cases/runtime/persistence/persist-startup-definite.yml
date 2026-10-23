@@ -1,0 +1,31 @@
+case_format: tvl-runtime-case/1
+family: persistence
+description: missing startup slots stay UNKNOWN but a definite completion still decides
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#22
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: persistence
+  persist:
+    breached_in: 2
+    of_last: 4
+  identity:
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+  windows:
+  - index: 0
+    verdict: BREACHED
+  - index: 1
+    verdict: BREACHED
+  index: 1
+expected:
+  persistence:
+    result: BREACHED
+    slots:
+    - verdict: UNKNOWN
+      reason: persistence_history_gap
+    - verdict: UNKNOWN
+      reason: persistence_history_gap
+    - verdict: BREACHED
+    - verdict: BREACHED

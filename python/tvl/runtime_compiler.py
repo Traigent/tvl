@@ -7,7 +7,7 @@ from tvl.canonical import RuntimeClosedError, canonical_json_digest
 from tvl.diagnostics import closed_lint_issue, closed_schema_issues, runtime_syntax_issues
 from tvl.lints import _CUSTOMER_CHECKER_RE, _RUNTIME_IDENT_RE, _rule_source_monitor, lint_module, lint_pack
 from tvl.runtime_compose import compose_runtime_documents
-from tvl.runtime_projection import has_projected_reactive_construct, project_runtime_declarations, validate_projected_contract
+from tvl.runtime_projection import has_projected_15_construct, has_projected_reactive_construct, project_runtime_declarations, validate_projected_contract
 from tvl.schema import pack_validator, runtime_local_validator, validator as module_validator
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -190,9 +190,10 @@ def compile_runtime_document(
 
     # Select the wire format from projected constructs, not the authored version.
     # Empty guards are omitted by projection and preserve the frozen /1 artifacts.
+    has_15_construct = has_projected_15_construct(hosted_decls)
     has_reactive_construct = has_projected_reactive_construct(hosted_decls)
-    compiled_version = "1.4" if has_reactive_construct else "1.3"
-    format_version = "2" if has_reactive_construct else "1"
+    compiled_version = "1.5" if has_15_construct else ("1.4" if has_reactive_construct else "1.3")
+    format_version = "3" if has_15_construct else ("2" if has_reactive_construct else "1")
     contract: Dict[str, Any] = {
         "format": f"tvl-runtime-contract/{format_version}",
         "tvl_version": compiled_version,

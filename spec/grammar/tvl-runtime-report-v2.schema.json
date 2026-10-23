@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tvl-lang.org/schemas/tvl-runtime-report-v2.schema.json",
+  "title": "TVL Runtime Aggregate Report",
+  "description": "Schema for customer-side census aggregate window reports tvl-runtime-report/2 (RFC 0005 §2.5). Closed shape only: count identities, window and source binding, and the minimal-decimal sum are checked by the conformance relation, never inferred from this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "contract_digest",
+    "monitor_ref",
+    "monitor_revision",
+    "window_start_ms",
+    "window_end_ms",
+    "source_digest",
+    "counts",
+    "coverage",
+    "units_commitment",
+    "sdk_version",
+    "evidence_tier"
+  ],
+  "properties": {
+    "format": {
+      "const": "tvl-runtime-report/2"
+    },
+    "contract_digest": {
+      "$ref": "#/$defs/Fingerprint"
+    },
+    "monitor_ref": {
+      "$ref": "#/$defs/Ref"
+    },
+    "monitor_revision": {
+      "$ref": "#/$defs/Ref"
+    },
+    "window_start_ms": {
+      "type": "integer"
+    },
+    "window_end_ms": {
+      "type": "integer"
+    },
+    "source_digest": {
+      "$ref": "#/$defs/Fingerprint"
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected",
+        "reported",
+        "dropped",
+        "member_count",
+        "contribution_count",
+        "unknown_membership",
+        "unplaceable",
+        "excluded",
+        "missing_value",
+        "invalid_value"
+      ],
+      "properties": {
+        "selected": {
+          "$ref": "#/$defs/Nat"
+        },
+        "reported": {
+          "$ref": "#/$defs/Nat"
+        },
+        "dropped": {
+          "$ref": "#/$defs/Nat"
+        },
+        "member_count": {
+          "$ref": "#/$defs/Nat"
+        },
+        "contribution_count": {
+          "$ref": "#/$defs/Nat"
+        },
+        "unknown_membership": {
+          "$ref": "#/$defs/Nat"
+        },
+        "unplaceable": {
+          "$ref": "#/$defs/Nat"
+        },
+        "excluded": {
+          "$ref": "#/$defs/Nat"
+        },
+        "missing_value": {
+          "$ref": "#/$defs/Nat"
+        },
+        "invalid_value": {
+          "$ref": "#/$defs/Nat"
+        }
+      }
+    },
+    "sum": {
+      "type": "string"
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "census",
+        "unit_histories_complete",
+        "producer_set_complete",
+        "producer_sequences_contiguous",
+        "response_deadlines_covered",
+        "watermarks_through_ms"
+      ],
+      "properties": {
+        "census": {
+          "type": "boolean"
+        },
+        "unit_histories_complete": {
+          "type": "boolean"
+        },
+        "producer_set_complete": {
+          "type": "boolean"
+        },
+        "producer_sequences_contiguous": {
+          "type": "boolean"
+        },
+        "response_deadlines_covered": {
+          "type": "boolean"
+        },
+        "watermarks_through_ms": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      }
+    },
+    "units_commitment": {
+      "$ref": "#/$defs/Fingerprint"
+    },
+    "sdk_version": {
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "evidence_tier": {
+      "const": "client_attested"
+    }
+  },
+  "$defs": {
+    "Nat": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "Ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "Fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

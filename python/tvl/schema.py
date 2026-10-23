@@ -40,6 +40,7 @@ def runtime_contract_validator(format_tag: str = "tvl-runtime-contract/1") -> Dr
     schemas = {
         "tvl-runtime-contract/1": "tvl-runtime-contract.schema.json",
         "tvl-runtime-contract/2": "tvl-runtime-contract-v2.schema.json",
+        "tvl-runtime-contract/3": "tvl-runtime-contract-v3.schema.json",
     }
     if not isinstance(format_tag, str) or format_tag not in schemas:
         raise RuntimeClosedError("runtime_unsafe_egress")
@@ -50,6 +51,7 @@ def runtime_local_validator(format_tag: str = "tvl-runtime-local/1") -> Draft202
     schemas = {
         "tvl-runtime-local/1": "tvl-runtime-local.schema.json",
         "tvl-runtime-local/2": "tvl-runtime-local-v2.schema.json",
+        "tvl-runtime-local/3": "tvl-runtime-local-v3.schema.json",
     }
     if not isinstance(format_tag, str) or format_tag not in schemas:
         raise RuntimeClosedError("runtime_invalid_profile")
@@ -58,3 +60,7 @@ def runtime_local_validator(format_tag: str = "tvl-runtime-local/1") -> Draft202
 
 def runtime_report_validator() -> Draft202012Validator:
     return validator("tvl-runtime-report.schema.json")
+
+
+def runtime_report_v2_validator() -> Draft202012Validator:
+    return validator("tvl-runtime-report-v2.schema.json")

@@ -1,0 +1,18 @@
+case_format: tvl-runtime-case/1
+family: aggregate_report
+description: report/1 keeps its unkeyed {unit_id, class} digest
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#25
+module: {}
+input:
+  kind: commitment
+  version: 1
+  units:
+  - unit_id: u2
+    class: vio
+  - unit_id: u1
+    class: sat
+  - unit_id: u3
+    class: unres
+expected:
+  commitment: 61a557e403d31dcc7372a42adca0bc39780dab107c991087706f38f6389ae887

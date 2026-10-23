@@ -1,0 +1,37 @@
+case_format: tvl-runtime-case/1
+family: aggregate
+description: mean 1/3 meets gte 0.333333333333333 exactly, with no rounded quotient
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#23
+- formalization/rfc-0005-persistence-and-census-aggregates.md#24
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: aggregate
+  aggregate:
+    op: mean
+    metric: score
+    bound:
+      gte: 0.333333333333333
+    window:
+      start_ms: 0
+      end_ms: 86400000
+      grace_ms: 1800000
+    evaluated_at_ms: 88200000
+    units:
+    - key: u1
+      membership: true
+      status: completed
+      value: '0'
+    - key: u2
+      membership: true
+      status: completed
+      value: '0'
+    - key: u3
+      membership: true
+      status: completed
+      value: '1'
+expected:
+  aggregate:
+    verdict: MET
+    sum: '1'

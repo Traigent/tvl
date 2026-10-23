@@ -49,7 +49,7 @@ def token_map_template(documents: Sequence[Mapping[str, Any]]) -> Dict[str, Any]
         for mon in doc.get("monitors") or []:
             add("monitor", mon["name"])
             add("requirement", mon["requirement"])
-            if _monitor_role(mon, reqs[mon["requirement"]]) in {"primary_rate", "primary_zero", "burn"}:
+            if _monitor_role(mon, reqs[mon["requirement"]]) in {"primary_rate", "primary_zero", "primary_aggregate", "burn"}:
                 env = mon["evidence"].get("deployment_environment", "production")
                 if mon.get("profile") == "backend_v1":
                     env = env.strip().lower()
@@ -255,6 +255,13 @@ def has_projected_reactive_construct(declarations: Mapping[str, Any]) -> bool:
     )
 
 
+def has_projected_15_construct(declarations: Mapping[str, Any]) -> bool:
+    """Whether normalized declarations require the TVL 1.5 runtime wire format (RFC 0005 §2.5)."""
+    return any(req["kind"] == "aggregate_bound" for req in declarations["requirements"]) or any(
+        "persist" in rule for response in declarations["responses"] for rule in response["rules"]
+    )
+
+
 def project_runtime_declarations(
     doc: Mapping[str, Any],
     *,
@@ -303,6 +310,15 @@ def project_runtime_declarations(
             mr = minimal_decimal_str(req["max_rate"])
             l_req["max_rate"] = mr
             h_req["max_rate"] = mr
+        if "aggregate" in req:
+            aggregate = {key: str(req["aggregate"][key]) for key in ("op", "metric", "source_digest")}
+            l_req["aggregate"] = dict(aggregate)
+            h_req["aggregate"] = dict(aggregate)
+        if "bound" in req:
+            direction = "lte" if "lte" in req["bound"] else "gte"
+            bound = {direction: minimal_decimal_str(req["bound"][direction])}
+            l_req["bound"] = dict(bound)
+            h_req["bound"] = dict(bound)
         if "of" in req:
             of_loc = str(req["of"])
             l_req["of"] = of_loc
@@ -337,7 +353,7 @@ def project_runtime_declarations(
         source = str(ev["source"])
         l_ev: Dict[str, Any] = {"source": source}
         h_ev: Dict[str, Any] = {"source": source}
-        if role in {"primary_rate", "primary_zero", "burn"}:
+        if role in {"primary_rate", "primary_zero", "primary_aggregate", "burn"}:
             env_loc = str(ev.get("deployment_environment", "production"))
             if is_backend:
                 env_loc = env_loc.strip().lower()
@@ -347,7 +363,7 @@ def project_runtime_declarations(
             attr = str(ev.get("attribution", "agent_key_exact_v1"))
             l_ev["attribution"] = attr
             h_ev["attribution"] = attr
-        if role in {"primary_rate", "primary_zero", "burn", "promotion"}:
+        if role in {"primary_rate", "primary_zero", "primary_aggregate", "burn", "promotion"}:
             res_rule = str(ev.get("resolution", "terminal_status_v1"))
             l_ev["resolution"] = res_rule
             h_ev["resolution"] = res_rule
@@ -417,7 +433,7 @@ def project_runtime_declarations(
             l_mon["profile"] = "backend_v1"
             h_mon["profile"] = "backend_v1"
 
-        if role in {"primary_rate", "primary_zero", "burn"}:
+        if role in {"primary_rate", "primary_zero", "primary_aggregate", "burn"}:
             win = mon.get("window") or {}
             w_obj = {
                 "tumbling_hours": int(win.get("tumbling_hours", 6 if is_backend else win.get("tumbling_hours"))),
@@ -426,7 +442,7 @@ def project_runtime_declarations(
             l_mon["window"] = dict(w_obj)
             h_mon["window"] = dict(w_obj)
 
-        if role in {"primary_rate", "primary_zero"}:
+        if role in {"primary_rate", "primary_zero", "primary_aggregate"}:
             ep = mon.get("episode") or {}
             ep_obj = {
                 "closure_windows": int(ep.get("closure_windows", 2 if is_backend else ep.get("closure_windows"))),
@@ -506,6 +522,11 @@ def project_runtime_declarations(
                     hosted_ref = _resolve_token(lookup, key, str(guard[key]), ["responses", resp_idx, "rules", rule_idx, field, guard_idx, key])
                     h_rl[field].append({key: hosted_ref, "state": guard["state"]})
                 h_rl[field] = canonical_guards(h_rl[field])
+            if "persist" in rl:
+                # Authored integers only; the persistence result and slot history stay customer-side (RFC 0005 §2.5).
+                persist = {key: int(rl["persist"][key]) for key in ("breached_in", "of_last")}
+                l_rl["persist"] = dict(persist)
+                h_rl["persist"] = dict(persist)
             if "target" in rl:
                 l_rl["target"] = str(rl["target"])
                 h_rl["target"] = str(rl["target"])
@@ -614,6 +635,8 @@ def validate_projected_contract(
                     dt = drl.get("trigger") or {}
                     key = "rule" if "rule" in dt else "monitor"
                     if (hrl.get("trigger") or {}).get(key) != by_ns.get((key, str(dt.get(key, "")))):
+                        raise RuntimeClosedError("runtime_unsafe_egress")
+                    if hrl.get("persist") != drl.get("persist"):
                         raise RuntimeClosedError("runtime_unsafe_egress")
                     for field in ("only_while", "unless"):
                         expected_guards = []

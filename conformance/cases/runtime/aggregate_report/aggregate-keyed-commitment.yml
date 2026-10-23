@@ -1,0 +1,66 @@
+case_format: tvl-runtime-case/1
+family: aggregate_report
+description: report/2 commits with a local-secret HMAC-SHA-256 over the bound canonical payload
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#25
+module: {}
+input:
+  kind: commitment
+  version: 2
+  secret_hex: 000000000000000000000000000000000000000000000000000000000000002a
+  report:
+    format: tvl-runtime-report/2
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_ref: ref_monitor
+    monitor_revision: rev1
+    window_start_ms: 0
+    window_end_ms: 86400000
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    counts:
+      selected: 4
+      reported: 4
+      dropped: 0
+      member_count: 3
+      contribution_count: 3
+      unknown_membership: 0
+      unplaceable: 0
+      excluded: 1
+      missing_value: 0
+      invalid_value: 0
+    sum: '12.5'
+    coverage:
+      census: true
+      unit_histories_complete: true
+      producer_set_complete: true
+      producer_sequences_contiguous: true
+      response_deadlines_covered: true
+      watermarks_through_ms: 88200000
+    units_commitment: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    sdk_version: 1.5.0
+    evidence_tier: client_attested
+  units:
+  - agent: agent_1
+    environment: production
+    unit_kind: invocation
+    unit_id: u2
+    membership: true
+    state: valid
+    value: '2.50'
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - agent: agent_1
+    environment: production
+    unit_kind: invocation
+    unit_id: u1
+    membership: true
+    state: valid
+    value: '10'
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - agent: agent_1
+    environment: production
+    unit_kind: invocation
+    unit_id: u3
+    membership: unknown
+    state: missing
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+expected:
+  commitment: 0e4b9502cfa571e1ab4a27a09b237ec514a0c7f63e44df111dd8f7c3478586db

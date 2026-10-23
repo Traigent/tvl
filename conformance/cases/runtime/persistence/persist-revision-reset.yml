@@ -1,0 +1,33 @@
+case_format: tvl-runtime-case/1
+family: persistence
+description: a monitor revision starts fresh history; older revisions are placeholders
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#22
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: persistence
+  persist:
+    breached_in: 2
+    of_last: 3
+  identity:
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+  windows:
+  - index: 0
+    verdict: BREACHED
+    monitor_revision: rev0
+  - index: 1
+    verdict: BREACHED
+    monitor_revision: rev0
+  - index: 2
+    verdict: BREACHED
+  index: 2
+expected:
+  persistence:
+    result: UNKNOWN
+    reason: inconclusive
+    slots:
+    - reason: persistence_history_gap
+    - reason: persistence_history_gap
+    - verdict: BREACHED

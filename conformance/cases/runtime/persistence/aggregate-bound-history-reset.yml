@@ -1,0 +1,34 @@
+case_format: tvl-runtime-case/1
+family: persistence
+description: tightening a bound changes the contract digest and resets persistence history
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#22
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: persistence
+  persist:
+    breached_in: 2
+    of_last: 3
+  identity:
+    contract_digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    monitor_revision: rev1
+  windows:
+  - index: 0
+    verdict: BREACHED
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  - index: 1
+    verdict: BREACHED
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  - index: 2
+    verdict: BREACHED
+    contract_digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+  index: 2
+expected:
+  persistence:
+    result: UNKNOWN
+    reason: inconclusive
+    slots:
+    - reason: persistence_history_gap
+    - reason: persistence_history_gap
+    - verdict: BREACHED

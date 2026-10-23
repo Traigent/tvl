@@ -9,7 +9,7 @@
   "properties": {
     "tvl_version": {
       "type": ["string", "number"],
-      "description": "Declared language version; runtime lints require 1.4 for reactive outcomes and guards, otherwise 1.3 or 1.4."
+      "description": "Declared language version; runtime lints require 1.5 for breach persistence and census aggregates, 1.4 for reactive outcomes and guards, otherwise 1.3, 1.4 or 1.5."
     },
     "pack": {
       "type": "object",
@@ -54,7 +54,9 @@
         "max_rate": { "type": "number" },
         "of": { "$ref": "#/$defs/RuntimeIdent" },
         "within_hours": { "type": "integer" },
-        "max_stale_windows": { "type": "integer" }
+        "max_stale_windows": { "type": "integer" },
+        "aggregate": { "$ref": "#/$defs/RuntimeAggregateDecl" },
+        "bound": { "$ref": "#/$defs/BoundDecl" }
       }
     },
     "PredicateDecl": {
@@ -243,7 +245,8 @@
           "items": {
             "$ref": "#/$defs/GuardDecl"
           }
-        }
+        },
+        "persist": { "$ref": "#/$defs/PersistDecl" }
       }
     },
     "TriggerDecl": {
@@ -299,6 +302,34 @@
           }
         }
       ]
+    },
+    "RuntimeAggregateDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.5 (RFC 0005 §2.3): census aggregate. The schema checks closed keys and primitive types; the operator and metric registries and the source commitment are checked by lints.",
+      "properties": {
+        "op": { "type": "string", "examples": ["mean", "sum"], "x-enum": ["mean", "sum"] },
+        "metric": { "type": "string", "examples": ["cost_usd", "score"], "x-enum": ["cost_usd", "score"] },
+        "source_digest": { "type": "string" }
+      }
+    },
+    "BoundDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.5 (RFC 0005 §2.3): one comparator. Exactly one key is a variant rule checked by lints.",
+      "properties": {
+        "lte": { "type": "number" },
+        "gte": { "type": "number" }
+      }
+    },
+    "PersistDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.5 (RFC 0005 §2.2): breach persistence on a notification. Integer ranges are checked by lints.",
+      "properties": {
+        "breached_in": { "type": "integer" },
+        "of_last": { "type": "integer" }
+      }
     },
     "GuardDecl": {
       "oneOf": [
