@@ -10,7 +10,7 @@ If you are new to TVL, start with the example below and read it top to bottom on
 sections.
 
 !!! note "Language version"
-    This reference describes the core constructs of TVL, which is currently at version **1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002). Both are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
+    This reference describes the core constructs of TVL, which is currently at version **1.5**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004, described below; accepted 2026-10-21); TVL 1.5 added breach persistence and census aggregates (RFC 0005, described below; accepted 2026-10-23). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
 
 ## A Small RAG Agent
 
@@ -99,7 +99,7 @@ How to read it:
 *   `environment` tells you which environment snapshot this agent was evaluated against: which retriever index and gateway were active while this study ran.
 *   `evaluation_set` tells you which question set supplies the evidence. This is the shared evaluation set used to compare candidate settings fairly.
 *   `tvars` lists the knobs TVL is allowed to tune. In this example, TVL can choose the model, retrieval depth, and answer randomness.
-*   `constraints.structural` encodes constraints between design choices. If we retrieve a lot of passages (`retriever.k = 8`), we force lower temperature so the answer stays grounded.
+*   `constraints.structural` encodes constraints between design choices. If we retrieve a lot of passages (`retriever.k = 8`), we require lower temperature as a design restriction. Whether answers stay grounded must be measured separately.
 *   This first example stops at structural rules. Operational preconditions come later, once the basic module shape is already clear.
 *   `objectives` say what we are trying to improve: answer quality goes up, latency goes down.
 *   `promotion_policy` says when an apparent improvement is strong enough to trust before rollout.
@@ -248,7 +248,7 @@ is empty and optimization should not begin.
 The user-facing verifier split is:
 
 *   `tvl-check-structural`: checks structural satisfiability and may return a witness assignment or UNSAT core
-*   `tvl-check-operational`: checks operational preconditions (`constraints.derived`) and budget feasibility against the current environment snapshot
+*   `tvl-check-operational`: checks operational preconditions (`constraints.derived`) and positive values for declared trial, spend and wall-clock budgets; it does not establish that the search can finish within them
 *   `tvl-measure-validate` and `tvl-ci-gate`: validate measured evidence and promotion readiness after evaluations have run
 
 More detailed references:
@@ -311,6 +311,20 @@ tvars:
 
 !!! note "cvars, policies, and composites (RFC 0001/0002)"
     The Lean proof tree (`proofs/`) predates RFC 0001 (`cvars`/`policies`) and RFC 0002 (`composites`) and has not yet been extended to cover them; formal soundness guarantees do not apply to modules using these constructs. There is no lint warning for this yet (tracked as follow-up work); see `formalization/tvl-formal-semantics.md` §1.4 for the disclosure.
+
+### Specification, tooling and proof coverage
+
+The table separates language definitions and tool support from machine proofs. See `proofs/PROOF_SUMMARY.md` for theorem-by-theorem scope and recorded build limitations; no row certifies the complete Python implementation.
+
+| Construct | Specified | Validated by tooling | Implemented | Machine-proved scope |
+|---|---|---|---|---|
+| Core TVARs, constraints, objectives, promotion | Formal semantics §§2–9 | Schema/lints; structural, operational and evidence checks have separate roles | Core checkers and promotion gate | Finite core type soundness, encoding and dominance models; not the whole implementation |
+| Callable/registry domains | Core reference | Schema/lints; warnings mark the unverified subset | Registry-backed tooling | Outside the verified core subset |
+| `cvars`, `policies` | RFC 0001 | Schema/lints | Declaration validation; agent execution is outside this claim | Not modeled in the Lean tree; no dedicated scope warning |
+| `composites` | RFC 0002 | Schema/lints | Declaration validation; agent execution is outside this claim | Not modeled in the Lean tree; no dedicated scope warning |
+| Runtime requirements, monitors, responses | RFC 0003; formal semantics §12 | Runtime schema/lints/composition | Language compiler and verdict join; evaluators/controllers are separate | Abstract predicates, declarations and verdict algebra; no evaluator/controller certification |
+| Reactive notifications/guards | RFC 0004 | Runtime schema/lints | Language/compiler support | Selected guard/identity theorems; no execution or lifecycle proof |
+| Persistence/census aggregates | RFC 0005 | Runtime schema/lints | Language/compiler and aggregate/persistence support | Selected persistence and exact-mean theorems; not Python arithmetic certification |
 
 ## Constraints
 
@@ -428,6 +442,24 @@ promotion_policy:
       confidence: 0.95
 ```
 
+Here `latency_slo` names a violation-count measurement. The evidence bundle binds it by name under `chance_outcomes`, with `violations` and `trials`. The evaluator contract must define the violation event, eligible population and trial denominator; the name alone defines none of these.
+
+`threshold: 0.05` bounds the violation rate, not latency. The constraint passes only when the one-sided Clopper–Pearson upper bound at confidence `0.95` is at most `0.05`. The gate computes this bound separately for each constraint on the candidate's counts. Confidence is separate from promotion `alpha` and does not establish coverage across candidate selection.
+
+Missing named measurements or required counts make CLI evidence not promotion-ready (`missing_chance_counts`), before a decision is evaluated. Evaluated chance results with no trials or inconclusive bounds fail the constraint and lead to `Reject`.
+
+### Chance constraints and promotion monitors
+
+Chance constraints provide a hard acceptance filter: every non-pass rejects. Promotion monitors express runtime-style requirements on evaluation-set evidence and distinguish demonstrated breaches (`BREACHED`, mapped to `Reject`) from inconclusive evidence (`UNKNOWN`, mapped to `NoDecision`). Neither replaces the other. Formal semantics §12.7 and Theorem 12.3 specify the combined gate:
+
+| Legacy promotion decision | Any promotion monitor `BREACHED` | No breach, any `UNKNOWN` | All monitors `MET` (or none) |
+|---|---|---|---|
+| `Reject` | `Reject` | `Reject` | `Reject` |
+| `NoDecision` | `Reject` | `NoDecision` | `NoDecision` |
+| `Promote` | `Reject` | `NoDecision` | `Promote` |
+
+Validation errors remain errors before this join. The specification states no preference for which construct new modules should use; choose according to the intended treatment of inconclusive evidence.
+
 Notes:
 
 *   Standard objectives should have a `min_effect` entry.
@@ -438,6 +470,12 @@ Notes:
 ## Legacy Implementation Hints (`exploration`)
 
 `exploration` is retained for compatibility with existing modules. It contains non-semantic hints for a particular runtime about how to search the feasible space. It does not change which agent configurations are admissible or what evidence satisfies the requirements.
+
+The schema requires `max_trials` and `max_wallclock_s` to be integers at least 1, and `max_spend_usd` to be a number at least 0. The exploration lint also checks that `max_trials` is a positive integer.
+
+`tvl-check-operational` checks positivity of all three present values after numeric conversion, unless `skip_budget_checks` is set. Thus zero spend passes the schema but fails the operational check unless budget checks are skipped. These checks do not estimate cost or establish search feasibility.
+
+`tvl-compose` checks certain budget reductions as described below. The executing runtime/profile is responsible for enforcing spending, time and trial limits.
 
 Portable requirement specifications should keep optimizer settings in an implementation profile or run plan. A runtime may ignore this block unless its declared profile says otherwise.
 
@@ -490,15 +528,36 @@ tvl-measure-validate module.tvl.yml config.yml measurements.yml
 
 `tvl-compose` takes **one** overlay file, which names its base via `_tvl_overlay.extends`.
 
-### Overlays may only tighten
+#### Where `extends` may point
 
-An overlay narrows a base module; it may never widen it. The composer enforces:
+`_tvl_overlay.extends` is a **relative** path, resolved against the directory of the overlay file that contains it.
+Absolute paths are refused. Every base in a chain must stay inside the **overlay root**: the directory of the overlay
+file you pass to `tvl-compose`, and everything below it. The root is fixed by that first file and does not move as the
+chain is followed, so an overlay in a subdirectory cannot reach back out through `..` to a base above the root. Paths
+are resolved before the check, so a symlink that points outside the root is refused as well. A violation fails with
+`Overlay 'extends' path must stay within the overlay root` (exit 2).
+
+Place shared bases beside the overlay you compose from, or beneath its directory. If several entry overlays share a base, keep them in the same directory as that base:
+
+```text
+envs/
+  base.yml              # shared base
+  staging.overlay.yml   # extends: base.yml        -> run: tvl-compose envs/staging.overlay.yml
+  team/
+    prod.overlay.yml    # extends: ../base.yml     -> refused when run as envs/team/prod.overlay.yml
+```
+
+To compose the `team/` overlay, either move it up to `envs/` beside the base or keep a copy of the base inside `team/`.
+
+### Overlay narrowing checks
+
+By default, the composer enforces the checks below. They do not establish full semantic strengthening: evidence contracts and other unchecked acceptance parameters can change, and waivers permit explicit clause removal.
 
 | Element | Rule |
 |---|---|
-| TVAR domains | enum values may be removed, never added; numeric ranges may shrink, never grow |
+| TVAR domains | when both domains are lists, values may not be added; when both are mappings with `range`, endpoints may not widen. Domain-shape changes are not checked here |
 | TVARs | may not be added |
-| `exploration.budgets` | may decrease, never increase |
+| `exploration.budgets` | `max_trials`, `max_spend_usd`, `max_wallclock_s` may not increase when present in both base and result; removal is not checked here |
 | `promotion_policy.chance_constraints` | a named constraint may not be dropped; `threshold` may only **decrease**; `confidence` may only **increase** |
 | `objectives` | may not be dropped; kind may not change (directional <-> banded); `direction` may not flip; a `band.target` may not be widened or removed (both `[low, high]` and `{center, tol}` forms); `band.alpha` may not be raised |
 | `constraints.structural` / `constraints.derived` | clauses may not be dropped unless waived, or replaced by a strictly tighter bound on the same symbol |
@@ -507,9 +566,11 @@ An overlay narrows a base module; it may never widen it. The composer enforces:
 `confidence` makes a weaker claim. Both are widenings even though the numbers move in
 opposite directions.
 
-Every edge of an overlay **chain** is validated, not just the outermost one — otherwise a
+With validation enabled, every edge of an overlay **chain** is validated, not just the outermost one — otherwise a
 single pass-through overlay (`final` extends `weaken` extends `base`) would check `final`
 against the already-weakened `weaken` and launder the whole change.
+
+`--no-validate` bypasses these legacy module checks; runtime requirement composition checks still run. Review dataset and metric changes as evidence-contract changes, and waivers as explicit removals, separately from numeric narrowing.
 
 #### What this does NOT cover
 
@@ -577,7 +638,7 @@ Interpretation:
 
 *   `tvl-validate` checks structure, schema, and lints, but it is not the satisfiability prover.
 *   `tvl-check-structural` answers the SAT/UNSAT question for structural constraints.
-*   `tvl-check-operational` answers whether environment-scoped feasibility checks and budgets currently pass.
+*   `tvl-check-operational` checks environment-scoped derived constraints and budget positivity, not search-budget feasibility.
 *   `tvl-ci-gate` is the later promotion decision step once incumbent and candidate evidence bundles exist.
 
 ## Authoring Rules That Matter
@@ -592,24 +653,20 @@ Interpretation:
 <details>
 <summary>Open formal and repository references</summary>
 
-This page is a teaching-oriented overview. The normative sources in this repository are:
+### Authority and proof status
 
-*   `tvl/spec/grammar/tvl.ebnf`
-*   `tvl/spec/grammar/tvl.schema.json`
-*   `spec/examples/*.yml`
+This page is a teaching-oriented overview. The repository's normative grammar, schema and examples are `spec/grammar/tvl.ebnf`, `spec/grammar/tvl.schema.json` and `spec/examples/*.yml`. The full formal treatment is `formalization/tvl-formal-semantics.md`; accepted extension RFCs live beside it.
 
-For the full formal treatment, the repository also includes:
-
-*   `tvl/formalization/tvl-formal-semantics.md`
+RFC 0003 explicitly assigns runtime meaning to formal semantics §12 and syntax, closed enums, diagnostics, schemas and CLI contracts to the RFC. This is a scoped division of authority; no repository-wide conflict precedence is stated here. `proofs/PROOF_SUMMARY.md` records machine-proof scope and verification status, not whole-toolchain certification.
 </details>
 
 ## TVL 1.3: requirements, monitors, responses
 
-!!! warning "Draft"
-    TVL 1.3 is a draft. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
+!!! note "TVL 1.3"
+    TVL 1.3 was accepted on 2026-10-21. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
     values they accept. For a guided introduction read
-    [Requirements, Monitors and Responses](../guides/requirements-monitors-responses.md). The normative source is
-    `formalization/rfc-0003-runtime-requirements-monitors-responses.md`, and the machine-readable shape is
+    [Requirements, Monitors and Responses](../guides/requirements-monitors-responses.md). See [Authority and proof status](#authority-and-proof-status)
+    for the meaning/syntax division between formal semantics §12 and `formalization/rfc-0003-runtime-requirements-monitors-responses.md`. The machine-readable shape is
     `spec/grammar/tvl.schema.json` and `spec/grammar/tvl-pack.schema.json`.
 
 TVL 1.3 is a conservative extension of 1.2: a module without these blocks is read exactly as before. TVL specifies and checks these
@@ -628,11 +685,24 @@ passes; `tvl-lint` runs no schema. Use `tvl-validate`.
 
 | Key | Where | Type | Notes |
 |---|---|---|---|
-| `tvl_version` | module root, pack root | string `"1.3"` | **required** as soon as `requirements`, `monitors` or `responses` appears (even empty) and in every pack. Absent: `runtime_version_required`. Any other value, including the number `1.3`: `declared_version_below_constructs`. The schema accepts a string or a number so the lint can give the specific code. |
+| `tvl_version` | module root, pack root | string `"1.3"`, `"1.4"` or `"1.5"`, subject to the minima below | **required** as soon as `requirements`, `monitors` or `responses` appears (even empty) and in every pack. Absent: `runtime_version_required`. Unsupported, numeric or below-minimum values: `declared_version_below_constructs`. The schema accepts a string or a number so the lint can give the specific code. |
 | `requirements` | module root, pack root | list of requirement | optional in a module, required in a pack |
 | `monitors` | module root, pack root | list of monitor | optional in a module, required in a pack |
 | `responses` | module root, pack root | list of response | optional in both |
 | `pack` | pack root only | `{ module: <name> }` | required in a pack; `module` is a TVL module identifier (dots allowed) |
+
+Construct version compatibility (runtime version lint checks feature presence):
+
+| Constructs present | Minimum version | Accepted document versions |
+|---|---|---|
+| Core constructs only, without runtime blocks | 1.0 | Version declaration not enforced by runtime lint |
+| `cvars`, `policies`, TVAR `scope`, without runtime blocks | 1.1 | Version declaration not enforced by runtime lint |
+| `composites`, without runtime blocks | 1.2 | Version declaration not enforced by runtime lint |
+| Only TVL 1.3 runtime constructs, or a pack without later features | 1.3 | `"1.3"`, `"1.4"`, `"1.5"` |
+| RFC 0004 reactive outcomes or guards | 1.4 | `"1.4"`, `"1.5"` |
+| RFC 0005 persistence or census aggregates | 1.5 | `"1.5"` |
+
+These are document declarations, not compiled wire-contract versions. For modules without runtime blocks, this lint does not enforce `tvl_version` or the older extension minima; that absence of a diagnostic does not change the versions in which constructs were introduced.
 
 A **pack root** has exactly the keys `tvl_version`, `pack`, `requirements`, `monitors`, `responses`. A root mapping with `pack` and without `tvl` is
 treated as a pack. Pack monitors must declare `applies_to: tenant_floor` and `phase: runtime`.
@@ -647,7 +717,7 @@ Because TVL loads YAML 1.1, an unquoted `yes`, `no`, `on`, `off`, `true` or `fal
 ### Value types and domains
 
 Numbers mean the exact value of their decimal literal. A literal that cannot be recovered exactly from a floating-point number
-(more than 15 significant digits is not guaranteed) is rejected with `runtime_invalid_profile`.
+(more than 15 significant digits may lose precision) is rejected with `runtime_invalid_profile`.
 
 | Type | Values |
 |---|---|
@@ -669,14 +739,14 @@ Numbers mean the exact value of their decimal literal. A literal that cannot be 
 | `max_count` | integer >= 0 |
 | `fingerprint` | `^[0-9a-f]{64}$`: the fingerprint of a certified configuration |
 | `label` | `^[A-Za-z_][A-Za-z0-9_]*$`; for a catalogue checker, a member of its label list |
-| `env_label` | the environment label; trimmed and lower-cased, 1 to 64 characters |
+| `env_label` | the environment label. Under `profile: backend_v1` it must be trimmed, lower-cased and 1 to 64 characters (RFC 0003 §4.2); customer-side labels are otherwise free strings resolved through the customer's token map |
 
 An out-of-range value is the dedicated `runtime_*_out_of_range` code for that field. A value of the wrong JSON type (a string where an integer is
 required) is a `schema_error`.
 
 ### `requirements`
 
-Common keys: `name` (required, `ident`), `kind` (required), `unit` (required). `kind` is one of four sealed values:
+Common keys: `name` (required, `ident`), `kind` (required), `unit` (required). TVL 1.3 has the following four sealed kinds; TVL 1.5 adds `aggregate_bound` (see below):
 
 | `kind` | `unit` | Keys | Meaning |
 |---|---|---|---|
@@ -694,12 +764,12 @@ an evaluator profile outside TVL determines what partial evidence justifies repo
 
 ### Predicates (`violation`, `among`)
 
-A predicate is exactly one of three families. Unknown keys are rejected.
+A predicate is exactly one of three families. Unknown keys are rejected. `among` takes only the checker family (`runtime_among_not_checker`); `violation` takes the families listed per kind.
 
 | Family | Keys | Notes |
 |---|---|---|
 | metric | `metric`, `exceeds` | `metric` is `wall_clock_latency_ms`, `cost_usd`, `total_tokens` or `tool_calls`. A unit violates when the metric is strictly greater than `exceeds`. Only under `rate_bound`. |
-| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. Only under `rate_bound`, and only for `customer_side` or `evaluation_set` evidence. |
+| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. As `violation`, only under `rate_bound`; as `among`, under `rate_bound` or `zero_tolerance`. Only for `customer_side` or `evaluation_set` evidence. |
 | exact | `pattern` and its keys, below | allowed under `rate_bound` and `zero_tolerance` |
 
 **Exact patterns**
@@ -772,7 +842,7 @@ boolean).
 | `resolution` | `terminal_status_v1` (default) |
 | `sampling` | the string `unverified`, or `{ mode, rate }` with `mode` = `head_sampled_declared` or `hash_bernoulli_committed_v1` and `rate` a `prob_open` |
 
-**`decision`**
+**`decision` (TVL 1.3; TVL 1.5 adds `exact_aggregate_v1`, see below)**
 
 | Key | Allowed values |
 |---|---|
@@ -785,7 +855,7 @@ boolean).
 | `max_unresolved_fraction` | `frac` |
 | `threshold_factor` | `threshold_factor`; marks a burn monitor |
 
-**Compatible combinations.** Any other combination is `runtime_invalid_profile`.
+**Compatible combinations (TVL 1.3).** Any other combination within these kinds is `runtime_invalid_profile`; TVL 1.5 aggregate combinations are listed below.
 
 | Requirement kind | Evidence source | Phase | Method |
 |---|---|---|---|
@@ -794,7 +864,7 @@ boolean).
 | `recovery_time` | `episodes` | `runtime` | `exact_count_v1` |
 | `evidence_liveness` | `windows` | `runtime` | `exact_count_v1` |
 
-**Monitor roles and their fields.** A *primary* monitor is a `runtime` `rate_bound` or `zero_tolerance` monitor without `threshold_factor`; a *burn*
+**Monitor roles and their fields (TVL 1.3).** A *primary* monitor is a `runtime` `rate_bound` or `zero_tolerance` monitor without `threshold_factor`; a *burn*
 monitor is a `runtime` `rate_bound` monitor with `threshold_factor`; a *promotion* monitor has `phase: promotion`; an *obligation* monitor checks a
 `recovery_time` or `evidence_liveness` requirement. R = required, D = optional with the stated default, F = forbidden.
 
@@ -864,7 +934,7 @@ A response is `{ name, rules }`. A rule is:
 | Key | Type | Required | Notes |
 |---|---|---|---|
 | `id` | `ident` | yes | unique within its response (`response_rule_id_duplicate`) |
-| `trigger` | `{ monitor, event, [hours] }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and forbidden otherwise. |
+| `trigger` | `{ monitor, event, [hours] }` or (1.4) `{ rule, event }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and `unknown_for`, and forbidden otherwise. |
 | `do` | action | yes | the sealed action set below. `record` is implicit and cannot be declared (`response_unknown_action`). |
 | `approval` | `none`, `standing`, `human` | yes for `suspend`, otherwise no | allowed values and defaults by action, below |
 | `target` | `last_certified` or `fingerprint` | `rollback` only | |
@@ -883,7 +953,7 @@ A parameter that does not belong to the action, or is missing, is `runtime_inval
 |---|---|---|---|
 | `notify` | `none` | `severity` | any event |
 | `open_next_step` | `none` | none | active-scope events only (below); an open episode is needed for an effect |
-| `optimize` | `standing`, `human` (`human`) | none | active-scope events only (below); a next step must have been issued |
+| `optimize` | `standing`, `human` (`human`) | `deploy`: `never` (default) or `if_promoted` | active-scope events only (below); a next step must have been issued; `deploy: if_promoted` only on `episode_opened`, `episode_continued`, `episode_open_for` |
 | `rollback` | `standing`, `human` (`human`) | `target` (required) | active-scope events only (below) |
 | `throttle` | `standing`, `human` (`human`) | `rate_floor` (required) | active-scope events only (below) |
 | `degrade` | `standing`, `human` (`human`) | `fallback` fingerprint (required) | active-scope events only (below) |
@@ -901,6 +971,12 @@ preconditions and a scope requiring intervention when it happens (RFC §7.4).
 than `human`, or with `approval` omitted, is `response_suspend_without_human`. A standing grant (an owner-signed record, at most 30 days, outside TVL documents) never
 authorizes `suspend`.
 
+`optimize` with `deploy: if_promoted` also deploys the candidate it finds, as a separate service effect (RFC §7.6): it
+needs its own human approval (or a standing grant that names the deploy), a still-open episode, a current contract, and
+a `Promote` result of the promotion gate join for that candidate, which requires a promotion monitor on the trigger
+monitor's requirement (`response_deploy_without_promotion_monitor` otherwise). A deploy never closes the episode;
+only healthy production windows do. Overlays may change `if_promoted` to `never`, never the reverse.
+
 `suspend` is latched: resolution or withdrawal makes human `resume` eligible, never automatic. An installed
 `throttle` or `degrade` also remains until an authorized human `release`. Multiple throttles use the smallest
 `rate_floor`. `open_next_step` records a recommendation for whoever maintains the agent; acting on it needs
@@ -916,6 +992,51 @@ separate authority and it changes no deployment by itself.
 | `recovery_time` obligation | `recovery_overdue`, `recovery_cancelled`, `recovery_recovered` |
 | `evidence_liveness` obligation | `stale`, `live_again` |
 | promotion | none |
+
+#### Reactive notifications (TVL 1.4, RFC 0004)
+
+Declare `tvl_version: "1.4"` when a rule uses any of the following, including empty guard lists.
+All require `do: notify` (`runtime_notify_only`). TVL 1.3 documents keep their diagnostics.
+
+- `trigger: {rule: fix, event: optimize_no_candidate}` names another optimize rule in the same
+  response. The closed outcome set is `optimize_no_candidate`, `optimize_failed`, `deploy_refused`,
+  `deploy_failed`. Deploy outcomes require `deploy: if_promoted` on that optimize rule. Outcome
+  triggers fire once per attempt; neither repeat field is allowed. Packs cannot declare them.
+- `trigger: {monitor: latency, event: unknown_for, hours: 6}` requires a primary runtime monitor
+  and hours at least its tumbling duration. It reports UNKNOWN windows with usable evidence, by
+  window time, once per undecided run. An UNKNOWN window without usable evidence neither counts nor ends
+  the run; MET, BREACHED or an effective-key change ends it. A single counted window can fire.
+  Repeats are allowed. This differs from `stale`; both may fire on intermittent evidence.
+- `only_while: [{monitor: errors, state: episode_open}]` is a conjunction;
+  `unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]` is a
+  disjunction. These are the only guard forms. Monitor guards require primary runtime monitors;
+  attempt guards require an optimize rule of the same response, and are forbidden in packs. Open attempts
+  from earlier response revisions count if that optimize rule id exists in the current response revision.
+
+An attempt opens when optimize fires, including while approval is pending; it closes at its last
+applicable outcome, successful repair/deploy, scope closure, response revision change before a
+pending effect, or decline/expiry of the next effect's approval before that effect starts.
+If the scope closes or the response revision changes after an effect has started, that effect
+finishes and records its result, then the attempt closes; no later effect starts.
+Waiting for approval or unreachable authority keeps it open with no outcome. Expiry after start
+still allows that effect's outcome. Promote takes precedence over invalid evidence in another
+candidate; without any Promote, invalid evidence gives `optimize_failed`, not NoDecision.
+A deploy failure is terminal only after the evaluator profile's finite retry bound is exhausted.
+
+Guards use strong Kleene logic (TRUE, FALSE, UNDECIDED). Deliver unless `only_while` is FALSE or
+`unless` is TRUE; UNDECIDED never suppresses. Evaluate once per occurrence after all occurrences
+fired by that evaluation, so a newly opened attempt is visible. Each repeat rechecks; a suppressed
+occurrence is not delivered later when its guard changes. Use `episode_continued` or repeats to
+recheck. Guards preserve trigger, scope and occurrence identity and grant no effect authority.
+
+The unless graph adds an edge from each guarded notification's source monitor to every monitor
+in its `unless`. For outcome rules, use the referenced optimize rule's trigger monitor. Cycles,
+including self-loops, are `runtime_guard_cycle`; attempt guards add no edges. An `only_while` on
+its own source is `runtime_guard_redundant` (warning). Conjunction guards may be symmetric.
+Guard sets and outcome triggers are immutable under overlays and meets; list order/duplicates
+are immaterial. Absorbed pack monitor aliases are rewritten in guards too. Hosted projection
+uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled contracts with projected 1.4 constructs
+use `/2` and version `"1.4"`; all others use `/1` and version `"1.3"` (see Companion documents below and RFC 0004 §3).
 
 ### Verdicts, states and reasons
 
@@ -955,10 +1076,24 @@ maps it to `NoDecision`. Legacy modules keep their previous gate behaviour.
 |---|---|---|
 | token map | `tvl-token-map/1` | `{ format, tokens: [{ namespace, local, hosted }] }`. Customer side. Gives each name an opaque reference. `tvl-compile-runtime --token-map`. |
 | checker registry | `tvl-checker-registry/1` | `{ format, checkers: [{ checker, labels }] }`. Customer side. Binds each `customer:<name>` to its closed, ordered label list. `tvl-compile-runtime --checkers`. |
-| compiled contract | `tvl-runtime-contract/1` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schema: `spec/grammar/tvl-runtime-contract.schema.json`. |
-| compiled local form | `tvl-runtime-local/1` | `runtime-local.json`, customer side. Schema: `spec/grammar/tvl-runtime-local.schema.json`. |
+| compiled contract | `tvl-runtime-contract/1`, `tvl-runtime-contract/2` | `runtime-contract.json`, written by `tvl-compile-runtime`; opaque references only. Schemas: `spec/grammar/tvl-runtime-contract.schema.json` (`/1`), `tvl-runtime-contract-v2.schema.json` (`/2`). |
+| compiled local form | `tvl-runtime-local/1`, `tvl-runtime-local/2` | `runtime-local.json`, customer side. Schemas: `spec/grammar/tvl-runtime-local.schema.json` (`/1`), `tvl-runtime-local-v2.schema.json` (`/2`). |
 | window report | `tvl-runtime-report/1` | produced by customer-side monitors. Schema: `spec/grammar/tvl-runtime-report.schema.json`. |
 | measurement bundle | `monitor_outcomes` | `monitor_outcomes.<promotion monitor name>: { n, k, [u], [pl], [complete] }` (integers >= 0; `complete` boolean) in the bundle given to `tvl-measure-validate` and `tvl-ci-gate`. Schema: `spec/grammar/tvl-measurement.schema.json`. |
+
+The `/1` contract and local schemas are frozen at TVL 1.3.0 and require `tvl_version: "1.3"`.
+Previously accepted inputs retain their canonical bytes for the same compiler inputs and toolchain version,
+including authored `"1.4"` modules without runtime blocks. Without projected new constructs, declarations compile
+to `/1` and version `"1.3"`, regardless of authored version, as in 1.3.0.
+The 1.4.0 compiler defaults `toolchain.version` to `"1.4.0"`. Compared with a 1.3.0 compilation,
+only this hosted field, any checked packs' derived `pack_contract_digest` values, and local
+`contract_digest` change. Pin `toolchain_version="1.3.0"` for historical bytes and digests;
+consumers that pin toolchain versions must add `"1.4.0"` (RFC 0004 §3).
+Outcome triggers, `unknown_for`, and nonempty projected `only_while`/`unless` guards select `/2` and version `"1.4"`.
+Empty guard lists are omitted by projection. A `/2` artifact without projected new constructs is refused,
+even if it carries version `"1.4"`.
+Validators dispatch by `format`; `/1` refuses every 1.4 field, and unknown format tags are refused.
+See RFC 0004 §3 and §7.2; the RFC was accepted on 2026-10-21 as TVL 1.4.0.
 
 Token-map `namespace` values are `module`, `requirement`, `monitor`, `response`, `rule`, `environment`, `selector_ref`, `checker`, `state`. In every
 namespace except `checker` the `hosted` value matches `^[A-Za-z0-9_-]{1,128}$`; in `checker`, `local` is a customer checker id and `hosted` is
@@ -979,6 +1114,7 @@ combined with `--token-map` or `--out-dir`.
 | `sampling` on `customer_side` | census (every unit in scope) |
 | `precedence.mode` / `correlate_by` / protocol `unlisted` | `single_use` / `unit` / `reject` |
 | `notify.severity` | `critical` |
+| `optimize.deploy` | `never` |
 | `approval` | `none` for `notify`, `open_next_step`, `block_action`, `halt_unit`; `human` for `optimize`, `rollback`, `throttle`, `degrade`; explicit `human` required for `suspend` |
 | `min_samples` (zero tolerance, promotion) | 1 |
 | `max_unresolved_fraction` (promotion `rate_bound`) | 0 |
@@ -991,3 +1127,121 @@ Documents without these blocks gain no new diagnostic. An old reader rejects a 1
 construct it does not implement refuses with `unsupported_construct` and names the construct (`requirements`, `monitors`, `responses`, `tvl_pack`,
 `monitor_outcomes` or `runtime_report`); it never ignores or strips it. `tvl-check-structural`, `tvl-check-operational` and `tvl-config-validate` erase the
 three blocks from a module and check the rest; `tvl-ci-gate --policy` refuses any runtime block.
+
+## TVL 1.5: persistence and census aggregates
+
+[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) was accepted on 2026-10-23 as TVL 1.5.0.
+Both additions require `tvl_version: "1.5"`; neither adds a response action.
+The complete recorded-history meaning is [formal semantics §14](../../formalization/tvl-formal-semantics.md#14-breach-persistence-and-census-aggregates-tvl-15).
+
+### Notification persistence
+
+A rule may declare `persist: {breached_in: 3, of_last: 4}` only with `do: notify`
+and `episode_opened` or `episode_continued` from one primary runtime monitor.
+Require integers `1 ≤ breached_in ≤ of_last ≤ 168`; neither repeat coordinate is allowed.
+Burn, promotion and obligation monitors are ineligible. Count the consecutive tumbling slots
+ending at the source event's window, once each, using finalized verdicts from the same
+requirement, monitor, agent, environment, contract digest, revision and schedule.
+Missing or incompatible slots remain UNKNOWN; do not substitute older windows.
+Missing contract digest, monitor revision, agent, environment or schedule identity, or an absent
+`available` field, makes a slot UNKNOWN(`persistence_history_gap`).
+Contract or monitor revisions reset history; statistical horizons alone do not.
+
+For B breaches and U unknown slots, the historical result is BREACHED if B≥k,
+MET if B+U<k, otherwise UNKNOWN(inconclusive). Equivalently, decide only when every
+MET/BREACHED completion of UNKNOWN slots agrees. BREACHED qualifies the notification,
+MET suppresses it and UNKNOWN withholds it. The source verdict and episode are unchanged.
+A current MET window emits no eligible breach event even if the history qualifies.
+
+The rule keeps its original trigger (formal semantics §13.9): an `episode_opened` rule is not
+delivered on a later `episode_continued`. An `episode_continued` rule evaluates at each fresh
+continuation and may reconsider undelivered occurrence 0; delivered occurrences never redeliver.
+No state change alone queues delivery. Exact replays/retries retain the original
+decision and identity. Qualification precedes existing guards, whose UNDECIDED rule is unchanged.
+Slot identities, results and UNKNOWN reasons stay customer-side; absent slots use
+`persistence_history_gap`. Persistence creates no statistical look, independence or stronger
+false-alarm bound; the original per-window charges remain in force across overlapping histories.
+
+### Census aggregate requirements
+
+```yaml
+# Proposed fragment, not a complete module or an installed monitor.
+requirements:
+  - name: daily_spend
+    kind: aggregate_bound
+    unit: invocation
+    aggregate:
+      op: sum
+      metric: cost_usd
+      source_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    bound: {lte: 50}
+```
+
+`unit` is `trace` or `invocation`; optional `among` uses existing checker membership.
+The closed operators are `sum` and `mean`, metrics `cost_usd` and `score`.
+The required source digest binds an immutable local contract for the observed universe,
+accounting/scorer version, terminal-status handling, numeric encoding and resource bounds.
+Registration must resolve that contract exactly; there is no default source.
+One finite exact decimal contribution is required per member: cost is nonnegative, score in [0,1].
+Scores describe the declared scorer's output. Include failed and rejected units as the source
+contract specifies, not just successes. Exactly one of `lte` and `gte` is required; bounds
+are nonnegative and mean-score bounds at most 1. Score sums may exceed 1; equality meets.
+
+An aggregate monitor is a customer-side runtime primary with required window and episode,
+omitted sampling (census), and `decision: {method: exact_aggregate_v1}` only.
+`backend_v1`, promotion, burn factors, statistical decision fields, `min_samples`,
+`max_unresolved_fraction`, `single_producer` and `limits` are forbidden.
+It emits existing episode events, no `unit_violation`, and supports no local guard.
+Existing response restrictions apply; there is no aggregate promotion monitor to authorize
+`deploy: if_promoted` for the same requirement.
+
+Use existing attribution and start-time placement. Identical unit replays count once;
+compare values after exact decimal parsing, so `"1"` and `"1.0"` are equal replays.
+Membership must be exactly boolean `true`, boolean `false` or the string `"unknown"`;
+any other value, including numeric `1`, is an invalid record and makes the census incomplete.
+Conflicting duplicates, unresolved membership/placement, incomplete terminal histories or
+producer sequences, drops, and missing/invalid values prevent a complete census.
+Source attestations and watermarks through end plus grace are required; conservation alone
+cannot prove completeness. Missing or null coverage yields UNKNOWN(incomplete). Units arriving
+after due make the census incomplete unless coverage attests otherwise; they must not be silently
+discarded to produce MET. Before due return UNKNOWN(aggregate_pending); at due finalize.
+Incomplete evidence is UNKNOWN(incomplete), even if a partial sum exceeds the bound;
+a complete empty population is UNKNOWN(insufficient). Later arrivals and audit corrections
+cannot rewrite the verdict, withdraw delivery or create another look.
+
+For nonempty complete evidence let C be member count and S the exact sum. Compare S to the
+bound for sum, or to C times the bound for mean. Never round a quotient or fill missing values
+with zero. Invalid values make evidence incomplete. Check numeric encoding and precision/resource
+limits before conversion to exact rationals; limits preventing exact arithmetic, including overlong
+otherwise valid numeric strings, produce UNKNOWN(aggregate_precision_limit) rather than a conversion
+error. These are deterministic observed-value checks, not tests of future quality or independently
+verified source honesty.
+
+### Composition and exchange
+
+Aggregate identity includes kind, unit, canonical membership, operator, metric, source digest
+and comparator direction, excluding bound. Tightening decreases `lte` or increases `gte`;
+meet takes minimum or maximum respectively. Other identity changes are incompatible replacements.
+Source differences cannot share a monitor floor; schedule compatibility still applies.
+Persistence presence and both coordinates are immutable under overlay/meet. Packs rewrite
+`trigger.monitor` canonically; persistence creates no new monitor or episode lifecycle.
+
+New constructs select contract/local format `/3` at version "1.5". A version alone
+keeps prior construct-based format selection; `/3` without a new construct is refused.
+Count reports stay `/1`; aggregate reports use `tvl-runtime-report/2` with the exact
+closed fields, disjoint count identities and customer-held-secret HMAC commitment in RFC 0005 §2.5.
+For complete nonempty evidence, `sum` is required unless its omission carries
+`unknown_reason: "aggregate_precision_limit"`, yielding UNKNOWN(aggregate_precision_limit);
+otherwise its omission is `runtime_report_numeric`. The optional `unknown_reason` is a closed enum
+containing only `aggregate_precision_limit`. For zero members, `sum` must be absent or `"0"`;
+a nonzero sum is `runtime_report_numeric`. The entire sum string must match the minimal decimal
+encoding; trailing characters, including a newline after `12.5`, are `runtime_report_numeric`.
+Mean is reconstructed from exact sum/count. Sort deduplicated commitment units in ascending order by
+the UTF-8 bytes of the canonical JSON of each unit key object `{agent, environment, unit_id, unit_kind}`,
+with canonical object key order. Old schemas are frozen and unknown tags refused.
+Only allowlisted numeric summaries, enums, times, commitments and opaque references project.
+Authored persistence integers project; its evaluation results and histories do not.
+Individual values, identifiers, scorer code and customer content remain local. Summaries may
+be sensitive; no anonymization or observability privacy guarantee is made.
+Existing 1.4 meanings, diagnostics and fixed-toolchain artifact bytes are preserved when neither
+addition is used. These compatibility statements were accepted with RFC 0005 on 2026-10-23.
