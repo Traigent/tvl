@@ -10,7 +10,7 @@ If you are new to TVL, start with the example below and read it top to bottom on
 sections.
 
 !!! note "Language version"
-    This reference describes the core constructs of TVL, which is currently at version **1.4**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004, described below; accepted 2026-10-21). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
+    This reference describes the core constructs of TVL, which is currently at version **1.5**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004, described below; accepted 2026-10-21); TVL 1.5 added breach persistence and census aggregates (RFC 0005, described below; accepted 2026-10-23). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
 
 ## A Small RAG Agent
 
@@ -1079,12 +1079,11 @@ construct it does not implement refuses with `unsupported_construct` and names t
 `monitor_outcomes` or `runtime_report`); it never ignores or strips it. `tvl-check-structural`, `tvl-check-operational` and `tvl-config-validate` erase the
 three blocks from a module and check the rest; `tvl-ci-gate --policy` refuses any runtime block.
 
-## TVL 1.5 draft: persistence and census aggregates
+## TVL 1.5: persistence and census aggregates
 
-[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) is DRAFT.
-The following is proposed language, not a claim of compiler or runtime support.
+[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) was accepted on 2026-10-23 as TVL 1.5.0.
 Both additions require `tvl_version: "1.5"`; neither adds a response action.
-The complete recorded-history meaning is [formal semantics §14](../../formalization/tvl-formal-semantics.md#14-breach-persistence-and-census-aggregates-tvl-15-draft).
+The complete recorded-history meaning is [formal semantics §14](../../formalization/tvl-formal-semantics.md#14-breach-persistence-and-census-aggregates-tvl-15).
 
 ### Notification persistence
 
@@ -1178,9 +1177,9 @@ Source differences cannot share a monitor floor; schedule compatibility still ap
 Persistence presence and both coordinates are immutable under overlay/meet. Packs rewrite
 `trigger.monitor` canonically; persistence creates no new monitor or episode lifecycle.
 
-New constructs select proposed contract/local format `/3` at version "1.5". A version alone
+New constructs select contract/local format `/3` at version "1.5". A version alone
 keeps prior construct-based format selection; `/3` without a new construct is refused.
-Count reports stay `/1`; aggregate reports use proposed `tvl-runtime-report/2` with the exact
+Count reports stay `/1`; aggregate reports use `tvl-runtime-report/2` with the exact
 closed fields, disjoint count identities and customer-held-secret HMAC commitment in RFC 0005 §2.5.
 For complete nonempty evidence, `sum` is required unless its omission carries
 `unknown_reason: "aggregate_precision_limit"`, yielding UNKNOWN(aggregate_precision_limit);
@@ -1196,4 +1195,4 @@ Authored persistence integers project; its evaluation results and histories do n
 Individual values, identifiers, scorer code and customer content remain local. Summaries may
 be sensitive; no anonymization or observability privacy guarantee is made.
 Existing 1.4 meanings, diagnostics and fixed-toolchain artifact bytes are preserved when neither
-addition is used. These compatibility statements are draft obligations, not implementation evidence.
+addition is used. These compatibility statements were accepted with RFC 0005 on 2026-10-23.

@@ -46,8 +46,8 @@ def test_default_toolchain_changes_only_provenance_from_frozen_130_bytes(version
     frozen_dir = ROOT / 'conformance/expected/runtime-1.3'
     expected_contract = json.loads((frozen_dir / 'deploy-mode-closed-contract.json').read_text())
     expected_local = json.loads((frozen_dir / 'deploy-mode-closed-local.json').read_text())
-    assert contract['toolchain']['version'] == '1.4.0'
-    expected_contract['toolchain']['version'] = '1.4.0'
+    assert contract['toolchain']['version'] == '1.5.0'
+    expected_contract['toolchain']['version'] = '1.5.0'
     expected_local['contract_digest'] = canonical_json_digest(expected_contract)
     assert canonical_json_str(contract) == canonical_json_str(expected_contract)
     assert canonical_json_str(local) == canonical_json_str(expected_local)

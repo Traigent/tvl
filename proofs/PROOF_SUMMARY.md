@@ -593,7 +593,7 @@ source parsing, wire projection, attempt lifecycle or undecided-run implementati
 No new OPEN theorem or admitted proof is used in this module. Formal semantics §13 specifies
 attempts and undecided histories relationally; this is outside these four Lean claims.
 
-## RFC 0005: Persistence and exact mean comparison (TVL 1.5 draft)
+## RFC 0005: Persistence and exact mean comparison (TVL 1.5)
 
 `TVL/Runtime/Persistence.lean`, imported by `Main.lean`, models arbitrary finite
 lists of base window verdicts. Missing slots must already be represented as
