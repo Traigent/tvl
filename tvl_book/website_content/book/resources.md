@@ -15,7 +15,7 @@ module lives under `tvl/tvl_tools/` and can be invoked directly or via the `tvl`
 | `python -m tvl_tools.tvl_ci_gate <spec>` | Bundled gate used by Triagent promotion pipelines. |
 | `python -m tvl_tools.tvl_measure_validate <metrics.yml>` | Verifies metric definitions and unit annotations. |
 | `python -m tvl_tools.tvl_config_validate --override <file>` | Checks environment overrides or CLI patch files before deployment. |
-| `python -m tvl_tools.microsim_bridge <spec>` | Generates `microsim_presets.json` for the Orientation RAG interactive lab. |
+| `python -m tvl_tools.microsim_bridge <spec> -o <path>` | Exports numeric-range presets to the chosen path for the Orientation RAG interactive lab; use `--dry-run` to preview without writing. |
 
 !!! hint "Combine Modules"
     The plug-ins are composable. Many teams run `tvl_parse`, `tvl_validate`, and `tvl_check_structural` on every

@@ -10,7 +10,7 @@ If you are new to TVL, start with the example below and read it top to bottom on
 sections.
 
 !!! note "Language version"
-    This reference describes the core constructs of TVL, which is currently at version **1.2**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002). Both are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
+    This reference describes the core constructs of TVL, which is currently at version **1.3**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime `requirements`, `monitors`, `responses` and `tvl_pack` (RFC 0003, described below). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. The RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md).
 
 ## A Small RAG Agent
 
@@ -276,6 +276,8 @@ Each TVAR declares:
 | `tuple[...]` | Structured tuple values | `tuple[int, float]` |
 | `callable[ProtoId]` | Registry-backed executable choices | `callable[RerankerProto]` |
 
+Every member of an `enum[T]` domain must have the element type `T`: strings for `enum[str]`, integers for `enum[int]`, and integers or floats for `enum[float]`. Booleans are not numbers, and strings are not converted, so `"3"` is not an `int`. The schema enforces this for direct arrays and `domain.set`, including modules loaded by `tvl-config-validate` and `tvl-check-structural`; registry references are unchanged. `tvl-validate` and `tvl-lint` report a mismatch as `invalid_enum_domain`, naming the TVAR and offending value. JSON Schema counts an integral number such as `3.0` as an integer, whereas YAML loads `3.0` as a Python float: schema-only consumers accept this representation in `enum[int]`, but the lint rejects it.
+
 ### Domain Shapes
 
 TVL examples and schema support these common domain styles:
@@ -490,6 +492,27 @@ tvl-measure-validate module.tvl.yml config.yml measurements.yml
 
 `tvl-compose` takes **one** overlay file, which names its base via `_tvl_overlay.extends`.
 
+#### Where `extends` may point
+
+`_tvl_overlay.extends` is a **relative** path, resolved against the directory of the overlay file that contains it.
+Absolute paths are refused. Every base in a chain must stay inside the **overlay root**: the directory of the overlay
+file you pass to `tvl-compose`, and everything below it. The root is fixed by that first file and does not move as the
+chain is followed, so an overlay in a subdirectory cannot reach back out through `..` to a base above the root. Paths
+are resolved before the check, so a symlink that points outside the root is refused as well. A violation fails with
+`Overlay 'extends' path must stay within the overlay root` (exit 2).
+
+Place shared bases beside the overlay you compose from, or beneath its directory. If several entry overlays share a base, keep them in the same directory as that base:
+
+```text
+envs/
+  base.yml              # shared base
+  staging.overlay.yml   # extends: base.yml        -> run: tvl-compose envs/staging.overlay.yml
+  team/
+    prod.overlay.yml    # extends: ../base.yml     -> refused when run as envs/team/prod.overlay.yml
+```
+
+To compose the `team/` overlay, either move it up to `envs/` beside the base or keep a copy of the base inside `team/`.
+
 ### Overlays may only tighten
 
 An overlay narrows a base module; it may never widen it. The composer enforces:
@@ -605,8 +628,8 @@ For the full formal treatment, the repository also includes:
 
 ## TVL 1.3: requirements, monitors, responses
 
-!!! warning "Draft"
-    TVL 1.3 is a draft. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
+!!! note "TVL 1.3"
+    TVL 1.3 was accepted on 2026-10-21. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
     values they accept. For a guided introduction read
     [Requirements, Monitors and Responses](../guides/requirements-monitors-responses.md). The normative source is
     `formalization/rfc-0003-runtime-requirements-monitors-responses.md`, and the machine-readable shape is
@@ -669,7 +692,7 @@ Numbers mean the exact value of their decimal literal. A literal that cannot be 
 | `max_count` | integer >= 0 |
 | `fingerprint` | `^[0-9a-f]{64}$`: the fingerprint of a certified configuration |
 | `label` | `^[A-Za-z_][A-Za-z0-9_]*$`; for a catalogue checker, a member of its label list |
-| `env_label` | the environment label; trimmed and lower-cased, 1 to 64 characters |
+| `env_label` | the environment label. Under `profile: backend_v1` it must be trimmed, lower-cased and 1 to 64 characters (RFC 0003 §4.2); customer-side labels are otherwise free strings resolved through the customer's token map |
 
 An out-of-range value is the dedicated `runtime_*_out_of_range` code for that field. A value of the wrong JSON type (a string where an integer is
 required) is a `schema_error`.
@@ -694,12 +717,12 @@ an evaluator profile outside TVL determines what partial evidence justifies repo
 
 ### Predicates (`violation`, `among`)
 
-A predicate is exactly one of three families. Unknown keys are rejected.
+A predicate is exactly one of three families. Unknown keys are rejected. `among` takes only the checker family (`runtime_among_not_checker`); `violation` takes the families listed per kind.
 
 | Family | Keys | Notes |
 |---|---|---|
 | metric | `metric`, `exceeds` | `metric` is `wall_clock_latency_ms`, `cost_usd`, `total_tokens` or `tool_calls`. A unit violates when the metric is strictly greater than `exceeds`. Only under `rate_bound`. |
-| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. Only under `rate_bound`, and only for `customer_side` or `evaluation_set` evidence. |
+| checker | `checker`, `label_in` | `checker` is a catalogue id (`traigent.refusal.v1`, labels `must_refuse`, `complied`) or `customer:<ident>`. `label_in` is a list of labels. As `violation`, only under `rate_bound`; as `among`, under `rate_bound` or `zero_tolerance`. Only for `customer_side` or `evaluation_set` evidence. |
 | exact | `pattern` and its keys, below | allowed under `rate_bound` and `zero_tolerance` |
 
 **Exact patterns**
@@ -864,7 +887,7 @@ A response is `{ name, rules }`. A rule is:
 | Key | Type | Required | Notes |
 |---|---|---|---|
 | `id` | `ident` | yes | unique within its response (`response_rule_id_duplicate`) |
-| `trigger` | `{ monitor, event, [hours] }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and forbidden otherwise. |
+| `trigger` | `{ monitor, event, [hours] }` or (1.4) `{ rule, event }` | yes | `monitor` names a monitor of this document or of a composed pack. `event` must be one that monitor emits. `hours` is required for `episode_open_for` and `unknown_for`, and forbidden otherwise. |
 | `do` | action | yes | the sealed action set below. `record` is implicit and cannot be declared (`response_unknown_action`). |
 | `approval` | `none`, `standing`, `human` | yes for `suspend`, otherwise no | allowed values and defaults by action, below |
 | `target` | `last_certified` or `fingerprint` | `rollback` only | |
@@ -883,7 +906,7 @@ A parameter that does not belong to the action, or is missing, is `runtime_inval
 |---|---|---|---|
 | `notify` | `none` | `severity` | any event |
 | `open_next_step` | `none` | none | active-scope events only (below); an open episode is needed for an effect |
-| `optimize` | `standing`, `human` (`human`) | none | active-scope events only (below); a next step must have been issued |
+| `optimize` | `standing`, `human` (`human`) | `deploy`: `never` (default) or `if_promoted` | active-scope events only (below); a next step must have been issued; `deploy: if_promoted` only on `episode_opened`, `episode_continued`, `episode_open_for` |
 | `rollback` | `standing`, `human` (`human`) | `target` (required) | active-scope events only (below) |
 | `throttle` | `standing`, `human` (`human`) | `rate_floor` (required) | active-scope events only (below) |
 | `degrade` | `standing`, `human` (`human`) | `fallback` fingerprint (required) | active-scope events only (below) |
@@ -901,6 +924,12 @@ preconditions and a scope requiring intervention when it happens (RFC §7.4).
 than `human`, or with `approval` omitted, is `response_suspend_without_human`. A standing grant (an owner-signed record, at most 30 days, outside TVL documents) never
 authorizes `suspend`.
 
+`optimize` with `deploy: if_promoted` also deploys the candidate it finds, as a separate service effect (RFC §7.6): it
+needs its own human approval (or a standing grant that names the deploy), a still-open episode, a current contract, and
+a `Promote` result of the promotion gate join for that candidate, which requires a promotion monitor on the trigger
+monitor's requirement (`response_deploy_without_promotion_monitor` otherwise). A deploy never closes the episode;
+only healthy production windows do. Overlays may change `if_promoted` to `never`, never the reverse.
+
 `suspend` is latched: resolution or withdrawal makes human `resume` eligible, never automatic. An installed
 `throttle` or `degrade` also remains until an authorized human `release`. Multiple throttles use the smallest
 `rate_floor`. `open_next_step` records a recommendation for whoever maintains the agent; acting on it needs
@@ -916,6 +945,48 @@ separate authority and it changes no deployment by itself.
 | `recovery_time` obligation | `recovery_overdue`, `recovery_cancelled`, `recovery_recovered` |
 | `evidence_liveness` obligation | `stale`, `live_again` |
 | promotion | none |
+
+#### Reactive notifications (TVL 1.4, RFC 0004)
+
+Declare `tvl_version: "1.4"` when a rule uses any of the following, including empty guard lists.
+All require `do: notify` (`runtime_notify_only`). TVL 1.3 documents keep their diagnostics.
+
+- `trigger: {rule: fix, event: optimize_no_candidate}` names another optimize rule in the same
+  response. The closed outcome set is `optimize_no_candidate`, `optimize_failed`, `deploy_refused`,
+  `deploy_failed`. Deploy outcomes require `deploy: if_promoted` on that optimize rule. Outcome
+  triggers fire once per attempt; neither repeat field is allowed. Packs cannot declare them.
+- `trigger: {monitor: latency, event: unknown_for, hours: 6}` requires a primary runtime monitor
+  and hours at least its tumbling duration. It reports UNKNOWN windows with usable evidence, by
+  window time, once per undecided run. Windows without usable evidence neither count nor end
+  the run; MET, BREACHED or an effective-key change ends it. A single counted window can fire.
+  Repeats are allowed. This differs from `stale`; both may fire on intermittent evidence.
+- `only_while: [{monitor: errors, state: episode_open}]` is a conjunction;
+  `unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]` is a
+  disjunction. These are the only guard forms. Monitor guards require primary runtime monitors;
+  attempt guards require an optimize rule of the same response, and are forbidden in packs.
+
+An attempt opens when optimize fires, including while approval is pending; it closes at its last
+applicable outcome, successful repair/deploy, scope closure, response revision change before a
+pending effect, or decline/expiry of the next effect's approval before that effect starts.
+Waiting for approval or unreachable authority keeps it open with no outcome. Expiry after start
+still allows that effect's outcome. Promote takes precedence over invalid evidence in another
+candidate; without any Promote, invalid evidence gives `optimize_failed`, not NoDecision.
+A deploy failure is terminal only after the evaluator profile's finite retry bound is exhausted.
+
+Guards use strong Kleene logic (TRUE, FALSE, UNDECIDED). Deliver unless `only_while` is FALSE or
+`unless` is TRUE; UNDECIDED never suppresses. Evaluate once per occurrence after all occurrences
+fired by that evaluation, so a newly opened attempt is visible. Each repeat rechecks; a suppressed
+occurrence is not delivered later when its guard changes. Use `episode_continued` or repeats to
+recheck. Guards preserve trigger, scope and occurrence identity and grant no effect authority.
+
+The unless graph adds an edge from each guarded notification's source monitor to every monitor
+in its `unless`. For outcome rules, use the referenced optimize rule's trigger monitor. Cycles,
+including self-loops, are `runtime_guard_cycle`; attempt guards add no edges. An `only_while` on
+its own source is `runtime_guard_redundant` (warning). Conjunction guards may be symmetric.
+Guard sets and outcome triggers are immutable under overlays and meets; list order/duplicates
+are immaterial. Absorbed pack monitor aliases are rewritten in guards too. Hosted projection
+uses closed enums and tokenized references; `backend_v1` is unchanged. Compiled `/1` format tags
+are retained while RFC §7.2 is open; compiled consumer compatibility is not claimed.
 
 ### Verdicts, states and reasons
 
@@ -979,6 +1050,7 @@ combined with `--token-map` or `--out-dir`.
 | `sampling` on `customer_side` | census (every unit in scope) |
 | `precedence.mode` / `correlate_by` / protocol `unlisted` | `single_use` / `unit` / `reject` |
 | `notify.severity` | `critical` |
+| `optimize.deploy` | `never` |
 | `approval` | `none` for `notify`, `open_next_step`, `block_action`, `halt_unit`; `human` for `optimize`, `rollback`, `throttle`, `degrade`; explicit `human` required for `suspend` |
 | `min_samples` (zero tolerance, promotion) | 1 |
 | `max_unresolved_fraction` (promotion `rate_bound`) | 0 |

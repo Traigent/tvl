@@ -11,17 +11,16 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tvl.schema import measurement_validator
 from tvl.yaml_safe import safe_load
+
 from tvl_tools.tvl_lint.cli import main as lint_main
 from tvl_tools.tvl_validate.cli import main as validate_main
-
 
 ROOT = Path(__file__).resolve().parents[1]
 GUIDE = ROOT / "docs/guides/requirements-monitors-responses.md"
 BOOK = ROOT / "tvl_book/website_content/book/chapter-06-requirements-in-production.md"
-YAML_FENCE = re.compile(r"^[ \t]*```(?:yaml|yml)[^\n]*\n(.*?)^[ \t]*```[ \t]*$", re.M | re.S)
+YAML_FENCE = re.compile(r"^[ \t]*```(?:yaml|yml)[^\n]*\n(.*?)^[ \t]*```[ \t]*$", re.MULTILINE | re.DOTALL)
 MARKER = re.compile(r"<!-- snippet: (\S+) kind=(\S+) -->\s*$")
 
 
@@ -152,9 +151,18 @@ def test_documented_yaml_snippet(path, name, kind, body, tmp_path, monkeypatch):
         # These fences are measurement bundles, intentionally not TVL modules.
         measurement_validator().validate(safe_load(body))
         assert validate_code == 2 and not validated["ok"]
-        assert {issue["code"] for issue in validated["issues"]} == {"schema_error"}
         assert lint_code == 2 and not linted["ok"]
-        assert {issue["code"] for issue in linted["issues"]} == {"empty_objectives"}
+        lint_codes = {issue["code"] for issue in linted["issues"]}
+        assert lint_codes == {"empty_objectives"}
+        validate_codes = {issue["code"] for issue in validated["issues"]}
+        # Issues #156/#157 moved shared rules into the grammar, and tvl-validate
+        # reports the documented lint code wherever the two describe the same
+        # defect -- so where this used to assert a bare {"schema_error"} it now
+        # asserts the invariant that produces it: every code tvl-validate gives
+        # a name to is one tvl-lint gives the same name to, and what the lint
+        # does not name stays the generic schema error.
+        assert "schema_error" in validate_codes
+        assert validate_codes - {"schema_error"} <= lint_codes
     else:
         assert validate_code == 0 and validated["ok"], validated
         assert lint_code == 0 and linted["ok"], linted

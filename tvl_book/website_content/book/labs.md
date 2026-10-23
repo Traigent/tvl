@@ -10,7 +10,7 @@ if you want to run them without API keys.
 - **Entry point:** [`sims/orientation-rag-circuit/index.md`](../sims/orientation-rag-circuit/index.md)
 - **How to explore:** Use the preset buttons to replay incidents, then adjust sliders to recover all constraints.
 - **What to inspect:** Latency/cost/quality gauges, constraint badges, and the YAML snapshot that mirrors `params.yaml`.
-- **Optional automation:** Regenerate presets with `python -m tvl_tools.microsim_bridge path/to/spec.tvl.yml`.
+- **Optional automation:** Regenerate presets with `python -m tvl_tools.microsim_bridge path/to/spec.tvl.yml -o path/to/microsim_presets.json` (or preview with `--dry-run`).
 
 ## Lab 1 · Hello World RAG
 

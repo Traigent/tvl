@@ -5,7 +5,15 @@ from typing import Any
 
 from tvl.lints import lint_module, lint_pack
 from tvl.loader import is_pack_document
-from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output
+
+from tvl_tools.cli_utils import (
+    add_common_args,
+    format_issue_line,
+    get_format,
+    handle_error,
+    load_yaml_safely,
+    print_output,
+)
 
 
 def lint(doc: dict[str, Any], precision: int = 1000) -> list[dict[str, Any]]:
@@ -56,8 +64,9 @@ def main() -> None:
                 }
             ]
 
+        has_errors = any(issue.get("severity", "error") == "error" for issue in issues)
         out: dict[str, Any] = {
-            "ok": len(issues) == 0,
+            "ok": not has_errors,
             "file": str(args.file),
             "issues": issues,
         }
@@ -66,7 +75,7 @@ def main() -> None:
 
         print_output(out, get_format(args), text_renderer)
 
-        if issues:
+        if has_errors:
             sys.exit(2)
 
     except Exception as exc:  # noqa: BLE001

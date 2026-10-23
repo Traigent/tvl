@@ -12,14 +12,15 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pytest
 
 pytest.importorskip("ortools.sat.python.cp_model")
 
-from tvl.structural_sat import StructuralResult  # noqa: E402
-from tvl_tools.tvl_check_structural import cli  # noqa: E402
+from tvl.structural_sat import StructuralResult
+
+from tvl_tools.tvl_check_structural import cli
 
 _MODULE = """\
 tvl:
@@ -78,7 +79,7 @@ def _write(tmp_path: Path, structural: str, name: str = "m.tvl.yml") -> Path:
     return path
 
 
-def _run(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *argv: str) -> Tuple[Any, str, str]:
+def _run(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[Any, str, str]:
     monkeypatch.setattr(sys, "argv", ["tvl-check-structural", *argv])
     with pytest.raises(SystemExit) as exc:
         cli.main()
@@ -86,10 +87,10 @@ def _run(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *a
     return exc.value.code, out, err
 
 
-def _docs(out: str) -> List[Dict[str, Any]]:
+def _docs(out: str) -> list[dict[str, Any]]:
     """Split stdout into its JSON documents, normalising volatile fields."""
     decoder = json.JSONDecoder()
-    docs: List[Dict[str, Any]] = []
+    docs: list[dict[str, Any]] = []
     idx = 0
     while idx < len(out):
         if out[idx].isspace():
@@ -111,7 +112,7 @@ def _docs(out: str) -> List[Dict[str, Any]]:
 
 class _TempSpy:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self.paths: List[Path] = []
+        self.paths: list[Path] = []
         real = cli._write_temp_file
 
         def spy(content: str, suffix: str = "") -> Path:
@@ -122,7 +123,7 @@ class _TempSpy:
         monkeypatch.setattr(cli, "_write_temp_file", spy)
 
 
-def _candidate(tmp_path: Path, payload: Dict[str, Any]) -> Path:
+def _candidate(tmp_path: Path, payload: dict[str, Any]) -> Path:
     path = tmp_path / "candidate.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -420,27 +421,30 @@ def test_unlink_oserror_is_swallowed(monkeypatch, capsys, tmp_path, structural: 
 
 # --- uncaught errors -------------------------------------------------------- #
 
-def test_missing_candidate_file_raises(monkeypatch, tmp_path) -> None:
+def test_missing_candidate_file_exits_2(monkeypatch, capsys, tmp_path) -> None:
     module = _write(tmp_path, SAT)
-    monkeypatch.setattr(sys, "argv", ["x", str(module), "--candidate-file", str(tmp_path / "nope.json")])
-    with pytest.raises(FileNotFoundError):
-        cli.main()
+    code, out, err = _run(monkeypatch, capsys, str(module), "--candidate-file", str(tmp_path / "nope.json"))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error loading candidate: ") and "nope.json" in err
+    assert "Traceback" not in err
 
 
-def test_invalid_candidate_json_raises(monkeypatch, tmp_path) -> None:
+def test_invalid_candidate_json_exits_2(monkeypatch, capsys, tmp_path) -> None:
     module = _write(tmp_path, SAT)
     bad = tmp_path / "bad.json"
     bad.write_text("{", encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["x", str(module), "--candidate-file", str(bad)])
-    with pytest.raises(json.JSONDecodeError):
-        cli.main()
+    code, out, err = _run(monkeypatch, capsys, str(module), "--candidate-file", str(bad))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error loading candidate: ") and "Expecting" in err
+    assert "Traceback" not in err
 
 
-def test_candidate_with_missing_module_raises(monkeypatch, tmp_path) -> None:
+def test_candidate_with_missing_module_exits_2(monkeypatch, capsys, tmp_path) -> None:
     cand = _candidate(tmp_path, {"edits": []})
-    monkeypatch.setattr(sys, "argv", ["x", str(tmp_path / "missing.yml"), "--candidate-file", str(cand)])
-    with pytest.raises(FileNotFoundError):
-        cli.main()
+    code, out, err = _run(monkeypatch, capsys, str(tmp_path / "missing.yml"), "--candidate-file", str(cand))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error loading module: ") and "missing.yml" in err
+    assert "Traceback" not in err
 
 
 def test_unexpected_check_error_propagates(monkeypatch, tmp_path) -> None:
@@ -448,7 +452,7 @@ def test_unexpected_check_error_propagates(monkeypatch, tmp_path) -> None:
     module = _write(tmp_path, UNSAT)
     cand = _candidate(tmp_path, {"edits": [{"before": "temperature >= 0.4", "after": "temperature >= 0.0"}]})
 
-    def explode(m: Any) -> Optional[StructuralResult]:
+    def explode(m: Any) -> StructuralResult | None:
         raise RuntimeError("solver exploded")
 
     monkeypatch.setattr(cli, "check_structural", explode)

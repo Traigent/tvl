@@ -131,7 +131,13 @@
           "type": "string",
           "default": "tvl-validate",
           "scope": "machine",
-          "description": "Path to tvl-validate CLI tool"
+          "description": "Path to tvl-validate CLI tool; standard executable names also locate the sibling tvl-lint"
+        },
+        "tvl.lint.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Path to tvl-lint; when empty, derive the sibling of tvl-validate or tvl-validate.exe"
         }
       }
     },

@@ -31,10 +31,10 @@ CHECKERS = {
     "tvl-compile-runtime": ("tvl_tools.tvl_compile_runtime.cli", ["--format", "json"]),
     "tvl-ci-gate": ("tvl_tools.tvl_ci_gate.cli", []),
 }
-# Which expected results each checker can prove ("lint" and "fail" take a :CODE suffix).
+# Which expected results each checker can prove (diagnostic kinds take a :CODE suffix).
 EXPECT_BY_CHECKER = {
-    "tvl-validate": {"valid", "lint"},
-    "tvl-lint": {"valid", "lint"},
+    "tvl-validate": {"valid", "lint", "warning"},
+    "tvl-lint": {"valid", "lint", "warning"},
     "tvl-check-structural": {"sat", "unsat"},
     "tvl-check-operational": {"pass", "fail"},
     "tvl-config-validate": {"pass", "fail"},
@@ -88,7 +88,7 @@ def _run(
         targets, flags = targets + flags, []
     proc = subprocess.run(
         [sys.executable, "-c", code, *flags, *targets],
-        capture_output=True, text=True, env=env, cwd=ROOT, timeout=120,
+        capture_output=True, text=True, env=env, cwd=ROOT, timeout=120, check=False,
     )
     return proc.returncode, _json_objects(proc.stdout)
 
@@ -105,6 +105,15 @@ def _codes(report: dict) -> set[str]:
     return {i["code"] for i in items if i.get("code")}
 
 
+def test_run_preserves_rejected_checker_exit_and_diagnostics(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.tvl.yml"
+    path.write_text("{}\n")
+    code, reports = _run("tvl-validate", path)
+    assert code == 2
+    assert reports and reports[-1]["ok"] is False
+    assert "schema_error" in _codes(reports[-1])
+
+
 @pytest.mark.parametrize(
     "entry", _entries(), ids=lambda e: f"{e['file']}::{e['checker']}::{e['expect']}"
 )
@@ -116,7 +125,7 @@ def test_manifest_entry(entry: dict) -> None:
     expect = entry["expect"]
     kind = expect.split(":", 1)[0]
     assert kind in EXPECT_BY_CHECKER[checker], f"{checker} cannot prove {expect}"
-    assert (":" in expect) == (kind in {"lint", "fail", "not_ready", "reject"}), f"bad expect {expect}"
+    assert (":" in expect) == (kind in {"lint", "warning", "fail", "not_ready", "reject"}), f"bad expect {expect}"
 
     module_file = None
     if checker in NEEDS_MODULE:
@@ -181,6 +190,13 @@ def test_manifest_entry(entry: dict) -> None:
             # A bundle the book shows as valid must also be one the promotion gate accepts.
             assert report["promotion_ready"] is True, report
             assert report["structural"]["ok"] is True, report
+    elif kind == "warning":
+        report = objs[-1]
+        wanted = expect.split(":", 1)[1]
+        assert code == 0 and report["ok"] is True, report
+        issues = report["issues"]
+        assert any(i.get("code") == wanted and i.get("severity") == "warning" for i in issues), report
+        assert all(i.get("severity", "error") != "error" for i in issues), report
     elif kind == "not_ready":
         # A well-formed bundle the promotion gate may not use: exit 0, ok, not promotion-ready.
         report = objs[-1]
@@ -219,8 +235,8 @@ def test_project_files_shown_in_the_book_are_committed_project_files() -> None:
 
 def test_legacy_walkers_skip_book_examples() -> None:
     """The recursive legacy corpus must not contain spec/examples/book/."""
-    from tests.model_checking import test_legacy_corpus
     from tests import test_cvars_policies
+    from tests.model_checking import test_legacy_corpus
 
     assert any(BOOK_EXAMPLES.rglob("*.yml")), "book fixtures should exist"
     assert not [p for p in test_legacy_corpus.CORPUS if BOOK_EXAMPLES in p.parents]

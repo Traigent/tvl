@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tvl.errors import SchemaError
 from tvl.lints import _uses_13_constructs, lint_module
 from tvl.loader import is_pack_document, load
 from tvl.measurement import load_measurement, prepare_measurement_bundle
@@ -30,6 +31,30 @@ def load_yaml(path: Path) -> Any:
         return safe_load(f)
 
 
+def _load_full_module(path: Path) -> dict[str, Any]:
+    """Schema-validate a full module through ``load``.
+
+    On a schema failure the lint's error-severity issues are attached to the
+    error, so a value the schema bounds (for example a chance-constraint
+    threshold of 5) is still reported under its lint code. The error is always
+    re-raised; a schema failure never yields a module.
+    """
+    try:
+        return load(path)
+    except SchemaError as exc:
+        if getattr(exc, "code", None) == "unsupported_construct":
+            raise
+        try:
+            doc = load_yaml(path)
+            if isinstance(doc, dict):
+                lint_errors = [i for i in lint_module(doc) if i.get("severity") == "error"]
+                if lint_errors:
+                    exc.issues = lint_errors  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            exc.note = "lint diagnostics unavailable"  # type: ignore[attr-defined]
+        raise
+
+
 def _load_module_and_inputs(
     inputs: list[Path],
     policy_override: Path | None,
@@ -38,7 +63,7 @@ def _load_module_and_inputs(
 
     if len(inputs) == 3:
         module_path, incumbent_path, candidate_path = inputs
-        module = load(module_path)
+        module = _load_full_module(module_path)
         return module, module.get("promotion_policy", {}) or {}, warnings, incumbent_path, candidate_path
 
     if len(inputs) == 2 and policy_override is not None:
@@ -65,8 +90,10 @@ def _load_module_and_inputs(
                 ),
             }
         )
-        if isinstance(policy_doc, dict) and "promotion_policy" in policy_doc:
-            module = policy_doc
+        if isinstance(policy_doc, dict) and ("tvl" in policy_doc or "promotion_policy" in policy_doc):
+            # Issue #165: a full module passed via --policy gets the same
+            # schema validation as the canonical three-file form.
+            module = _load_full_module(policy_override)
             policy = module.get("promotion_policy", {}) or {}
         else:
             policy = policy_doc or {}
@@ -114,26 +141,34 @@ def main() -> None:
             args.inputs,
             args.policy,
         )
-        if args.policy is None and _uses_13_constructs(module):
+        # Issue #156: lint every full module (canonical or legacy), not only
+        # TVL 1.3 modules. A standalone policy has no ``tvl`` header.
+        if "tvl" in module:
             lint_issues = lint_module(module)
             lint_errors = [i for i in lint_issues if i.get("severity") == "error"]
             if lint_errors:
                 diag = {
                     "ok": False,
-                    "error": "Module failed runtime lint checks.",
+                    "error": (
+                        "Module failed runtime lint checks."
+                        if _uses_13_constructs(module)
+                        else "Module failed lint checks."
+                    ),
                     "issues": lint_issues,
                 }
                 print(json.dumps(diag, indent=2))
                 raise SystemExit(2)
+            cli_warnings.extend(i for i in lint_issues if i.get("severity") != "error")
 
         objectives = module.get("objectives", []) or []
 
         incumbent_raw = load_measurement(incumbent_path)
         candidate_raw = load_measurement(candidate_path)
 
-        if args.policy is not None:
-            if "monitor_outcomes" in incumbent_raw or "monitor_outcomes" in candidate_raw:
-                _refuse_unsupported("monitor_outcomes", args.json)
+        if args.policy is not None and (
+            "monitor_outcomes" in incumbent_raw or "monitor_outcomes" in candidate_raw
+        ):
+            _refuse_unsupported("monitor_outcomes", args.json)
 
         incumbent, incumbent_warnings, incumbent_readiness = prepare_measurement_bundle(
             module, incumbent_raw, role="incumbent"
@@ -204,7 +239,11 @@ def main() -> None:
     except Exception as e:  # noqa: BLE001
         if getattr(e, "code", None) == "unsupported_construct":
             _refuse_unsupported(str(getattr(e, "construct", "")), args.json)
-        diag = {"ok": False, "error": str(e)}
+        diag: dict[str, Any] = {"ok": False, "error": str(e)}
+        if getattr(e, "issues", None):
+            diag["issues"] = e.issues  # type: ignore[attr-defined]
+        if getattr(e, "note", None):
+            diag["note"] = e.note  # type: ignore[attr-defined]
         print(json.dumps(diag, indent=2))
         sys.exit(2)
 

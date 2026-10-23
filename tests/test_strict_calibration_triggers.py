@@ -8,14 +8,16 @@ calibration certificates, so a module that needs them must be refused
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
-
+from tvl.lints import lint_module
 from tvl.measurement import _strict_calibration_triggers
+
 from tvl_tools.tvl_ci_gate import cli as ci_gate_cli
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,13 +81,31 @@ def test_composite_with_calibrated_members_is_refused_without_chance_or_flag(
     module = _load("ch08/support-bot.tvl.yml")
     _drop_explicit_enforcement(module)
     module["promotion_policy"].pop("chance_constraints")
-    module.pop("cvars")  # leave only the composite's gate threshold as the trigger
+    # This used to `module.pop("cvars")` to leave the composite's gate threshold
+    # as the only trigger. Issue #156 makes tvl-ci-gate lint every full module,
+    # and a module without its cvars is lint-dirty (`missing_ref`), so the gate
+    # now refuses it before the calibration check runs -- gate-level isolation
+    # is no longer available. Keep the module lint-clean and pin the composite's
+    # contribution differentially below instead.
+    assert not [issue for issue in lint_module(module) if issue.get("severity") == "error"]
 
     code, payload = _gate(module, tmp_path, monkeypatch, capsys)
 
     assert code == 2
     assert _refused(payload)
     assert "composite_calibrated_member" in _strict_calibration_triggers(module)
+
+    # The GATE refusal above is over-determined: `certificate_backed_cvar` fires
+    # too, and test_calibrated_cvar_alone_is_refused already covers that one, so
+    # `code == 2` alone no longer says anything about composites. The assertion
+    # on line above does pin that the trigger is present; this control pins that
+    # it is keyed on the composites, not raised unconditionally.
+    without_composites = copy.deepcopy(module)
+    without_composites.pop("composites")
+    assert not [
+        issue for issue in lint_module(without_composites) if issue.get("severity") == "error"
+    ]
+    assert "composite_calibrated_member" not in _strict_calibration_triggers(without_composites)
 
 
 def test_calibrated_cvar_alone_is_refused(

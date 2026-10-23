@@ -156,8 +156,8 @@ promise once overdue stays overdue.
 ### Who watches the watcher
 
 The third requirement, `latency_evidence_flows`, says: if the last five windows all produced no usable evidence, report `STALE`. Without it, a
-broken pipeline looks identical to a perfect week. The validator warns when it is missing (`runtime_liveness_missing`), and because `tvl-validate`
-exits 2 on any issue, the warning stops your CI. That is deliberate.
+broken pipeline looks identical to a perfect week. The validator warns when it is missing (`runtime_liveness_missing`). The warning remains visible,
+and `tvl-validate` exits 0 when there are no errors, so this warning alone does not stop CI.
 
 ## Story 2 · "Never charge without an authorization"
 
@@ -486,7 +486,7 @@ Learn the diagnostics by causing them. Each edit is to Story 1's module.
 | `tvl_version: 1.3` (no quotes) | `declared_version_below_constructs` |
 | `max_rate: 0.01` and `min_samples: 200` | `runtime_met_unreachable_at_min_samples`: 299 is the smallest size that can ever be `MET` |
 | `closure_max_age_hours: 12` | `closure_unreachable` |
-| delete the `latency_evidence_flows` requirement and its monitor | `runtime_liveness_missing` (a warning, so exit 2) |
+| delete the `latency_evidence_flows` requirement and its monitor | `runtime_liveness_missing` (a visible warning; exit 0 if there are no errors) |
 
 For the full field list see the [language reference](https://github.com/Traigent/tvl/blob/main/docs/reference/language.md#tvl-13-requirements-monitors-responses), and for what each code means see the
 [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md#tvl-13-diagnostics). The [guide](https://github.com/Traigent/tvl/blob/main/docs/guides/requirements-monitors-responses.md) goes deeper on

@@ -29,6 +29,39 @@ TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semanti
   Success outcomes, pack guards over module monitors, and tracking manual deployment after `deploy: never`
   are recorded as limitations of 1.4.
 
+### Security
+
+- The website deployment settings check now passes its role secret through a step environment variable before testing the quoted value.
+
+### Fixed
+
+- `tvl-ci-gate` retains warning-severity lints in its output instead of discarding them; the refusal was already scoped to error severity and still is. The widened set of modules it lints is recorded under Compatibility below.
+- `tvl-validate` keeps reporting the documented diagnostic code — `invalid_chance_threshold`, `missing_strategy`, `invalid_enum_domain` and the rest — for a bound the schema now also enforces, instead of downgrading it to the generic `schema_error`; `tvl-lint` and `tvl-ci-gate` already did. A `required` diagnostic's `path` points at the missing key rather than at the object missing it.
+- Enum domains are checked in lints and in the module schema, so configuration and structural validators also reject mismatched members. Ordinary module validation reports `invalid_enum_domain` with the TVAR name and offending value; JSON Schema accepts integral numbers such as `3.0`, while lint also checks Python literal types.
+- The book records warning expectations explicitly, and tool examples use the committed module filename.
+- Tool documentation records configuration failures as exit 5 and gate success only for `Promote`.
+- Structural candidate loading and MicroSim input handling now report diagnostic failures instead of tracebacks for unreadable, malformed or non-mapping input.
+- The MicroSim bridge now exports numeric TVAR ranges with module identity, respects integer steps and range resolution, and warns about skipped variables and unmatched lab controls. Empty exports fail without writing.
+- The VS Code extension derives a sibling linter by exact executable basename, preserving parent directories and Windows paths. Custom validator names require an explicit machine-scoped `tvl.lint.path`, and a configuration error clears stale diagnostics instead of leaving them in the gutter.
+- Pull-request CI now compiles and tests the VS Code extension with the Python CLIs installed in the repository virtual environment; required CLI integration tests fail when the executable is absent.
+
+### Compatibility
+
+Five changes in this PR alter behaviour an existing script, pipeline or module
+may depend on. They sit on top of 1.3.0, which carries more of its own — the
+Python 3.12 minimum, the `Reject` -> `NoDecision` change in the `decision`
+string a gate consumer parses, and a second unedited-module `Promote` ->
+refused path through the strict-calibration triggers — so read 1.3.0's notes as
+well if you are upgrading from 1.2.0. Releases 1.1.0 and 1.2.0 use this section
+for the same purpose. The grammar is served at an unversioned `$id`, so a
+consumer pinning that URL picks the tightened bounds up without opting in.
+
+- `tvl-validate`, `tvl-lint` and `tvl-compose --validate` exit 0 with `ok: true` on a warning-only result, where they exited 2. Every diagnostic is still printed, in text as well as JSON, and an issue with no severity still counts as an error. A build step that gated on the exit code no longer fails on proof-coverage warnings. To keep that gate, test the payload: `tvl-validate m.tvl.yml --format json | jq -e '.ok and (.issues | length == 0)'`. The `.ok` term is load-bearing — an unreadable or unparsable module answers `{"ok": false, "error": …}` with no `issues` key, and `null | length` is `0`, so a check on `.issues` alone passes on a file that could not be read. (`jq` is not a dependency of this repository; use any JSON reader.)
+- `tvl-ci-gate` lints every full module before deciding, where it linted only TVL 1.3 modules given in the canonical three-file form. A module that is schema-valid but has an error-severity lint is now refused with exit 2 instead of promoting. This is the point of the gate half of #156, and it is the change most likely to affect an existing pipeline: a module you have not edited can go from `Promote` to refused. A full module passed through `--policy` now gets the same schema validation as canonical input, for the same reason; the guard recognises a `tvl:` header or a `promotion_policy:` wrapper, so a wrapped standalone policy takes that path too (same exit code, different payload and deprecation warning).
+- `tvl-parse` exits 2 on an empty, sequence or scalar document, where it exited 0 with `ok: true`. Schema validation stays `tvl-validate`'s job; a mapping with unknown fields still parses.
+- `tvl-microsim-bridge` requires `-o/--output` unless `--dry-run` is given, where it defaulted to the bundled Orientation RAG presets file and overwrote it.
+- The module schema tightens bounds that previously only the lint enforced: chance-constraint `threshold` to `[0, 1]` and `confidence` to `(0, 1)`, banded `tol` and `alpha` to `> 0`, `exploration.strategy` to required, and `convergence.window` and `threshold` to required under `metric: hypervolume_improvement` (`window`'s own `minimum: 1` is unchanged, and `threshold` additionally becomes `> 0`). Enum domains enforce their declared element type. For these bounds specifically, a module that was schema-valid and lint-invalid is now rejected by both — this is not a general property, and other lint rules such as `missing_min_effect` and the `composite_*` family remain lint-only, which JSON Schema cannot express. Measured by running `tvl-validate` over every committed module at both revisions, **none goes from passing to failing**; five go from failing to passing, and all five are warning-only modules moved by the exit-code change above. One consequence worth naming for anyone parsing the output: `schema_ok` now reports `false` where the grammar itself rejects one of these bounds, so a consumer using `schema_ok` to tell "grammar-invalid" from "lint-invalid" sees these move across that line. In the same vein, a `required` diagnostic's `path` now names the missing key rather than the object missing it, so for an object missing two or more keys the shape of that `path` changes. The exception is a `required` error that a lint at an ancestor path diagnoses instead: the lint's own path is used, because the lint owns it — a missing `cvars[0].calibration.source` is reported as `cvar_missing_source` at `["cvars", 0, "calibration"]`, with the field named in the message. The `code` field likewise changes value on committed files where the schema already enforced the bound at base, not only on the bounds moved here.
+
 ## [1.3.0] - 2026-10-21
 
 TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Package, citation and `tvl.__version__` report 1.3.0; authored modules keep `tvl_version: "1.3"` and document format tags are unchanged. Not published to a package registry.

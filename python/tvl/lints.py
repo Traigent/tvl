@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field as dataclass_field
+from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from fractions import Fraction
 from math import lcm
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any
 
-from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
+from .structural_parser import (
+    Literal,
+    StructuralParseError,
+    clause_to_string,
+    parse_expression,
+)
 
-Issue = Dict[str, Any]
+Issue = dict[str, Any]
 
 
 @dataclass
@@ -17,19 +24,19 @@ class TypeInfo:
     name: str
     kind: str  # bool, int, float, enum, tuple, callable
     raw_type: str
-    path: List[Any]
-    domain_values: Optional[Set[Any]] = None
-    minimum: Optional[float] = None
-    maximum: Optional[float] = None
+    path: list[Any]
+    domain_values: set[Any] | None = None
+    minimum: float | None = None
+    maximum: float | None = None
 
 
 @dataclass
 class TypeContext:
-    gamma: Dict[str, TypeInfo]
-    environment_symbols: Set[str]
-    issues: List[Issue]
-    clause_ids: Dict[Tuple[Any, ...], str]
-    cvar_names: Set[str] = None  # type: ignore[assignment]
+    gamma: dict[str, TypeInfo]
+    environment_symbols: set[str]
+    issues: list[Issue]
+    clause_ids: dict[tuple[Any, ...], str]
+    cvar_names: set[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.cvar_names is None:
@@ -54,17 +61,18 @@ _CVAR_TYPE_RE = re.compile(r"^(bool|int|float|enum\[(str|int|float)\])$")
 # underscore-grouped ('1_000') and surrounding-whitespace (' 5 ') forms that
 # strict grammar-conformant consumers (e.g. tvl-check-structural) reject.
 _INT_LITERAL_RE = re.compile(r"^-?[0-9]+$")
+_ENUM_ELEMENT_TYPE_RE = re.compile(r"^enum\[\s*(str|int|float)\s*\]$")
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
 _NON_LINEAR_TOKENS_DERIVED = {"/", "^"}
 
 
 def lint_module(
-    doc: Dict[str, Any],
+    doc: dict[str, Any],
     precision: int = 1000,
     *,
-    floor_provenance: Optional[Sequence[Dict[str, Any]]] = None,
-    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
-) -> List[Issue]:
+    floor_provenance: Sequence[dict[str, Any]] | None = None,
+    checker_registry: dict[str, Sequence[str]] | None = None,
+) -> list[Issue]:
     """Lint a TVL module for errors and warnings.
 
     Args:
@@ -81,7 +89,7 @@ def lint_module(
     syntax = runtime_syntax_issues(doc) if _uses_13_constructs(doc) else []
     if syntax:
         return syntax
-    issues: List[Issue] = []
+    issues: list[Issue] = []
     _lint_duplicate_tvars(doc, issues)
     _lint_cvars(doc, issues)
     _lint_policies(doc, issues)
@@ -108,17 +116,17 @@ def lint_module(
 
 
 def lint_pack(
-    doc: Dict[str, Any],
+    doc: dict[str, Any],
     *,
-    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
-) -> List[Issue]:
+    checker_registry: dict[str, Sequence[str]] | None = None,
+) -> list[Issue]:
     """Lint a TVL 1.3 pack document (RFC 0003 §5.1, §11.2)."""
     from .diagnostics import runtime_syntax_issues
 
     syntax = runtime_syntax_issues(doc)
     if syntax:
         return syntax
-    issues: List[Issue] = []
+    issues: list[Issue] = []
     pack_block = doc.get("pack")
     if not isinstance(pack_block, dict) or not isinstance(pack_block.get("module"), str) or not _NORMATIVE_IDENT_RE.match(pack_block["module"]):
         issues.append(
@@ -155,13 +163,13 @@ def lint_pack(
     return issues
 
 
-def _lint_environment(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_environment(doc: dict[str, Any], issues: list[Issue]) -> None:
     return
 
 
-def _lint_duplicate_tvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_duplicate_tvars(doc: dict[str, Any], issues: list[Issue]) -> None:
     tvars = doc.get("tvars") or []
-    seen: Dict[str, int] = {}
+    seen: dict[str, int] = {}
     if not isinstance(tvars, list):
         return
 
@@ -184,7 +192,7 @@ def _lint_duplicate_tvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
             seen[name] = idx
 
 
-def _uses_11_constructs(doc: Dict[str, Any]) -> bool:
+def _uses_11_constructs(doc: dict[str, Any]) -> bool:
     """RFC 0001 §3.7(5): the new-surface opt-in that escalates prefix
     collisions from warning to error. PRESENCE-based: an explicit empty
     `cvars: []`, `policies: []`, `require_calibration: {...}`, or
@@ -195,14 +203,12 @@ def _uses_11_constructs(doc: Dict[str, Any]) -> bool:
     if isinstance(promotion, dict) and "require_calibration" in promotion:
         return True
     tvars = doc.get("tvars") or []
-    if isinstance(tvars, list) and any(
+    return isinstance(tvars, list) and any(
         isinstance(d, dict) and "scope" in d for d in tvars
-    ):
-        return True
-    return False
+    )
 
 
-def _check_scope(decl: Dict[str, Any], path: List[Any], name: Any, issues: List[Issue]) -> None:
+def _check_scope(decl: dict[str, Any], path: list[Any], name: Any, issues: list[Issue]) -> None:
     """Validate the optional ownership-scope metadata (RFC 0001 §3.7(6))."""
     scope = decl.get("scope")
     if scope is None:
@@ -237,22 +243,24 @@ def _check_scope(decl: Dict[str, Any], path: List[Any], name: Any, issues: List[
                 }
             )
     node = scope.get("node")
-    if isinstance(name, str) and isinstance(node, str) and "." in name:
-        if name.split(".", 1)[0] != node:
-            issues.append(
-                {
-                    "code": "scope_prefix_mismatch",
-                    "message": (
-                        f"declaration '{name}' has dotted prefix "
-                        f"'{name.split('.', 1)[0]}' but scope.node is '{node}'"
-                    ),
-                    "path": path + ["scope", "node"],
-                    "severity": "warning",
-                }
-            )
+    if (
+        isinstance(name, str) and isinstance(node, str) and "." in name
+        and name.split(".", 1)[0] != node
+    ):
+        issues.append(
+            {
+                "code": "scope_prefix_mismatch",
+                "message": (
+                    f"declaration '{name}' has dotted prefix "
+                    f"'{name.split('.', 1)[0]}' but scope.node is '{node}'"
+                ),
+                "path": path + ["scope", "node"],
+                "severity": "warning",
+            }
+        )
 
 
-def _lint_cvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_cvars(doc: dict[str, Any], issues: list[Issue]) -> None:
     """RFC 0001 §3.3 — calibrated-variable declarations (governed, NOT searched)."""
     cvars = doc.get("cvars")
     if cvars is None:
@@ -272,7 +280,7 @@ def _lint_cvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
         for d in (doc.get("tvars") or [])
         if isinstance(d, dict) and isinstance(d.get("name"), str)
     }
-    seen: Set[str] = set()
+    seen: set[str] = set()
     for idx, decl in enumerate(cvars):
         if not isinstance(decl, dict):
             issues.append(
@@ -363,7 +371,7 @@ def _lint_cvars(doc: Dict[str, Any], issues: List[Issue]) -> None:
         _check_scope(decl, ["cvars", idx], name, issues)
 
 
-def _lint_policies(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_policies(doc: dict[str, Any], issues: list[Issue]) -> None:
     """RFC 0001 §3.8 — operational policy declarations (cascade strategy)."""
     policies = doc.get("policies")
     if policies is None:
@@ -383,7 +391,7 @@ def _lint_policies(doc: Dict[str, Any], issues: List[Issue]) -> None:
         for d in (doc.get("cvars") or [])
         if isinstance(d, dict) and isinstance(d.get("name"), str)
     }
-    seen: Set[str] = set()
+    seen: set[str] = set()
     for idx, decl in enumerate(policies):
         if not isinstance(decl, dict):
             issues.append(
@@ -527,7 +535,7 @@ def _is_arm_object(arm: Any, key: str) -> bool:
     return isinstance(arm, dict) and key in arm
 
 
-def _lint_composites(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_composites(doc: dict[str, Any], issues: list[Issue]) -> None:
     """RFC 0002 §3 — the composite-knob algebra (cascade | ensemble | loop).
 
     Implements the §3.11 1:1 code↔rule table. Every rejection here fires at the
@@ -553,13 +561,13 @@ def _lint_composites(doc: Dict[str, Any], issues: List[Issue]) -> None:
     # Declared identifiers from the other namespace classes (§3.1: composites
     # join the SAME scoped namespace). Types are tracked for the threshold /
     # cardinality kind-and-type checks (items 6, 7, 10).
-    tvar_types: Dict[str, str] = {}
+    tvar_types: dict[str, str] = {}
     for d in (doc.get("tvars") or []):
         if isinstance(d, dict) and isinstance(d.get("name"), str):
             kind = _normalize_kind(d.get("type")) if isinstance(d.get("type"), str) else None
             tvar_types[d["name"]] = kind if kind is not None else ""
     tvar_names = set(tvar_types)
-    cvar_decls: Dict[str, Dict[str, Any]] = {
+    cvar_decls: dict[str, dict[str, Any]] = {
         d["name"]: d
         for d in (doc.get("cvars") or [])
         if isinstance(d, dict) and isinstance(d.get("name"), str)
@@ -572,8 +580,8 @@ def _lint_composites(doc: Dict[str, Any], issues: List[Issue]) -> None:
     }
 
     # Pass 1: the N_X membership + duplicate/shadow discipline (§3.1).
-    composite_names: Set[str] = set()
-    seen: Set[str] = set()
+    composite_names: set[str] = set()
+    seen: set[str] = set()
     for idx, decl in enumerate(composites):
         if not isinstance(decl, dict):
             issues.append(
@@ -621,7 +629,7 @@ def _lint_composites(doc: Dict[str, Any], issues: List[Issue]) -> None:
             )
         composite_names.add(name)
 
-    composites_by_name: Dict[str, Dict[str, Any]] = {
+    composites_by_name: dict[str, dict[str, Any]] = {
         d["name"]: d
         for d in composites
         if isinstance(d, dict) and isinstance(d.get("name"), str)
@@ -654,7 +662,7 @@ def _lint_composites(doc: Dict[str, Any], issues: List[Issue]) -> None:
         )
 
 
-def _doc_calibration_coverage(doc: Dict[str, Any]) -> Tuple[Set[str], Optional[List[Any]]]:
+def _doc_calibration_coverage(doc: dict[str, Any]) -> tuple[set[str], list[Any] | None]:
     """The module's freshness-context coverage (RFC 0001 §3.5 / RFC 0002 §3.2
     item 11). Returns (a) the set of hash_covered_context EXTENSION keys and
     (b) the ordered value covered under 'signal_inputs'
@@ -676,16 +684,16 @@ def _doc_calibration_coverage(doc: Dict[str, Any]) -> Tuple[Set[str], Optional[L
 
 
 def _composite_child_refs(
-    composites: List[Any], composite_names: Set[str]
-) -> Dict[str, Set[str]]:
+    composites: list[Any], composite_names: set[str]
+) -> dict[str, set[str]]:
     """The N_X reference graph: composite name → set of composite names it
     references via tagged ``composite(x)`` arms (in arms / body / judge)."""
-    refs: Dict[str, Set[str]] = {}
+    refs: dict[str, set[str]] = {}
     for decl in composites:
         if not isinstance(decl, dict) or not isinstance(decl.get("name"), str):
             continue
         name = decl["name"]
-        out: Set[str] = refs.setdefault(name, set())
+        out: set[str] = refs.setdefault(name, set())
         for arm in _all_arms_of(decl):
             if isinstance(arm, dict) and isinstance(arm.get("composite"), str):
                 ref = arm["composite"]
@@ -694,10 +702,10 @@ def _composite_child_refs(
     return refs
 
 
-def _all_arms_of(decl: Dict[str, Any]) -> List[Any]:
+def _all_arms_of(decl: dict[str, Any]) -> list[Any]:
     """Every arm surface a composite carries: cascade/ensemble arms, the loop
     body, and the ensemble judge — the positions an ``Arm`` may appear (§3.9)."""
-    arms: List[Any] = []
+    arms: list[Any] = []
     raw_arms = decl.get("arms")
     if isinstance(raw_arms, list):
         arms.extend(raw_arms)
@@ -712,17 +720,17 @@ def _all_arms_of(decl: Dict[str, Any]) -> List[Any]:
     return arms
 
 
-def _composite_cyclic_nodes(child_refs: Dict[str, Set[str]]) -> Set[str]:
+def _composite_cyclic_nodes(child_refs: dict[str, set[str]]) -> set[str]:
     """Names that participate in any cycle of the N_X reference graph (item 4).
 
     Returns every node on a cycle OR reaching one, so the ``composite_cycle``
     diagnostic fires on each declaration whose expansion would not terminate.
     """
     WHITE, GREY, BLACK = 0, 1, 2
-    color: Dict[str, int] = {n: WHITE for n in child_refs}
-    on_cycle: Set[str] = set()
+    color: dict[str, int] = {n: WHITE for n in child_refs}
+    on_cycle: set[str] = set()
 
-    def visit(node: str, stack: List[str]) -> bool:
+    def visit(node: str, stack: list[str]) -> bool:
         color[node] = GREY
         stack.append(node)
         hit = False
@@ -750,18 +758,18 @@ def _composite_cyclic_nodes(child_refs: Dict[str, Set[str]]) -> Set[str]:
 
 
 def _lint_one_composite(
-    decl: Dict[str, Any],
+    decl: dict[str, Any],
     idx: int,
-    issues: List[Issue],
+    issues: list[Issue],
     *,
-    composite_names: Set[str],
-    composites_by_name: Dict[str, Dict[str, Any]],
-    tvar_names: Set[str],
-    tvar_types: Dict[str, str],
-    cvar_decls: Dict[str, Dict[str, Any]],
-    cyclic_nodes: Set[str],
-    ctx_keys: Set[str],
-    covered_signal_inputs: Optional[List[Any]],
+    composite_names: set[str],
+    composites_by_name: dict[str, dict[str, Any]],
+    tvar_names: set[str],
+    tvar_types: dict[str, str],
+    cvar_decls: dict[str, dict[str, Any]],
+    cyclic_nodes: set[str],
+    ctx_keys: set[str],
+    covered_signal_inputs: list[Any] | None,
 ) -> None:
     name = decl["name"]
     base = ["composites", idx]
@@ -865,31 +873,31 @@ def _lint_one_composite(
 @dataclass
 class _CompositeCtx:
     name: str
-    base: List[Any]
-    issues: List[Issue]
-    composite_names: Set[str]
-    composites_by_name: Dict[str, Dict[str, Any]]
-    tvar_names: Set[str]
-    tvar_types: Dict[str, str]
-    cvar_decls: Dict[str, Dict[str, Any]]
+    base: list[Any]
+    issues: list[Issue]
+    composite_names: set[str]
+    composites_by_name: dict[str, dict[str, Any]]
+    tvar_names: set[str]
+    tvar_types: dict[str, str]
+    cvar_decls: dict[str, dict[str, Any]]
     # Module-level freshness-context coverage (§3.2 item 11 / RFC 0001 §3.5):
     # the promotion_policy.require_calibration.hash_covered_context keys and the
     # value covered under 'signal_inputs', resolved once for the whole module.
-    ctx_keys: Set[str] = dataclass_field(default_factory=set)
-    covered_signal_inputs: Optional[List[Any]] = None
+    ctx_keys: set[str] = dataclass_field(default_factory=set)
+    covered_signal_inputs: list[Any] | None = None
 
-    def add(self, code: str, message: str, path: List[Any], severity: str = "error") -> None:
+    def add(self, code: str, message: str, path: list[Any], severity: str = "error") -> None:
         self.issues.append(
             {"code": code, "message": message, "path": path, "severity": severity}
         )
 
 
-def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
+def _check_arms(decl: dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
     """Items 3/6/9 — arm shape, resolution, stage duplicates, tuned_params,
     over every arm position in the composite (§3.9 one-shape rule)."""
-    stage_paths: Dict[str, List[Any]] = {}
+    stage_paths: dict[str, list[Any]] = {}
 
-    def visit_arm(arm: Any, path: List[Any]) -> None:
+    def visit_arm(arm: Any, path: list[Any]) -> None:
         if isinstance(arm, str):
             # Bare identifier is ALWAYS a stage (§3.2 item 3). A bare id that
             # collides with a composite name is ambiguous_arm (not silent resolve).
@@ -970,7 +978,7 @@ def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
 
 
 def _record_stage(
-    stage_id: str, path: List[Any], stage_paths: Dict[str, List[Any]], ctx: _CompositeCtx
+    stage_id: str, path: list[Any], stage_paths: dict[str, list[Any]], ctx: _CompositeCtx
 ) -> None:
     if stage_id in stage_paths:
         ctx.add(
@@ -984,10 +992,10 @@ def _record_stage(
 
 def _threshold_cvar_checks(
     threshold: Any,
-    path: List[Any],
+    path: list[Any],
     ctx: _CompositeCtx,
     *,
-    sig_expected: Optional[str],
+    sig_expected: str | None,
     sig_inputs: Sequence[str],
 ) -> None:
     """Items 6, 10, 11 — a gate/accept/stop threshold reference.
@@ -1059,7 +1067,7 @@ def _threshold_cvar_checks(
                 )
 
 
-def _check_cascade(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
+def _check_cascade(decl: dict[str, Any], ctx: _CompositeCtx) -> None:
     arms = decl.get("arms")
     arms_list = arms if isinstance(arms, list) else []
     if not arms_list:
@@ -1084,7 +1092,7 @@ def _check_cascade(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
         _check_gate(gate, g_idx, gpath, placement, arms_list, ctx)
 
 
-def _arm_is_margin_bearing(arm: Any, composites_by_name: Dict[str, Dict[str, Any]]) -> bool:
+def _arm_is_margin_bearing(arm: Any, composites_by_name: dict[str, dict[str, Any]]) -> bool:
     """§3.2 item 5: the gated arm must be margin-bearing — either a stage arm
     (RFC 0001 vote semantics) or an ensemble arm whose aggregate.kind =
     majority_vote (committee vote statistics). A loop arm, a judge_max ensemble,
@@ -1111,11 +1119,11 @@ def _arm_is_margin_bearing(arm: Any, composites_by_name: Dict[str, Dict[str, Any
 
 
 def _check_gate(
-    gate: Dict[str, Any],
+    gate: dict[str, Any],
     g_idx: int,
-    gpath: List[Any],
+    gpath: list[Any],
     placement: Any,
-    arms_list: List[Any],
+    arms_list: list[Any],
     ctx: _CompositeCtx,
 ) -> None:
     """Items 5, 6, 10, 11 — a composite cascade gate."""
@@ -1132,7 +1140,7 @@ def _check_gate(
 
     signal_use = gate.get("signal")
     sig_inputs: Sequence[str] = ()
-    sig_expected: Optional[str] = None
+    sig_expected: str | None = None
 
     if gkind == "margin_below":
         # margin_below is POST-only and gates a margin-bearing arm.
@@ -1187,12 +1195,12 @@ def _check_gate(
 
 def _check_signal_use(
     signal_use: Any,
-    path: List[Any],
+    path: list[Any],
     ctx: _CompositeCtx,
     *,
     required: bool,
-    in_state: Optional[Set[str]],
-) -> Tuple[bool, Optional[str], Sequence[str]]:
+    in_state: set[str] | None,
+) -> tuple[bool, str | None, Sequence[str]]:
     """§3.2/§3.9 SignalUse. Returns (well_formed, signal_name, inputs).
 
     A malformed SignalUse object (missing signal, unknown keys, non-list inputs)
@@ -1252,7 +1260,7 @@ def _check_signal_use(
     return (True, signal_name, tuple(inputs_list))
 
 
-def _check_ensemble(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
+def _check_ensemble(decl: dict[str, Any], ctx: _CompositeCtx) -> None:
     arms = decl.get("arms")
     arms_list = arms if isinstance(arms, list) else []
     if not arms_list:
@@ -1334,7 +1342,7 @@ def _check_ensemble(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
         )
 
 
-def _check_loop(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
+def _check_loop(decl: dict[str, Any], ctx: _CompositeCtx) -> None:
     # Item 8 — max_iters ≥ 1 (totality). The schema pins it to an integer.
     max_iters = decl.get("max_iters")
     if isinstance(max_iters, bool) or not isinstance(max_iters, int) or max_iters < 1:
@@ -1369,7 +1377,7 @@ def _check_loop(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
                 spath,
             )
         signal_use = stop.get("signal")
-        ok, sig_name, sig_inputs = _check_signal_use(
+        _ok, sig_name, sig_inputs = _check_signal_use(
             signal_use, spath + ["signal"], ctx, required=True, in_state=state_keys
         )
         if signal_use is None:
@@ -1398,7 +1406,7 @@ def _check_loop(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
             )
 
 
-def _ref_type(ref: Any, ctx: _CompositeCtx) -> Optional[str]:
+def _ref_type(ref: Any, ctx: _CompositeCtx) -> str | None:
     """The declared TVL type of a TVAR/CVAR namespace reference, or None if it
     resolves to neither. CVAR types carry through verbatim; TVAR types are
     normalized to the base kind (int/float/bool/enum)."""
@@ -1412,8 +1420,8 @@ def _ref_type(ref: Any, ctx: _CompositeCtx) -> Optional[str]:
 
 
 def _arm_leaf_tvars(
-    arm: Any, ctx: _CompositeCtx, seen: Set[str]
-) -> Set[str]:
+    arm: Any, ctx: _CompositeCtx, seen: set[str]
+) -> set[str]:
     """leafT over a single arm (§3.5). stage → its tuned_params ∩ N_T;
     composite(x) → ⋃ leafT(arms/body/judge(x)) ∪ ({cardinality(x)} ∩ N_T),
     recursively. Only TVAR-resolving identifiers are kept (C6 codomain)."""
@@ -1436,11 +1444,11 @@ def _arm_leaf_tvars(
 
 
 def _composite_leaf_tvars(
-    decl: Dict[str, Any], ctx: _CompositeCtx, seen: Set[str]
-) -> Set[str]:
+    decl: dict[str, Any], ctx: _CompositeCtx, seen: set[str]
+) -> set[str]:
     """leafT(composite) — the union over its arms/body/judge plus a sampling
     ensemble's Tuned cardinality (§3.5: ({cardinality} ∩ N_T))."""
-    leaves: Set[str] = set()
+    leaves: set[str] = set()
     for arm in _all_arms_of(decl):
         leaves |= _arm_leaf_tvars(arm, ctx, seen)
     card = decl.get("cardinality")
@@ -1449,7 +1457,7 @@ def _composite_leaf_tvars(
     return leaves
 
 
-def _depends_on(threshold: Any, ctx: _CompositeCtx) -> Set[str]:
+def _depends_on(threshold: Any, ctx: _CompositeCtx) -> set[str]:
     if not isinstance(threshold, str) or threshold not in ctx.cvar_decls:
         return set()
     calibration = ctx.cvar_decls[threshold].get("calibration")
@@ -1459,13 +1467,13 @@ def _depends_on(threshold: Any, ctx: _CompositeCtx) -> Set[str]:
     return {d for d in deps if isinstance(d, str)}
 
 
-def _check_composite_parents(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
+def _check_composite_parents(decl: dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
     """§3.5 — required_parents(θ) ⊆ depends_on(θ) for every threshold CVAR
     (missing_composite_parent). Purely static: both sides are declared
     TVAR-only identifier sets. Skipped for thresholds that do not resolve to a
     CVAR (already reported by missing_ref)."""
 
-    def emit(threshold: Any, required: Set[str], path: List[Any]) -> None:
+    def emit(threshold: Any, required: set[str], path: list[Any]) -> None:
         if not isinstance(threshold, str) or threshold not in ctx.cvar_decls:
             return
         missing = required - _depends_on(threshold, ctx)
@@ -1520,9 +1528,9 @@ def _check_composite_parents(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx
         emit(stop.get("threshold"), required, ctx.base + ["stop", "threshold"])
 
 
-def _lint_namespace(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_namespace(doc: dict[str, Any], issues: list[Issue]) -> None:
     """RFC 0001 §3.7 — ONE shared declaration namespace + prefix collisions."""
-    entries: List[Tuple[str, str, List[Any]]] = []  # (name, block, path)
+    entries: list[tuple[str, str, list[Any]]] = []  # (name, block, path)
     for block in ("tvars", "cvars", "policies"):
         decls = doc.get(block) or []
         if not isinstance(decls, list):
@@ -1531,7 +1539,7 @@ def _lint_namespace(doc: Dict[str, Any], issues: List[Issue]) -> None:
             if isinstance(decl, dict) and isinstance(decl.get("name"), str):
                 entries.append((decl["name"], block, [block, idx, "name"]))
 
-    by_name: Dict[str, List[Tuple[str, List[Any]]]] = {}
+    by_name: dict[str, list[tuple[str, list[Any]]]] = {}
     for name, block, path in entries:
         by_name.setdefault(name, []).append((block, path))
     for name, occurrences in by_name.items():
@@ -1573,9 +1581,9 @@ def _lint_namespace(doc: Dict[str, Any], issues: List[Issue]) -> None:
             )
 
 
-def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
-    gamma: Dict[str, TypeInfo] = {}
-    issues: List[Issue] = []
+def _build_type_context(doc: dict[str, Any]) -> TypeContext:
+    gamma: dict[str, TypeInfo] = {}
+    issues: list[Issue] = []
 
     tvars = doc.get("tvars") or []
     if isinstance(tvars, list):
@@ -1620,7 +1628,9 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
                 continue
 
             domain_spec = decl.get("domain")
-            domain_values, minimum, maximum = _parse_domain(name, normalized, domain_spec, ["tvars", idx], issues)
+            domain_values, minimum, maximum = _parse_domain(
+                name, normalized, domain_spec, ["tvars", idx], issues, raw_type=raw_type
+            )
             if domain_values is not None and len(domain_values) == 0:
                 issues.append(
                     {
@@ -1655,7 +1665,7 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
     )
 
 
-def _normalize_kind(raw_type: str) -> Optional[str]:
+def _normalize_kind(raw_type: str) -> str | None:
     lowered = raw_type.strip().lower()
     if lowered.startswith("enum"):
         return "enum"
@@ -1672,11 +1682,12 @@ def _parse_domain(
     name: str,
     kind: str,
     spec: Any,
-    path: List[Any],
-    issues: List[Issue],
-) -> Tuple[Optional[Set[Any]], Optional[float], Optional[float]]:
+    path: list[Any],
+    issues: list[Issue],
+    raw_type: str | None = None,
+) -> tuple[set[Any] | None, float | None, float | None]:
     if kind == "bool":
-        values: Set[Any] = {True, False}
+        values: set[Any] = {True, False}
         if spec is not None:
             parsed = _parse_collection(spec, allow_scalar=True)
             if parsed is not None:
@@ -1742,6 +1753,24 @@ def _parse_domain(
                     "severity": "error",
                 }
             )
+        if kind == "enum" and isinstance(raw_type, str):
+            # Issue #157: the element type in enum[str|int|float] was never
+            # compared with the members. Strings are never coerced, and bool
+            # is not a number (consistent with the numeric branch).
+            type_match = _ENUM_ELEMENT_TYPE_RE.match(raw_type.strip().lower())
+            if type_match is not None:
+                element_type = type_match.group(1)
+                mistyped = [item for item in parsed if not _enum_member_matches(item, element_type)]
+                if mistyped:
+                    issues.append(
+                        {
+                            "code": "invalid_enum_domain",
+                            "message": f"TVAR '{name}' of type enum[{element_type}] has domain value(s) "
+                            f"that are not {element_type}: {mistyped!r}",
+                            "path": path + ["domain"],
+                            "severity": "error",
+                        }
+                    )
         return set(parsed), None, None
 
     if kind in {"int", "float"}:
@@ -1768,8 +1797,8 @@ def _parse_domain(
                         }
                     )
                     return set(), None, None
-                converted: Set[Any] = set()
-                coerced_values: List[Any] = []
+                converted: set[Any] = set()
+                coerced_values: list[Any] = []
                 for item in parsed:
                     try:
                         coerced_values.append(_coerce_numeric(item, kind))
@@ -1874,8 +1903,8 @@ def _parse_domain(
     return set(), None, None
 
 
-def _collect_environment_symbols(environment: Any) -> Set[str]:
-    symbols: Set[str] = set()
+def _collect_environment_symbols(environment: Any) -> set[str]:
+    symbols: set[str] = set()
 
     def walk(prefix: str, value: Any) -> None:
         if isinstance(value, dict):
@@ -1890,6 +1919,16 @@ def _collect_environment_symbols(environment: Any) -> Set[str]:
     if isinstance(environment, dict):
         walk("", environment)
     return symbols
+
+
+def _enum_member_matches(value: Any, element_type: str) -> bool:
+    if element_type == "str":
+        return isinstance(value, str)
+    if isinstance(value, bool):
+        return False
+    if element_type == "int":
+        return isinstance(value, int)
+    return isinstance(value, (int, float))
 
 
 def _coerce_numeric(value: Any, kind: str) -> float | int:
@@ -1920,7 +1959,7 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
     raise ValueError("unsupported kind")
 
 
-def _parse_collection(spec: Any, allow_scalar: bool = False) -> Optional[List[Any]]:
+def _parse_collection(spec: Any, allow_scalar: bool = False) -> list[Any] | None:
     if spec is None:
         return None
     if isinstance(spec, list):
@@ -1940,8 +1979,8 @@ def _parse_collection(spec: Any, allow_scalar: bool = False) -> Optional[List[An
             inner = text[1:-1]
             if not inner.strip():
                 return []
-            values: List[Any] = []
-            current: List[str] = []
+            values: list[Any] = []
+            current: list[str] = []
             in_string = False
             string_quote = ""
             for char in inner:
@@ -1988,7 +2027,7 @@ def _parse_value(token: str) -> Any:
         return token
 
 
-def _convert_literal_value(token_type: Optional[str], raw: Any) -> Any:
+def _convert_literal_value(token_type: str | None, raw: Any) -> Any:
     if token_type == "BOOLEAN" and isinstance(raw, str):
         return raw.lower() == "true"
     if token_type == "NUMBER" and isinstance(raw, str):
@@ -2030,7 +2069,7 @@ def _expr_has_non_linear(expr: Any) -> bool:
     return "*" in stripped
 
 
-def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], context: TypeContext) -> None:
+def _lint_structural_constraints(doc: dict[str, Any], issues: list[Issue], context: TypeContext) -> None:
     constraints = doc.get("constraints") or {}
     structural = constraints.get("structural") or []
     if not isinstance(structural, list):
@@ -2080,7 +2119,7 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
             _check_structural_expression(expr, expr_path, context, issues)
 
 
-def _check_structural_expression(expr: Any, path: List[Any], context: TypeContext, issues: List[Issue]) -> None:
+def _check_structural_expression(expr: Any, path: list[Any], context: TypeContext, issues: list[Issue]) -> None:
     if expr is None:
         return
     if isinstance(expr, list):
@@ -2133,7 +2172,7 @@ def _check_structural_expression(expr: Any, path: List[Any], context: TypeContex
             _typecheck_literal(literal, literal_path, context, issues)
 
 
-def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, issues: List[Issue]) -> None:
+def _typecheck_literal(literal: Literal, path: list[Any], context: TypeContext, issues: list[Issue]) -> None:
     clause_id = context.clause_ids.get(tuple(path[:-1]))
 
     def add(issue: Issue) -> None:
@@ -2171,7 +2210,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
         return
 
     if literal.kind == "interval":
-        lower_raw, upper_raw, left_op, right_op = literal.values
+        lower_raw, upper_raw, left_op, _right_op = literal.values
         try:
             lower = float(lower_raw)
             upper = float(upper_raw)
@@ -2308,7 +2347,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
     )
 
 
-def _check_numeric_bound(value: float, type_info: TypeInfo, path: List[Any], add_issue) -> None:
+def _check_numeric_bound(value: float, type_info: TypeInfo, path: list[Any], add_issue) -> None:
     if type_info.minimum is not None and value < float(type_info.minimum):
         add_issue(
             {
@@ -2329,8 +2368,8 @@ def _check_numeric_bound(value: float, type_info: TypeInfo, path: List[Any], add
         )
 
 
-def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) -> List[Issue]:
-    issues: List[Issue] = []
+def _check_value_against_type(value: Any, type_info: TypeInfo, path: list[Any]) -> list[Issue]:
+    issues: list[Issue] = []
     kind = type_info.kind
     if kind == "bool":
         if not isinstance(value, bool):
@@ -2412,12 +2451,10 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
 def _are_types_compatible(lhs: TypeInfo, rhs: TypeInfo) -> bool:
     if lhs.kind == rhs.kind:
         return True
-    if lhs.kind in {"int", "float"} and rhs.kind in {"int", "float"}:
-        return True
-    return False
+    return lhs.kind in {"int", "float"} and rhs.kind in {"int", "float"}
 
 
-def _lint_derived_constraints(doc: Dict[str, Any], issues: List[Issue], context: TypeContext) -> None:
+def _lint_derived_constraints(doc: dict[str, Any], issues: list[Issue], context: TypeContext) -> None:
     constraints = doc.get("constraints") or {}
     derived = constraints.get("derived") or []
     if not isinstance(derived, list):
@@ -2454,7 +2491,7 @@ def _lint_derived_constraints(doc: Dict[str, Any], issues: List[Issue], context:
                 token for token in tokens if token.startswith("env.") and not token.startswith("env.context.")
             )
             for token in invalid_env_tokens:
-                if token.startswith("env.bindings.") or token.startswith("env.components."):
+                if token.startswith(("env.bindings.", "env.components.")):
                     continue
                 issues.append(
                     {
@@ -2488,7 +2525,7 @@ def _lint_derived_constraints(doc: Dict[str, Any], issues: List[Issue], context:
                 )
 
 
-def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_objectives(doc: dict[str, Any], issues: list[Issue]) -> None:
     objectives = doc.get("objectives") or []
     if not isinstance(objectives, list):
         return
@@ -2503,7 +2540,7 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
         )
         return
 
-    seen_names: Dict[str, int] = {}
+    seen_names: dict[str, int] = {}
 
     for idx, objective in enumerate(objectives):
         if not isinstance(objective, dict):
@@ -2620,7 +2657,7 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
 
 
-def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_promotion_policy(doc: dict[str, Any], issues: list[Issue]) -> None:
     policy = doc.get("promotion_policy") or {}
     if not isinstance(policy, dict):
         return
@@ -2707,7 +2744,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
     if not isinstance(chance_constraints, list):
         return
 
-    seen_names: Dict[str, int] = {}
+    seen_names: dict[str, int] = {}
     for idx, entry in enumerate(chance_constraints):
         if not isinstance(entry, dict):
             continue
@@ -2746,7 +2783,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
             )
 
 
-def _lint_require_calibration(policy: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_require_calibration(policy: dict[str, Any], issues: list[Issue]) -> None:
     """RFC 0001 §3.5 — strict evidence mode declaration. The mandatory
     ctx_core is implicit and immutable; hash_covered_context selects
     EXTENSION keys only (a key outside the enum is an error)."""
@@ -2805,7 +2842,7 @@ def _lint_require_calibration(policy: Dict[str, Any], issues: List[Issue]) -> No
         )
 
 
-def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_exploration(doc: dict[str, Any], issues: list[Issue]) -> None:
     exploration = doc.get("exploration")
     if exploration is None:
         # exploration section is optional
@@ -2887,7 +2924,7 @@ def _is_number(value: Any) -> bool:
 # The module may still be valid, but formal soundness guarantees do not apply.
 
 
-def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) -> List[Issue]:
+def check_formal_verification_scope(doc: dict[str, Any], precision: int = 1000) -> list[Issue]:
     """Check for features outside the formally verified TVL subset.
 
     Returns warnings for:
@@ -2902,7 +2939,7 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
     Returns:
         List of warning issues
     """
-    issues: List[Issue] = []
+    issues: list[Issue] = []
 
     tvars = doc.get("tvars") or []
     if not isinstance(tvars, list):
@@ -2960,7 +2997,7 @@ def _check_float_precision(
     domain_spec: Any,
     precision: int,
     idx: int,
-) -> Optional[Issue]:
+) -> Issue | None:
     """Check if float domain values collide under the given precision.
 
     A float domain is precision-aligned iff:
@@ -2990,9 +3027,9 @@ def _extract_float_domain_values(
     precision: int,
     name: str,
     idx: int,
-) -> List[float] | Issue:
+) -> list[float] | Issue:
     """Extract float values from domain spec, or return issue if resolution misaligned."""
-    values: List[float] = []
+    values: list[float] = []
 
     if isinstance(domain_spec, list):
         return _extract_numeric_list(domain_spec)
@@ -3009,9 +3046,9 @@ def _extract_float_domain_values(
     return values
 
 
-def _extract_numeric_list(items: Any) -> List[float]:
+def _extract_numeric_list(items: Any) -> list[float]:
     """Extract numeric values from a list."""
-    values: List[float] = []
+    values: list[float] = []
     if not isinstance(items, list):
         return values
     for v in items:
@@ -3021,11 +3058,11 @@ def _extract_numeric_list(items: Any) -> List[float]:
 
 
 def _extract_range_values(
-    domain_spec: Dict[str, Any],
+    domain_spec: dict[str, Any],
     precision: int,
     name: str,
     idx: int,
-) -> List[float] | Issue:
+) -> list[float] | Issue:
     """Extract values from a range domain, checking resolution alignment."""
     range_vals = domain_spec.get("range", [])
     resolution = domain_spec.get("resolution")
@@ -3056,7 +3093,7 @@ def _extract_range_values(
         return issue
 
     # Generate values at resolution steps
-    values: List[float] = []
+    values: list[float] = []
     current = low
     while current <= high + res / 2:
         values.append(current)
@@ -3069,7 +3106,7 @@ def _check_resolution_alignment(
     precision: int,
     name: str,
     idx: int,
-) -> Optional[Issue]:
+) -> Issue | None:
     """Check if resolution is aligned with precision."""
     scaled_res = resolution * precision
     if abs(scaled_res - round(scaled_res)) <= 1e-9:
@@ -3101,17 +3138,17 @@ def _check_resolution_alignment(
 
 
 def _check_value_collisions(
-    values: List[float],
+    values: list[float],
     precision: int,
     name: str,
     idx: int,
-) -> Optional[Issue]:
+) -> Issue | None:
     """Check for collisions when scaling float values to integers."""
-    scaled_values: Dict[int, float] = {}
-    collision: Optional[Tuple[float, float, int]] = None
+    scaled_values: dict[int, float] = {}
+    collision: tuple[float, float, int] | None = None
 
     for v in values:
-        scaled = int(round(v * precision))
+        scaled = round(v * precision)
         if scaled in scaled_values:
             existing = scaled_values[scaled]
             if abs(existing - v) > 1e-12:
@@ -3155,7 +3192,7 @@ def _check_value_collisions(
     }
 
 
-def _compute_exact_alignment_precision(values: Sequence[float]) -> Optional[int]:
+def _compute_exact_alignment_precision(values: Sequence[float]) -> int | None:
     """Return the least integer factor that aligns parsed decimal values exactly.
 
     The values arrive from YAML as Python numbers, so ``str(value)`` is used to
@@ -3204,7 +3241,7 @@ _STATUSES = {"running", "completed", "failed", "rejected"}
 _CORRELATE_BY = {"unit", "correlation_id", "tool_call_id"}
 _PRECEDENCE_MODES = {"single_use", "reusable"}
 _UNLISTED_MODES = {"reject", "ignore"}
-_CATALOGUE_CHECKERS: Dict[str, Set[str]] = {
+_CATALOGUE_CHECKERS: dict[str, set[str]] = {
     "traigent.refusal.v1": {"must_refuse", "complied"},
 }
 
@@ -3259,14 +3296,14 @@ _DEPLOY_MODES = {"never", "if_promoted"}
 _DEPLOY_EPISODE_EVENTS = {"episode_opened", "episode_continued", "episode_open_for"}
 
 
-def _address_runtime_issues(issues: List[Issue], start: int = 0) -> None:
+def _address_runtime_issues(issues: list[Issue], start: int = 0) -> None:
     from .diagnostics import field_path
 
     for issue in issues[start:]:
         issue["message"] = f"{field_path(issue.get('path', []))}: {issue['message']}"
 
 
-def _uses_13_constructs(doc: Dict[str, Any]) -> bool:
+def _uses_13_constructs(doc: dict[str, Any]) -> bool:
     """RFC 0003 §11.1: presence-based opt-in for TVL 1.3 runtime blocks."""
     if not isinstance(doc, dict):
         return False
@@ -3277,7 +3314,7 @@ def _is_int_strict(value: Any) -> bool:
     return type(value) is int
 
 
-def _to_exact_fraction(value: Any) -> Optional[Fraction]:
+def _to_exact_fraction(value: Any) -> Fraction | None:
     """Convert a JSON/YAML number to its exact decimal Fraction if recoverable (§4.2)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -3297,8 +3334,8 @@ def _to_exact_fraction(value: Any) -> Optional[Fraction]:
         return None
 
 
-def _legacy_module_names(doc: Dict[str, Any]) -> Set[str]:
-    names: Set[str] = set()
+def _legacy_module_names(doc: dict[str, Any]) -> set[str]:
+    names: set[str] = set()
     for block in ("tvars", "cvars", "policies", "composites"):
         entries = doc.get(block) or []
         if not isinstance(entries, list):
@@ -3309,7 +3346,7 @@ def _legacy_module_names(doc: Dict[str, Any]) -> Set[str]:
     return names
 
 
-def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_runtime_version(doc: dict[str, Any], issues: list[Issue]) -> None:
     """RFC 0003 T17, §5.2, §11.1."""
     if "tvl_version" not in doc or doc.get("tvl_version") is None:
         issues.append(
@@ -3338,7 +3375,7 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
         })
 
 
-def _uses_14_constructs(doc: Dict[str, Any]) -> bool:
+def _uses_14_constructs(doc: dict[str, Any]) -> bool:
     responses = doc.get("responses")
     for resp in responses if isinstance(responses, list) else []:
         if not isinstance(resp, dict) or not isinstance(resp.get("rules"), list):
@@ -3354,7 +3391,7 @@ def _uses_14_constructs(doc: Dict[str, Any]) -> bool:
     return False
 
 
-def _selector_canonical(sel: Dict[str, Any]) -> Tuple[Any, ...]:
+def _selector_canonical(sel: dict[str, Any]) -> tuple[Any, ...]:
     return (
         sel.get("event"),
         sel.get("tool"),
@@ -3363,7 +3400,7 @@ def _selector_canonical(sel: Dict[str, Any]) -> Tuple[Any, ...]:
     )
 
 
-def _selectors_can_overlap(s1: Dict[str, Any], s2: Dict[str, Any]) -> bool:
+def _selectors_can_overlap(s1: dict[str, Any], s2: dict[str, Any]) -> bool:
     if s1.get("event") != s2.get("event"):
         return False
     for key in ("tool", "status", "ref"):
@@ -3373,7 +3410,7 @@ def _selectors_can_overlap(s1: Dict[str, Any], s2: Dict[str, Any]) -> bool:
     return True
 
 
-def _lint_selector(sel: Any, path: List[Any], issues: List[Issue]) -> None:
+def _lint_selector(sel: Any, path: list[Any], issues: list[Issue]) -> None:
     if not isinstance(sel, dict):
         issues.append(
             {
@@ -3459,12 +3496,12 @@ def _lint_selector(sel: Any, path: List[Any], issues: List[Issue]) -> None:
 
 def _lint_predicate(
     pred: Any,
-    path: List[Any],
-    issues: List[Issue],
+    path: list[Any],
+    issues: list[Issue],
     *,
     exact_only: bool = False,
     checker_only: bool = False,
-    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+    checker_registry: dict[str, Sequence[str]] | None = None,
 ) -> None:
     if not isinstance(pred, dict):
         issues.append(
@@ -3557,16 +3594,15 @@ def _lint_predicate(
                         "severity": "error",
                     }
                 )
-        elif metric == "cost_usd":
-            if frac <= 0:
-                issues.append(
-                    {
-                        "code": "runtime_exceeds_out_of_range",
-                        "message": "Metric 'cost_usd' exceeds must be > 0",
-                        "path": path + ["exceeds"],
-                        "severity": "error",
-                    }
-                )
+        elif metric == "cost_usd" and frac <= 0:
+            issues.append(
+                {
+                    "code": "runtime_exceeds_out_of_range",
+                    "message": "Metric 'cost_usd' exceeds must be > 0",
+                    "path": path + ["exceeds"],
+                    "severity": "error",
+                }
+            )
         return
 
     if has_checker:
@@ -3843,10 +3879,12 @@ def _lint_predicate(
             nondet = True
         for i in range(len(alphabet)):
             for j in range(i + 1, len(alphabet)):
-                if isinstance(alphabet[i], dict) and isinstance(alphabet[j], dict):
-                    if _selectors_can_overlap(alphabet[i], alphabet[j]):
-                        nondet = True
-        seen_trans: Set[Tuple[Any, Any]] = set()
+                if (
+                    isinstance(alphabet[i], dict) and isinstance(alphabet[j], dict)
+                    and _selectors_can_overlap(alphabet[i], alphabet[j])
+                ):
+                    nondet = True
+        seen_trans: set[tuple[Any, Any]] = set()
         alphabet_set = set(alphabet_canon)
         for tr in transitions:
             if not isinstance(tr, dict):
@@ -3874,10 +3912,10 @@ def _lint_predicate(
 
 
 def _lint_requirements(
-    doc: Dict[str, Any],
-    issues: List[Issue],
+    doc: dict[str, Any],
+    issues: list[Issue],
     *,
-    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+    checker_registry: dict[str, Sequence[str]] | None = None,
 ) -> None:
     reqs = doc.get("requirements")
     if reqs is None:
@@ -3894,7 +3932,7 @@ def _lint_requirements(
         return
 
     legacy_names = _legacy_module_names(doc)
-    seen_names: Set[str] = set()
+    seen_names: set[str] = set()
 
     for idx, req in enumerate(reqs):
         path = ["requirements", idx]
@@ -4109,7 +4147,7 @@ def _lint_requirements(
                 )
 
 
-def _predicate_canonical(pred: Optional[Dict[str, Any]]) -> Any:
+def _predicate_canonical(pred: dict[str, Any] | None) -> Any:
     if not isinstance(pred, dict):
         return None
     if "metric" in pred:
@@ -4165,7 +4203,7 @@ def _predicate_canonical(pred: Optional[Dict[str, Any]]) -> Any:
     return None
 
 
-def _requirement_identity(req: Dict[str, Any]) -> Any:
+def _requirement_identity(req: dict[str, Any]) -> Any:
     kind = req.get("kind")
     if kind in {"rate_bound", "zero_tolerance"}:
         return (
@@ -4177,7 +4215,7 @@ def _requirement_identity(req: Dict[str, Any]) -> Any:
     return (kind, req.get("unit"), req.get("of"))
 
 
-def _monitor_effective_key(mon: Dict[str, Any], req: Dict[str, Any]) -> Any:
+def _monitor_effective_key(mon: dict[str, Any], req: dict[str, Any]) -> Any:
     kind = req.get("kind")
     evidence = mon.get("evidence") or {}
     decision = mon.get("decision") or {}
@@ -4200,7 +4238,7 @@ def _monitor_effective_key(mon: Dict[str, Any], req: Dict[str, Any]) -> Any:
     )
 
 
-def _monitor_role(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> str:
+def _monitor_role(mon: dict[str, Any], req: dict[str, Any] | None) -> str:
     if mon.get("phase") == "promotion":
         return "promotion"
     kind = (req or {}).get("kind")
@@ -4217,11 +4255,11 @@ def _monitor_role(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> str:
 
 
 def _lint_monitors(
-    doc: Dict[str, Any],
-    issues: List[Issue],
+    doc: dict[str, Any],
+    issues: list[Issue],
     *,
     is_pack: bool = False,
-    floor_provenance: Optional[Sequence[Dict[str, Any]]] = None,
+    floor_provenance: Sequence[dict[str, Any]] | None = None,
 ) -> None:
     mons = doc.get("monitors")
     if mons is None:
@@ -4238,14 +4276,14 @@ def _lint_monitors(
         return
 
     reqs_list = doc.get("requirements") or []
-    reqs_by_name: Dict[str, Dict[str, Any]] = {
+    reqs_by_name: dict[str, dict[str, Any]] = {
         r["name"]: r
         for r in reqs_list
         if isinstance(r, dict) and isinstance(r.get("name"), str)
     }
     legacy_names = _legacy_module_names(doc)
-    seen_names: Set[str] = set()
-    mons_by_name: Dict[str, Dict[str, Any]] = {}
+    seen_names: set[str] = set()
+    mons_by_name: dict[str, dict[str, Any]] = {}
     provenance_monitors = {
         entry.get("monitor")
         for entry in (floor_provenance or [])
@@ -4256,7 +4294,7 @@ def _lint_monitors(
         for c in ((doc.get("promotion_policy") or {}).get("chance_constraints") or [])
         if isinstance(c, dict) and isinstance(c.get("name"), str)
     }
-    seen_effective_keys: Set[Any] = set()
+    seen_effective_keys: set[Any] = set()
 
     for idx, mon in enumerate(mons):
         path = ["monitors", idx]
@@ -4643,14 +4681,20 @@ def _lint_monitors(
             viol.get("pattern") in _STATEFUL_PATTERNS or among.get("pattern") in _STATEFUL_PATTERNS
         )
 
-        role_fields: List[Tuple[List[Any], str]] = []
+        role_fields: list[tuple[list[Any], str]] = []
 
-        def forbid_fields(obj: Dict[str, Any], prefix: List[Any], keys: Sequence[str]) -> None:
+        def forbid_fields(
+            obj: dict[str, Any], prefix: list[Any], keys: Sequence[str],
+            *, role_fields: list[tuple[list[Any], str]] = role_fields,
+        ) -> None:
             for key in keys:
                 if key in obj:
                     role_fields.append((prefix + [key], "field is forbidden"))
 
-        def require_fields(obj: Any, prefix: List[Any], keys: Sequence[str]) -> None:
+        def require_fields(
+            obj: Any, prefix: list[Any], keys: Sequence[str],
+            *, role_fields: list[tuple[list[Any], str]] = role_fields,
+        ) -> None:
             if not isinstance(obj, dict):
                 role_fields.append((prefix, "required object is missing"))
                 return
@@ -4706,8 +4750,8 @@ def _lint_monitors(
                 })
 
         # Numeric domains for monitor fields (§4.2, §5.4)
-        w_hours: Optional[int] = None
-        grace_min: Optional[int] = None
+        w_hours: int | None = None
+        grace_min: int | None = None
         if isinstance(window, dict):
             if "tumbling_hours" in window:
                 wh = window.get("tumbling_hours")
@@ -4745,7 +4789,7 @@ def _lint_monitors(
             w_hours = 6
             grace_min = 30
 
-        conf_frac: Optional[Fraction] = None
+        conf_frac: Fraction | None = None
         if "confidence" in decision:
             cf = _to_exact_fraction(decision.get("confidence"))
             if cf is None:
@@ -4771,7 +4815,7 @@ def _lint_monitors(
         elif is_backend:
             conf_frac = Fraction(95, 100)
 
-        budget_frac: Optional[Fraction] = None
+        budget_frac: Fraction | None = None
         if "false_alarm_budget" in decision:
             bf = _to_exact_fraction(decision.get("false_alarm_budget"))
             if bf is None:
@@ -4797,7 +4841,7 @@ def _lint_monitors(
         elif is_backend:
             budget_frac = Fraction(5, 100)
 
-        horizon_val: Optional[int] = None
+        horizon_val: int | None = None
         if "horizon_days" in decision:
             hd = decision.get("horizon_days")
             if not _is_int_strict(hd) or not (1 <= hd <= 365):
@@ -4814,7 +4858,7 @@ def _lint_monitors(
         elif is_backend:
             horizon_val = 30
 
-        min_samples_val: Optional[int] = None
+        min_samples_val: int | None = None
         if "min_samples" in decision:
             ms = decision.get("min_samples")
             if not _is_int_strict(ms) or not (1 <= ms <= 10_000_000):
@@ -4854,8 +4898,8 @@ def _lint_monitors(
                     }
                 )
 
-        c_windows: Optional[int] = None
-        c_age: Optional[int] = None
+        c_windows: int | None = None
+        c_age: int | None = None
         if isinstance(episode, dict):
             if "closure_windows" in episode:
                 cw = episode.get("closure_windows")
@@ -4923,16 +4967,16 @@ def _lint_monitors(
             and grace_min is not None
             and c_windows is not None
             and c_age is not None
+            and c_age * 60 < c_windows * w_hours * 60 + grace_min + 60
         ):
-            if c_age * 60 < c_windows * w_hours * 60 + grace_min + 60:
-                issues.append(
-                    {
-                        "code": "closure_unreachable",
-                        "message": "closure_max_age_hours cannot accommodate closure_windows + grace + 1h",
-                        "path": path + ["episode"],
-                        "severity": "error",
-                    }
-                )
+            issues.append(
+                {
+                    "code": "closure_unreachable",
+                    "message": "closure_max_age_hours cannot accommodate closure_windows + grace + 1h",
+                    "path": path + ["episode"],
+                    "severity": "error",
+                }
+            )
 
         # Burn threshold and power check (§5.4)
         theta_frac = _to_exact_fraction(req.get("max_rate")) if req_kind == "rate_bound" else None
@@ -4989,6 +5033,7 @@ def _lint_monitors(
             else:
                 try:
                     import math
+
                     from scipy.stats import beta  # type: ignore
 
                     up = float(beta.ppf(float(conf_frac), 1, min_samples_val))
@@ -5057,7 +5102,7 @@ def _lint_monitors(
             seen_effective_keys.add(eff_key)
 
     # Obligation requirement references (`of`), deadline feasibility, and cycle detection
-    liveness_covered_monitors: Set[str] = set()
+    liveness_covered_monitors: set[str] = set()
     for r_idx, req in enumerate(reqs_list):
         if not isinstance(req, dict):
             continue
@@ -5095,16 +5140,19 @@ def _lint_monitors(
                 t_ep = target_mon.get("episode") or {}
                 w_h = t_win.get("tumbling_hours", 6 if target_mon.get("profile") == "backend_v1" else None)
                 k_c = t_ep.get("closure_windows", 2 if target_mon.get("profile") == "backend_v1" else None)
-                if _is_int_strict(within_hours) and within_hours >= 1 and _is_int_strict(w_h) and _is_int_strict(k_c):
-                    if within_hours < k_c * w_h:
-                        issues.append(
-                            {
-                                "code": "recovery_deadline_impossible",
-                                "message": "within_hours must be >= closure_windows * tumbling_hours",
-                                "path": ["requirements", r_idx, "within_hours"],
-                                "severity": "error",
-                            }
-                        )
+                if (
+                    _is_int_strict(within_hours) and within_hours >= 1
+                    and _is_int_strict(w_h) and _is_int_strict(k_c)
+                    and within_hours < k_c * w_h
+                ):
+                    issues.append(
+                        {
+                            "code": "recovery_deadline_impossible",
+                            "message": "within_hours must be >= closure_windows * tumbling_hours",
+                            "path": ["requirements", r_idx, "within_hours"],
+                            "severity": "error",
+                        }
+                    )
         elif r_kind == "evidence_liveness":
             if target_role not in {"primary_rate", "primary_zero", "burn"}:
                 issues.append(
@@ -5126,7 +5174,7 @@ def _lint_monitors(
         if not isinstance(start_name, str):
             continue
         curr_req = req
-        visited: Set[str] = {start_name}
+        visited: set[str] = {start_name}
         while curr_req.get("kind") in {"recovery_time", "evidence_liveness"}:
             of_mon_name = curr_req.get("of")
             if not isinstance(of_mon_name, str) or of_mon_name not in mons_by_name:
@@ -5169,7 +5217,7 @@ def _lint_monitors(
             )
 
 
-def _emitted_events_for_monitor(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> Set[str]:
+def _emitted_events_for_monitor(mon: dict[str, Any], req: dict[str, Any] | None) -> set[str]:
     role = _monitor_role(mon, req)
     if role in {"primary_rate", "primary_zero"}:
         events = {
@@ -5193,7 +5241,7 @@ def _emitted_events_for_monitor(mon: Dict[str, Any], req: Optional[Dict[str, Any
     return set()
 
 
-def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
+def _lint_responses(doc: dict[str, Any], issues: list[Issue]) -> None:
     resps = doc.get("responses")
     if resps is None:
         return
@@ -5208,19 +5256,19 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
         )
         return
 
-    reqs_by_name: Dict[str, Dict[str, Any]] = {
+    reqs_by_name: dict[str, dict[str, Any]] = {
         r["name"]: r
         for r in (doc.get("requirements") or [])
         if isinstance(r, dict) and isinstance(r.get("name"), str)
     }
-    mons_by_name: Dict[str, Dict[str, Any]] = {
+    mons_by_name: dict[str, dict[str, Any]] = {
         m["name"]: m
         for m in (doc.get("monitors") or [])
         if isinstance(m, dict) and isinstance(m.get("name"), str)
     }
     legacy_names = _legacy_module_names(doc)
-    guard_edges: List[Tuple[str, str, List[Any]]] = []
-    seen_resp_names: Set[str] = set()
+    guard_edges: list[tuple[str, str, list[Any]]] = []
+    seen_resp_names: set[str] = set()
 
     for r_idx, resp in enumerate(resps):
         r_path = ["responses", r_idx]
@@ -5270,7 +5318,7 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
             continue
 
         rules_by_id = {r.get("id"): r for r in rules if isinstance(r, dict) and isinstance(r.get("id"), str)}
-        seen_rule_ids: Set[str] = set()
+        seen_rule_ids: set[str] = set()
         for rule_idx, rule in enumerate(rules):
             path = r_path + ["rules", rule_idx]
             if not isinstance(rule, dict):
@@ -5307,9 +5355,9 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 seen_rule_ids.add(rule_id)
 
             trigger = rule.get("trigger")
-            t_mon: Optional[Dict[str, Any]] = None
-            t_req: Optional[Dict[str, Any]] = None
-            t_event: Optional[str] = None
+            t_mon: dict[str, Any] | None = None
+            t_req: dict[str, Any] | None = None
+            t_event: str | None = None
             if not isinstance(trigger, dict):
                 issues.append(
                     {
@@ -5480,7 +5528,7 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 })
 
             # Action-specific parameter rules (§5.8, §7.2)
-            def invalid_parameter(field: str, expected: str) -> None:
+            def invalid_parameter(field: str, expected: str, *, path: list[Any] = path) -> None:
                 issues.append({
                     "code": "runtime_invalid_ladder",
                     "message": expected,
@@ -5660,7 +5708,7 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
     _lint_guard_cycles(guard_edges, issues)
 
 
-def _rule_source_monitor(rule: Dict[str, Any], rules: Dict[str, Any]) -> Optional[str]:
+def _rule_source_monitor(rule: dict[str, Any], rules: dict[str, Any]) -> str | None:
     trigger = rule.get("trigger")
     if not isinstance(trigger, dict):
         return None
@@ -5670,8 +5718,8 @@ def _rule_source_monitor(rule: Dict[str, Any], rules: Dict[str, Any]) -> Optiona
     return trigger.get("monitor") if isinstance(trigger, dict) and isinstance(trigger.get("monitor"), str) else None
 
 
-def _lint_outcome_trigger(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict[str, Any],
-                          path: List[Any], issues: List[Issue]) -> None:
+def _lint_outcome_trigger(doc: dict[str, Any], rule: dict[str, Any], rules: dict[str, Any],
+                          path: list[Any], issues: list[Issue]) -> None:
     trigger = rule["trigger"]
     def error(code: str, message: str, field: str = "trigger") -> None:
         issues.append({"code": code, "message": message, "path": path + [field], "severity": "error"})
@@ -5693,9 +5741,9 @@ def _lint_outcome_trigger(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict
         error("runtime_invalid_ladder", "Packs cannot declare outcome triggers")
 
 
-def _lint_reactive_guards(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict[str, Any],
-                          monitors: Dict[str, Any], requirements: Dict[str, Any], path: List[Any],
-                          issues: List[Issue], edges: List[Tuple[str, str, List[Any]]]) -> None:
+def _lint_reactive_guards(doc: dict[str, Any], rule: dict[str, Any], rules: dict[str, Any],
+                          monitors: dict[str, Any], requirements: dict[str, Any], path: list[Any],
+                          issues: list[Issue], edges: list[tuple[str, str, list[Any]]]) -> None:
     trigger = rule.get("trigger")
     reactive = "only_while" in rule or "unless" in rule or (
         isinstance(trigger, dict) and ("rule" in trigger or trigger.get("event") == "unknown_for"))
@@ -5739,8 +5787,8 @@ def _lint_reactive_guards(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict
                     issue("runtime_guard_redundant", "only_while on the source monitor is redundant", "warning")
 
 
-def _lint_guard_cycles(edges: List[Tuple[str, str, List[Any]]], issues: List[Issue]) -> None:
-    graph: Dict[str, Set[str]] = {}
+def _lint_guard_cycles(edges: list[tuple[str, str, list[Any]]], issues: list[Issue]) -> None:
+    graph: dict[str, set[str]] = {}
     for source, target, _ in edges:
         graph.setdefault(source, set()).add(target)
     # Each edge is cyclic iff its target can reach its source (including self-loops).

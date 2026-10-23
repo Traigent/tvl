@@ -5,7 +5,9 @@
 # runnable project's committed bundles and configurations (book/support-bot/).
 #
 # expect, by checker:
-#   tvl-validate, tvl-lint        valid | lint:<CODE>
+#   tvl-validate, tvl-lint        valid | lint:<CODE> | warning:<CODE>
+#                                 lint requires a nonzero exit; warning requires exit 0,
+#                                 ok true, CODE at warning severity, and no errors.
 #   tvl-check-structural          sat | unsat
 #   tvl-check-operational         pass | fail:<CODE>
 #   tvl-config-validate           pass | fail:<CODE>   (also needs module: <file>)
@@ -82,11 +84,11 @@ examples:
     checker: tvl-config-validate
     note: 0.25 is not on the grid 0.0, 0.1, ..., 1.0, so it is outside the domain.
   - file: ch03/every-type.tvl.yml
-    expect: lint:unverifiable_callable_type
+    expect: warning:unverifiable_callable_type
     checker: tvl-validate
     note: A callable type is outside the formally verified subset (a warning).
   - file: ch03/every-type.tvl.yml
-    expect: lint:unverifiable_registry_domain
+    expect: warning:unverifiable_registry_domain
     checker: tvl-validate
     note: A registry domain is outside the formally verified subset (a warning).
 

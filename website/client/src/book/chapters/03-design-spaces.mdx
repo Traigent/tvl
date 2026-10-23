@@ -59,7 +59,7 @@ The table sums up the six types. "Rules may use" lists the operators a rule may 
 
 The tour file declares one tuned variable of each type. Its first four are the support bot's knobs from version 2. Here are the other three: an `int` range, a tuple and a registry-backed callable.
 
-<Example file="ch03/every-type.tvl.yml" checker="tvl-validate" expect="lint:unverifiable_callable_type" title="The tour file: three new forms" lines="29-42" />
+<Example file="ch03/every-type.tvl.yml" checker="tvl-validate" expect="warning:unverifiable_callable_type" title="The tour file: three new forms" lines="29-42" />
 
 - **Numbers you compare.** A list of numbers can be an `enum[int]` or an `int` with `set:`. For counts and limits, use `int` with `set:`. Current lints and the constraint reference reject ordering comparisons, such as `<=`, on numeric enums, although the formal typing rules permit them. This book follows the form the tools accept.
 - **Tuples.** A tuple holds values that go together, such as a chunk size and its overlap. Its domain is every combination of its components, so `chunking` has four values; the rule `chunking in {(256, 0), (512, 64)}` keeps two. Rules over tuples have a written meaning, but the current machine-checked proofs, in the Lean proof assistant, do not cover them.
@@ -102,7 +102,7 @@ You should see two warnings, both about the registry-backed `reranker`:
 [unverifiable_callable_type] tvars.6.type: TVAR 'reranker' uses a callable type, which is outside the formally verified subset. Type safety theorems do not apply to callable-typed TVARs.
 ```
 
-`tvars.6` is the seventh tuned variable: the tools count from 0. These are warnings about proof coverage, not errors in the file. This version of `tvl-validate` nevertheless exits with status 2 when it reports them.
+`tvars.6` is the seventh tuned variable: the tools count from 0. These are warnings about proof coverage, not errors in the file. `tvl-validate` retains these warnings and exits with status 0, reporting `ok: true` in JSON output.
 
 </TryIt>
 

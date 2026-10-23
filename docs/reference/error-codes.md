@@ -83,6 +83,13 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Example**: `domain: ["gpt-4o", "gpt-4o"]`
 - **Remediation**: Remove the repeated value.
 
+### `invalid_enum_domain`
+- **Severity**: error
+- **Description**: A TVAR declared `enum[str]`, `enum[int]` or `enum[float]` lists a domain member whose type does not match the element type. `enum[str]` accepts strings only; `enum[int]` accepts integers; `enum[float]` accepts integers and floats. Booleans are never numbers, and strings are never converted, so `"3"` is not an `int`. YAML `3.0` is a float, so it is rejected in `enum[int]`. The message names the TVAR and the offending values.
+- **Example**: `type: enum[int]` with `domain: [three, 4]`
+- **Remediation**: Change the member to the declared element type, or change the declared type.
+- **Note**: The schema enforces member types for direct arrays and `domain.set`, so module loaders used by configuration and structural checks also reject mismatches. Registry references are unchanged. JSON Schema treats integral numbers such as `3.0` as integers; schema-only consumers accept this representation in `enum[int]`, while the lint rejects the Python float literal.
+
 ### `invalid_tuple_domain`
 - **Severity**: error
 - **Description**: A tuple TVAR domain uses the `components` form, but `components` is not a non-empty list.
@@ -841,6 +848,7 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 | `invalid_convergence_threshold` | error | Exploration | Bad threshold |
 | `invalid_convergence_window` | error | Exploration | Bad window |
 | `duplicate_domain_value` | error | Domain | Repeated enum member |
+| `invalid_enum_domain` | error | Domain | Enum member does not match `enum[T]` |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
 | `derived_references_bindings` | error | Derived | Bindings in derived |
@@ -922,13 +930,13 @@ These codes belong to the TVL 1.3 requirements, monitors and responses (see the
 
 Every diagnostic has the same shape as the codes above: `{ code, message, path, severity }`. In text mode a line looks like
 `[runtime_window_out_of_range] monitors.0.window.tumbling_hours: tumbling_hours 5 is outside its allowed domain`, and `path` points at the key to fix. Severity is
-`error` unless marked `warning`. Warnings still make `tvl-validate` and `tvl-lint` exit 2.
+`error` unless marked `warning`. Warnings are reported but do not fail `tvl-validate` or `tvl-lint`: with warnings only, both print `ok: true` and exit 0.
 
 **Reported by** says which tool in this repository can produce the code:
 
 | Value | Tool |
 |---|---|
-| lint | `tvl-validate`, `tvl-lint` (and `tvl-ci-gate`, which runs the runtime lints first) |
+| lint | `tvl-validate`, `tvl-lint` (and `tvl-ci-gate`, which lints every full module before deciding) |
 | compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
 | compile | `tvl-compile-runtime` |
 | gate | `tvl-measure-validate`, `tvl-ci-gate` |
@@ -1059,7 +1067,7 @@ Reactive constructs require the quoted version "1.4"; using "1.3" yields
 
 | Tool | 0 | 2 |
 |---|---|---|
-| `tvl-validate`, `tvl-lint` | no issue | any issue, warnings included |
-| `tvl-compose` | composed | any composition error or unreadable input |
+| `tvl-validate`, `tvl-lint` | no error (warnings allowed) | any error |
+| `tvl-compose` | composed; with `--validate`, no error (warnings allowed) | any composition error, unreadable input, or a `--validate` error |
 | `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
 | `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, not ready, or any error |

@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 import hashlib
+import json
 import math
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Optional
+from typing import Any, NoReturn
 
 import yaml
-
 from tvl.errors import TVLError
 from tvl.loader import load
 from tvl.structural_parser import StructuralParseError
@@ -21,7 +20,7 @@ from tvl.structural_sat import check_structural
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _emit_event(payload: dict[str, Any]) -> None:
@@ -35,7 +34,7 @@ def _format_number(value: float) -> str:
 
 
 def _build_repair_candidates(
-    unsat_core: Optional[list[dict[str, Any]]],
+    unsat_core: list[dict[str, Any]] | None,
     file_path: Path,
 ) -> list[dict[str, Any]]:
     if not unsat_core:
@@ -166,7 +165,7 @@ def _write_temp_file(content: str, suffix: str = "") -> Path:
         return Path(tmp.name)
 
 
-def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
+def _build_witness_id(assignment: dict[str, Any] | None) -> str | None:
     if not isinstance(assignment, dict):
         return None
     try:
@@ -190,7 +189,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _prepare_module_path(
     args: argparse.Namespace,
-) -> tuple[Path, Optional[Path], Optional[dict[str, Any]]]:
+) -> tuple[Path, Path | None, dict[str, Any] | None]:
     """Return the module path to check, any temp file holding a patched copy, and the candidate.
 
     With ``--candidate-file`` the candidate's edits are applied to a temporary
@@ -198,8 +197,18 @@ def _prepare_module_path(
     """
     if not args.candidate_file:
         return args.file, None, None
-    candidate_payload = json.loads(args.candidate_file.read_text(encoding="utf-8"))
-    original_text = args.file.read_text(encoding="utf-8")
+    # Issue #159: an unreadable candidate or module must give the same exit-2
+    # diagnostic (and --json payload) as the guarded module load, not a traceback.
+    try:
+        candidate_payload = json.loads(args.candidate_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _exit_load_error(str(exc), args, None, label="candidate")
+    if not isinstance(candidate_payload, dict):
+        _exit_load_error("candidate file must contain a JSON object", args, None, label="candidate")
+    try:
+        original_text = args.file.read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        _exit_load_error(str(exc), args, None)
     patched_text = _apply_candidate_edits(original_text, candidate_payload)
     if patched_text == original_text:
         return args.file, None, candidate_payload
@@ -207,7 +216,7 @@ def _prepare_module_path(
     return temp_file, temp_file, candidate_payload
 
 
-def _remove_temp_file(temp_file: Optional[Path]) -> None:
+def _remove_temp_file(temp_file: Path | None) -> None:
     if temp_file is None:
         return
     try:
@@ -218,37 +227,47 @@ def _remove_temp_file(temp_file: Optional[Path]) -> None:
         pass
 
 
-def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file: Optional[Path]) -> dict[str, Any]:
+def _exit_load_error(
+    error_msg: str,
+    args: argparse.Namespace,
+    temp_file: Path | None,
+    exc: BaseException | None = None,
+    label: str = "module",
+) -> NoReturn:
+    """Report an input that could not be loaded and exit 2."""
+    if args.json:
+        error_payload: dict[str, Any] = {
+            "schemaVersion": "1.0",
+            "kind": "PhaseResult",
+            "phase": "structural",
+            "ok": False,
+            "status": "error",
+            "error": error_msg if label == "module" else f"{label}: {error_msg}",
+            "timestamp": _current_timestamp(),
+            "durationMs": 0,
+        }
+        if getattr(exc, "code", None) == "unsupported_construct":
+            error_payload["code"] = "unsupported_construct"
+            error_payload["construct"] = getattr(exc, "construct", None)
+        print(json.dumps(error_payload, indent=2))
+    else:
+        if getattr(exc, "code", None) == "unsupported_construct":
+            print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
+        else:
+            print(f"Error loading {label}: {error_msg}", file=sys.stderr)
+    _remove_temp_file(temp_file)
+    raise SystemExit(2)
+
+
+def _load_module_or_exit(module_path: Path, args: argparse.Namespace, temp_file: Path | None) -> dict[str, Any]:
     try:
         return _load_module(module_path)
     except (TVLError, yaml.YAMLError, FileNotFoundError, ValueError) as exc:
-        error_msg = str(exc)
-        if args.json:
-            error_payload: dict[str, Any] = {
-                "schemaVersion": "1.0",
-                "kind": "PhaseResult",
-                "phase": "structural",
-                "ok": False,
-                "status": "error",
-                "error": error_msg,
-                "timestamp": _current_timestamp(),
-                "durationMs": 0,
-            }
-            if getattr(exc, "code", None) == "unsupported_construct":
-                error_payload["code"] = "unsupported_construct"
-                error_payload["construct"] = getattr(exc, "construct", None)
-            print(json.dumps(error_payload, indent=2))
-        else:
-            if getattr(exc, "code", None) == "unsupported_construct":
-                print(f"unsupported_construct: {getattr(exc, 'construct', '')}", file=sys.stderr)
-            else:
-                print(f"Error loading module: {error_msg}", file=sys.stderr)
-        _remove_temp_file(temp_file)
-        raise SystemExit(2)
+        _exit_load_error(str(exc), args, temp_file, exc)
 
 
 def _check_module_or_exit(
-    module: dict[str, Any], args: argparse.Namespace, temp_file: Optional[Path]
+    module: dict[str, Any], args: argparse.Namespace, temp_file: Path | None
 ) -> tuple[Any, int]:
     """Run the structural check; return the result and its duration in ms."""
     start_time = time.perf_counter()
@@ -317,7 +336,7 @@ def _emit_candidate_validation(result: Any, candidate_payload: dict[str, Any], d
 def _report_json(
     result: Any,
     args: argparse.Namespace,
-    candidate_payload: Optional[dict[str, Any]],
+    candidate_payload: dict[str, Any] | None,
     duration_ms: int,
 ) -> None:
     if candidate_payload is None:
