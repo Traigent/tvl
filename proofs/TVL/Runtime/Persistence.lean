@@ -1,4 +1,4 @@
-/- TVL 1.5 draft, RFC 0005. Static historical semantics and exact arithmetic;
+/- TVL 1.5, RFC 0005. Static historical semantics and exact arithmetic;
    source selection, attestations, finalization and delivery execution are external. -/
 import Mathlib
 

@@ -1,4 +1,4 @@
-"""RFC 0005: breach persistence and census aggregates (TVL 1.5 draft)."""
+"""RFC 0005: breach persistence and census aggregates (TVL 1.5)."""
 from __future__ import annotations
 
 import copy
@@ -400,7 +400,7 @@ def test_legacy_artifacts_keep_frozen_bytes_and_format_selection():
     for version, fmt, tvl_version in (('1.3', 'tvl-runtime-contract/1', '1.3'), ('1.4', 'tvl-runtime-contract/1', '1.3'),
                                       ('1.5', 'tvl-runtime-contract/1', '1.3')):
         d = copy.deepcopy(module); d['tvl_version'] = version
-        contract, local, _ = compile_runtime_document(d, token_map_doc=token_map)
+        contract, local, _ = compile_runtime_document(d, token_map_doc=token_map, toolchain_version='1.4.0')
         assert contract['format'] == fmt and contract['tvl_version'] == tvl_version
         assert local['format'] == 'tvl-runtime-local/1'
         # Pinned from origin/main (5ba03c6), computed there, not from this tree's code.

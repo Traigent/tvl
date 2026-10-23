@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-23
+
+TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantics §14 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.5.0; authored modules using the new constructs declare `tvl_version: "1.5"`. Not published to a package registry.
+
+### Added
+
+- RFC 0005 (TVL 1.5): breach persistence (k-of-n finalized windows) on notification rules, and census aggregates (`sum`, `mean`) as `aggregate_bound` requirements. Includes schemas, lints, conformance cases and Lean persistence proofs.
+- New projected constructs select contract/local format `/3` and aggregate report format `report/2`; count reports stay `/1`.
+
+### Changed
+
+- The default `toolchain.version` is `"1.5.0"`. A 1.4 module compiled by 1.5.0 differs from 1.4.0 output only in `toolchain.version` and the derived digests; explicitly pinning `toolchain_version="1.4.0"` preserves historical bytes and digests. Consumers pinning toolchain versions must add `"1.5.0"`.
+
 ## [1.4.0] - 2026-10-21
 
 TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semantics §13 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.4.0; authored modules using the new constructs declare `tvl_version: "1.4"`. Projected constructs select `/1` or `/2` as described below. Not published to a package registry.

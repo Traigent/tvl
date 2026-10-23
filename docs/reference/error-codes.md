@@ -1064,7 +1064,7 @@ Reactive constructs require the quoted version "1.4"; using "1.3" yields
 | `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
 | `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, not ready, or any error |
 
-## TVL 1.5 draft diagnostics
+## TVL 1.5 diagnostics
 
 These diagnostics are specified by [RFC 0005 §2.6](../../formalization/rfc-0005-persistence-and-census-aggregates.md#26-schemas-and-diagnostics).
 All rows below have severity error.

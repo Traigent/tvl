@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT** — not accepted; syntax, codes and meaning may change before acceptance |
+| **Status** | **Accepted** 2026-10-23 (TVL 1.5.0) |
 | **Target language version** | TVL 1.5 (conservative extension of 1.4) |
-| **Tracking** | not assigned |
+| **Tracking** | PRs #186 and #187 |
 | **Builds on** | RFC 0003 (Accepted, TVL 1.3); RFC 0004 (Accepted, TVL 1.4) |
-| **Companion** | proposed formal semantics §14; existing §§12–13 remain the baseline |
-| **Conformance** | proposed case names in §5; no case files added by this draft |
+| **Companion** | [formal semantics §14](tvl-formal-semantics.md#14-breach-persistence-and-census-aggregates-tvl-15); existing §§12–13 remain the baseline |
+| **Conformance** | case names in §5; case files under `conformance/cases/runtime/` |
 
-All additions below are **proposed syntax and normative rules if accepted**, not implemented features.
+All additions below are normative as of acceptance on 2026-10-23 as TVL 1.5.0.
 Existing-text handles use repository paths at `098bcdfba0b7347eda9cdbad2e351aad39d25f95`:
 `R3` = `formalization/rfc-0003-runtime-requirements-monitors-responses.md`;
 `R4` = `formalization/rfc-0004-reactive-outcomes-and-guards.md`;
@@ -396,7 +396,7 @@ This RFC borrows those ideas, not their syntax, algorithms, sliding windows or c
 ## 7. Open questions
 
 1. Should a later version add census count/min/max? They are not normative operators in 1.5.
-2. Is 168 the right history limit? This draft fixes it; changing it before acceptance needs updated cases.
+2. Is 168 the right history limit? TVL 1.5 fixes it at 168; a later version may change it with updated cases.
 3. Which concrete local source profiles and registration verifiers will support these contracts? Their
    implementation and complete document schemas must be reviewed before enablement; none is established here.
 

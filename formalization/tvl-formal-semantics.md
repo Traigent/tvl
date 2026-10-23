@@ -2169,10 +2169,9 @@ See RFC 0004 §3 and its closed format decision in §7.2.
 
 ---
 
-## 14. Breach Persistence and Census Aggregates (TVL 1.5 draft)
+## 14. Breach Persistence and Census Aggregates (TVL 1.5)
 
-This section specifies the proposed recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md).
-The RFC remains DRAFT. These definitions do not establish parser support, runtime execution,
+This section specifies the recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md), accepted on 2026-10-23 as TVL 1.5.0. These definitions do not establish parser support, runtime execution,
 conformance or mechanically checked properties. Sections 12–13 retain their existing meanings.
 
 ### 14.1 Persistence history and completion sets
@@ -2321,10 +2320,10 @@ Persistence presence and both integers are immutable under overlay/meet, with no
 order. Packs canonicalize `trigger.monitor` as before. Persistence adds no monitor identity,
 floor requirement or episode lifecycle.
 
-New projected constructs select proposed `tvl-runtime-contract/3` and `tvl-runtime-local/3`,
+New projected constructs select `tvl-runtime-contract/3` and `tvl-runtime-local/3`,
 version "1.5". A version alone retains construct-based /1 or /2 selection; reject /3 without a
 1.5 construct. Old schemas are frozen; unknown tags are refused, never silently stripped.
-Count reports stay /1. Aggregate reports use proposed `tvl-runtime-report/2`, with exactly the
+Count reports stay /1. Aggregate reports use `tvl-runtime-report/2`, with exactly the
 closed fields specified in RFC 0005 §2.5: format, contract/monitor/revision binding, aligned window
 times, source digest, counts, optional sum, optional `unknown_reason`, coverage, units commitment,
 SDK version and `evidence_tier: client_attested`. The exact minimal decimal sum is required for complete nonempty
@@ -2361,7 +2360,7 @@ through observability. Summaries can be sensitive; this makes no anonymization o
 privacy claim, and client attestations do not independently verify population or source correctness.
 
 **Conservative embedding obligation.** For a valid 1.4 module or pack using neither addition,
-the embedding into this draft is identity on TVAR, structural, promotion and runtime denotations,
+the embedding into TVL 1.5 is identity on TVAR, structural, promotion and runtime denotations,
 including verdicts, episodes, obligations, response authority and diagnostics. With identical inputs
 and a fixed toolchain version, canonical artifact bytes and digests remain identical; a future
 toolchain default is not thereby fixed. Older readers refuse new constructs. No statistical budget,

@@ -1326,10 +1326,9 @@ Packs may use their own monitor guards, but no outcome triggers or attempt guard
 These constructs are notify-only; they add no production effect authority. See the language
 reference and formal semantics §13 for the attempt lifecycle, evaluation ordering and limits.
 
-## Proposed persistence and census checks (TVL 1.5 draft)
+## Persistence and census checks (TVL 1.5)
 
-[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) proposes two additions;
-it is DRAFT, and this section does not establish compiler or runtime availability.
+[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) adds two constructs and was accepted on 2026-10-23 as TVL 1.5.0.
 A notification rule can request `persist: {breached_in: 3, of_last: 4}` on a primary monitor's
 `episode_opened` or `episode_continued` event, with no repeats. This asks whether at least three
 of the four consecutive finalized windows breached. Missing slots stay UNKNOWN: notify only
@@ -1345,5 +1344,5 @@ expresses an observed-window spend limit; mean score ≥0.8 expresses a bound on
 Failed/rejected units cannot silently disappear. Incomplete evidence is UNKNOWN even when a
 partial sum exceeds the limit; a complete empty window is also UNKNOWN. Finalize at window end
 plus grace, using exact arithmetic and no rounded mean. Neither construct adds a response action
-or statistical confidence. See the [language reference](../reference/language.md#tvl-15-draft-persistence-and-census-aggregates)
-for domains, restrictions, projection and proposed diagnostics. Both require `tvl_version: "1.5"`.
+or statistical confidence. See the [language reference](../reference/language.md#tvl-15-persistence-and-census-aggregates)
+for domains, restrictions, projection and diagnostics. Both require `tvl_version: "1.5"`.

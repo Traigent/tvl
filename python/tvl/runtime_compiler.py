@@ -41,7 +41,7 @@ def compile_runtime_document(
     token_map_doc: Optional[Mapping[str, Any]],
     packs: Optional[Sequence[Mapping[str, Any]]] = None,
     checker_registry_doc: Optional[Mapping[str, Any]] = None,
-    toolchain_version: str = "1.4.0",
+    toolchain_version: str = "1.5.0",
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[Dict[str, Any]]]:
     """Compile declarations to closed exchange artifacts; evaluation requires an external engine."""
     is_pack = "pack" in doc and "tvl" not in doc
