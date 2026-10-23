@@ -518,7 +518,7 @@ def _run_rfc0005_case(kind: str, inp: Mapping[str, Any], expected: Mapping[str, 
             actual: dict[str, Any] = {"decisions": persistence_decisions(persist, inp["rule_event"], windows, inp["events"], identity)}
             if "index" in inp:
                 slots = persistence_slots(persist["of_last"], inp["index"], windows, identity)
-                actual["result"], _reason = persistence_result(persist["breached_in"], persist["of_last"], [s["verdict"] for s in slots])
+                actual["result"] = persistence_result(persist["breached_in"], persist["of_last"], [s["verdict"] for s in slots])[0]
         else:
             slots = persistence_slots(persist["of_last"], inp["index"], windows, identity)
             result, reason = persistence_result(persist["breached_in"], persist["of_last"], [s["verdict"] for s in slots])
