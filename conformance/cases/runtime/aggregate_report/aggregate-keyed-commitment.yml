@@ -62,5 +62,12 @@ input:
     membership: unknown
     state: missing
     source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - agent: agent_1
+    environment: production
+    unit_kind: invocation
+    unit_id: u4
+    membership: false
+    state: missing
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 expected:
-  commitment: 0e4b9502cfa571e1ab4a27a09b237ec514a0c7f63e44df111dd8f7c3478586db
+  commitment: 419a7052cd7327e44cb43ef7547db0a29a9f191f4ae913a629d7767f65db28b4

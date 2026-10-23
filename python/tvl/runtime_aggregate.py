@@ -191,13 +191,17 @@ def _decimal(value: Any) -> Fraction | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
+        if value < 0:
+            return None
         if value >= 10 ** _MAX_NUMERIC_CHARS:
             raise _PrecisionLimit
-        return Fraction(value) if value >= 0 else None
+        return Fraction(value)
     if isinstance(value, str):
+        if not _DECIMAL_RE.fullmatch(value):
+            return None  # syntax first: a malformed encoding is an invalid record, however long
         if len(value) > _MAX_NUMERIC_CHARS:
             raise _PrecisionLimit
-        return Fraction(value) if _DECIMAL_RE.fullmatch(value) else None
+        return Fraction(value)
     return None
 
 
@@ -292,9 +296,11 @@ def aggregate_verdict(spec: Mapping[str, Any]) -> dict[str, Any]:
                 continue
             if exact is None or (metric == "score" and exact > 1):
                 complete = False  # a missing or invalid value is never zero
+            elif limit is not None and _scale(minimal_decimal_str(exact)) > limit:
+                precision_hit = True  # declared precision exceeded: decided before any summation
             else:
                 members[unit["key"]] = exact
-                scales.append(_scale(value))
+                scales.append(_scale(minimal_decimal_str(exact)))
     for key, fingerprint in late:
         # Evidence after due never changes the finalized sum; it is a replay only when identical.
         if seen.get(key) != fingerprint:
@@ -353,8 +359,8 @@ def validate_report_v2(report: Mapping[str, Any], binding: Mapping[str, Any]) ->
         and counts["missing_value"] == 0 and counts["invalid_value"] == 0
     )
     unknown_reason = report.get("unknown_reason")
-    if counts["member_count"] == 0 and "sum" in report:
-        raise RuntimeClosedError("runtime_report_numeric")  # an empty population has no sum, not even zero
+    if counts["member_count"] == 0 and "sum" in report and report["sum"] != "0":
+        raise RuntimeClosedError("runtime_report_numeric")  # an empty population's sum is absent or exactly "0"
     if "sum" in report:
         value = report["sum"]
         if not isinstance(value, str) or not _MINIMAL_DECIMAL_RE.fullmatch(value) or unknown_reason is not None:

@@ -770,8 +770,9 @@ def test_d5_precision_limit_report_may_omit_sum_only_with_the_closed_reason():
 def test_d6_empty_population_cannot_carry_a_sum_and_sums_must_fully_match():
     report = valid_report()
     report['counts'].update(selected=1, reported=1, member_count=0, contribution_count=0, excluded=1)
-    for sum_value in ('5', '0'):
+    for sum_value in ('5', '0.5', '00', '0.0'):
         assert refused(dict(report, sum=sum_value)) == 'runtime_report_numeric'
+    assert validate_report_v2(dict(report, sum='0'), BINDING) is None  # RFC 0005:245-247: absent or exactly "0"
     del report['sum']
     validate_report_v2(report, BINDING)  # no sum for no members
     for bad in ('12.5\n', '12.5 ', '\n12.5', '12.5\r'):
@@ -828,7 +829,42 @@ def test_d12_keyed_commitment_fixture_counts_agree_with_its_units():
     fixture = case('aggregate_report/aggregate-keyed-commitment.yml')['input']
     counts = fixture['report']['counts']
     units = fixture['units']
-    assert counts['unknown_membership'] == sum(u['membership'] == 'unknown' for u in units)
-    assert counts['member_count'] == sum(u['membership'] is True for u in units)
-    assert counts['contribution_count'] == sum(u['membership'] is True and u['state'] == 'valid' for u in units)
+    members = [u for u in units if u['membership'] is True]
+    expected = {
+        'selected': len(units), 'reported': len(units), 'dropped': 0,
+        'unknown_membership': sum(u['membership'] == 'unknown' for u in units),
+        'excluded': sum(u['membership'] is False for u in units),
+        'member_count': len(members),
+        'contribution_count': sum(u['state'] == 'valid' for u in members),
+        'missing_value': sum(u['state'] == 'missing' for u in members),
+        'invalid_value': sum(u['state'] == 'invalid' for u in members),
+        'unplaceable': 0,
+    }
+    assert counts == expected
     validate_report_v2(fixture['report'], BINDING)
+
+
+@pytest.mark.parametrize('first,second', [('1', '1.0000000'), ('1.0000000', '1')])
+def test_d10b_duplicate_replay_precision_is_order_independent(first, second):
+    units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': first},
+             {'key': 'u1', 'membership': True, 'status': 'completed', 'value': second}]
+    assert aggregate_verdict(spec_of(units, precision_scale=6)) == {
+        'verdict': 'MET', 'sum': '1', 'member_count': 1}
+
+
+def test_d13_malformed_long_contribution_is_incomplete_not_precision_limit():
+    for bad in ('x' * 257, '1' * 256 + 'x', '-' + '1' * 300):
+        units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': bad}]
+        assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+    long_valid = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '1' * 257}]
+    assert aggregate_verdict(spec_of(long_valid)) == {'verdict': 'UNKNOWN', 'reason': 'aggregate_precision_limit'}
+    assert aggregate_verdict(spec_of([{'key': 'u1', 'membership': True, 'status': 'completed', 'value': -(10 ** 300)}])) == {
+        'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+
+
+def test_d14_declared_precision_scale_checked_per_contribution():
+    units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '0.1234567'}]
+    assert aggregate_verdict(spec_of(units, precision_scale=6)) == {
+        'verdict': 'UNKNOWN', 'reason': 'aggregate_precision_limit'}
+    units[0]['value'] = '0.1234560'  # minimal form has scale 6
+    assert aggregate_verdict(spec_of(units, precision_scale=6))['verdict'] == 'MET'
