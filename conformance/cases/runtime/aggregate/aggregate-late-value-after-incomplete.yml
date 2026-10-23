@@ -1,0 +1,40 @@
+case_format: tvl-runtime-case/1
+family: aggregate
+description: a late value does not repair a window finalized as incomplete
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#23
+- formalization/rfc-0005-persistence-and-census-aggregates.md#24
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: aggregate
+  aggregate:
+    op: sum
+    metric: cost_usd
+    bound:
+      lte: 50
+    window:
+      start_ms: 0
+      end_ms: 86400000
+      grace_ms: 1800000
+    evaluated_at_ms: 88200000
+    units:
+    - key: u1
+      membership: true
+      status: completed
+      value: '10'
+    - key: u2
+      membership: true
+      status: completed
+      value: null
+    coverage:
+      census: true
+      unit_histories_complete: true
+      producer_set_complete: true
+      producer_sequences_contiguous: true
+      response_deadlines_covered: true
+      watermark_ms: 88200000
+expected:
+  aggregate:
+    verdict: UNKNOWN
+    reason: incomplete

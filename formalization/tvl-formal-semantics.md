@@ -2169,6 +2169,209 @@ See RFC 0004 §3 and its closed format decision in §7.2.
 
 ---
 
+## 14. Breach Persistence and Census Aggregates (TVL 1.5 draft)
+
+This section specifies the proposed recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md).
+The RFC remains DRAFT. These definitions do not establish parser support, runtime execution,
+conformance or mechanically checked properties. Sections 12–13 retain their existing meanings.
+
+### 14.1 Persistence history and completion sets
+
+A persistence rule has `persist: {breached_in: k, of_last: n}`, with integers
+`1 ≤ k ≤ n ≤ 168`. It is a `notify` rule triggered by `episode_opened` or
+`episode_continued` of exactly `trigger.monitor`, a primary runtime monitor (including an
+aggregate primary). Burn, promotion and obligation monitors, and both repeat coordinates,
+are forbidden. Persistence filters notifications; it never replaces a source verdict.
+
+**Definition 14.1 (History).** For the event's window j, history consists of the n consecutive
+tumbling slots ending at j, ordered by window start. Each slot is counted once. The requirement,
+monitor, agent, environment, contract digest, monitor revision and schedule must agree.
+Missing contract digest, monitor revision, agent, environment or schedule identity, or an absent
+`available` field, makes a slot UNKNOWN(`persistence_history_gap`).
+Only finalized verdicts are usable. Missing, unavailable, not-yet-active and incompatible-revision
+slots are UNKNOWN placeholders; never replace them with older decided slots. A contract or
+monitor revision starts fresh history; crossing a statistical horizon alone does not.
+A bound change changes the contract digest and therefore resets history.
+
+**Definition 14.2 (Completion semantics).** Let H be that history and Comp(H) the nonempty set
+of all histories obtained by independently replacing each UNKNOWN with MET or BREACHED,
+leaving decided slots fixed. For h in Comp(H), let b(h) count its BREACHED slots. Define:
+
+- BREACHED iff every h in Comp(H) satisfies b(h) ≥ k;
+- MET iff every h in Comp(H) satisfies b(h) < k;
+- UNKNOWN(inconclusive) otherwise.
+
+If B and U count the BREACHED and UNKNOWN slots, the minimum and maximum completion counts
+are B and B+U. Thus the equivalent decision is BREACHED when B ≥ k, MET when B+U < k,
+and UNKNOWN otherwise. For k=2,n=3: BBU is BREACHED, MMU is MET and BMU is UNKNOWN.
+The labels concern the historical condition, not current source satisfaction. Refining UNKNOWN
+slots shrinks Comp(H): either decided result remains that result under every refinement;
+UNKNOWN may become decided. This is information monotonicity, not an order on quality.
+
+**Definition 14.3 (Qualification).** At each fresh allowed source event, BREACHED qualifies,
+MET suppresses and UNKNOWN withholds the notification. The initial event allocates occurrence 0
+even when undelivered. The rule preserves its original trigger (§13.9): an `episode_opened` rule
+is not delivered on a later `episode_continued`. An `episode_continued` rule evaluates at each
+fresh continuation and can reconsider its undelivered occurrence; without repeats it allocates
+no new occurrence. A delivered occurrence is never redelivered. State changes alone queue nothing;
+exact event replays and delivery retries retain
+the original decision and identity. Slot identities, result and constituent UNKNOWN reasons stay
+customer-side; absent slots carry `persistence_history_gap`.
+
+After qualification, §13 guards apply unchanged: UNDECIDED never suppresses. Persistence UNKNOWN
+instead requires positive evidence to qualify. Neither filtering nor qualification changes a verdict,
+episode, obligation or action state. Only source MET windows count toward episode closure.
+For k=n, all n slots must breach; k=n=1 preserves eligibility at allowed breach events.
+BBM meets a 2-of-3 historical condition but its current MET window emits no allowed breach event.
+
+### 14.2 Census population and finalization
+
+An `aggregate_bound` requirement declares `unit: trace | invocation`, optional `among`,
+`aggregate: {op: sum | mean, metric: cost_usd | score, source_digest: fp}`, and exactly one
+`bound: {lte: b}` or `{gte: b}`. Bounds are nonnegative; mean-score bounds are at most 1.
+Cost contributions are finite nonnegative exact decimals; score contributions are finite exact
+decimals in [0,1]. Score sums may exceed 1. Sum cost is USD, mean cost USD per unit;
+score sum and mean are dimensionless. Equality meets either bound. No weights or conversions
+are implicit; recorded scores describe the declared scorer, not independently established quality.
+
+The immutable source contract fixes the observed universe, accounting or scorer version,
+terminal-status handling, numeric encoding and finite resource bounds. Its digest is required
+in authored and compiled requirements and registration; the local evaluator profile must resolve
+exactly that contract before activation. There is no default source. A source change requires a
+different requirement identity. The digest is an opaque commitment, not source or scorer text.
+
+**Definition 14.4 (Membership and completeness).** Use §12 attribution, environment and
+start-time placement; a start exactly at a window end belongs to the next window. Omitted
+`among` includes all placed in-scope units. Membership must be exactly boolean `true`, boolean
+`false` or the string `"unknown"`; any other value, including numeric `1`, is an invalid record
+and makes the census incomplete. Known false membership excludes a unit; unknown
+membership remains unresolved. Include completed, failed and rejected units. Deduplicate by
+(agent, environment, unit kind, stable SDK unit identifier): identical replays count once.
+Compare values after exact decimal parsing: `"1"` and `"1.0"` are equal and do not conflict;
+conflicting histories or values prevent completeness. Missing or invalid values are never zero.
+Unresolved attribution that could belong to this population prevents completeness; unrelated
+out-of-scope units do not join it.
+
+A complete census accounts for every selected observed unit, resolves membership and placement,
+has terminal complete relevant histories, complete producer sets and sequences, watermarks through
+`due(w) = end(w) + grace`, no dropped units, and one valid contribution per member.
+Source attestations must establish completeness; conservation counts alone cannot. Missing or null
+coverage yields UNKNOWN(incomplete). Units arriving
+after due make the census incomplete unless coverage attests otherwise; they must not be silently
+discarded to produce MET. This concerns the declared observed universe, not unobserved traffic,
+all invoice charges or source correctness.
+
+**Definition 14.5 (Finalization).** Before due, return UNKNOWN(aggregate_pending).
+At due, finalize evidence arriving by due. Incomplete evidence returns UNKNOWN(incomplete),
+even when a partial nonnegative sum exceeds an upper bound. A complete empty population returns
+UNKNOWN(insufficient), never zero-sum MET. Later arrivals cannot change the recorded verdict.
+Append-only audit corrections can expose contradictions but cannot rewrite that verdict, withdraw
+notifications or create a statistical look. Exact replays do not reevaluate it.
+
+### 14.3 Exact aggregate verdict
+
+For a complete nonempty population P, let C=|P|>0 and S=Σ[x in P] x. Set A_sum=S and
+A_mean=S/C. Authored bounds use exact decimal literal recovery; source encodings are lossless
+finite decimals. Compute with scaled integers or rationals and no intermediate rounding.
+For sum, MET iff S ≤ b for `lte`, or S ≥ b for `gte`; otherwise BREACHED.
+For mean, MET iff S ≤ C·b for `lte`, or S ≥ C·b for `gte`; otherwise BREACHED.
+These comparisons equal the rational quotient comparisons because C>0; no rounded quotient,
+tolerance or round-to-pass rule is permitted. The UNKNOWN preconditions of §14.2 take precedence.
+NaN, infinity, negative costs and out-of-range scores are invalid contributions and make evidence
+incomplete. Check numeric encoding and precision/resource limits before conversion to exact rationals.
+If these limits prevent exact arithmetic on otherwise valid evidence, including overlong numeric
+strings, return UNKNOWN(aggregate_precision_limit) rather than raising a conversion error.
+
+Aggregate primaries are runtime, customer-side census monitors, with sampling omitted and
+`decision: {method: exact_aggregate_v1}` only. Require the existing window and episode records.
+Environment, attribution and resolution keep primary defaults. Forbid `backend_v1`, promotion,
+burn factors, statistical decision fields, `min_samples`, `max_unresolved_fraction`,
+`single_producer` and `limits`; resource bounds belong to the source contract. These monitors
+emit existing episode events, no `unit_violation`, and support no local guard. Responses retain
+all existing authority restrictions. No aggregate promotion monitor exists: `deploy: if_promoted`
+cannot satisfy its same-requirement promotion check (`response_deploy_without_promotion_monitor`).
+
+### 14.4 Evidence reuse and bounded claims
+
+**Notification subset.** Fix the same source event stream, rules and guard valuations.
+Removing `persist` gives a superset of delivered breach-event occurrences: persistence only
+filters those occurrences. This is not a comparison of total notifications under different
+policies, future actions or episode counts. A qualified event still has a current raw BREACHED
+window; a historical result alone creates no source event.
+
+**No new look.** Reusing finalized verdicts creates no observations, binomial tests,
+independence, confidence amplification or reusable alpha. Keep the original allocation
+`m = 24H/W`, `α_w = α_FA/m`, or finite `Σ α_w ≤ α_FA`. Overlapping histories reuse charged
+verdicts, not unit data. Revisions cannot replenish alpha, and history across horizons retains
+each window's original charge. Under the original rational-test assumptions in §12, a notification
+at a compliant current window implies a false raw breach there. The union bound therefore bounds
+any such notification from source windows in the predesignated horizon by α_FA, regardless of
+delivery time. There is no α_FA raised to k claim, independence assumption, or new guarantee for
+floating-point `_v1` tests or unsupported selection. Census comparison is deterministic over
+recorded observed values, not a hypothesis test, future-quality guarantee or honesty proof.
+
+### 14.5 Composition, exchange and conservative embedding
+
+Aggregate identity is (kind, unit, canonical among, operator, metric, source_digest, comparator
+direction), excluding the numeric bound. Overlays may decrease `lte` or increase `gte`; meet
+uses minimum or maximum respectively. Other identity changes are incompatible replacements.
+Effective monitor keys extend the existing source/environment/method coordinates with that
+identity; distinct source contracts cannot share a floor. Schedule compatibility remains required.
+Persistence presence and both integers are immutable under overlay/meet, with no inferred tightening
+order. Packs canonicalize `trigger.monitor` as before. Persistence adds no monitor identity,
+floor requirement or episode lifecycle.
+
+New projected constructs select proposed `tvl-runtime-contract/3` and `tvl-runtime-local/3`,
+version "1.5". A version alone retains construct-based /1 or /2 selection; reject /3 without a
+1.5 construct. Old schemas are frozen; unknown tags are refused, never silently stripped.
+Count reports stay /1. Aggregate reports use proposed `tvl-runtime-report/2`, with exactly the
+closed fields specified in RFC 0005 §2.5: format, contract/monitor/revision binding, aligned window
+times, source digest, counts, optional sum, optional `unknown_reason`, coverage, units commitment,
+SDK version and `evidence_tier: client_attested`. The exact minimal decimal sum is required for complete nonempty
+evidence unless `unknown_reason: "aggregate_precision_limit"` accompanies its omission, yielding
+UNKNOWN(aggregate_precision_limit); otherwise its omission is `runtime_report_numeric`.
+`unknown_reason` is a closed enum containing only `aggregate_precision_limit`.
+When `member_count` is zero, `sum` must be absent or `"0"`; a nonzero sum is `runtime_report_numeric`.
+The entire sum string must match the minimal decimal encoding; trailing characters, including
+a newline after `12.5`, are `runtime_report_numeric`.
+Mean is reconstructed from sum/count, with no rounded field.
+Every report requires its source/window binding and these disjoint natural-count identities:
+
+```text
+selected = reported + dropped
+reported = member_count + unknown_membership + unplaceable + excluded
+member_count = contribution_count + missing_value + invalid_value
+```
+
+Count each member's defect once, with missing before invalid. Complete coverage requires all
+existing closed coverage flags true and watermark at least due. The report/2 commitment is lowercase
+hex HMAC-SHA-256 under a random customer-held 256-bit secret, over canonical JSON binding contract,
+monitor, revision, window times and source digest plus deduplicated units sorted in ascending order
+by the UTF-8 bytes of the canonical JSON of each unit key object
+`{agent, environment, unit_id, unit_kind}`, with canonical object key order.
+Each entry includes its full local key, membership, canonical exact value or missing/invalid state,
+and source digest. Decimal values are minimal strings. Report/1's unkeyed digest is unchanged.
+
+Default-deny projection adds only closed operator, metric and comparator enums, opaque source
+digest, minimal decimal bounds and authored persistence integers. Reports exchange only the closed
+numeric summaries, counts, enums, times, commitments and opaque references. Individual values,
+unit identifiers, raw traces, prompts, responses, scorer code, free text, persistence results,
+slot identities and constituent UNKNOWN reasons remain customer-side. No customer content is routed
+through observability. Summaries can be sensitive; this makes no anonymization or observability
+privacy claim, and client attestations do not independently verify population or source correctness.
+
+**Conservative embedding obligation.** For a valid 1.4 module or pack using neither addition,
+the embedding into this draft is identity on TVAR, structural, promotion and runtime denotations,
+including verdicts, episodes, obligations, response authority and diagnostics. With identical inputs
+and a fixed toolchain version, canonical artifact bytes and digests remain identical; a future
+toolchain default is not thereby fixed. Older readers refuse new constructs. No statistical budget,
+response grant or deployment authority is added. New constructs require `tvl_version: "1.5"`;
+omission is `runtime_version_required`, incompatibility `declared_version_below_constructs`.
+Completion soundness, the subset/no-new-look arguments, exact comparison equivalence and this
+embedding are specification obligations here, not claims of checked runtime implementation.
+
+---
+
 ## Appendix A: Notation Summary
 
 | Symbol | Meaning |

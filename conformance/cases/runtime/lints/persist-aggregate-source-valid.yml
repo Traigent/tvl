@@ -1,0 +1,78 @@
+case_format: tvl-runtime-case/1
+family: lints
+description: an aggregate primary is an eligible persistence source
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#22
+- formalization/rfc-0005-persistence-and-census-aggregates.md#23
+module:
+  tvl:
+    module: conformance.runtime
+  tvl_version: '1.5'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: daily_spend
+    kind: aggregate_bound
+    unit: invocation
+    aggregate:
+      op: sum
+      metric: cost_usd
+      source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    bound:
+      lte: 50
+  monitors:
+  - name: daily_spend_prod
+    requirement: daily_spend
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+    window:
+      tumbling_hours: 24
+      grace_minutes: 30
+    decision:
+      method: exact_aggregate_v1
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 72
+  responses:
+  - name: repair
+    rules:
+    - id: spend_persist
+      trigger:
+        monitor: daily_spend_prod
+        event: episode_opened
+      do: notify
+      severity: critical
+      persist:
+        breached_in: 2
+        of_last: 3
+input:
+  kind: lint
+  operation: validate
+expected:
+  absent_diagnostics:
+  - runtime_persistence_out_of_range
+  - runtime_invalid_persistence
+  - runtime_aggregate_bound_out_of_range
+  - runtime_notify_only
+  - runtime_invalid_profile
+  - runtime_unknown_kind
+  - declared_version_below_constructs
+  - runtime_version_required

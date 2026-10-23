@@ -1,0 +1,98 @@
+case_format: tvl-runtime-case/1
+family: composition
+description: an overlay may decrease an lte bound; the composed bound is the tighter one
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#25
+base:
+  tvl_version: '1.5'
+  pack:
+    module: test_pack
+  requirements:
+  - name: floor_spend
+    kind: aggregate_bound
+    unit: invocation
+    aggregate:
+      op: sum
+      metric: cost_usd
+      source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    bound:
+      lte: 80
+  monitors:
+  - name: floor_monitor
+    requirement: floor_spend
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+    window:
+      tumbling_hours: 24
+      grace_minutes: 30
+    decision:
+      method: exact_aggregate_v1
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 72
+    applies_to: tenant_floor
+overlay:
+  tvl:
+    module: conformance.runtime
+  tvl_version: '1.5'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: agent_spend
+    kind: aggregate_bound
+    unit: invocation
+    aggregate:
+      op: sum
+      metric: cost_usd
+      source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    bound:
+      lte: 40
+  monitors:
+  - name: agent_monitor
+    requirement: agent_spend
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+    window:
+      tumbling_hours: 24
+      grace_minutes: 30
+    decision:
+      method: exact_aggregate_v1
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 72
+    applies_to: agent
+  responses:
+  - name: local_alerts
+    rules:
+    - id: local
+      trigger:
+        monitor: agent_monitor
+        event: episode_opened
+      do: notify
+      severity: critical
+input:
+  kind: compose
+  operation: overlay
+expected:
+  composed_fields:
+    /requirements/0/bound/lte: 40

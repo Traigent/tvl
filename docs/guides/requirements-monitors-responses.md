@@ -1325,3 +1325,25 @@ Mutual/self monitor inhibition is rejected. Attempt guards do not add inhibition
 Packs may use their own monitor guards, but no outcome triggers or attempt guards.
 These constructs are notify-only; they add no production effect authority. See the language
 reference and formal semantics §13 for the attempt lifecycle, evaluation ordering and limits.
+
+## Proposed persistence and census checks (TVL 1.5 draft)
+
+[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) proposes two additions;
+it is DRAFT, and this section does not establish compiler or runtime availability.
+A notification rule can request `persist: {breached_in: 3, of_last: 4}` on a primary monitor's
+`episode_opened` or `episode_continued` event, with no repeats. This asks whether at least three
+of the four consecutive finalized windows breached. Missing slots stay UNKNOWN: notify only
+when enough known breaches establish the condition. This filters the notification, leaving
+source verdicts, episode closure and repair authority unchanged. A fresh continuation can
+reconsider an undelivered occurrence; a delivered occurrence never delivers again.
+
+An `aggregate_bound` requirement instead compares a complete observed population's exact
+`sum` or `mean` of `cost_usd` or recorded `score` against one `lte` or `gte` bound.
+It requires a versioned source contract identified by `source_digest`, a customer-side census
+runtime monitor, and `decision: {method: exact_aggregate_v1}`. For example, sum cost ≤50
+expresses an observed-window spend limit; mean score ≥0.8 expresses a bound on recorded scores.
+Failed/rejected units cannot silently disappear. Incomplete evidence is UNKNOWN even when a
+partial sum exceeds the limit; a complete empty window is also UNKNOWN. Finalize at window end
+plus grace, using exact arithmetic and no rounded mean. Neither construct adds a response action
+or statistical confidence. See the [language reference](../reference/language.md#tvl-15-draft-persistence-and-census-aggregates)
+for domains, restrictions, projection and proposed diagnostics. Both require `tvl_version: "1.5"`.

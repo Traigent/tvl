@@ -80,10 +80,11 @@ def _with_monitor_defaults(mon: Mapping[str, Any]) -> Dict[str, Any]:
     if primary_or_burn:
         evidence.setdefault("deployment_environment", "production")
         evidence.setdefault("attribution", "agent_key_exact_v1")
-        if decision.get("method") != "exact_count_v1":
+        if decision.get("method") not in {"exact_count_v1", "exact_aggregate_v1"}:
             decision.setdefault("model", "iid_bernoulli_within_window_v1")
     if primary_or_burn or promotion:
         evidence.setdefault("resolution", "terminal_status_v1")
+    # exact_aggregate_v1 forbids min_samples (RFC 0005 §2.3): no default is filled.
     if promotion or (primary_or_burn and decision.get("method") == "exact_count_v1"):
         decision.setdefault("min_samples", 1)
     if promotion and decision.get("method") == "clopper_pearson_rational_v2":
@@ -180,6 +181,9 @@ def _merge_rules(
                 raise RuntimeClosedError("runtime_incompatible_replacement", path=[*rule_path, field])
         if ("rule" in br.get("trigger", {}) or "rule" in orr.get("trigger", {})) and br.get("trigger") != orr.get("trigger"):
             raise RuntimeClosedError("runtime_incompatible_replacement", path=[*rule_path, "trigger"])
+        if br.get("persist") != orr.get("persist"):
+            # Both persistence coordinates, and its presence, are immutable (RFC 0005 §2.5).
+            raise RuntimeClosedError("runtime_incompatible_replacement", path=[*rule_path, "persist"])
         for key in ("trigger", "do", "target", "fallback", "on_check_error"):
             if orr.get(key) != br.get(key):
                 raise RuntimeClosedError("runtime_overlay_weakens", path=[*rule_path, key])
@@ -262,6 +266,15 @@ def _meet_requirement_pair(
         if mode != "meet" and r_o > r_b:
             raise RuntimeClosedError(weaken_code, path=[*path, "max_rate"])
         merged["max_rate"] = _fraction_to_yaml_number(min(r_b, r_o))
+    elif kind == "aggregate_bound":
+        # Identity fixes the direction; a lower lte or a higher gte is the tighter bound.
+        direction = "lte" if "lte" in base_req["bound"] else "gte"
+        b_b, b_o = to_fraction(base_req["bound"][direction]), to_fraction(over_req["bound"][direction])
+        weaker = b_o > b_b if direction == "lte" else b_o < b_b
+        if mode != "meet" and weaker:
+            raise RuntimeClosedError(weaken_code, path=[*path, "bound", direction])
+        tighter = min(b_b, b_o) if direction == "lte" else max(b_b, b_o)
+        merged["bound"] = {direction: _fraction_to_yaml_number(tighter)}
     elif kind == "recovery_time":
         w_b = int(base_req["within_hours"])
         w_o = int(over_req["within_hours"])

@@ -170,7 +170,7 @@ def test_v1_refuses_version_14_even_without_new_constructs(kind):
     assert list(factory(artifact['format']).iter_errors(artifact))
 
 
-@pytest.mark.parametrize('tag', ['', 'tvl-runtime-contract/3', 'tvl-runtime-local/2', None, []])
+@pytest.mark.parametrize('tag', ['', 'tvl-runtime-contract/3', 'tvl-runtime-contract/4', 'tvl-runtime-local/2', None, []])
 def test_projected_contract_refuses_unknown_or_malformed_tags(tag):
     contract, _ = compile_case()
     contract['format'] = tag
@@ -178,7 +178,7 @@ def test_projected_contract_refuses_unknown_or_malformed_tags(tag):
         validate_projected_contract(contract)
 
 
-@pytest.mark.parametrize('tag', ['', 'tvl-runtime-local/3', 'tvl-runtime-contract/2', None, []])
+@pytest.mark.parametrize('tag', ['', 'tvl-runtime-local/4', 'tvl-runtime-contract/2', None, []])
 def test_local_schema_dispatch_refuses_unknown_or_malformed_tags(tag):
     with pytest.raises(RuntimeClosedError, match='runtime_invalid_profile'):
         runtime_local_validator(tag)

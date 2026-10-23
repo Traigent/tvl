@@ -1,0 +1,69 @@
+case_format: tvl-runtime-case/1
+family: lints
+description: the metric registry is sealed
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#23
+- formalization/rfc-0005-persistence-and-census-aggregates.md#26
+module:
+  tvl:
+    module: conformance.runtime
+  tvl_version: '1.5'
+  environment:
+    snapshot_id: '2026-10-16T00:00:00Z'
+  evaluation_set:
+    dataset: test://runtime
+  tvars:
+  - name: model_choice
+    type: enum[str]
+    domain:
+    - small
+    - large
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: daily_spend
+    kind: aggregate_bound
+    unit: invocation
+    aggregate:
+      op: sum
+      metric: latency
+      source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    bound:
+      lte: 50
+  monitors:
+  - name: daily_spend_prod
+    requirement: daily_spend
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+    window:
+      tumbling_hours: 24
+      grace_minutes: 30
+    decision:
+      method: exact_aggregate_v1
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 72
+  responses:
+  - name: repair
+    rules:
+    - id: page
+      trigger:
+        monitor: daily_spend_prod
+        event: episode_opened
+      do: notify
+      severity: critical
+input:
+  kind: lint
+  operation: validate
+expected:
+  diagnostics:
+  - code: runtime_unknown_kind
+    severity: error

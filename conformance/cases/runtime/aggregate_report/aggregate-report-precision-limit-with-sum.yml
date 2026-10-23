@@ -1,0 +1,48 @@
+case_format: tvl-runtime-case/1
+family: aggregate_report
+description: unknown_reason cannot accompany a sum
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#25
+module: {}
+input:
+  kind: report
+  report:
+    format: tvl-runtime-report/2
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_ref: ref_monitor
+    monitor_revision: rev1
+    window_start_ms: 0
+    window_end_ms: 86400000
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    counts:
+      selected: 4
+      reported: 4
+      dropped: 0
+      member_count: 3
+      contribution_count: 3
+      unknown_membership: 0
+      unplaceable: 0
+      excluded: 1
+      missing_value: 0
+      invalid_value: 0
+    sum: '12.5'
+    coverage:
+      census: true
+      unit_histories_complete: true
+      producer_set_complete: true
+      producer_sequences_contiguous: true
+      response_deadlines_covered: true
+      watermarks_through_ms: 88200000
+    units_commitment: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    sdk_version: 1.5.0
+    evidence_tier: client_attested
+    unknown_reason: aggregate_precision_limit
+  binding:
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_ref: ref_monitor
+    monitor_revision: rev1
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    window_hours: 24
+    grace_ms: 1800000
+expected:
+  error: runtime_report_numeric

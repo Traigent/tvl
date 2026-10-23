@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Mapping, Sequence, Set, Tuple
 from tvl.canonical import canonical_json_digest
 from tvl.lints import lint_module, lint_pack
 from tvl.measurement import prepare_measurement_bundle
-from tvl.runtime_projection import has_projected_reactive_construct
+from tvl.runtime_projection import has_projected_15_construct, has_projected_reactive_construct
 from tvl.runtime import (
     RuntimeClosedError, compose_runtime_documents, erase_runtime_extensions,
     from_backend_revision, join_promotion_decisions, minimal_decimal_str,
@@ -61,7 +61,7 @@ def run_runtime_conformance_case(case, *, case_path=None):
                f"Notification sequence mismatch: actual={actual!r}, expected={expected['notifications']!r}")
         return
     if kind == "toolchain":
-        if inp.get("reader") == "pre_13":
+        if inp.get("reader") in {"pre_13", "pre_15"}:
             tool_keys = {"exit_code", "error"}
         elif inp.get("entrypoint") == "tvl-compile-runtime":
             tool_keys = {"exit_code", "composed_fields", "projected_fields"}
@@ -70,6 +70,9 @@ def run_runtime_conformance_case(case, *, case_path=None):
         else:
             tool_keys = {"exit_code", "error", "construct", "document_kind"}
         _check(set(expected) <= tool_keys, "Assertion is not supported by this language command")
+    if kind in {"persistence", "aggregate", "report", "commitment"}:
+        _run_rfc0005_case(kind, inp, expected)
+        return
     if kind == "schema":
         from tvl.schema import runtime_report_validator
         _check((not list(runtime_report_validator().iter_errors(inp["instance"]))) is expected["schema_valid"], "Report schema mismatch")
@@ -135,9 +138,10 @@ def run_runtime_conformance_case(case, *, case_path=None):
             from tvl.conformance_helpers import inject_projection_fields
             inject_projection_fields(hosted_decls, inp.get("requested_fields"))
             has_reactive_construct = has_projected_reactive_construct(hosted_decls)
+            has_15_construct = has_projected_15_construct(hosted_decls)
             contract_slice = {
-                "format": inp.get("contract_format", "tvl-runtime-contract/2" if has_reactive_construct else "tvl-runtime-contract/1"),
-                "tvl_version": inp.get("contract_version", "1.4" if has_reactive_construct else "1.3"),
+                "format": inp.get("contract_format", "tvl-runtime-contract/3" if has_15_construct else ("tvl-runtime-contract/2" if has_reactive_construct else "tvl-runtime-contract/1")),
+                "tvl_version": inp.get("contract_version", "1.5" if has_15_construct else ("1.4" if has_reactive_construct else "1.3")),
                 "document": "pack" if "pack" in case else "module",
                 "declarations": hosted_decls,
                 "backend_profiles": bp_entries,
@@ -302,10 +306,16 @@ def _run_toolchain_conformance_case(case: Mapping[str, Any]) -> None:
     reader = str(inp["reader"])
     args_list = [str(a) for a in (inp.get("arguments") or [])]
 
-    if reader == "pre_13":
+    if reader in {"pre_13", "pre_15"}:
         raw_schema = copy.deepcopy(load_schema("tvl.schema.json"))
-        for k in ("requirements", "monitors", "responses"):
-            raw_schema.get("properties", {}).pop(k, None)
+        if reader == "pre_13":
+            for k in ("requirements", "monitors", "responses"):
+                raw_schema.get("properties", {}).pop(k, None)
+        else:
+            # A TVL 1.4 reader: closed shapes without the RFC 0005 keys refuse them.
+            for definition, keys in (("RequirementDecl", ("aggregate", "bound")), ("RuleDecl", ("persist",))):
+                for key in keys:
+                    raw_schema["$defs"][definition]["properties"].pop(key)
         v_old = Draft202012Validator(raw_schema)
         doc = safe_load(inp["document_yaml"]) if "document_yaml" in inp else case.get("module")
         errs = list(v_old.iter_errors(doc))
@@ -468,6 +478,78 @@ LANGUAGE_FAMILY_GLOBS = {'language/codec': ('latency_roundtrip/*.yml',),
 _ALLOWED_EXPECTED_KEYS_BY_KIND["schema"] = {"schema_valid"}
 LANGUAGE_FAMILY_GLOBS["language/report_shape"] = ("report_schema/*.yml",)
 LANGUAGE_FAMILY_GLOBS["language/semantic_trace"] = ("semantic_traces/*.yml",)
+_ALLOWED_EXPECTED_KEYS_BY_KIND.update({
+    "persistence": {"persistence"},
+    "aggregate": {"aggregate"},
+    "report": {"accepted", "error"},
+    "commitment": {"commitment"},
+})
+LANGUAGE_FAMILY_GLOBS["language/persistence"] = ("persistence/*.yml",)
+LANGUAGE_FAMILY_GLOBS["language/aggregate"] = ("aggregate/*.yml",)
+LANGUAGE_FAMILY_GLOBS["language/aggregate_report"] = ("aggregate_report/*.yml",)
+
+
+def _subset(expected: Any, actual: Any, where: str = "") -> None:
+    """Every asserted key must match; keys the case does not assert are not compared."""
+    if isinstance(expected, Mapping):
+        _check(isinstance(actual, Mapping), f"{where}: expected a mapping")
+        for key, value in expected.items():
+            _check(key in actual, f"{where}/{key}: missing")
+            _subset(value, actual[key], f"{where}/{key}")
+    elif isinstance(expected, list):
+        _check(isinstance(actual, list) and len(actual) == len(expected), f"{where}: list length differs")
+        for index, (want, got) in enumerate(zip(expected, actual)):
+            _subset(want, got, f"{where}/{index}")
+    else:
+        _check(type(expected) is type(actual) and expected == actual, f"{where}: {actual!r} != {expected!r}")
+
+
+def _run_rfc0005_case(kind: str, inp: Mapping[str, Any], expected: Mapping[str, Any]) -> None:
+    """RFC 0005 recorded-history relations (reference relations, not an evaluator)."""
+    import hashlib
+    from tvl.runtime_aggregate import (
+        aggregate_verdict, persistence_decisions, persistence_result, persistence_slots,
+        units_commitment_v1, units_commitment_v2, validate_report_v2,
+    )
+    if kind == "persistence":
+        _check(set(inp) <= {"kind", "persist", "rule_event", "identity", "windows", "events", "index"}, "Unknown persistence input key")
+        persist, identity, windows = inp["persist"], inp["identity"], inp["windows"]
+        if "events" in inp:
+            actual: dict[str, Any] = {"decisions": persistence_decisions(persist, inp["rule_event"], windows, inp["events"], identity)}
+            if "index" in inp:
+                slots = persistence_slots(persist["of_last"], inp["index"], windows, identity)
+                actual["result"] = persistence_result(persist["breached_in"], persist["of_last"], [s["verdict"] for s in slots])[0]
+        else:
+            slots = persistence_slots(persist["of_last"], inp["index"], windows, identity)
+            result, reason = persistence_result(persist["breached_in"], persist["of_last"], [s["verdict"] for s in slots])
+            actual = {"result": result, "slots": slots}
+            if reason:
+                actual["reason"] = reason
+        _subset(expected["persistence"], actual, "persistence")
+        return
+    if kind == "aggregate":
+        _check(set(inp) == {"kind", "aggregate"}, "Unknown aggregate input key")
+        _subset(expected["aggregate"], aggregate_verdict(inp["aggregate"]), "aggregate")
+        return
+    if kind == "report":
+        _check(set(inp) == {"kind", "report", "binding"}, "Unknown report input key")
+        try:
+            validate_report_v2(inp["report"], inp["binding"])
+        except RuntimeClosedError as exc:
+            _check(expected == {"error": exc.code}, f"Unexpected error {exc.code}")
+            return
+        _check(expected == {"accepted": True}, "Report accepted but an error was expected")
+        return
+    _check(set(inp) <= {"kind", "version", "secret_hex", "report", "units"}, "Unknown commitment input key")
+    if inp["version"] == 1:
+        digest = units_commitment_v1(inp["units"])
+        # Independent recomputation of the report/1 rule (RFC 0003 11.4.3), not via the same function.
+        listed = sorted(({"unit_id": u["unit_id"], "class": u["class"]} for u in inp["units"]), key=lambda u: u["unit_id"])
+        reference = hashlib.sha256((json.dumps(listed, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode()).hexdigest()
+        _check(digest == reference, "report/1 digest changed")
+    else:
+        digest = units_commitment_v2(bytes.fromhex(inp["secret_hex"]), inp["report"], inp["units"])
+    _check(digest == expected["commitment"], "Commitment mismatch")
 
 
 def run_language_conformance_families(cases_root=None):

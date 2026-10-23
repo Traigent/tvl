@@ -1,0 +1,72 @@
+case_format: tvl-runtime-case/1
+family: persistence
+description: a fresh continuation may qualify the undelivered occurrence 0; no new occurrence is allocated
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#22
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: persistence
+  persist:
+    breached_in: 2
+    of_last: 3
+  identity:
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+  windows:
+  - index: 0
+    verdict: UNKNOWN
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+  - index: 1
+    verdict: MET
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+  - index: 2
+    verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+  - index: 3
+    verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+  rule_event: episode_continued
+  events:
+  - id: e1
+    window: 2
+    event: episode_continued
+  - id: e2
+    window: 3
+    event: episode_continued
+expected:
+  persistence:
+    decisions:
+    - event_id: e1
+      occurrence: 0
+      result: UNKNOWN
+      decision: withheld
+      delivered: false
+    - event_id: e2
+      occurrence: 0
+      result: BREACHED
+      decision: qualified
+      delivered: true

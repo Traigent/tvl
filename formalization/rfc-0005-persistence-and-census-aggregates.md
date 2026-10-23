@@ -61,8 +61,10 @@ monitors are not eligible. Neither repeat coordinate (`repeat_after_hours`, `max
 The source is exactly `trigger.monitor`, not a requirement lookup or a list. The counted slots are n
 consecutive tumbling windows ending with the window that caused the event, ordered by window start.
 All records must have the same requirement, monitor, agent, environment, contract digest, monitor revision
-and schedule. A slot counts once. Use finalized verdicts only. Missing, unavailable, not-yet-active or
-incompatible-revision slots occupy their position as UNKNOWN; never skip them for older decided windows.
+and schedule. A missing contract digest, monitor revision, agent, environment or schedule identity,
+or an absent `available` field, makes the slot UNKNOWN(`persistence_history_gap`). A slot counts once.
+Use finalized verdicts only. Missing, unavailable, not-yet-active or incompatible slots occupy their
+position as UNKNOWN; never skip them for older decided windows.
 A contract or monitor revision starts fresh history; a statistical horizon boundary alone does not.
 Tightening a bound changes the contract digest (`R3:1663,1675–1680`) and resets history: conservative
 safety under the new bound takes priority over notification continuity across revisions.
@@ -83,10 +85,12 @@ k=n requires consecutive breaches; k=n=1 leaves eligibility at an allowed trigge
 
 At each fresh allowed source event, evaluate `persist` customer-side: BREACHED qualifies the occurrence,
 MET suppresses it, UNKNOWN withholds it. The initial trigger counts as occurrence 0 even when withheld
-or suppressed. No delivery is queued merely for a later state change. A later fresh `episode_continued`
-may reconsider that same undelivered occurrence; without a repeat, no new occurrence number is allocated
-(`S:1878,2111–2115`). A delivered occurrence is never delivered again. Exact event replays and delivery
-retries retain their original decision and occurrence identity. Record slot identities, the result and
+or suppressed. No delivery is queued merely for a later state change. The rule keeps its original
+trigger, as required by formal semantics §13.9: an `episode_opened` rule is not delivered on a later
+`episode_continued`. An `episode_continued` rule evaluates at each fresh continuation and may reconsider
+its undelivered occurrence; without a repeat, no new occurrence number is allocated. A delivered
+occurrence is never delivered again. Exact event replays and delivery retries retain their original
+decision and occurrence identity. Record slot identities, the result and
 every constituent UNKNOWN reason customer-side only; absent slots use `persistence_history_gap`.
 
 After qualification, `only_while` and `unless` resolve exactly as before: UNDECIDED never suppresses
@@ -166,19 +170,24 @@ target eligibility, suspend approval and recovery rules remain unchanged (`S:185
 
 Keep attribution, environment and start-time placement from `S:1682`: a unit starting exactly at a window's
 end belongs to the next window. Omitted `among` selects all placed in-scope units; otherwise use the existing
-checker membership semantics (`S:1659`). Known false membership is excluded; unknown membership is unresolved.
+checker membership semantics (`S:1659`). Membership must be exactly boolean `true`, boolean `false` or
+the string `"unknown"`; any other value, including numeric `1`, is an invalid record and makes the census
+incomplete. Known false membership is excluded; unknown membership is unresolved.
 Include completed, failed and rejected units; never silently select only successful units.
 
 Deduplicate locally by (agent, environment, unit kind, stable SDK unit identifier). An identical replay
-contributes once. Conflicting duplicate histories or values prevent completeness. Every population member
-needs one valid contribution; a missing or invalid value is not zero. Unresolved attribution that could
+contributes once. Compare contribution values after exact decimal parsing: `"1"` and `"1.0"` are equal
+values and do not conflict. Conflicting duplicate histories or values prevent completeness. Every
+population member needs one valid contribution; a missing or invalid value is not zero. Unresolved attribution that could
 belong to this population prevents completeness; unrelated out-of-scope units do not join it.
 
 Complete means a census of the declared **observed** universe: every selected unit accounted for, membership
 and placement resolved, all relevant histories terminal and complete, the producer set and sequences
 complete, watermarks through `due(w)`, no dropped units, and one valid contribution per member. Source
-attestations must establish this; conservation counts alone do not. This is not a claim about unobserved
-traffic, all invoice charges, scorer correctness or expected future quality.
+attestations must establish this; conservation counts alone do not. Missing or null coverage makes the
+census incomplete, yielding `UNKNOWN(incomplete)`. Units arriving after due make the census incomplete
+unless coverage attests otherwise; they must not be silently discarded to produce MET. This is not a
+claim about unobserved traffic, all invoice charges, scorer correctness or expected future quality.
 
 `due(w) = end(w) + grace` follows `S:1682,1750`. Before due, return `UNKNOWN(aggregate_pending)`.
 At due, evidence arriving by due is final. Incompleteness yields `UNKNOWN(incomplete)`, even
@@ -191,8 +200,10 @@ withdraw delivered notifications or create another statistical look. Exact repla
 lossless finite decimal encodings. Sum with exact scaled integers or rationals, without intermediate
 rounding. For mean, compare the exact sum with `member_count × bound`; never compare a rounded quotient.
 NaN, infinity, negative cost and scores outside `[0,1]` are invalid contributions and make coverage
-incomplete. If declared precision/resource bounds prevent exact arithmetic on otherwise valid evidence,
-return `UNKNOWN(aggregate_precision_limit)`. No tolerance or round-to-pass rule is allowed.
+incomplete. Check numeric encoding and precision/resource limits before conversion to exact rationals.
+If these limits prevent exact arithmetic on otherwise valid evidence, including overlong numeric strings,
+return `UNKNOWN(aggregate_precision_limit)` rather than raising a conversion error.
+No tolerance or round-to-pass rule is allowed.
 
 ### 2.5 Composition and exchanged documents
 
@@ -219,6 +230,7 @@ Aggregate reports use proposed `tvl-runtime-report/2`, a closed record with exac
 | `window_start_ms`, `window_end_ms`, `source_digest` | aligned window and registered source commitment |
 | `counts` | natural numbers: selected, reported, dropped, member_count, contribution_count, unknown_membership, unplaceable, excluded, missing_value, invalid_value |
 | `sum` | optional minimal exact decimal string; required for complete nonempty evidence when arithmetic succeeds |
+| `unknown_reason` | optional closed enum with the single value `aggregate_precision_limit` |
 | `coverage` | existing closed coverage fields/types (`R3:1729`), all flags true and watermark ≥ due for completeness |
 | `units_commitment` | lowercase hex HMAC-SHA-256 of the canonical payload defined below, under a customer-held secret |
 | `sdk_version`, `evidence_tier` | existing version type; exactly `client_attested` |
@@ -228,9 +240,16 @@ The disjoint count partitions satisfy `selected = reported + dropped`,
 `member_count = contribution_count + missing_value + invalid_value`. A member with multiple defects is
 counted once: missing value takes precedence over invalid value. Require the source binding and count
 identities on every report. A mean is reconstructed from sum/count; no rounded mean field is exported.
+For complete nonempty evidence, `sum` may be omitted only with
+`unknown_reason: "aggregate_precision_limit"`, yielding `UNKNOWN(aggregate_precision_limit)`;
+otherwise its omission is `runtime_report_numeric`. When `member_count` is zero, `sum` must be absent
+or `"0"`; a nonzero sum is `runtime_report_numeric`. The entire sum string must match the minimal
+decimal encoding; trailing characters, including a newline after `12.5`, are `runtime_report_numeric`.
 The commitment payload binds `contract_digest`, `monitor_ref`, `monitor_revision`, both window times
-and `source_digest`, plus the deduplicated unit list sorted by canonical unit key. Each entry includes
-the full local key (§2.4), membership, canonical exact value or missing/invalid state, and source digest.
+and `source_digest`, plus the deduplicated unit list sorted in ascending order by the UTF-8 bytes of
+the canonical JSON of each unit key object `{agent, environment, unit_id, unit_kind}`, with canonical
+object key order. Each entry includes the full local key (§2.4), membership, canonical exact value or
+missing/invalid state, and source digest.
 Use canonical JSON (`R3:1656–1658`) with decimal values as minimal strings and a random 256-bit secret
 held only customer-side. This keyed commitment replaces the unkeyed construction only for report/2;
 report/1's `{unit_id, class}` digest (`R3:1732`) is unchanged.
@@ -263,7 +282,7 @@ Exactly one bound key is a variant rule. The following codes are proposed or exp
 | `runtime_persistence_out_of_range` | E | integer k/n outside `1 ≤ k ≤ n ≤ 168` |
 | `runtime_invalid_persistence` | E | wrong source role/event, or either repeat coordinate on a persistence rule |
 | `runtime_aggregate_bound_out_of_range` | E | bound outside §2.3's numeric domains |
-| `runtime_report_numeric` | E | malformed/noncanonical or out-of-domain report sum, including a negative sum |
+| `runtime_report_numeric` | E | malformed/noncanonical or out-of-domain sum; nonzero sum for zero members; missing sum for complete nonempty evidence without `unknown_reason: "aggregate_precision_limit"` |
 | `runtime_notify_only` | E | extends `R4:244` to `persist` on any action other than `notify` |
 | `runtime_invalid_profile` | E | aggregate variant field missing/forbidden, both/no bound directions, or incompatible monitor tuple |
 | `runtime_unknown_kind` | E | unknown kind, operator, metric or method |
@@ -331,7 +350,7 @@ Semantic cases record histories and expected decisions; they do not imply an eva
 | `persist-startup-definite.yml`; `persist-startup-undecided.yml` | missing slots remain UNKNOWN; decide only when completions agree |
 | `persist-gap-not-skipped.yml`; `persist-revision-reset.yml` | placeholder persistence_history_gap; never substitute older verdicts |
 | `persist-horizon-crossing.yml`; `persist-replay.yml` | original charges retained; no duplicate occurrence or recomputation |
-| `persist-withheld-continued.yml`; `persist-delivered-continued.yml` | fresh continuation may qualify undelivered occurrence 0; delivered occurrence never redelivered |
+| `persist-withheld-continued.yml`; `persist-delivered-continued.yml` | fresh continuation may qualify undelivered occurrence 0 only for an `episode_continued` rule; delivered occurrence never redelivered |
 | `persist-local-projection.yml`; `aggregate-bound-history-reset.yml` | result/reasons stay local; authored integers export; tightening changes digest and resets history |
 | `persist-bbm-no-event.yml`; `persist-guards-undecided.yml` | no current breach notification; qualified event keeps 1.4 guard resolution |
 | `persist-range-zero.yml`; `persist-k-above-n.yml`; `persist-n169.yml` | runtime_persistence_out_of_range |

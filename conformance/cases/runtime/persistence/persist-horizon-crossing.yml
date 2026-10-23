@@ -1,0 +1,57 @@
+case_format: tvl-runtime-case/1
+family: persistence
+description: a statistical horizon boundary alone does not reset history; original charges are retained
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#22
+- formalization/rfc-0005-persistence-and-census-aggregates.md#4
+module: {}
+input:
+  kind: persistence
+  persist:
+    breached_in: 2
+    of_last: 3
+  identity:
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+  windows:
+  - index: 0
+    verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+    horizon: h1
+    charge: '0.0001'
+  - index: 1
+    verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+    horizon: h1
+    charge: '0.0002'
+  - index: 2
+    verdict: MET
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
+    horizon: h2
+    charge: '0.0003'
+  index: 2
+expected:
+  persistence:
+    result: BREACHED
+    slots:
+    - charge: '0.0001'
+    - charge: '0.0002'
+    - charge: '0.0003'

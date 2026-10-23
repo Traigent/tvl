@@ -3182,7 +3182,13 @@ _CODE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 _CUSTOMER_CHECKER_RE = re.compile(r"^customer:[A-Za-z_][A-Za-z0-9_]*$")
 
-_REQ_KINDS = {"rate_bound", "zero_tolerance", "recovery_time", "evidence_liveness"}
+_REQ_KINDS = {"rate_bound", "zero_tolerance", "recovery_time", "evidence_liveness", "aggregate_bound"}
+_AGG_OPS = {"sum", "mean"}
+_AGG_METRICS = {"cost_usd", "score"}
+_AGG_BOUNDS = ("lte", "gte")
+_PRIMARY_ROLES = {"primary_rate", "primary_zero", "primary_aggregate"}
+_PERSIST_EVENTS = {"episode_opened", "episode_continued"}
+_PERSIST_MAX = 168
 _UNIT_KINDS = {"trace", "invocation"}
 _ALL_UNIT_KINDS = {"trace", "invocation", "episode", "window"}
 _METRICS = {"wall_clock_latency_ms", "cost_usd", "total_tokens", "tool_calls"}
@@ -3215,7 +3221,7 @@ _SOURCES = {"backend_trace_metadata", "customer_side", "evaluation_set", "episod
 _ATTRIBUTIONS = {"agent_key_exact_v1"}
 _RESOLUTIONS = {"terminal_status_v1"}
 _SAMPLING_MODES = {"head_sampled_declared", "hash_bernoulli_committed_v1"}
-_METHODS = {"clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1"}
+_METHODS = {"clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1", "exact_aggregate_v1"}
 _MODELS = {"iid_bernoulli_within_window_v1"}
 _HOURS_DIVISORS = {1, 2, 3, 4, 6, 8, 12, 24}
 _BACKEND_HOURS = {1, 3, 6, 12, 24}
@@ -3315,12 +3321,12 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
         issues.append(
             {
                 "code": "runtime_version_required",
-                "message": "Runtime constructs and packs require tvl_version: '1.3' (or '1.4' with RFC 0004 constructs)",
+                "message": "Runtime constructs and packs require tvl_version: '1.3' (or '1.4' with RFC 0004 constructs, '1.5' with RFC 0005 constructs)",
                 "path": ["tvl_version"],
                 "severity": "error",
             }
         )
-    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") not in {"1.3", "1.4"}:
+    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") not in {"1.3", "1.4", "1.5"}:
         issues.append(
             {
                 "code": "declared_version_below_constructs",
@@ -3336,6 +3342,32 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
             "message": 'Reactive outcomes and guards require tvl_version: "1.4"',
             "path": ["tvl_version"], "severity": "error",
         })
+    elif doc.get("tvl_version") in {"1.3", "1.4"} and _uses_15_constructs(doc):
+        issues.append({
+            "code": "declared_version_below_constructs",
+            "message": 'Breach persistence and census aggregates require tvl_version: "1.5"',
+            "path": ["tvl_version"], "severity": "error",
+        })
+
+
+def _uses_15_constructs(doc: Dict[str, Any]) -> bool:
+    """RFC 0005 §2.1: presence-based opt-in for breach persistence and census aggregates."""
+    requirements = doc.get("requirements")
+    for req in requirements if isinstance(requirements, list) else []:
+        if isinstance(req, dict) and (req.get("kind") == "aggregate_bound" or "aggregate" in req or "bound" in req):
+            return True
+    monitors = doc.get("monitors")
+    for mon in monitors if isinstance(monitors, list) else []:
+        decision = mon.get("decision") if isinstance(mon, dict) else None
+        if isinstance(decision, dict) and decision.get("method") == "exact_aggregate_v1":
+            return True
+    responses = doc.get("responses")
+    for resp in responses if isinstance(responses, list) else []:
+        if not isinstance(resp, dict) or not isinstance(resp.get("rules"), list):
+            continue
+        if any(isinstance(rule, dict) and "persist" in rule for rule in resp["rules"]):
+            return True
+    return False
 
 
 def _uses_14_constructs(doc: Dict[str, Any]) -> bool:
@@ -4107,6 +4139,56 @@ def _lint_requirements(
                         "severity": "error",
                     }
                 )
+        elif kind == "aggregate_bound":
+            _lint_aggregate_requirement(req, path, issues, checker_registry=checker_registry)
+
+
+def _lint_aggregate_requirement(
+    req: Dict[str, Any],
+    path: List[Any],
+    issues: List[Issue],
+    *,
+    checker_registry: Optional[Dict[str, Sequence[str]]] = None,
+) -> None:
+    """RFC 0005 §2.3: census aggregate requirement variant checks."""
+
+    def error(code: str, message: str, subpath: List[Any]) -> None:
+        issues.append({"code": code, "message": message, "path": path + subpath, "severity": "error"})
+
+    if req.get("unit") not in _UNIT_KINDS:
+        error("runtime_invalid_profile", "aggregate_bound unit must be 'trace' or 'invocation'", ["unit"])
+    req_keys = {"name", "kind", "unit", "aggregate", "bound"}
+    if not req_keys <= set(req) <= req_keys | {"among"}:
+        error("runtime_invalid_profile", "aggregate_bound has missing or forbidden fields", [])
+    if "among" in req:
+        _lint_predicate(req["among"], path + ["among"], issues, checker_only=True, checker_registry=checker_registry)
+    aggregate = req.get("aggregate")
+    op = metric = None
+    if "aggregate" in req:
+        if not isinstance(aggregate, dict) or "source_digest" not in aggregate or not {"op", "metric"} <= set(aggregate):
+            error("runtime_invalid_profile", "aggregate requires op, metric and source_digest", ["aggregate"])
+        else:
+            op, metric = aggregate.get("op"), aggregate.get("metric")
+            if not isinstance(op, str) or op not in _AGG_OPS:
+                error("runtime_unknown_kind", "Unknown aggregate operator", ["aggregate", "op"])
+                op = None
+            if not isinstance(metric, str) or metric not in _AGG_METRICS:
+                error("runtime_unknown_kind", "Unknown aggregate metric", ["aggregate", "metric"])
+                metric = None
+            digest = aggregate.get("source_digest")
+            if not isinstance(digest, str) or not _FINGERPRINT_RE.match(digest):
+                error("runtime_invalid_profile", "source_digest must be a 64-character lowercase hexadecimal digest", ["aggregate", "source_digest"])
+    if "bound" in req:
+        bound = req.get("bound")
+        if not isinstance(bound, dict) or sum(key in bound for key in _AGG_BOUNDS) != 1 or set(bound) - set(_AGG_BOUNDS):
+            error("runtime_invalid_profile", "bound requires exactly one of lte or gte", ["bound"])
+        else:
+            direction = next(key for key in _AGG_BOUNDS if key in bound)
+            value = _to_exact_fraction(bound[direction])
+            if value is None:
+                error("runtime_invalid_profile", "bound must be an exact decimal number", ["bound", direction])
+            elif value < 0 or (op == "mean" and metric == "score" and value > 1):
+                error("runtime_aggregate_bound_out_of_range", "bound is outside its numeric domain", ["bound", direction])
 
 
 def _predicate_canonical(pred: Optional[Dict[str, Any]]) -> Any:
@@ -4174,6 +4256,20 @@ def _requirement_identity(req: Dict[str, Any]) -> Any:
             _predicate_canonical(req.get("among")),
             _predicate_canonical(req.get("violation")),
         )
+    if kind == "aggregate_bound":
+        aggregate = req.get("aggregate") if isinstance(req.get("aggregate"), dict) else {}
+        bound = req.get("bound") if isinstance(req.get("bound"), dict) else {}
+        # The numeric bound is excluded: overlays may tighten it (RFC 0005 §2.5).
+        direction = next((key for key in _AGG_BOUNDS if key in bound), None)
+        return (
+            kind,
+            req.get("unit"),
+            _predicate_canonical(req.get("among")),
+            aggregate.get("op"),
+            aggregate.get("metric"),
+            aggregate.get("source_digest"),
+            direction,
+        )
     return (kind, req.get("unit"), req.get("of"))
 
 
@@ -4208,6 +4304,8 @@ def _monitor_role(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> str:
         return "recovery"
     if kind == "evidence_liveness":
         return "liveness"
+    if kind == "aggregate_bound":
+        return "primary_aggregate"
     decision = mon.get("decision") or {}
     if isinstance(decision, dict) and "threshold_factor" in decision:
         return "burn"
@@ -4602,6 +4700,18 @@ def _lint_monitors(
         elif req_kind == "evidence_liveness":
             if source != "windows" or phase != "runtime" or method != "exact_count_v1":
                 compat_ok = False
+        elif req_kind == "aggregate_bound":
+            if source != "customer_side" or phase != "runtime" or method != "exact_aggregate_v1":
+                compat_ok = False
+        if req_kind == "aggregate_bound" and is_backend:
+            issues.append(
+                {
+                    "code": "runtime_invalid_profile",
+                    "message": "aggregate_bound monitors cannot declare a profile",
+                    "path": path + ["profile"],
+                    "severity": "error",
+                }
+            )
         if not compat_ok and not is_backend:
             issues.append(
                 {
@@ -4681,6 +4791,12 @@ def _lint_monitors(
             forbid_fields(decision, ["decision"], ("confidence",))
             require_fields(window, ["window"], ("tumbling_hours", "grace_minutes"))
             require_fields(decision, ["decision"], ("false_alarm_budget", "horizon_days", "min_samples", "max_unresolved_fraction", "threshold_factor"))
+        elif role == "primary_aggregate":
+            require_fields(window, ["window"], ("tumbling_hours", "grace_minutes"))
+            require_fields(episode, ["episode"], ("closure_windows", "closure_max_age_hours"))
+            forbid_fields(decision, ["decision"], ("model", "confidence", "false_alarm_budget", "horizon_days", "min_samples", "max_unresolved_fraction", "threshold_factor"))
+            forbid_fields(evidence, ["evidence"], ("sampling",))
+            forbid_fields(mon, [], ("profile", "limits", "single_producer"))
         elif role == "primary_zero":
             require_fields(window, ["window"], ("tumbling_hours", "grace_minutes"))
             require_fields(episode, ["episode"], ("closure_windows", "closure_max_age_hours"))
@@ -4918,7 +5034,7 @@ def _lint_monitors(
 
         # Closure reachability (§5.6)
         if (
-            role in {"primary_rate", "primary_zero"}
+            role in _PRIMARY_ROLES
             and w_hours is not None
             and grace_min is not None
             and c_windows is not None
@@ -5080,7 +5196,7 @@ def _lint_monitors(
         target_req = reqs_by_name.get(target_mon.get("requirement", ""))
         target_role = _monitor_role(target_mon, target_req)
         if r_kind == "recovery_time":
-            if target_role not in {"primary_rate", "primary_zero"}:
+            if target_role not in _PRIMARY_ROLES:
                 issues.append(
                     {
                         "code": "runtime_ref_kind_mismatch",
@@ -5106,7 +5222,7 @@ def _lint_monitors(
                             }
                         )
         elif r_kind == "evidence_liveness":
-            if target_role not in {"primary_rate", "primary_zero", "burn"}:
+            if target_role not in _PRIMARY_ROLES | {"burn"}:
                 issues.append(
                     {
                         "code": "runtime_ref_kind_mismatch",
@@ -5158,7 +5274,7 @@ def _lint_monitors(
         if req is None:
             continue
         role = _monitor_role(mon, req)
-        if role in {"primary_rate", "primary_zero"} and m_name not in liveness_covered_monitors:
+        if role in _PRIMARY_ROLES and m_name not in liveness_covered_monitors:
             issues.append(
                 {
                     "code": "runtime_liveness_missing",
@@ -5171,7 +5287,7 @@ def _lint_monitors(
 
 def _emitted_events_for_monitor(mon: Dict[str, Any], req: Optional[Dict[str, Any]]) -> Set[str]:
     role = _monitor_role(mon, req)
-    if role in {"primary_rate", "primary_zero"}:
+    if role in _PRIMARY_ROLES:
         events = {
             "unknown_for",
             "episode_opened",
@@ -5181,7 +5297,7 @@ def _emitted_events_for_monitor(mon: Dict[str, Any], req: Optional[Dict[str, Any
             "episode_withdrawn",
         }
         source = (mon.get("evidence") or {}).get("source")
-        if source == "customer_side":
+        if source == "customer_side" and role != "primary_aggregate":
             events.add("unit_violation")
         return events
     if role == "burn":
@@ -5347,7 +5463,7 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 else:
                     t_req = reqs_by_name.get(t_mon.get("requirement", ""))
                     if isinstance(t_event, str) and t_event in _TRIGGER_EVENTS:
-                        if t_event == "unknown_for" and _monitor_role(t_mon, t_req) not in {"primary_rate", "primary_zero"}:
+                        if t_event == "unknown_for" and _monitor_role(t_mon, t_req) not in _PRIMARY_ROLES:
                             issues.append({"code": "runtime_invalid_ladder", "message": "unknown_for requires a primary runtime monitor",
                                            "path": path + ["trigger", "event"], "severity": "error"})
                         elif t_event not in _emitted_events_for_monitor(t_mon, t_req):
@@ -5397,6 +5513,7 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     issues.append({"code": "runtime_trigger_hours_out_of_range", "message": "unknown_for hours must be at least tumbling_hours",
                                    "path": path + ["trigger", "hours"], "severity": "error"})
             _lint_reactive_guards(doc, rule, rules_by_id, mons_by_name, reqs_by_name, path, issues, guard_edges)
+            _lint_persistence(rule, mons_by_name, reqs_by_name, path, issues)
 
             action = rule.get("do")
             if not isinstance(action, str) or action not in _ACTIONS:
@@ -5697,7 +5814,7 @@ def _lint_reactive_guards(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict
                           monitors: Dict[str, Any], requirements: Dict[str, Any], path: List[Any],
                           issues: List[Issue], edges: List[Tuple[str, str, List[Any]]]) -> None:
     trigger = rule.get("trigger")
-    reactive = "only_while" in rule or "unless" in rule or (
+    reactive = "only_while" in rule or "unless" in rule or "persist" in rule or (
         isinstance(trigger, dict) and ("rule" in trigger or trigger.get("event") == "unknown_for"))
     if reactive and rule.get("do") != "notify":
         issues.append({"code": "runtime_notify_only", "message": "Reactive outcomes and guards are notify-only",
@@ -5730,13 +5847,44 @@ def _lint_reactive_guards(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict
                 issue("runtime_missing_ref", "Guard reference is not declared in its scope")
             elif key == "rule" and target.get("do") != "optimize":
                 issue("runtime_ref_kind_mismatch", "attempt_open requires an optimize rule in the same response")
-            elif key == "monitor" and _monitor_role(target, requirements.get(target.get("requirement"))) not in {"primary_rate", "primary_zero"}:
+            elif key == "monitor" and _monitor_role(target, requirements.get(target.get("requirement"))) not in _PRIMARY_ROLES:
                 issue("runtime_ref_kind_mismatch", "episode_open requires a primary runtime monitor")
             if key == "monitor" and source is not None and isinstance(name, str):
                 if field == "unless":
                     edges.append((source, name, gpath))
                 elif source == name:
                     issue("runtime_guard_redundant", "only_while on the source monitor is redundant", "warning")
+
+
+def _lint_persistence(rule: Dict[str, Any], monitors: Dict[str, Any], requirements: Dict[str, Any],
+                      path: List[Any], issues: List[Issue]) -> None:
+    """RFC 0005 §2.2: breach persistence on a notification."""
+    if "persist" not in rule:
+        return
+    persist = rule["persist"]
+
+    def error(code: str, message: str, subpath: List[Any]) -> None:
+        issues.append({"code": code, "message": message, "path": path + subpath, "severity": "error"})
+
+    if not isinstance(persist, dict) or set(persist) != {"breached_in", "of_last"}:
+        error("runtime_invalid_profile", "persist requires exactly breached_in and of_last", ["persist"])
+    else:
+        k, n = persist["breached_in"], persist["of_last"]
+        if not _is_int_strict(k) or not _is_int_strict(n):
+            error("runtime_invalid_profile", "persist coordinates must be integers", ["persist"])
+        elif not 1 <= k <= n <= _PERSIST_MAX:
+            error("runtime_persistence_out_of_range", "persist requires 1 <= breached_in <= of_last <= 168", ["persist"])
+    trigger = rule.get("trigger")
+    if "repeat_after_hours" in rule or "max_repeats" in rule:
+        error("runtime_invalid_persistence", "persist cannot be combined with repeat_after_hours or max_repeats", ["persist"])
+    if not isinstance(trigger, dict):
+        return
+    if "monitor" not in trigger or not isinstance(trigger.get("event"), str) or trigger["event"] not in _PERSIST_EVENTS:
+        error("runtime_invalid_persistence", "persist requires an episode_opened or episode_continued monitor trigger", ["trigger"])
+        return
+    monitor = monitors.get(trigger["monitor"]) if isinstance(trigger["monitor"], str) else None
+    if monitor is not None and _monitor_role(monitor, requirements.get(monitor.get("requirement"))) not in _PRIMARY_ROLES:
+        error("runtime_invalid_persistence", "persist requires a primary runtime monitor source", ["trigger", "monitor"])
 
 
 def _lint_guard_cycles(edges: List[Tuple[str, str, List[Any]]], issues: List[Issue]) -> None:
