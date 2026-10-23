@@ -1,0 +1,4 @@
+{"batch_id": "B-20261023-001-review", "elapsed_s": 247.9, "exit_code": 0, "pairs": 587, "recorded": true, "retry": false, "reviewer": "sonnet", "role": "review", "ts": "2026-10-23T22:34:07Z", "units": 118, "usage": {"input_tokens": 28, "output_tokens": 45630, "total_cost_usd": 0.8808546}}
+{"batch_id": "B-20261023-002-meta", "elapsed_s": 288.2, "exit_code": 0, "pairs": 60, "recorded": true, "retry": false, "reviewer": "sol", "role": "meta", "ts": "2026-10-23T22:38:56Z", "units": 37, "usage": {}}
+{"batch_id": "B-20261023-003-meta", "elapsed_s": 192.4, "exit_code": 0, "pairs": 60, "recorded": true, "retry": false, "reviewer": "sol", "role": "meta", "ts": "2026-10-23T22:42:08Z", "units": 40, "usage": {}}
+{"batch_id": "B-20261023-004-meta", "elapsed_s": 14.1, "exit_code": 0, "pairs": 1, "recorded": true, "retry": false, "reviewer": "sol", "role": "meta", "ts": "2026-10-23T22:42:22Z", "units": 1, "usage": {}}
