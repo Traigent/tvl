@@ -1,0 +1,59 @@
+case_format: tvl-runtime-case/1
+family: aggregate_report
+description: units are ordered by the UTF-8 bytes of the canonical JSON of the key object; kind and id differ together
+spec_refs:
+- formalization/rfc-0005-persistence-and-census-aggregates.md#25
+module: {}
+input:
+  kind: commitment
+  version: 2
+  secret_hex: 000000000000000000000000000000000000000000000000000000000000002a
+  report:
+    format: tvl-runtime-report/2
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_ref: ref_monitor
+    monitor_revision: rev1
+    window_start_ms: 0
+    window_end_ms: 86400000
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    counts:
+      selected: 2
+      reported: 2
+      dropped: 0
+      member_count: 2
+      contribution_count: 2
+      unknown_membership: 0
+      unplaceable: 0
+      excluded: 0
+      missing_value: 0
+      invalid_value: 0
+    sum: '7'
+    coverage:
+      census: true
+      unit_histories_complete: true
+      producer_set_complete: true
+      producer_sequences_contiguous: true
+      response_deadlines_covered: true
+      watermarks_through_ms: 88200000
+    units_commitment: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    sdk_version: 1.5.0
+    evidence_tier: client_attested
+  units:
+  - agent: agent_1
+    environment: production
+    unit_kind: alpha
+    unit_id: zeta
+    membership: true
+    state: valid
+    value: '3'
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - agent: agent_1
+    environment: production
+    unit_kind: beta
+    unit_id: alpha
+    membership: true
+    state: valid
+    value: '4'
+    source_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+expected:
+  commitment: 7573c118e77bc44f82d03f99fab0fe984a2ea9288013b9a7762679d5c0a7e167

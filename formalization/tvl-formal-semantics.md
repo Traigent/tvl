@@ -2186,6 +2186,8 @@ are forbidden. Persistence filters notifications; it never replaces a source ver
 **Definition 14.1 (History).** For the event's window j, history consists of the n consecutive
 tumbling slots ending at j, ordered by window start. Each slot is counted once. The requirement,
 monitor, agent, environment, contract digest, monitor revision and schedule must agree.
+Missing contract digest, monitor revision, agent, environment or schedule identity, or an absent
+`available` field, makes a slot UNKNOWN(`persistence_history_gap`).
 Only finalized verdicts are usable. Missing, unavailable, not-yet-active and incompatible-revision
 slots are UNKNOWN placeholders; never replace them with older decided slots. A contract or
 monitor revision starts fresh history; crossing a statistical horizon alone does not.
@@ -2208,9 +2210,11 @@ UNKNOWN may become decided. This is information monotonicity, not an order on qu
 
 **Definition 14.3 (Qualification).** At each fresh allowed source event, BREACHED qualifies,
 MET suppresses and UNKNOWN withholds the notification. The initial event allocates occurrence 0
-even when undelivered. A fresh `episode_continued` can reconsider that same undelivered
-occurrence; without repeats it allocates no new occurrence. A delivered occurrence is never
-redelivered. State changes alone queue nothing; exact event replays and delivery retries retain
+even when undelivered. The rule preserves its original trigger (§13.9): an `episode_opened` rule
+is not delivered on a later `episode_continued`. An `episode_continued` rule evaluates at each
+fresh continuation and can reconsider its undelivered occurrence; without repeats it allocates
+no new occurrence. A delivered occurrence is never redelivered. State changes alone queue nothing;
+exact event replays and delivery retries retain
 the original decision and identity. Slot identities, result and constituent UNKNOWN reasons stay
 customer-side; absent slots carry `persistence_history_gap`.
 
@@ -2238,9 +2242,12 @@ different requirement identity. The digest is an opaque commitment, not source o
 
 **Definition 14.4 (Membership and completeness).** Use §12 attribution, environment and
 start-time placement; a start exactly at a window end belongs to the next window. Omitted
-`among` includes all placed in-scope units. Known false membership excludes a unit; unknown
+`among` includes all placed in-scope units. Membership must be exactly boolean `true`, boolean
+`false` or the string `"unknown"`; any other value, including numeric `1`, is an invalid record
+and makes the census incomplete. Known false membership excludes a unit; unknown
 membership remains unresolved. Include completed, failed and rejected units. Deduplicate by
-(agent, environment, unit kind, stable SDK unit identifier): identical replays count once;
+(agent, environment, unit kind, stable SDK unit identifier): identical replays count once.
+Compare values after exact decimal parsing: `"1"` and `"1.0"` are equal and do not conflict;
 conflicting histories or values prevent completeness. Missing or invalid values are never zero.
 Unresolved attribution that could belong to this population prevents completeness; unrelated
 out-of-scope units do not join it.
@@ -2248,8 +2255,11 @@ out-of-scope units do not join it.
 A complete census accounts for every selected observed unit, resolves membership and placement,
 has terminal complete relevant histories, complete producer sets and sequences, watermarks through
 `due(w) = end(w) + grace`, no dropped units, and one valid contribution per member.
-Source attestations must establish completeness; conservation counts alone cannot. This concerns
-the declared observed universe, not unobserved traffic, all invoice charges or source correctness.
+Source attestations must establish completeness; conservation counts alone cannot. Missing or null
+coverage yields UNKNOWN(incomplete). Units arriving
+after due make the census incomplete unless coverage attests otherwise; they must not be silently
+discarded to produce MET. This concerns the declared observed universe, not unobserved traffic,
+all invoice charges or source correctness.
 
 **Definition 14.5 (Finalization).** Before due, return UNKNOWN(aggregate_pending).
 At due, finalize evidence arriving by due. Incomplete evidence returns UNKNOWN(incomplete),
@@ -2268,8 +2278,9 @@ For mean, MET iff S ≤ C·b for `lte`, or S ≥ C·b for `gte`; otherwise BREAC
 These comparisons equal the rational quotient comparisons because C>0; no rounded quotient,
 tolerance or round-to-pass rule is permitted. The UNKNOWN preconditions of §14.2 take precedence.
 NaN, infinity, negative costs and out-of-range scores are invalid contributions and make evidence
-incomplete. If declared precision/resource bounds prevent exact arithmetic on otherwise valid
-evidence, return UNKNOWN(aggregate_precision_limit).
+incomplete. Check numeric encoding and precision/resource limits before conversion to exact rationals.
+If these limits prevent exact arithmetic on otherwise valid evidence, including overlong numeric
+strings, return UNKNOWN(aggregate_precision_limit) rather than raising a conversion error.
 
 Aggregate primaries are runtime, customer-side census monitors, with sampling omitted and
 `decision: {method: exact_aggregate_v1}` only. Require the existing window and episode records.
@@ -2315,9 +2326,15 @@ version "1.5". A version alone retains construct-based /1 or /2 selection; rejec
 1.5 construct. Old schemas are frozen; unknown tags are refused, never silently stripped.
 Count reports stay /1. Aggregate reports use proposed `tvl-runtime-report/2`, with exactly the
 closed fields specified in RFC 0005 §2.5: format, contract/monitor/revision binding, aligned window
-times, source digest, counts, optional sum, coverage, units commitment, SDK version and
-`evidence_tier: client_attested`. The exact minimal decimal sum is required for complete nonempty
-evidence when arithmetic succeeds; mean is reconstructed from sum/count, with no rounded field.
+times, source digest, counts, optional sum, optional `unknown_reason`, coverage, units commitment,
+SDK version and `evidence_tier: client_attested`. The exact minimal decimal sum is required for complete nonempty
+evidence unless `unknown_reason: "aggregate_precision_limit"` accompanies its omission, yielding
+UNKNOWN(aggregate_precision_limit); otherwise its omission is `runtime_report_numeric`.
+`unknown_reason` is a closed enum containing only `aggregate_precision_limit`.
+When `member_count` is zero, `sum` must be absent or `"0"`; a nonzero sum is `runtime_report_numeric`.
+The entire sum string must match the minimal decimal encoding; trailing characters, including
+a newline after `12.5`, are `runtime_report_numeric`.
+Mean is reconstructed from sum/count, with no rounded field.
 Every report requires its source/window binding and these disjoint natural-count identities:
 
 ```text
@@ -2329,7 +2346,9 @@ member_count = contribution_count + missing_value + invalid_value
 Count each member's defect once, with missing before invalid. Complete coverage requires all
 existing closed coverage flags true and watermark at least due. The report/2 commitment is lowercase
 hex HMAC-SHA-256 under a random customer-held 256-bit secret, over canonical JSON binding contract,
-monitor, revision, window times and source digest plus deduplicated units sorted by canonical key.
+monitor, revision, window times and source digest plus deduplicated units sorted in ascending order
+by the UTF-8 bytes of the canonical JSON of each unit key object
+`{agent, environment, unit_id, unit_kind}`, with canonical object key order.
 Each entry includes its full local key, membership, canonical exact value or missing/invalid state,
 and source digest. Decimal values are minimal strings. Report/1's unkeyed digest is unchanged.
 

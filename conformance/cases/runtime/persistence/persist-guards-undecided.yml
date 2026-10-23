@@ -13,13 +13,34 @@ input:
   identity:
     contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
   windows:
   - index: 0
     verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
   - index: 1
     verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
   - index: 2
     verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
   rule_event: episode_continued
   events:
   - id: e1

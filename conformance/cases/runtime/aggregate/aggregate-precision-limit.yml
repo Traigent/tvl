@@ -24,6 +24,13 @@ input:
       status: completed
       value: '10.123456789'
     precision_scale: 6
+    coverage:
+      census: true
+      unit_histories_complete: true
+      producer_set_complete: true
+      producer_sequences_contiguous: true
+      response_deadlines_covered: true
+      watermark_ms: 88200000
 expected:
   aggregate:
     verdict: UNKNOWN

@@ -1066,8 +1066,8 @@ Reactive constructs require the quoted version "1.4"; using "1.3" yields
 
 ## TVL 1.5 draft diagnostics
 
-These are proposed by [RFC 0005 §2.6](../../formalization/rfc-0005-persistence-and-census-aggregates.md#26-schemas-and-diagnostics),
-not a claim that current tools emit them. All rows below have severity error.
+These diagnostics are specified by [RFC 0005 §2.6](../../formalization/rfc-0005-persistence-and-census-aggregates.md#26-schemas-and-diagnostics).
+All rows below have severity error.
 Old diagnostic meanings remain unchanged for documents without the new constructs.
 
 | Code | Proposed condition |
@@ -1075,7 +1075,7 @@ Old diagnostic meanings remain unchanged for documents without the new construct
 | `runtime_persistence_out_of_range` | integer k/n violates `1 ≤ k ≤ n ≤ 168` |
 | `runtime_invalid_persistence` | ineligible source role/event, or either repeat coordinate with persistence |
 | `runtime_aggregate_bound_out_of_range` | negative bound, or mean-score bound above 1 |
-| `runtime_report_numeric` | malformed, noncanonical or out-of-domain aggregate report sum, including negative sum |
+| `runtime_report_numeric` | malformed, noncanonical or out-of-domain aggregate report sum; nonzero sum for zero members; missing sum for complete nonempty evidence without `unknown_reason: "aggregate_precision_limit"` |
 | `runtime_notify_only` (extended) | `persist` on an action other than `notify` |
 | `runtime_invalid_profile` (extended) | missing/forbidden aggregate variant field, both/no bound directions, incompatible monitor tuple |
 | `runtime_unknown_kind` (extended) | unknown aggregate kind, operator, metric or method |
@@ -1089,9 +1089,20 @@ Old diagnostic meanings remain unchanged for documents without the new construct
 Schemas check closed keys, primitive types and common required keys; lints check variant presence,
 enums, numeric domains and references. Every nested record is closed. Malformed exchanged
 summaries are refused; diagnostics echo no input.
+The entire report sum string must match the minimal decimal encoding; trailing characters,
+including a newline after `12.5`, are `runtime_report_numeric`. With zero members, only an absent
+sum or `"0"` is valid. Report/2 permits optional `unknown_reason` with the closed, single-value
+enum `aggregate_precision_limit`; omitting a complete nonempty sum with that reason yields
+UNKNOWN(aggregate_precision_limit).
 
 Verdict reasons are separate from error codes. Proposed additions are `persistence_history_gap`
-(absent history slot), `aggregate_pending` (before due), and `aggregate_precision_limit`
+(missing, unavailable or incompatible history slot, including missing identity fields or absent
+`available`), `aggregate_pending` (before due), and `aggregate_precision_limit`
 (exact arithmetic exceeds declared limits). Reuse `inconclusive` for undecided persistence,
 `insufficient` for complete empty aggregates, and extend `incomplete` to incomplete aggregates,
 including invalid raw contributions. An invalid raw value is not a zero contribution.
+Missing or null coverage, invalid membership (anything other than boolean `true`, boolean `false`
+or the string `"unknown"`), and late units without coverage attesting completeness yield
+UNKNOWN(incomplete). Check numeric encoding and precision/resource limits before exact rational
+conversion; overlong otherwise valid numeric strings yield UNKNOWN(aggregate_precision_limit)
+rather than a conversion failure.

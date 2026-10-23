@@ -92,6 +92,11 @@
     "sum": {
       "type": "string"
     },
+    "unknown_reason": {
+      "enum": [
+        "aggregate_precision_limit"
+      ]
+    },
     "coverage": {
       "type": "object",
       "additionalProperties": false,

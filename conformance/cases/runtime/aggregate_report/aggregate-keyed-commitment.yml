@@ -20,9 +20,9 @@ input:
       selected: 4
       reported: 4
       dropped: 0
-      member_count: 3
-      contribution_count: 3
-      unknown_membership: 0
+      member_count: 2
+      contribution_count: 2
+      unknown_membership: 1
       unplaceable: 0
       excluded: 1
       missing_value: 0

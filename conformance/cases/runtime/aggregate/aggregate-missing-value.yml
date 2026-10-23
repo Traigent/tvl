@@ -27,6 +27,13 @@ input:
       membership: true
       status: completed
       value: null
+    coverage:
+      census: true
+      unit_histories_complete: true
+      producer_set_complete: true
+      producer_sequences_contiguous: true
+      response_deadlines_covered: true
+      watermark_ms: 88200000
 expected:
   aggregate:
     verdict: UNKNOWN

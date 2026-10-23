@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import itertools
 import json
 from fractions import Fraction
@@ -32,6 +33,13 @@ CASES = ROOT / 'conformance/cases/runtime'
 NEW_CODES = {'runtime_persistence_out_of_range', 'runtime_invalid_persistence',
              'runtime_aggregate_bound_out_of_range', 'runtime_report_numeric'}
 DIGEST = 'a' * 64
+IDENTITY = {'contract_digest': 'c' * 64, 'monitor_revision': 'r1', 'agent': 'agent_1', 'environment': 'production',
+            'schedule': 'daily_24h'}
+
+
+def win(index, verdict, **override):
+    """A finalized, available window recorded under the full persistence identity."""
+    return {'index': index, 'verdict': verdict, 'available': True, **IDENTITY, **override}
 
 
 def case(path):
@@ -122,8 +130,8 @@ def test_non_integer_coordinates_are_not_range_errors_and_schema_rejects_them():
 
 
 def test_fewer_than_n_windows_give_unknown_placeholder_slots():
-    identity = {'contract_digest': 'c' * 64, 'monitor_revision': 'r1'}
-    slots = persistence_slots(4, 1, [{'index': 0, 'verdict': 'BREACHED'}, {'index': 1, 'verdict': 'BREACHED'}], identity)
+    identity = IDENTITY
+    slots = persistence_slots(4, 1, [win(0, 'BREACHED'), win(1, 'BREACHED')], identity)
     assert [s['verdict'] for s in slots] == ['UNKNOWN', 'UNKNOWN', 'BREACHED', 'BREACHED']
     assert [s.get('reason') for s in slots[:2]] == ['persistence_history_gap'] * 2
     # k=3 cannot be decided yet: B=2, U=2 -> UNKNOWN; k=2 is already definite.
@@ -132,8 +140,8 @@ def test_fewer_than_n_windows_give_unknown_placeholder_slots():
 
 
 def test_older_decided_windows_never_fill_a_gap_and_other_identities_are_placeholders():
-    identity = {'contract_digest': 'c' * 64, 'monitor_revision': 'r1'}
-    windows = [{'index': 0, 'verdict': 'BREACHED'}, {'index': 1, 'verdict': 'BREACHED'}, {'index': 4, 'verdict': 'MET'}]
+    identity = IDENTITY
+    windows = [win(0, 'BREACHED'), win(1, 'BREACHED'), win(4, 'MET')]
     slots = persistence_slots(3, 4, windows, identity)
     assert [s['verdict'] for s in slots] == ['UNKNOWN', 'UNKNOWN', 'MET']
     other = [dict(w, contract_digest='d' * 64) for w in windows]
@@ -141,9 +149,8 @@ def test_older_decided_windows_never_fill_a_gap_and_other_identities_are_placeho
 
 
 def test_event_ledger_occurrence_zero_reconsideration_and_replay():
-    identity = {'contract_digest': 'c' * 64, 'monitor_revision': 'r1'}
-    windows = [{'index': 0, 'verdict': 'UNKNOWN'}, {'index': 1, 'verdict': 'MET'},
-               {'index': 2, 'verdict': 'BREACHED'}, {'index': 3, 'verdict': 'BREACHED'}]
+    identity = IDENTITY
+    windows = [win(0, 'UNKNOWN'), win(1, 'MET'), win(2, 'BREACHED'), win(3, 'BREACHED')]
     events = [{'id': 'e1', 'window': 2, 'event': 'episode_continued'},
               {'id': 'e1r', 'window': 2, 'event': 'episode_continued', 'replay_of': 'e1'},
               {'id': 'e2', 'window': 3, 'event': 'episode_continued'},
@@ -155,8 +162,8 @@ def test_event_ledger_occurrence_zero_reconsideration_and_replay():
 
 
 def test_events_exist_only_at_breached_windows_and_guards_follow_strong_kleene():
-    identity = {'contract_digest': 'c' * 64, 'monitor_revision': 'r1'}
-    windows = [{'index': i, 'verdict': v} for i, v in enumerate(['BREACHED', 'BREACHED', 'MET'])]
+    identity = IDENTITY
+    windows = [win(i, v) for i, v in enumerate(['BREACHED', 'BREACHED', 'MET'])]
     with pytest.raises(AggregateError):  # BBM satisfies 2-of-3 but its MET window emits no breach event
         persistence_decisions({'breached_in': 2, 'of_last': 3}, 'episode_continued', windows,
                               [{'id': 'e', 'window': 2, 'event': 'episode_continued'}], identity)
@@ -173,10 +180,18 @@ WINDOW = {'start_ms': 0, 'end_ms': 86_400_000, 'grace_ms': 1_800_000}
 DUE = WINDOW['end_ms'] + WINDOW['grace_ms']
 
 
+COVERAGE = {'census': True, 'unit_histories_complete': True, 'producer_set_complete': True,
+            'producer_sequences_contiguous': True, 'response_deadlines_covered': True, 'watermark_ms': DUE}
+
+
+def spec_of(units, op='sum', metric='cost_usd', bound=None, at=DUE, **extra):
+    return {'op': op, 'metric': metric, 'bound': bound or {'lte': 50}, 'window': WINDOW, 'evaluated_at_ms': at,
+            'units': units, 'coverage': dict(COVERAGE), **extra}
+
+
 def verdict(op, metric, bound, values, at=DUE, **extra):
     units = [{'key': f'u{i}', 'membership': True, 'status': 'completed', 'value': v} for i, v in enumerate(values)]
-    spec = {'op': op, 'metric': metric, 'bound': bound, 'window': WINDOW, 'evaluated_at_ms': at, 'units': units, **extra}
-    return aggregate_verdict(spec)
+    return aggregate_verdict(spec_of(units, op, metric, bound, at, **extra))
 
 
 @pytest.mark.parametrize('values,bound,expected', [
@@ -240,8 +255,7 @@ def test_before_due_is_pending_and_one_millisecond_later_it_decides():
 def test_missing_or_invalid_cost_values_make_the_window_incomplete(bad):
     units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '60'},
              {'key': 'u2', 'membership': True, 'status': 'failed', 'value': bad}]
-    spec = {'op': 'sum', 'metric': 'cost_usd', 'bound': {'lte': 50}, 'window': WINDOW, 'evaluated_at_ms': DUE, 'units': units}
-    assert aggregate_verdict(spec) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}  # not BREACHED, not zero-filled
+    assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}  # not BREACHED, not zero-filled
 
 
 @pytest.mark.parametrize('score', ['1.01', '-0.1', '2', 'NaN', None])
@@ -251,17 +265,18 @@ def test_scores_outside_unit_interval_are_invalid(score):
 
 def test_incomplete_beats_insufficient_and_unknown_membership_is_unresolved():
     units = [{'key': 'u1', 'membership': 'unknown', 'status': 'completed', 'value': None}]
-    spec = {'op': 'sum', 'metric': 'cost_usd', 'bound': {'lte': 5}, 'window': WINDOW, 'evaluated_at_ms': DUE, 'units': units}
-    assert aggregate_verdict(spec) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+    assert aggregate_verdict(spec_of(units, bound={'lte': 5})) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
 
 
-def test_late_arrivals_do_not_change_a_finalized_verdict_and_replays_count_once():
+def test_late_unit_makes_the_census_incomplete_and_replays_count_once():
     base = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '10'}]
-    spec = {'op': 'sum', 'metric': 'cost_usd', 'bound': {'lte': 50}, 'window': WINDOW, 'evaluated_at_ms': DUE + 10 ** 9}
-    assert aggregate_verdict({**spec, 'units': base})['sum'] == '10'
+    at = DUE + 10 ** 9
+    assert aggregate_verdict(spec_of(base, at=at))['sum'] == '10'
     late = base + [{'key': 'u2', 'membership': True, 'status': 'completed', 'value': '999', 'arrived_ms': DUE + 1}]
-    assert aggregate_verdict({**spec, 'units': late}) == aggregate_verdict({**spec, 'units': base})
-    assert aggregate_verdict({**spec, 'units': base * 3})['member_count'] == 1
+    assert aggregate_verdict(spec_of(late, at=at)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}  # never MET
+    replay = base + [dict(base[0], value='10.0', arrived_ms=DUE + 1)]
+    assert aggregate_verdict(spec_of(replay, at=at)) == aggregate_verdict(spec_of(base, at=at))
+    assert aggregate_verdict(spec_of(base * 3, at=at))['member_count'] == 1
 
 
 def test_exact_arithmetic_beyond_float_precision_and_precision_limit():
@@ -366,6 +381,18 @@ def test_every_pre_15_case_document_has_no_rfc0005_diagnostic():
     assert checked > 100
 
 
+LEGACY_DECLARATIONS_DIGEST = '7b989e6ec6dfe582c7c7f790e4c2e426558237454f45dadce2d876b16e0f5311'
+LEGACY_CONTRACT_DIGEST = '8aef83829a042975c1f4067bc2cbbad4a8d7789e29fd4a98d163b01c2b08632f'
+LEGACY_LOCAL_DIGEST = 'c24867285f4e78d18e1f9039201e4781a2ad7fa9ad77dc0083b6edcb9575cbe1'
+FROZEN_SCHEMA_SHA256 = {  # sha256 of the bytes at origin/main (5ba03c6)
+    'tvl-runtime-contract.schema.json': 'ae5f4567fc39484226ef5b59c1ef2ddbb49f67e343809e8180f3c06aa34cb601',
+    'tvl-runtime-local.schema.json': '7815f51455aa18fd6ca822489a51faaad545ce7184fdc9bb291fc615fbf09fe2',
+    'tvl-runtime-contract-v2.schema.json': '2f9119d63fe0334ed671156231e1c85dacc543b29802352f89e5df8f52642a45',
+    'tvl-runtime-local-v2.schema.json': '9e69577f6d77bfe6c6862864844e6c63f20f95b7761d23c574d7937fda52aa40',
+    'tvl-runtime-report.schema.json': 'a4928b05272aadc2f31cbac4f741a31ba136ae5896552baffb2ce9d9b4b992ca',
+}
+
+
 def test_legacy_artifacts_keep_frozen_bytes_and_format_selection():
     frozen = case('projection/deploy-mode-closed.yml')
     module = frozen['module']
@@ -376,7 +403,10 @@ def test_legacy_artifacts_keep_frozen_bytes_and_format_selection():
         contract, local, _ = compile_runtime_document(d, token_map_doc=token_map)
         assert contract['format'] == fmt and contract['tvl_version'] == tvl_version
         assert local['format'] == 'tvl-runtime-local/1'
-        assert canonical_json_digest(contract['declarations']) is not None
+        # Pinned from origin/main (5ba03c6), computed there, not from this tree's code.
+        assert canonical_json_digest(contract['declarations']) == LEGACY_DECLARATIONS_DIGEST
+        assert canonical_json_digest(contract) == LEGACY_CONTRACT_DIGEST
+        assert canonical_json_digest(local) == LEGACY_LOCAL_DIGEST
     reactive = case('projection/outcome-and-guard-closed-enums.yml')['module']
     contract, local, _ = compile_runtime_document(reactive, token_map_doc=tokens(reactive))
     assert (contract['format'], contract['tvl_version'], local['format']) == ('tvl-runtime-contract/2', '1.4', 'tvl-runtime-local/2')
@@ -470,10 +500,8 @@ def test_editor_schema_copies_identical(name):
 
 
 def test_frozen_schemas_keep_their_bytes():
-    for name in ('tvl-runtime-contract.schema.json', 'tvl-runtime-local.schema.json',
-                 'tvl-runtime-contract-v2.schema.json', 'tvl-runtime-local-v2.schema.json', 'tvl-runtime-report.schema.json'):
-        text = (ROOT / 'spec/grammar' / name).read_text()
-        assert '1.5' not in text and 'aggregate' not in text and 'persist' not in text, name
+    for name, pinned in FROZEN_SCHEMA_SHA256.items():
+        assert hashlib.sha256((ROOT / 'spec/grammar' / name).read_bytes()).hexdigest() == pinned, name
 
 
 # --------------------------------------------------------------------------- composition
@@ -637,3 +665,170 @@ def test_report1_commitment_is_unchanged():
     assert units_commitment_v1(units) == hashlib.sha256(
         (json.dumps(listed, sort_keys=True, indent=2, ensure_ascii=True) + '\n').encode()).hexdigest()
     assert 'tvl-runtime-report/1' in (ROOT / 'spec/grammar/tvl-runtime-report.schema.json').read_text()
+
+
+# --------------------------------------------------------------------------- review fixes D1-D12
+@pytest.mark.parametrize('coverage', [
+    'absent', None, {**COVERAGE, 'census': False}, {**COVERAGE, 'unit_histories_complete': 1},
+    {**COVERAGE, 'watermark_ms': DUE - 1}, {**COVERAGE, 'watermark_ms': True}])
+def test_d1_missing_or_unattested_coverage_is_incomplete_never_complete_by_default(coverage):
+    spec = spec_of([{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '10'}])
+    if coverage == 'absent':
+        del spec['coverage']
+    else:
+        spec['coverage'] = coverage
+    assert aggregate_verdict(spec) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+
+
+def test_d1_late_unit_is_never_dropped_into_met_even_when_its_value_is_invalid():
+    for late in ({'value': '999'}, {'value': None}, {'value': 'NaN'}):
+        units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '10'},
+                 {'key': 'u2', 'membership': True, 'status': 'completed', 'arrived_ms': DUE + 1, **late}]
+        assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+    on_time = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '10', 'arrived_ms': DUE}]
+    assert aggregate_verdict(spec_of(on_time))['verdict'] == 'MET'  # exactly at due is on time
+
+
+@pytest.mark.parametrize('mutation', [
+    lambda w: w.pop('available'), lambda w: w.update(available=False), lambda w: w.update(available=1),
+    lambda w: w.pop('contract_digest'), lambda w: w.pop('monitor_revision'), lambda w: w.pop('agent'),
+    lambda w: w.pop('environment'), lambda w: w.pop('schedule'), lambda w: w.update(agent='other'),
+    lambda w: w.update(environment='staging'), lambda w: w.update(schedule='hourly_1h'),
+    lambda w: w.update(contract_digest='d' * 64), lambda w: w.update(monitor_revision='r2')])
+def test_d2_a_window_without_full_identity_or_availability_is_a_history_gap(mutation):
+    bad = win(0, 'BREACHED')
+    mutation(bad)
+    slots = persistence_slots(3, 2, [bad, win(1, 'BREACHED'), win(2, 'MET')], IDENTITY)
+    assert slots[0] == {'index': 0, 'verdict': 'UNKNOWN', 'reason': 'persistence_history_gap'}
+    assert [s['verdict'] for s in slots[1:]] == ['BREACHED', 'MET']
+
+
+def test_d2_identity_must_name_every_coordinate():
+    for missing in IDENTITY:
+        with pytest.raises(AggregateError):
+            persistence_slots(1, 0, [win(0, 'MET')], {k: v for k, v in IDENTITY.items() if k != missing})
+
+
+def test_d3_an_opened_rule_is_not_redelivered_at_a_continuation_but_a_continued_rule_is_evaluated_each_time():
+    windows = [win(0, 'UNKNOWN'), win(1, 'BREACHED'), win(2, 'BREACHED')]
+    events = [{'id': 'e1', 'window': 1, 'event': 'episode_opened'}, {'id': 'e2', 'window': 2, 'event': 'episode_continued'}]
+    out = persistence_decisions({'breached_in': 2, 'of_last': 3}, 'episode_opened', windows, events, IDENTITY)
+    assert [(d['decision'], d['delivered']) for d in out] == [('withheld', False), ('not_eligible', False)]
+    out = persistence_decisions({'breached_in': 2, 'of_last': 3}, 'episode_continued', windows, events[1:], IDENTITY)
+    assert [(d['decision'], d['delivered']) for d in out] == [('qualified', True)]
+
+
+def test_d3_a_persist_rule_cannot_change_its_trigger_under_overlay_or_meet():
+    for operation in ('overlay', 'meet'):
+        base, overlay = persist_module(3, 4), persist_module(3, 4)
+        other = 'episode_continued' if base['responses'][0]['rules'][0]['trigger']['event'] == 'episode_opened' else 'episode_opened'
+        overlay['responses'][0]['rules'][0]['trigger']['event'] = other
+        with pytest.raises(RuntimeClosedError):
+            compose_runtime_documents(base, overlay, operation=operation)
+
+
+MIXED_UNITS = [
+    {'agent': 'agent_1', 'environment': 'production', 'unit_kind': 'alpha', 'unit_id': 'zeta', 'membership': True,
+     'state': 'valid', 'value': '3', 'source_digest': DIGEST},
+    {'agent': 'agent_1', 'environment': 'production', 'unit_kind': 'beta', 'unit_id': 'alpha', 'membership': True,
+     'state': 'valid', 'value': '4', 'source_digest': DIGEST},
+]
+
+
+def test_d4_commitment_orders_by_canonical_key_object_bytes_with_kind_and_id_both_differing():
+    report = valid_report()
+    key = bytes(range(32))
+    # Independent recomputation: the key object serializes unit_id before unit_kind, so beta/alpha sorts first.
+    def cj(value):
+        return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True) + '\n').encode()
+    entries = sorted(
+        ({'key': {k: u[k] for k in ('agent', 'environment', 'unit_kind', 'unit_id')}, 'membership': True,
+          'state': 'valid', 'source_digest': DIGEST, 'value': u['value']} for u in MIXED_UNITS),
+        key=lambda e: cj(e['key']))
+    assert [e['key']['unit_id'] for e in entries] == ['alpha', 'zeta']
+    payload = {**{k: report[k] for k in ('contract_digest', 'monitor_ref', 'monitor_revision',
+                                          'window_start_ms', 'window_end_ms', 'source_digest')}, 'units': entries}
+    import hmac
+    expected = hmac.new(key, cj(payload), hashlib.sha256).hexdigest()
+    assert units_commitment_v2(key, report, MIXED_UNITS) == expected == units_commitment_v2(key, report, MIXED_UNITS[::-1])
+
+
+def test_d5_precision_limit_report_may_omit_sum_only_with_the_closed_reason():
+    report = valid_report(); del report['sum']
+    assert refused(report) == 'runtime_report_numeric'
+    report['unknown_reason'] = 'aggregate_precision_limit'
+    assert validate_report_v2(report, BINDING) == {'verdict': 'UNKNOWN', 'reason': 'aggregate_precision_limit'}
+    assert refused(dict(report, unknown_reason='other')) == 'schema_error'
+    assert refused(dict(valid_report(), unknown_reason='aggregate_precision_limit')) == 'runtime_report_numeric'
+    incomplete = valid_report(); del incomplete['sum']
+    incomplete['counts'].update(missing_value=1, contribution_count=2)
+    incomplete['unknown_reason'] = 'aggregate_precision_limit'
+    assert refused(incomplete) == 'runtime_report_numeric'  # the exception is for complete reports only
+    assert validate_report_v2(valid_report(), BINDING) is None
+
+
+def test_d6_empty_population_cannot_carry_a_sum_and_sums_must_fully_match():
+    report = valid_report()
+    report['counts'].update(selected=1, reported=1, member_count=0, contribution_count=0, excluded=1)
+    for sum_value in ('5', '0'):
+        assert refused(dict(report, sum=sum_value)) == 'runtime_report_numeric'
+    del report['sum']
+    validate_report_v2(report, BINDING)  # no sum for no members
+    for bad in ('12.5\n', '12.5 ', '\n12.5', '12.5\r'):
+        assert refused(dict(valid_report(), sum=bad)) == 'runtime_report_numeric'
+
+
+@pytest.mark.parametrize('membership', [1, 0, 'true', 'False', None, [], {}, 1.0])
+def test_d7_membership_other_than_true_false_unknown_makes_the_census_incomplete(membership):
+    units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '10'},
+             {'key': 'u2', 'membership': membership, 'status': 'completed', 'value': '5'}]
+    assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+
+
+def test_d6_unit_value_with_trailing_newline_is_invalid_not_twelve_and_a_half():
+    units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': '12.5\n'}]
+    assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+
+
+@pytest.mark.parametrize('value', ['9' * 5000, 10 ** 5000, '0.' + '1' * 5000], ids=['long-int-string', 'huge-int', 'long-fraction'])
+def test_d8_overlong_numeric_values_are_a_precision_limit_never_a_crash(value):
+    units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': value}]
+    assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'aggregate_precision_limit'}
+    assert aggregate_verdict(spec_of(units, precision_scale=6)) == {'verdict': 'UNKNOWN', 'reason': 'aggregate_precision_limit'}
+    # an incomplete census still reports incomplete first
+    units.append({'key': 'u2', 'membership': 'unknown', 'status': 'completed'})
+    assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+
+
+def test_d8_overlong_bound_is_a_closed_refusal():
+    with pytest.raises(AggregateError):
+        aggregate_verdict(spec_of([], bound={'lte': '9' * 5000}))
+
+
+def test_d9_valid_unit_without_value_is_a_closed_error_not_a_key_error():
+    unit = dict(MIXED_UNITS[0]); del unit['value']
+    with pytest.raises(AggregateError):
+        units_commitment_v2(bytes(32), valid_report(), [unit])
+    with pytest.raises(AggregateError):
+        units_commitment_v2(bytes(32), valid_report(), [dict(MIXED_UNITS[0], value='NaN')])
+    missing = {k: v for k, v in unit.items()}; missing['state'] = 'missing'
+    assert len(units_commitment_v2(bytes(32), valid_report(), [missing])) == 64
+
+
+@pytest.mark.parametrize('first,second', [('1', '1.0'), ('1.50', '1.5'), (1, '1.000'), ('0', '0.0')])
+def test_d10_numerically_equal_duplicate_values_are_identical_replays(first, second):
+    units = [{'key': 'u1', 'membership': True, 'status': 'completed', 'value': first},
+             {'key': 'u1', 'membership': True, 'status': 'completed', 'value': second}]
+    assert aggregate_verdict(spec_of(units))['member_count'] == 1
+    units[1]['value'] = '2'
+    assert aggregate_verdict(spec_of(units)) == {'verdict': 'UNKNOWN', 'reason': 'incomplete'}
+
+
+def test_d12_keyed_commitment_fixture_counts_agree_with_its_units():
+    fixture = case('aggregate_report/aggregate-keyed-commitment.yml')['input']
+    counts = fixture['report']['counts']
+    units = fixture['units']
+    assert counts['unknown_membership'] == sum(u['membership'] == 'unknown' for u in units)
+    assert counts['member_count'] == sum(u['membership'] is True for u in units)
+    assert counts['contribution_count'] == sum(u['membership'] is True and u['state'] == 'valid' for u in units)
+    validate_report_v2(fixture['report'], BINDING)

@@ -29,8 +29,11 @@ from tvl.schema import runtime_report_v2_validator
 
 PERSIST_MAX = 168
 _VERDICTS = ("MET", "BREACHED", "UNKNOWN")
-_DECIMAL_RE = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
-_MINIMAL_DECIMAL_RE = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$")
+_DECIMAL_RE = re.compile(r"(0|[1-9][0-9]*)(\.[0-9]+)?")
+_MINIMAL_DECIMAL_RE = re.compile(r"(0|[1-9][0-9]*)(\.[0-9]*[1-9])?")
+# Longest accepted numeric encoding (characters); longer inputs are a precision limit, never converted.
+_MAX_NUMERIC_CHARS = 256
+_IDENTITY_FIELDS = ("contract_digest", "monitor_revision", "agent", "environment", "schedule")
 
 
 class AggregateError(ValueError):
@@ -75,13 +78,17 @@ def persistence_slots(n: int, index: int, windows: Sequence[Mapping[str, Any]],
                       identity: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The n consecutive tumbling slots ending at window ``index``, oldest first.
 
-    A window counts only when finalized, available and recorded under the same contract
-    digest and monitor revision; every other position is an UNKNOWN placeholder with reason
-    ``persistence_history_gap`` and is never replaced by an older decided window.
+    A window counts only when finalized, explicitly available and recorded under the same
+    contract digest, monitor revision, agent, environment and schedule as ``identity``. A window
+    that omits any of those identity fields, or ``available``, is not trusted: every other
+    position is an UNKNOWN placeholder with reason ``persistence_history_gap`` and is never
+    replaced by an older decided window.
     """
+    _require(isinstance(identity, Mapping) and all(field in identity for field in _IDENTITY_FIELDS),
+             "identity names contract_digest, monitor_revision, agent, environment and schedule")
     by_index: dict[int, Mapping[str, Any]] = {}
     for window in windows:
-        _shape(window, "index verdict", "available contract_digest monitor_revision reason charge horizon")
+        _shape(window, "index verdict", "available reason charge horizon " + " ".join(_IDENTITY_FIELDS))
         _require(_nat(window["index"]) and window["index"] not in by_index, "window indexes are unique naturals")
         _require(window["verdict"] in _VERDICTS, "window verdict is MET, BREACHED or UNKNOWN")
         by_index[window["index"]] = window
@@ -90,9 +97,8 @@ def persistence_slots(n: int, index: int, windows: Sequence[Mapping[str, Any]],
         window = by_index.get(position)
         usable = (
             window is not None
-            and window.get("available", True)
-            and window.get("contract_digest", identity["contract_digest"]) == identity["contract_digest"]
-            and window.get("monitor_revision", identity["monitor_revision"]) == identity["monitor_revision"]
+            and window.get("available") is True
+            and all(field in window and window[field] == identity[field] for field in _IDENTITY_FIELDS)
         )
         if not usable:
             slots.append({"index": position, "verdict": "UNKNOWN", "reason": "persistence_history_gap"})
@@ -111,9 +117,10 @@ def persistence_decisions(persist: Mapping[str, Any], rule_event: str, windows: 
     """Customer-side ledger of one persistence rule over one episode.
 
     ``rule_event`` is the rule's trigger event. The first fresh event of that kind allocates
-    occurrence 0 even when it is not delivered. A later fresh ``episode_continued`` may
-    reconsider that same undelivered occurrence and allocates no new one; a delivered
-    occurrence is never delivered again. An event is allowed only at a window whose own
+    occurrence 0 even when it is not delivered. A rule whose trigger is ``episode_continued``
+    may reconsider that same undelivered occurrence at a later fresh continuation and allocates
+    no new one; a rule on ``episode_opened`` is never re-delivered at a continuation (a rule
+    keeps its original trigger). A delivered occurrence is never delivered again. An event is allowed only at a window whose own
     verdict is BREACHED. An exact replay (``replay_of``) returns the original decision.
     """
     _shape(persist, "breached_in of_last")
@@ -140,7 +147,8 @@ def persistence_decisions(persist: Mapping[str, Any], rule_event: str, windows: 
         slots = persistence_slots(n, event["window"], windows, identity)
         result, reason = persistence_result(k, n, [slot["verdict"] for slot in slots])
         starts = not occurrence_allocated and source_event == rule_event
-        reconsiders = occurrence_allocated and source_event == "episode_continued"
+        # The rule keeps its original trigger: only an episode_continued rule is evaluated at a continuation.
+        reconsiders = occurrence_allocated and rule_event == "episode_continued" and source_event == "episode_continued"
         # Guards (RFC 0004) resolve after qualification; UNDECIDED (None) never suppresses.
         only_while, unless = event.get("only_while", []), event.get("unless", [])
         _require(all(v in (True, False, None) for v in [*only_while, *unless]), "guard values are true, false or null")
@@ -171,14 +179,25 @@ def persistence_decisions(persist: Mapping[str, Any], rule_event: str, windows: 
 # ---------------------------------------------------------------------------
 
 
+class _PrecisionLimit(Exception):
+    """A numeric encoding longer than the reference relation converts (never a crash)."""
+
+
 def _decimal(value: Any) -> Fraction | None:
-    """Exact value of a lossless finite decimal encoding, else None (invalid)."""
+    """Exact value of a lossless finite decimal encoding, else None (invalid).
+
+    Raises ``_PrecisionLimit`` before any conversion when the encoding exceeds the length limit.
+    """
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
+        if value >= 10 ** _MAX_NUMERIC_CHARS:
+            raise _PrecisionLimit
         return Fraction(value) if value >= 0 else None
-    if isinstance(value, str) and _DECIMAL_RE.match(value):
-        return Fraction(value)
+    if isinstance(value, str):
+        if len(value) > _MAX_NUMERIC_CHARS:
+            raise _PrecisionLimit
+        return Fraction(value) if _DECIMAL_RE.fullmatch(value) else None
     return None
 
 
@@ -187,16 +206,28 @@ def _scale(value: str | int) -> int:
     return len(text.split(".")[1]) if "." in text else 0
 
 
+def _membership_valid(value: Any) -> bool:
+    return value is True or value is False or (isinstance(value, str) and value == "unknown")
+
+
 def aggregate_verdict(spec: Mapping[str, Any]) -> dict[str, Any]:
-    """Exact verdict of a census sum/mean over recorded units (formal semantics 14.2-14.3)."""
+    """Exact verdict of a census sum/mean over recorded units (formal semantics 14.2-14.3).
+
+    The census is complete only when the ``coverage`` block is present and attests every
+    completeness flag with a watermark at or past due; a missing or null block is incomplete
+    evidence (UNKNOWN), never complete by default. A unit that arrives after due, and every
+    unit record that is invalid, also makes the census incomplete.
+    """
     _shape(spec, "op metric bound window evaluated_at_ms units", "coverage precision_scale")
     op, metric = spec["op"], spec["metric"]
     _require(op in {"sum", "mean"} and metric in {"cost_usd", "score"}, "unknown operator or metric")
     bound = spec["bound"]
     _require(isinstance(bound, Mapping) and len(bound) == 1 and set(bound) <= {"lte", "gte"}, "exactly one bound")
     direction = next(iter(bound))
+    raw_bound = bound[direction]
+    _require(not (isinstance(raw_bound, str) and len(raw_bound) > _MAX_NUMERIC_CHARS), "bound encoding is too long")
     try:
-        bound_value = to_fraction(bound[direction])  # exact decimal literal recovery
+        bound_value = to_fraction(raw_bound)  # exact decimal literal recovery
     except RuntimeClosedError:
         bound_value = None
     _require(bound_value is not None and bound_value >= 0, "bounds are nonnegative decimals")
@@ -208,27 +239,46 @@ def aggregate_verdict(spec: Mapping[str, Any]) -> dict[str, Any]:
         return {"verdict": "UNKNOWN", "reason": "aggregate_pending"}
 
     coverage = spec.get("coverage")
-    coverage_complete = True
+    complete = False  # absent or null coverage is incomplete evidence
     if coverage is not None:
         _shape(coverage, "census unit_histories_complete producer_set_complete producer_sequences_contiguous "
                          "response_deadlines_covered watermark_ms")
-        coverage_complete = (
+        complete = (
             all(coverage[key] is True for key in coverage if key != "watermark_ms")
             and type(coverage["watermark_ms"]) is int and coverage["watermark_ms"] >= due
         )
 
-    complete = coverage_complete
+    limit = spec.get("precision_scale")
+    precision_hit = False
     seen: dict[str, tuple[Any, Any, Any]] = {}
     members: dict[str, Fraction] = {}
     scales: list[int] = []
+    late: list[tuple[str, tuple[Any, Any, Any]]] = []
     for unit in spec["units"]:
         _shape(unit, "key membership status", "value arrived_ms")
         _require(isinstance(unit["key"], str) and unit["key"], "units have a stable identifier")
         _require(unit["status"] in {"completed", "failed", "rejected"}, "unit status is terminal")
-        _require(unit["membership"] in {True, False, "unknown"}, "membership is true, false or unknown")
-        if "arrived_ms" in unit and unit["arrived_ms"] > due:
-            continue  # evidence arriving after due cannot change the finalized verdict
-        fingerprint = (unit["membership"], unit.get("value"), unit["status"])
+        if not _membership_valid(unit["membership"]):
+            complete = False  # an invalid record is never silently an exclusion
+            continue
+        value = unit.get("value")
+        exact: Fraction | None = None
+        over_long = False
+        if unit["membership"] is True:
+            try:
+                exact = _decimal(value)
+            except _PrecisionLimit:
+                over_long = True
+        # Values compare after exact decimal parsing, so "1" and "1.0" are one identical replay.
+        fingerprint = (unit["membership"], ("exact", exact) if exact is not None else ("raw", type(value).__name__, value),
+                       unit["status"])
+        if "arrived_ms" in unit:
+            if not _nat(unit["arrived_ms"]):
+                complete = False
+                continue
+            if unit["arrived_ms"] > due:
+                late.append((unit["key"], fingerprint))
+                continue
         if unit["key"] in seen:
             if seen[unit["key"]] != fingerprint:
                 complete = False  # conflicting duplicate histories or values
@@ -237,18 +287,25 @@ def aggregate_verdict(spec: Mapping[str, Any]) -> dict[str, Any]:
         if unit["membership"] == "unknown":
             complete = False
         elif unit["membership"] is True:
-            exact = _decimal(unit.get("value"))
+            if over_long:
+                precision_hit = True  # decided only if the rest of the census is complete
+                continue
             if exact is None or (metric == "score" and exact > 1):
                 complete = False  # a missing or invalid value is never zero
             else:
                 members[unit["key"]] = exact
-                scales.append(_scale(unit["value"]))
+                scales.append(_scale(value))
+    for key, fingerprint in late:
+        # Evidence after due never changes the finalized sum; it is a replay only when identical.
+        if seen.get(key) != fingerprint:
+            complete = False
     if not complete:
         return {"verdict": "UNKNOWN", "reason": "incomplete"}
+    if precision_hit:
+        return {"verdict": "UNKNOWN", "reason": "aggregate_precision_limit"}
     if not members:
         return {"verdict": "UNKNOWN", "reason": "insufficient"}
     total = sum(members.values(), Fraction(0))
-    limit = spec.get("precision_scale")
     if limit is not None and max([*scales, _scale(minimal_decimal_str(bound_value))]) > limit:
         return {"verdict": "UNKNOWN", "reason": "aggregate_precision_limit"}
     count = len(members)
@@ -263,11 +320,13 @@ def aggregate_verdict(spec: Mapping[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def validate_report_v2(report: Mapping[str, Any], binding: Mapping[str, Any]) -> None:
+def validate_report_v2(report: Mapping[str, Any], binding: Mapping[str, Any]) -> dict[str, str] | None:
     """Check a tvl-runtime-report/2 against its registration; raise a closed code on refusal.
 
     ``binding`` carries the registered contract_digest, monitor_ref, monitor_revision,
-    source_digest, window_hours and grace_ms. No input is echoed in the error.
+    source_digest, window_hours and grace_ms. No input is echoed in the error. Returns None for
+    an accepted report, or the verdict ``UNKNOWN(aggregate_precision_limit)`` for a complete report
+    that omits ``sum`` and carries ``unknown_reason: "aggregate_precision_limit"``.
     """
     if list(runtime_report_v2_validator().iter_errors(dict(report))):
         raise RuntimeClosedError("schema_error")
@@ -293,12 +352,22 @@ def validate_report_v2(report: Mapping[str, Any], binding: Mapping[str, Any]) ->
         and counts["dropped"] == 0 and counts["unknown_membership"] == 0 and counts["unplaceable"] == 0
         and counts["missing_value"] == 0 and counts["invalid_value"] == 0
     )
+    unknown_reason = report.get("unknown_reason")
+    if counts["member_count"] == 0 and "sum" in report:
+        raise RuntimeClosedError("runtime_report_numeric")  # an empty population has no sum, not even zero
     if "sum" in report:
         value = report["sum"]
-        if not isinstance(value, str) or not _MINIMAL_DECIMAL_RE.match(value):
+        if not isinstance(value, str) or not _MINIMAL_DECIMAL_RE.fullmatch(value) or unknown_reason is not None:
             raise RuntimeClosedError("runtime_report_numeric")
-    elif complete and counts["member_count"] > 0:
+        return None
+    if unknown_reason is not None:
+        # The only exception: a complete, nonempty report whose exact sum exceeds the producer's precision.
+        if not (complete and counts["member_count"] > 0) or unknown_reason != "aggregate_precision_limit":
+            raise RuntimeClosedError("runtime_report_numeric")
+        return {"verdict": "UNKNOWN", "reason": "aggregate_precision_limit"}
+    if complete and counts["member_count"] > 0:
         raise RuntimeClosedError("runtime_report_numeric")
+    return None
 
 
 def units_commitment_v1(units: Sequence[Mapping[str, Any]]) -> str:
@@ -312,13 +381,13 @@ def units_commitment_v2(secret: bytes, report: Mapping[str, Any], units: Sequenc
 
     ``secret`` is the customer-held random 256-bit key. Each unit carries its full local key
     (agent, environment, unit_kind, unit_id), membership, canonical exact value or its
-    missing/invalid state, and the source digest. Units are deduplicated and sorted by key.
+    missing/invalid state, and the source digest. Units are deduplicated and sorted by the UTF-8 bytes of the canonical JSON of the key object.
     """
     _require(isinstance(secret, bytes) and len(secret) == 32, "the secret is 256 bits")
-    entries: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    entries: dict[bytes, dict[str, Any]] = {}
     for unit in units:
         _shape(unit, "agent environment unit_kind unit_id membership state source_digest", "value")
-        _require(unit["membership"] in {True, False, "unknown"} and unit["state"] in {"valid", "missing", "invalid"},
+        _require(_membership_valid(unit["membership"]) and unit["state"] in {"valid", "missing", "invalid"},
                  "closed membership and state")
         entry = {
             "key": {key: unit[key] for key in ("agent", "environment", "unit_kind", "unit_id")},
@@ -327,8 +396,13 @@ def units_commitment_v2(secret: bytes, report: Mapping[str, Any], units: Sequenc
             "source_digest": unit["source_digest"],
         }
         if unit["state"] == "valid":
-            entry["value"] = minimal_decimal_str(unit["value"])
-        local_key = tuple(entry["key"][key] for key in ("agent", "environment", "unit_kind", "unit_id"))
+            _require("value" in unit, "a valid unit carries its value")
+            try:
+                entry["value"] = minimal_decimal_str(unit["value"])
+            except (RuntimeClosedError, ValueError, TypeError) as exc:
+                raise AggregateError("a valid unit carries a decimal value") from exc
+        # Identity and order: the canonical JSON bytes of the key object (agent, environment, unit_id, unit_kind).
+        local_key = canonical_json_bytes(entry["key"])
         _require(entries.setdefault(local_key, entry) == entry, "conflicting duplicate unit")
     payload = {
         **{key: report[key] for key in ("contract_digest", "monitor_ref", "monitor_revision",

@@ -1095,6 +1095,8 @@ Burn, promotion and obligation monitors are ineligible. Count the consecutive tu
 ending at the source event's window, once each, using finalized verdicts from the same
 requirement, monitor, agent, environment, contract digest, revision and schedule.
 Missing or incompatible slots remain UNKNOWN; do not substitute older windows.
+Missing contract digest, monitor revision, agent, environment or schedule identity, or an absent
+`available` field, makes a slot UNKNOWN(`persistence_history_gap`).
 Contract or monitor revisions reset history; statistical horizons alone do not.
 
 For B breaches and U unknown slots, the historical result is BREACHED if B≥k,
@@ -1103,8 +1105,10 @@ MET/BREACHED completion of UNKNOWN slots agrees. BREACHED qualifies the notifica
 MET suppresses it and UNKNOWN withholds it. The source verdict and episode are unchanged.
 A current MET window emits no eligible breach event even if the history qualifies.
 
-A fresh continuation may reconsider undelivered occurrence 0; delivered occurrences never
-redeliver. No state change alone queues delivery. Exact replays/retries retain the original
+The rule keeps its original trigger (formal semantics §13.9): an `episode_opened` rule is not
+delivered on a later `episode_continued`. An `episode_continued` rule evaluates at each fresh
+continuation and may reconsider undelivered occurrence 0; delivered occurrences never redeliver.
+No state change alone queues delivery. Exact replays/retries retain the original
 decision and identity. Qualification precedes existing guards, whose UNDECIDED rule is unchanged.
 Slot identities, results and UNKNOWN reasons stay customer-side; absent slots use
 `persistence_history_gap`. Persistence creates no statistical look, independence or stronger
@@ -1144,19 +1148,26 @@ Existing response restrictions apply; there is no aggregate promotion monitor to
 `deploy: if_promoted` for the same requirement.
 
 Use existing attribution and start-time placement. Identical unit replays count once;
-conflicting duplicates, unresolved membership/placement, incomplete terminal histories or
+compare values after exact decimal parsing, so `"1"` and `"1.0"` are equal replays.
+Membership must be exactly boolean `true`, boolean `false` or the string `"unknown"`;
+any other value, including numeric `1`, is an invalid record and makes the census incomplete.
+Conflicting duplicates, unresolved membership/placement, incomplete terminal histories or
 producer sequences, drops, and missing/invalid values prevent a complete census.
 Source attestations and watermarks through end plus grace are required; conservation alone
-cannot prove completeness. Before due return UNKNOWN(aggregate_pending); at due finalize.
+cannot prove completeness. Missing or null coverage yields UNKNOWN(incomplete). Units arriving
+after due make the census incomplete unless coverage attests otherwise; they must not be silently
+discarded to produce MET. Before due return UNKNOWN(aggregate_pending); at due finalize.
 Incomplete evidence is UNKNOWN(incomplete), even if a partial sum exceeds the bound;
 a complete empty population is UNKNOWN(insufficient). Later arrivals and audit corrections
 cannot rewrite the verdict, withdraw delivery or create another look.
 
 For nonempty complete evidence let C be member count and S the exact sum. Compare S to the
 bound for sum, or to C times the bound for mean. Never round a quotient or fill missing values
-with zero. Invalid values make evidence incomplete; resource limits preventing exact arithmetic
-produce UNKNOWN(aggregate_precision_limit). These are deterministic observed-value checks,
-not tests of future quality or independently verified source honesty.
+with zero. Invalid values make evidence incomplete. Check numeric encoding and precision/resource
+limits before conversion to exact rationals; limits preventing exact arithmetic, including overlong
+otherwise valid numeric strings, produce UNKNOWN(aggregate_precision_limit) rather than a conversion
+error. These are deterministic observed-value checks, not tests of future quality or independently
+verified source honesty.
 
 ### Composition and exchange
 
@@ -1171,7 +1182,15 @@ New constructs select proposed contract/local format `/3` at version "1.5". A ve
 keeps prior construct-based format selection; `/3` without a new construct is refused.
 Count reports stay `/1`; aggregate reports use proposed `tvl-runtime-report/2` with the exact
 closed fields, disjoint count identities and customer-held-secret HMAC commitment in RFC 0005 §2.5.
-Mean is reconstructed from exact sum/count. Old schemas are frozen and unknown tags refused.
+For complete nonempty evidence, `sum` is required unless its omission carries
+`unknown_reason: "aggregate_precision_limit"`, yielding UNKNOWN(aggregate_precision_limit);
+otherwise its omission is `runtime_report_numeric`. The optional `unknown_reason` is a closed enum
+containing only `aggregate_precision_limit`. For zero members, `sum` must be absent or `"0"`;
+a nonzero sum is `runtime_report_numeric`. The entire sum string must match the minimal decimal
+encoding; trailing characters, including a newline after `12.5`, are `runtime_report_numeric`.
+Mean is reconstructed from exact sum/count. Sort deduplicated commitment units in ascending order by
+the UTF-8 bytes of the canonical JSON of each unit key object `{agent, environment, unit_id, unit_kind}`,
+with canonical object key order. Old schemas are frozen and unknown tags refused.
 Only allowlisted numeric summaries, enums, times, commitments and opaque references project.
 Authored persistence integers project; its evaluation results and histories do not.
 Individual values, identifiers, scorer code and customer content remain local. Summaries may

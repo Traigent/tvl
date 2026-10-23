@@ -13,9 +13,18 @@ input:
   identity:
     contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
   windows:
   - index: 0
     verdict: BREACHED
+    available: true
+    contract_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    monitor_revision: rev1
+    agent: agent_1
+    environment: production
+    schedule: daily_24h
   index: 0
 expected:
   persistence:
