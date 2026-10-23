@@ -6,6 +6,7 @@ import TVL.Gate
 import TVL.Runtime.History
 import TVL.Runtime.Declarations
 import TVL.Runtime.Guards
+import TVL.Runtime.Persistence
 import TVL.Runtime.BinomialGeneric
 import TVL.Runtime.Compiler
 import TVL.Runtime.Compose

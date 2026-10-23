@@ -1078,3 +1078,103 @@ Documents without these blocks gain no new diagnostic. An old reader rejects a 1
 construct it does not implement refuses with `unsupported_construct` and names the construct (`requirements`, `monitors`, `responses`, `tvl_pack`,
 `monitor_outcomes` or `runtime_report`); it never ignores or strips it. `tvl-check-structural`, `tvl-check-operational` and `tvl-config-validate` erase the
 three blocks from a module and check the rest; `tvl-ci-gate --policy` refuses any runtime block.
+
+## TVL 1.5 draft: persistence and census aggregates
+
+[RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md) is DRAFT.
+The following is proposed language, not a claim of compiler or runtime support.
+Both additions require `tvl_version: "1.5"`; neither adds a response action.
+The complete recorded-history meaning is [formal semantics §14](../../formalization/tvl-formal-semantics.md#14-breach-persistence-and-census-aggregates-tvl-15-draft).
+
+### Notification persistence
+
+A rule may declare `persist: {breached_in: 3, of_last: 4}` only with `do: notify`
+and `episode_opened` or `episode_continued` from one primary runtime monitor.
+Require integers `1 ≤ breached_in ≤ of_last ≤ 168`; neither repeat coordinate is allowed.
+Burn, promotion and obligation monitors are ineligible. Count the consecutive tumbling slots
+ending at the source event's window, once each, using finalized verdicts from the same
+requirement, monitor, agent, environment, contract digest, revision and schedule.
+Missing or incompatible slots remain UNKNOWN; do not substitute older windows.
+Contract or monitor revisions reset history; statistical horizons alone do not.
+
+For B breaches and U unknown slots, the historical result is BREACHED if B≥k,
+MET if B+U<k, otherwise UNKNOWN(inconclusive). Equivalently, decide only when every
+MET/BREACHED completion of UNKNOWN slots agrees. BREACHED qualifies the notification,
+MET suppresses it and UNKNOWN withholds it. The source verdict and episode are unchanged.
+A current MET window emits no eligible breach event even if the history qualifies.
+
+A fresh continuation may reconsider undelivered occurrence 0; delivered occurrences never
+redeliver. No state change alone queues delivery. Exact replays/retries retain the original
+decision and identity. Qualification precedes existing guards, whose UNDECIDED rule is unchanged.
+Slot identities, results and UNKNOWN reasons stay customer-side; absent slots use
+`persistence_history_gap`. Persistence creates no statistical look, independence or stronger
+false-alarm bound; the original per-window charges remain in force across overlapping histories.
+
+### Census aggregate requirements
+
+```yaml
+# Proposed fragment, not a complete module or an installed monitor.
+requirements:
+  - name: daily_spend
+    kind: aggregate_bound
+    unit: invocation
+    aggregate:
+      op: sum
+      metric: cost_usd
+      source_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    bound: {lte: 50}
+```
+
+`unit` is `trace` or `invocation`; optional `among` uses existing checker membership.
+The closed operators are `sum` and `mean`, metrics `cost_usd` and `score`.
+The required source digest binds an immutable local contract for the observed universe,
+accounting/scorer version, terminal-status handling, numeric encoding and resource bounds.
+Registration must resolve that contract exactly; there is no default source.
+One finite exact decimal contribution is required per member: cost is nonnegative, score in [0,1].
+Scores describe the declared scorer's output. Include failed and rejected units as the source
+contract specifies, not just successes. Exactly one of `lte` and `gte` is required; bounds
+are nonnegative and mean-score bounds at most 1. Score sums may exceed 1; equality meets.
+
+An aggregate monitor is a customer-side runtime primary with required window and episode,
+omitted sampling (census), and `decision: {method: exact_aggregate_v1}` only.
+`backend_v1`, promotion, burn factors, statistical decision fields, `min_samples`,
+`max_unresolved_fraction`, `single_producer` and `limits` are forbidden.
+It emits existing episode events, no `unit_violation`, and supports no local guard.
+Existing response restrictions apply; there is no aggregate promotion monitor to authorize
+`deploy: if_promoted` for the same requirement.
+
+Use existing attribution and start-time placement. Identical unit replays count once;
+conflicting duplicates, unresolved membership/placement, incomplete terminal histories or
+producer sequences, drops, and missing/invalid values prevent a complete census.
+Source attestations and watermarks through end plus grace are required; conservation alone
+cannot prove completeness. Before due return UNKNOWN(aggregate_pending); at due finalize.
+Incomplete evidence is UNKNOWN(incomplete), even if a partial sum exceeds the bound;
+a complete empty population is UNKNOWN(insufficient). Later arrivals and audit corrections
+cannot rewrite the verdict, withdraw delivery or create another look.
+
+For nonempty complete evidence let C be member count and S the exact sum. Compare S to the
+bound for sum, or to C times the bound for mean. Never round a quotient or fill missing values
+with zero. Invalid values make evidence incomplete; resource limits preventing exact arithmetic
+produce UNKNOWN(aggregate_precision_limit). These are deterministic observed-value checks,
+not tests of future quality or independently verified source honesty.
+
+### Composition and exchange
+
+Aggregate identity includes kind, unit, canonical membership, operator, metric, source digest
+and comparator direction, excluding bound. Tightening decreases `lte` or increases `gte`;
+meet takes minimum or maximum respectively. Other identity changes are incompatible replacements.
+Source differences cannot share a monitor floor; schedule compatibility still applies.
+Persistence presence and both coordinates are immutable under overlay/meet. Packs rewrite
+`trigger.monitor` canonically; persistence creates no new monitor or episode lifecycle.
+
+New constructs select proposed contract/local format `/3` at version "1.5". A version alone
+keeps prior construct-based format selection; `/3` without a new construct is refused.
+Count reports stay `/1`; aggregate reports use proposed `tvl-runtime-report/2` with the exact
+closed fields, disjoint count identities and customer-held-secret HMAC commitment in RFC 0005 §2.5.
+Mean is reconstructed from exact sum/count. Old schemas are frozen and unknown tags refused.
+Only allowlisted numeric summaries, enums, times, commitments and opaque references project.
+Authored persistence integers project; its evaluation results and histories do not.
+Individual values, identifiers, scorer code and customer content remain local. Summaries may
+be sensitive; no anonymization or observability privacy guarantee is made.
+Existing 1.4 meanings, diagnostics and fixed-toolchain artifact bytes are preserved when neither
+addition is used. These compatibility statements are draft obligations, not implementation evidence.

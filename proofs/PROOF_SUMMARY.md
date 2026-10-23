@@ -3,7 +3,11 @@
 **Date**: 2026-02-01
 **Lean Version**: 4.28.0-rc1
 **Mathlib**: Commit 6a596ab9
-**Build Status**: All modules compile successfully
+**Historical baseline build status (2026-02-01)**: All modules compiled successfully.
+
+**Current RFC 0005 check**: The new module passed direct Lean checking; the full
+`lake build` was blocked fetching dependencies. See [Local verification](#local-verification)
+for commands, logs and scope.
 
 > **Coverage note (added after RFC 0001/0002):** this proof tree covers the
 > TVL core subset as it stood on 2026-02-01 — `tvars`, `constraints`,
@@ -588,3 +592,60 @@ source parsing, wire projection, attempt lifecycle or undecided-run implementati
 
 No new OPEN theorem or admitted proof is used in this module. Formal semantics §13 specifies
 attempts and undecided histories relationally; this is outside these four Lean claims.
+
+## RFC 0005: Persistence and exact mean comparison (TVL 1.5 draft)
+
+`TVL/Runtime/Persistence.lean`, imported by `Main.lean`, models arbitrary finite
+lists of base window verdicts. Missing slots must already be represented as
+UNKNOWN by the caller. The model does not select windows or validate the authored
+`1 ≤ k ≤ n ≤ 168` constraints; its mathematical results hold for every natural
+threshold, including zero, and every finite list.
+
+| Statement | Class | Scope |
+|---|---|---|
+| `breach_necessity` | SUBSTANTIVE | A BREACHED persistence result requires at least k already BREACHED base slots. No UNKNOWN slot is counted as an established breach. |
+| `refinement_bounds` | SUBSTANTIVE | Arbitrary positional refinement preserves decided slots and narrows the lower/upper possible breach-count interval. |
+| `breached_iff_all_completions` | SUBSTANTIVE | BREACHED iff every completion has at least k breaches. Uniform MET replacement constructs the lower endpoint. |
+| `met_iff_all_completions` | SUBSTANTIVE | MET iff every completion has fewer than k breaches. Uniform BREACHED replacement constructs the upper endpoint. |
+| `unknown_iff_mixed_completions` | SUBSTANTIVE | UNKNOWN iff there exist both a meeting and a breaching complete history; completion existence is constructed rather than assumed. |
+| `decided_refinement` | SUBSTANTIVE | Resolving any collection of UNKNOWN slots cannot reverse a definite MET or BREACHED result. |
+| `mean_lte_iff`, `mean_gte_iff` | SUBSTANTIVE | For positive natural member count and exact rational sum/bound, division comparison equals comparison of sum against count times bound, in either direction. Equality is included. |
+
+`Refines` preserves list positions; `Completion` additionally has no UNKNOWN
+slots. These statements concern the historical condition, not the current base
+verdict. They do not establish event eligibility, delivery or replay behavior,
+false-alarm probabilities, source-contract correctness, census completeness,
+finalization, attestation correctness, parsing, or controller execution. Exact
+rational comparison does not certify a decimal codec or bounded-resource
+arithmetic implementation. There are no new admitted proofs or assumptions.
+
+### Local verification
+
+The full build command `/home/nimrod/.elan/bin/lake build`, run from `proofs/`,
+exited **1** during dependency acquisition. Its final lines were:
+
+```text
+warning: manifest out of date: git revision of dependency 'mathlib' changed; use `lake update mathlib` to update it
+info: mathlib: cloning https://github.com/leanprover-community/mathlib4.git
+error: external command 'git' exited with code 128
+```
+
+Full output is in `/tmp/tvl-impl1-lake-build.log`. No dependency/configuration
+files were changed. The warning is reported without inferring its cause:
+`lakefile.lean`'s requested Mathlib revision, `lake-manifest.json`'s resolved
+Mathlib revision, and the existing sibling cache's `git rev-parse HEAD` all equal
+`6a596ab93c06c66333edc70d52d8955648f6669c`; the manifest's `inputRev` is null.
+
+A separate direct Lean check of this new module exited **0**, with no diagnostics,
+using read-only existing cached dependency libraries. This checks the new module,
+not the complete `Main.lean` dependency graph. From the worktree root, reproduce:
+
+```bash
+LEAN_PATH=$(find ../runtime-1-3/proofs/.lake/packages -path '*/.lake/build/lib/lean' -type d -printf '%p:') \
+  /home/nimrod/.elan/toolchains/leanprover--lean4---v4.28.0-rc1/bin/lean \
+  proofs/TVL/Runtime/Persistence.lean
+```
+
+The direct check's diagnostic log is `/tmp/tvl-impl1-direct-lean.log` (empty on
+success). `git diff --check` also exited 0. These are local mathematical checks,
+not runtime implementation evidence or a claim that the full library builds.
