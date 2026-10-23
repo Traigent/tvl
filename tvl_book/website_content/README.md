@@ -1,20 +1,20 @@
 # TVL Website Content
 
-This directory contains the canonical authored content for the TVL website and
-book surfaces.
+This directory is intentionally small. The earlier MDX-authored interactive
+book skeleton (`chapters/`, `patterns/`, `materials/`, `paths/`, `concepts/`,
+`images/`, `site_overrides/`, and the TVL 1.0–1.2 book chapters) was never
+routed by the live site (`website/`) and was removed as unused legacy
+content, since it still linked to a contributor's personal SDK fork rather
+than the canonical repository.
 
-It is intentionally separated into:
+What remains is actively referenced, not legacy:
 
-- `chapters/`: canonical MDX-authored interactive book content, organized by
-  chapter slug with chapter and section frontmatter
-- `paths/`: guided reading paths consumed by the React book app
-- `concepts/`: concept graph metadata for glossary/prerequisite links
-- `book/`: authored TVL chapter content and supporting book pages
-- `microsims/`: TVL-specific interactive assets
-- `images/`: TVL-specific artwork
-- `site_overrides/`: landing-page and navigation copy that was being used as
-  local MkDocs site overrides
+- `book/chapter-06-requirements-in-production.md`: the TVL 1.3 requirements/
+  monitors/responses chapter, linked from the top-level `README.md`,
+  `docs/index.md`, and `docs/guides/requirements-monitors-responses.md`, and
+  covered by `tests/test_runtime_doc_snippets.py`.
+- `microsims/orientation-rag-circuit/`: the interactive MicroSim, used as the
+  default output path for `tvl_tools/microsim_bridge`.
 
-The primary web-book authoring surface is `chapters/`, plus the `paths/` and
-`concepts/` metadata directories. This directory is a tracked source of truth
-for website content.
+This directory remains under the CC-BY-4.0 license declared in `LICENSE`
+(and `LICENSE-content` at the repo root).
