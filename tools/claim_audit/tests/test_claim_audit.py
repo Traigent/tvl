@@ -619,3 +619,14 @@ def test_strict_gate_needs_no_open_issues(tmp_path, capsys):
     capsys.readouterr()
     assert run() == 0
     assert "OWNER DECISION" in capsys.readouterr().out
+
+
+def _s02(text):
+    return ca.check_banned(None, {"path": "a.md", "start_line": 1, "text": text})[0]
+
+
+def test_s02_ignores_urls_but_flags_prose():
+    badge = '[![x](https://img.shields.io/badge/a-b-green)](https://example.com/shield) <img src="https://img.shields.io/x.svg"> https://shields.io/q'
+    assert _s02(badge) == "pass"
+    assert _s02("TVL is a shield for your specs.") == "issue"
+    assert _s02("See [the shield page](https://example.com/p) for more.") == "issue"

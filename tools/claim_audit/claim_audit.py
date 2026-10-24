@@ -550,9 +550,21 @@ def check_links(au: Audit, u: dict) -> tuple[str, str, str]:
     return "pass", f"all {checked} relative links and anchors resolve", ev
 
 
+_URL_MD_TARGET_RE = re.compile(r"\]\([^)\s]*(?:\s+\"[^\"]*\")?\)")
+_URL_BARE_RE = re.compile(r"https?://[^\s<>)\"']+")
+_URL_ATTR_RE = re.compile(r"\b(?:src|href)\s*=\s*(?:\"[^\"]*\"|'[^']*')", re.I)
+
+
+def strip_urls(text: str) -> str:
+    """Remove URL-ish spans (link targets, bare URLs, src/href values) so S02 sees visible prose only."""
+    text = _URL_ATTR_RE.sub(" ", text)
+    text = _URL_MD_TARGET_RE.sub("]", text)
+    return _URL_BARE_RE.sub(" ", text)
+
+
 def check_banned(au: Audit, u: dict) -> tuple[str, str, str]:
     ev = f"{u['path']}:{u['start_line']}"
-    hits = sorted({m.group(0).lower() for m in BANNED_RE.finditer(u["text"])})
+    hits = sorted({m.group(0).lower() for m in BANNED_RE.finditer(strip_urls(u["text"]))})
     if not hits:
         return "pass", "no banned words found in unit", ev
     if EXEMPT_RE.search(u["text"]):

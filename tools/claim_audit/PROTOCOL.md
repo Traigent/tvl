@@ -97,4 +97,4 @@ shows zero open issues, or each remaining issue is carried as an explicit owner 
 ## What this does not prove
 A pass is a reviewer's judgment at one commit, not truth. Sampling means most passes
 are second-checked only statistically; `coverage` reports, per model check, how many sampled passes the meta reviewer overturned (k/n), the exact one-sided 95% Clopper-Pearson upper bound on that rate, and the implied upper bound on hidden issues among auto-accepted passes. Pooling sampled passes across rule changes is an approximation. Script checks are syntactic: S01 confirms a link target
-exists, not that it says what the text claims; S02 matches words, not meaning.
+exists, not that it says what the text claims; S02 matches words, not meaning; since TVL-S02 v2 it ignores text inside URLs (Markdown link targets, bare http(s) URLs, `src=`/`href=` values) but still flags visible link text.

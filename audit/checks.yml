@@ -59,7 +59,7 @@ checks:
       Relative Markdown links and #anchors in the unit resolve to tracked files and headings
       (anchors use GitHub slug rules).
   - id: TVL-S02
-    version: 1
+    version: 2
     kind: script
     applies_to: [prose, code, table, heading]
     title: Banned words
