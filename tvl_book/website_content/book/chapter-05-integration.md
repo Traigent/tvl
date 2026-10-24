@@ -74,11 +74,11 @@ deterministic form, for auditability:
 ## Field Notes · Replay the Optimization Story
 
 The Orientation RAG lab is a toy model with three presets. Jump between **Baseline**, **Latency Spike**, and
-**Budget Shift** to see how objectives trade off as conditions change.
+**Budget Shift** to see how the read-outs trade off as conditions change.
 
 <iframe src="../microsims/orientation-rag-circuit/main.html#budget-shift" height="640px" scrolling="no" style="width: 100%; border: none;"></iframe>
 
-- Compare the latency and cost read-outs before and after each preset.
+- Compare the latency and cost read-outs before and after each preset or slider move.
 - Click **Copy YAML** to capture a simulation snapshot of the slider values. It is not a schema-valid TVL
   configuration or a TVO export.
 - The badges test simple latency, cost, and rerank thresholds. They are not promotion-gate evidence: a real gate

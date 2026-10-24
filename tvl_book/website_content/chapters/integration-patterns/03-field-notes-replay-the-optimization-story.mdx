@@ -19,12 +19,12 @@ opal_bridge: false
 
 The Orientation RAG lab is a simulation: it computes illustrative latency, cost, and quality numbers in the
 browser. It does not run TVO or DVL. Move the sliders to see the kind of trade-off an optimizer has to weigh and the
-kind of guardrail a data-validation step checks. The **Baseline**, **Latency Spike** and **Budget Shift** buttons do
-not change the sliders as shipped: the bundled presets set only `max_tokens`, which no slider uses.
+kind of guardrail a data-validation step checks. Jump between the **Baseline**, **Latency Spike** and **Budget Shift**
+presets to see how the read-outs trade off as conditions change.
 
 <MicrosimEmbed title="Orientation RAG Circuit" src="/book-assets/microsims/orientation-rag-circuit/main.html#budget-shift" height={640} />
 
-- Compare the latency and cost read-outs before and after you move a slider.
+- Compare the latency and cost read-outs before and after each preset or slider move.
 - Click **Copy YAML** to capture a simulation snapshot of the slider values. It is not a schema-valid TVL
   configuration or a TVO export.
 - The badges test simple latency, cost, and rerank thresholds. A real promotion gate also requires a valid
