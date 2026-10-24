@@ -972,7 +972,7 @@ These diagnostics indicate that the module uses features outside the formally ve
 - **Example**: `domain: { range: [0.0001, 0.001], resolution: 0.0001 }` with precision P=1000
 - **Impact**: The preconditions of SMT encoding soundness (Theorem 8.1) are not met, so the theorem does not cover this module; constraint checking may be incorrect.
 - **Formal Property**: Domain is not precision-aligned per Definition 8.6.
-- **Remediation**: Choose a precision factor that exactly aligns every declared decimal value and range step; the diagnostic reports one exact-alignment factor when it can derive one. Otherwise use an exact rational or index encoding. A factor based only on the smallest gap between values is not sufficient.
+- **Remediation**: Choose a precision factor P for which every declared value has `v·P` an integer; for a range, both the lower bound `a` and the resolution `r` must scale to integers. When it can, the message ends with `Suggested exact-alignment precision: P=N.` (also in `suggested_precision`); otherwise it ends with `Use exact rational or index encoding because an aligned integer precision could not be established.` For a set domain the suggested P aligns every value. For a range it is derived from the misaligned resolution alone (or, when the resolution is aligned, from the lower bound alone), so it may still leave the other one misaligned: for `{range: [0.00001, 0.001], resolution: 0.0003}` with P=1000 the suggestion is P=10000, but `0.00001·10000 = 0.1`. Check the suggested P against both `a` and `r` and re-run `tvl-lint`, or use an exact rational or index encoding. A factor based only on the smallest gap between values is not sufficient.
 
 ---
 
@@ -1014,6 +1014,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `float_equality` | warning | Structural | Float equality |
 | `derived_references_tvar` | error | Derived | TVAR in derived |
 | `non_linear_derived` | error | Derived | Non-linear derived |
+| `derived_invalid_symbol_reference` | error | Derived | Symbol other than `env.context.*` in derived |
 | `legacy_objective_epsilon` | warning | Objective | Deprecated epsilon |
 | `invalid_band_target` | error | Objective | Bad band target |
 | `invalid_band_bounds` | error | Objective | Bad band bounds |
@@ -1146,9 +1147,9 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 
 | Value | Tool |
 |---|---|
-| lint | `tvl-validate`, `tvl-lint` (and `tvl-ci-gate`, which runs the runtime lints first; `tvl-compile-runtime` also runs these lints and stops at the first error) |
+| lint | `tvl-validate`, `tvl-lint`, `tvl-ci-gate` (which runs the runtime lints first) and `tvl-compile-runtime` (which runs the same lints before compiling and stops at the first lint error; lint warnings do not stop it). So `tvl-compile-runtime` can report every error code marked lint. |
 | compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
-| compile | `tvl-compile-runtime` |
+| compile | `tvl-compile-runtime`, from its own compile steps (customer checker bindings, the token map, projection and the self-check). A code marked `lint, compile` comes from both the lints and those steps. |
 | gate | `tvl-measure-validate`, `tvl-ci-gate` |
 | platform | defined by RFC 0003 for the platform that registers or evaluates your contract; no tool in this repository produces it |
 

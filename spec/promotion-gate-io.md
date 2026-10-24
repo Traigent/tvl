@@ -6,6 +6,8 @@
 
 This document specifies the input/output format for the TVL promotion gate, the statistical testing procedures, and the decision logic.
 
+Two abbreviations recur. **TOST** (two one-sided tests) checks that a mean lies inside a target band (§3.4). **CI** means confidence interval.
+
 ---
 
 ## 1. Input: Measurement Bundle Schema
@@ -475,7 +477,9 @@ Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough obse
 
 ### 7.2 Edge Cases
 
-- **Empty or single-sample arm** (fewer than 2 observations in either arm): no variance can be estimated, so no t-test runs and the objective result is `inconclusive`; with every other check passing, the decision is `NoDecision`. For a banded objective, a single observation outside the band is still `out_of_band` and gives `Reject` (§3.4). `tvl-ci-gate` refuses a bundle whose objective has an empty `samples` list and no `mean/std/n` (`missing_statistical_evidence`, exit 2) before the gate runs.
+- **Empty or single-sample arm, standard objectives** (a non-banded objective with fewer than 2 observations in either the incumbent or the candidate arm): no variance can be estimated, so no t-test runs and the objective result is `inconclusive`; with every other check passing, the decision is `NoDecision`.
+- **Banded objectives** use the candidate's statistics only, so the incumbent's sample count does not matter. A candidate with fewer than 2 observations gives `out_of_band` (and `Reject`) when its point estimate is outside the band, and `inconclusive` when it is inside or there are no observations (§3.4).
+- **No statistics at all**: `tvl-ci-gate` refuses a bundle whose objective has an empty `samples` list and no `mean/std/n` (`missing_statistical_evidence`, exit 2) before the gate runs.
 - **All objectives identical**: NoDecision (no superiority)
 - **No objectives defined**: the module schema requires at least one objective, so such a module is rejected at validation. Called directly in Python with no objectives and no failing checks, the gate returns `NoDecision`.
 

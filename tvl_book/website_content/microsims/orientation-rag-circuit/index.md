@@ -47,8 +47,10 @@ built-in presets in `app.js`:
 
 To regenerate `microsim_presets.json`, run `tvl-microsim-bridge path/to/spec.yml` (add `-o` to choose another output
 file; by default it overwrites this lab's presets file, and `--dry-run` prints instead), then refresh the page. The
-page binds only the keys `retriever_top_k`, `rerank_weight`, and `response_tokens` to sliders. A preset in that
-file replaces the built-in preset of the same name, so a preset without those keys leaves the sliders unchanged.
+page binds three knobs to sliders: `retriever_top_k`, `rerank_weight` and `response_tokens`, also accepted in their
+camelCase forms `retrieverTopK`, `rerankWeight` and `responseTokens`. Other keys have no effect. A preset in that
+file replaces the built-in preset of the same name, so a preset without any of these keys leaves the sliders
+unchanged.
 
 !!! warning "Known gap in TVL 1.5"
     The bridge reads a legacy `configuration_space` block, not `tvars`. On a current TVL module it emits empty

@@ -1560,13 +1560,19 @@ environment, locally) plus the evaluation metadata {method, model, sampling}; th
 them, added by the projection to each BackendProfileEntry (§11.4.1); the hosted contract carries the same profile with the environment tokenized
 (§11.4.1). `from_backend_revision(rev)` maps a hosted profile revision to a requirement and monitor with
 `profile: backend_v1`; the scope is passed to it as `applies_to` (default `agent`). Names are supplied by the caller and
-are not part of the round trip. In the properties below, `to_backend_profile` stands for its profile together with the
-scope, and `from_backend_revision` receives both:
+are not part of the round trip. The Python functions return pairs: `to_backend_profile(R, M)` returns
+`(profile, metadata)`, and `from_backend_revision(profile, applies_to=s)` returns `(R', M')`. The scope `s` is not
+inside the profile, so it is passed separately in both directions. The two properties are:
 
 ```
-from_backend_revision(to_backend_profile(R, M)) = normalize(R, M)      (defaults filled in)
-to_backend_profile(from_backend_revision(rev))  = fields(rev)          for every valid hosted revision
+let s = M.applies_to (default agent), (P, meta) = to_backend_profile(R, M):
+    from_backend_revision(P, applies_to = s) = normalize(R, M)                  (defaults filled in)
+
+let s = the scope stored beside rev, (R', M') = from_backend_revision(fields(rev), applies_to = s):
+    first(to_backend_profile(R', M')) = fields(rev)  and  M'.applies_to = s    for every valid hosted revision
 ```
+
+Without the separate `s`, a `tenant_floor` monitor would come back as `agent`, the default of `applies_to`.
 
 Floats round-trip through IEEE-754 doubles: a decimal goes to its nearest double and comes back as the shortest
 decimal that round-trips. That is exact for every literal accepted by §4.2, and every double the hosted platform stores lifts

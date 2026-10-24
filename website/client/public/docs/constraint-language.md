@@ -6,7 +6,7 @@ TVL uses a **typed Disjunctive Normal Form (DNF)** constraint language for struc
 
 TVL constraints are divided into two categories:
 
-1. **Structural Constraints**: Boolean formulas over TVARs that express rules over the configuration space, checked by the structural verifier before search or promotion
+1. **Structural Constraints**: Boolean formulas over TVARs (tuned variables: the knobs a module declares, each with a type and a domain) that express rules over the configuration space, checked by the structural verifier before search or promotion
 2. **Operational Preconditions** (`constraints.derived`): Linear arithmetic over `env.context.*` symbols that express required operating conditions relative to the current environment snapshot, checked by the operational verifier against that snapshot
 
 Operational preconditions are not additional knobs to tune. They are checks over the declared `env.context.*`
@@ -228,10 +228,10 @@ constraints:
     - require: "env.context.rpm_limit - env.context.rpm_current_load >= 50"
 ```
 
-## Compilation to SMT
+## Compilation to SMT (Satisfiability Modulo Theories)
 
 The reference implementation (`python/tvl/structural_sat.py`) builds an OR-Tools CP-SAT model, and falls back to
-enumerating the domains when CP-SAT is not installed. SMT (satisfiability modulo theories) solvers decide whether a formula over typed variables, such as integers, has a solution; the SMT-LIB form shown below is an illustrative encoding
+enumerating the domains when CP-SAT is not installed. SMT solvers decide whether a formula over typed variables, such as integers, has a solution; the SMT-LIB form shown below is an illustrative encoding
 (formal semantics §8, which is non-normative); a validator may use any solver that gives the same answers.
 
 1. **Boolean TVARs**: Boolean variables

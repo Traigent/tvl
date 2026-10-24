@@ -14,7 +14,7 @@ A RAG (retrieval-augmented generation) agent looks up documents before it answer
   scenarios, then adjust the sliders to bring the latency guardrail and the rerank policy back to green. With the
   shipped slider ranges the lowest simulated cost is about $0.14, above the $0.12
   budget, so the cost badge can reach only its warning band, not "On budget".
-- **What to inspect:** Latency/cost/quality gauges, constraint badges, and the YAML snapshot that mirrors `params.yaml`.
+- **What to inspect:** Latency/cost/quality gauges, constraint badges, and the YAML snapshot, which shows the current slider values and the three objectives in the legacy `configuration_space` form (not a TVL 1.5 module).
 - **Optional automation:** Regenerate presets with `tvl-microsim-bridge path/to/spec.yml`. In TVL 1.5 the bridge reads
   a legacy `configuration_space` block, not `tvars`, so a current TVL module without runtime blocks yields empty presets,
   and the regenerated file then replaces the working presets with entries that move no slider.

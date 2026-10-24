@@ -12,7 +12,9 @@ Agentic systems repeat a small number of control-flow patterns whose variables
 travel together: a *cascade* runs a cheap arm and escalates past a calibrated
 gate; an *ensemble* fans out `k` samples and aggregates; a *self-debug loop*
 generates, critiques, and revises under a stop rule. Today TVL can declare the
-individual variables (RFC 0001: tvars, cvars, one cascade policy strategy) but
+individual variables (RFC 0001: tvars, the tuned variables or TVARs that search
+explores; cvars, the calibrated variables or CVARs whose values are fitted from
+data; and one cascade policy strategy) but
 has no construct that says *"these members form one reusable pattern with its
 own dependency structure, calibratable surface, cost model, and telemetry."*
 Each consumer rebuilds the bundle by convention; conventions drift.
@@ -74,6 +76,14 @@ and fail-closed governance; procedural, plural naming where adoption lives.
   untouched, as in RFC 0001).
 
 ## 3. Formal model (Phase 1)
+
+The property names P1–P8 are RFC 0001's property claims (RFC 0001 §4). The ones
+this RFC relies on most are P1 (conservative extension), P2 (optimizer soundness),
+P5 (SAT preservation: removing cvars and policies does not change whether the
+constraints are satisfiable), P6 (namespace uniqueness) and P8 (privacy: the persisted
+certificate and signal-observation shapes are closed, with no raw-content-typed
+field; "the P8 surface" means those closed shapes, see §7). This RFC's own claims
+are C1–C6 (§5).
 
 ### 3.1 What a composite is — and is not
 
@@ -363,7 +373,9 @@ item 7; error codes in §3.11):**
     candidate whose judging raises, or yields NaN/±∞/non-numeric, is
     EXCLUDED from selection; if ALL candidates are excluded the ensemble
     evaluation FAILS (propagates as an evaluation error — never a silent
-    pick), feeding the fail-closed law under strict modes. Selection is the
+    pick), feeding the fail-closed law under strict modes. §3.2.1 lists
+    exactly which judge failures exclude a candidate and which are an
+    `error`. Selection is the
     maximum score; ties break by the RFC 0001 deterministic total order
     over the candidates' serialized equivalence keys.
   - `accept` (optional, either aggregate kind): `stat_at_least` evaluates
@@ -411,10 +423,23 @@ every construct:
 - **`error` is absorbing.** An `error` from any arm/body/gate/judge/stop fails
   the enclosing item's evaluation in every construct, propagating outward to the
   root (where, under strict modes, it feeds the RFC 0001 §3.6 fail-closed law).
-  One case is not an `error`: under `judge_max`, a judging failure on one
-  candidate (the judge raises, or yields NaN/±∞/non-numeric) only EXCLUDES that
-  candidate (§3.2 execution semantics); the ensemble's result is an `error` only
-  when every candidate is excluded.
+  Judge failures under `judge_max` are the one exception, and they split
+  exactly as follows:
+  - *Excluded, not an `error`*: a failure while judging ONE candidate — the
+    judge raises, produces no output, or yields a value that is not a finite
+    number (NaN, ±∞, a non-numeric value; a boolean is not a score), or a
+    nested-composite judge yields `no_accept` or `error` for that candidate.
+    Only that candidate is EXCLUDED from selection (§3.2 execution
+    semantics); the remaining candidates are still judged.
+  - *`error`*: every candidate that reached the judge was excluded in this
+    way; or the judge cannot be invoked at all (for example, the runtime has
+    no binding for the judge stage).
+  The arms that produce the candidates follow the general rules: an `error`
+  from one of them is absorbing (the judge never runs), and a committee arm's
+  `no_accept` excludes it before judging. If no candidate reaches the judge
+  because all were excluded by `no_accept`, the ensemble yields `no_accept`
+  (below), not `error`. With this precedence, every `judge_max` evaluation
+  has exactly one result kind.
   This unifies the per-construct exception sentences above (post-cascade stage
   exception, pre-cascade signal exception, all-judge-excluded, loop body/stop
   exception, non-finite threshold) — those sentences are retained for locality
@@ -805,8 +830,10 @@ enums, finite numbers only — nothing content-typed; P8 discipline):
 - loop: `iterations_used`, `stop_reason` (enum over StopDecl kinds ∪
   `exhausted`).
 
-§11 gives the formulas for `vote_margin`, `vote_agreement` and
-`gate_margin_pass_rate`.
+The formulas for `vote_margin`, `vote_agreement` and `gate_margin_pass_rate`
+are in §11 "Errata and later changes", in the entry "Formulas for three §3.10
+measures (2026-10-24)": per-item definitions, which votes count, and the
+denominator of `gate_margin_pass_rate` over a set of items.
 
 ### 3.11 Error-code surface (exact diagnostics)
 
@@ -921,9 +948,12 @@ API.
 ## 5. Property claims (Phase 2)
 
 `Cal` is the coverage fold's set of calibratable members (§3.6) and `N_X` the
-composite namespace (§3.1). MUST-BE-SAT marks a deliberately broken model variant
-that must yield a counterexample; the note below the table explains why each check
-has one.
+composite namespace (§3.1). In the model checker, SAT (satisfiable) means it found
+an assignment that meets the query, here a counterexample, and UNSAT means none
+exists. MUST-BE-SAT marks a deliberately broken model variant that must yield a
+counterexample; the note below the table explains why each check has one.
+CVAR→CVAR names a dependency of one calibrated variable on another, which this RFC
+defers (§2).
 
 | Claim | Statement | Verification plan |
 |---|---|---|
@@ -1078,6 +1108,15 @@ differ from it.
   (R9) is a resolution-time rejection, so its validator fixture is statically
   clean and the rejection is checked by the resolver model-checking suite
   (`tests/test_composites.py`, comment above `EXPECTED`; `tests/model_checking`).
+- **Judge failures under `judge_max` (2026-10-24).** The accepted §3.2.1 said
+  an `error` from any judge is absorbing while §3.2 excluded a candidate whose
+  judging failed; that conflict was corrected in place in §3.2.1. The exact
+  split given there also names cases the accepted text did not: a judge that
+  produces no output, a boolean score, and a nested-composite judge that yields
+  `no_accept` or `error` for one candidate exclude that candidate, while a judge
+  that cannot be invoked at all is an `error`. These cases follow the reference
+  runtime (Traigent Python SDK, `traigent/knobs/runtime.py` `_judge_max`,
+  `_judge_callable`, `_execute_ensemble`).
 - **Formulas for three §3.10 measures (2026-10-24).** §3.10 names `vote_margin`,
   `vote_agreement` and `gate_margin_pass_rate` but does not define them. The per-item
   definitions below are taken from the reference runtime (Traigent Python SDK,

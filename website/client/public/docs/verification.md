@@ -11,7 +11,7 @@ For the full mathematical treatment, see `formalization/tvl-formal-semantics.md`
 TVL has three different decision layers:
 
 1. **Structural validity**
-   Does the module admit at least one configuration assignment over the declared TVAR domains?
+   Does the module admit at least one configuration assignment over the domains of its declared TVARs (tuned variables)?
 2. **Operational feasibility**
    Given the module's environment snapshot, do the declared operational checks still hold and are exploration budgets well-formed?
 3. **Promotion evidence**

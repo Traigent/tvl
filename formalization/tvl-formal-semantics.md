@@ -20,14 +20,14 @@ This document defines the mathematical meaning of the Tuned Variables Language (
 
 TVL is a **domain-specific requirements language** for AI agents. Unlike a programming language or build recipe, it does not describe the steps for constructing one agent. It defines a set of allowed agent configurations and the properties and evidence that make a candidate acceptable.
 
+The table below uses two technical terms. A **Turing-complete** language can express any computation, so some questions about its programs, such as whether they terminate, have no general algorithm. A question is **decidable** when an algorithm always halts with the correct yes or no answer; TVL is restricted so that its validation questions are decidable.
+
 | Property | Programming Language | Specification Language (TVL) |
 |----------|---------------------|------------------------------|
 | Primary purpose | Describe computation | Describe admissible agents and required properties |
 | Execution model | Operational | Declarative (validated/checked) |
 | Expressiveness | Typically Turing-complete | Intentionally restricted |
 | Key property | Termination | Decidability |
-
-A Turing-complete language can express any computation, so some questions about its programs, such as whether they terminate, have no general algorithm. A question is decidable when an algorithm always halts with the correct yes or no answer; TVL is restricted so that its validation questions are decidable.
 
 ### 1.2 Formal Requirements
 
@@ -210,7 +210,7 @@ These fields affect *how* optimization is performed, not *what* constitutes a va
 
 TVL 1.1 introduces a fourth field category: declarations that are **parsed, typed,
 and governed but absent from the search semantics** — they never enter Γ,
-`Config(Δ, E_τ)`, or `F^str`, so Theorem 8.1 (SAT soundness) and the §9 promotion
+`Config(Δ, E_τ)`, or `F^str`, so Theorem 8.1 (Encoding Soundness: a model of the SMT encoding of the structural constraints decodes to a configuration that satisfies them, and conversely) and the §9 promotion
 theorems are preserved by construction: the existing results still hold for the
 core language. The new constructs themselves are not yet covered by the mechanized
 proofs (§1.4).
@@ -1195,11 +1195,13 @@ Where:
 2. Encoding uses index-variable encoding for range domains (§8.3)
 3. Encoding uses direction-aware rounding for comparison thresholds (§8.4)
 
-For every SMT model `m` that assigns each declared SMT variable a value of its sort, and every structural formula `φ`, where `encode(Δ, φ, P, idx)` contains the domain assertions of §8.3 as well as the encoded formula (§8.1):
+Let `encode(Δ, φ, P, idx)` contain the domain assertions of §8.3 as well as the encoded formula (§8.1). For every structural formula `φ` and every SMT model `m` that assigns each declared SMT variable a value of its sort **and satisfies the domain assertions of §8.3** (so every enum index is in `{0,...,|D|-1}` and `decode(m, Δ, P, idx)` is defined, §8.7):
 
 ```
-m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) is defined ∧ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
+m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
 ```
+
+The restriction loses nothing: a model of `encode(Δ, φ, P, idx)` satisfies the domain assertions by definition, so Corollary 8.1 below quantifies over all models. A sort-correct model that breaks a domain assertion, such as one with an out-of-range enum index, satisfies no `encode(Δ, φ, P, idx)` and has no decoding; the theorem says nothing about it.
 
 *Proof*:
 

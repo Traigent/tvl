@@ -38,7 +38,8 @@ For OPAL declarative-core mechanization (assignment vs. `in`, `given`, callable 
 
 ## File Structure
 
-Line counts are `wc -l` on 2026-10-24.
+Line counts are `wc -l` on 2026-10-24. Theorem and lemma numbers in the comments are the
+original paper's (see **Numbering** above).
 
 ```
 proofs/
@@ -50,7 +51,7 @@ proofs/
     ├── Basic.lean          # Core definitions (162 lines)
     ├── Types.lean          # Type system formalization (133 lines)
     ├── TypeSoundness.lean  # Theorem 4.2 (194 lines)
-    ├── SMTEncoding.lean    # Lemma 5.4, Theorem 5.6 (1988 lines)
+    ├── SMTEncoding.lean    # SMT (satisfiability modulo theories) encoding: Lemma 5.4, Theorem 5.6 (1988 lines)
     ├── Dominance.lean      # Lemma 6.18 (119 lines)
     ├── OPALCore.lean       # OPAL declarative core (929 lines; see OPALCORE_README.md)
     ├── Gate.lean           # Promotion decision join (84 lines; see Runtime (TVL 1.3))
@@ -150,7 +151,7 @@ def ConfigRespectsContext (c : Config) (Γ : Context) : Prop :=
 
 ## 3. Type Soundness (TVL/TypeSoundness.lean)
 
-### Theorem 4.2 - **FULLY PROVEN** ✓
+### Theorem 4.2 (paper numbering; formal semantics Theorem 4.1) - **FULLY PROVEN** ✓
 
 Formal semantics: Theorem 4.1 (Denotation Totality), for the atoms and connectives above.
 
@@ -185,7 +186,7 @@ theorem atom_eval_defined (Γ : Context) (a : Atom) (c : Config) :
 
 ## 4. ε-Dominance Composition (TVL/Dominance.lean)
 
-### Lemma 6.18 - **FULLY PROVEN** ✓
+### Lemma 6.18 (paper numbering; formal semantics Lemma 9.2) - **FULLY PROVEN** ✓
 
 Formal semantics: Lemma 9.2 (ε-Dominance Composition). `normalized_diff_composition` proves it
 for one objective; `eps_dominance_composition_list` applies it to every objective of a list.
@@ -243,12 +244,12 @@ after Lemma 9.2) with two maximized objectives and ε = δ = 10:
 
 ---
 
-## 5. SMT Encoding Soundness (TVL/SMTEncoding.lean)
+## 5. SMT (Satisfiability Modulo Theories) Encoding Soundness (TVL/SMTEncoding.lean)
 
-SMT means satisfiability modulo theories: a solver decides whether a logical formula over
+An SMT solver decides whether a logical formula over
 integers (here, quantifier-free linear integer arithmetic, QF-LIA) has a satisfying model.
 
-### Rounding Soundness (Lemma 5.4) - **FULLY PROVEN** ✓
+### Rounding Soundness (Lemma 5.4, paper numbering) - **FULLY PROVEN** ✓
 
 **Statement** (what the Lean theorem proves): for natural numbers v and n and a precision
 factor P > 0,
@@ -256,12 +257,16 @@ factor P > 0,
 v · P ≥ n ⟺ v ≥ ⌈n/P⌉        where ⌈n/P⌉ is computed as (n + P - 1) / P
 ```
 
-This is a ceiling-division identity on natural numbers. It is **not** the formal semantics'
-Lemma 8.1, which states, for a P-aligned value v and a threshold n,
-`v ≥ n ⟺ scale(v) ≥ ⌈n · P⌉` (and the matching ≤, >, < forms). The Lean encoding takes values
-and thresholds as already scaled by P (see [Design Decisions](#8-design-decisions)), so the
-rounding of `n · P` is outside the Lean model, and `smt_encoding_soundness` does not use this
-lemma. Lemma 8.1 is not mechanized.
+This is a ceiling-division identity on natural numbers (`PrecisionFactor` is `Nat`). The formal
+semantics' Lemma 8.1 is the scaled form of the same rounding fact: for a P-aligned value v and a
+threshold n, `v ≥ n ⟺ scale(v) ≥ ⌈n · P⌉` with `scale(v) = v · P` (and the matching ≤, >, <
+forms). Both are instances of `x ≥ t ⟺ x ≥ ⌈t⌉` for an integer x: the Lean lemma takes x = v
+and t = n/P (it moves a threshold n on the scaled quantity v · P back to v), while Lemma 8.1 takes
+x = scale(v) and t = n · P (it moves a threshold n on v to the scaled integer). So the Lean lemma
+divides by P where Lemma 8.1 multiplies, and the Lean lemma does not prove Lemma 8.1. The Lean
+encoding takes values and thresholds as already scaled by P (see
+[Design Decisions](#8-design-decisions)), so the rounding of `n · P` is outside the Lean model, and
+`smt_encoding_soundness` does not use this lemma. Lemma 8.1 is not mechanized.
 
 **Lean Statement**:
 ```lean
@@ -283,7 +288,7 @@ private lemma le_div_imp_mul_le (k m n : Nat) (hn : n > 0) (h : k ≤ m / n) :
     k * n ≤ m
 ```
 
-### SMT Encoding Soundness (Theorem 5.6) - **PROVEN under the hypotheses below** ✓
+### SMT Encoding Soundness (Theorem 5.6, paper numbering; formal semantics Theorem 8.1, formula-level) - **PROVEN under the hypotheses below** ✓
 
 Formal semantics: a formula-level form of Theorem 8.1. Values and thresholds are taken as
 already scaled, and the §8.3 domain assertions are not modelled.
@@ -414,7 +419,7 @@ through `decode_val`.
 |---------|-----------|------------------|--------|-------------|-------|
 | Type Soundness | 4.2 | Theorem 4.1 | ✓ Complete | 0 | Requires `ConfigRespectsContext` |
 | ε-Composition | 6.18 | Lemma 9.2 | ✓ Complete | 0 | `normalized_diff_composition` proven |
-| Rounding Soundness | 5.4 | none (differs from Lemma 8.1) | ✓ Complete | 0 | Natural-number ceiling division |
+| Rounding Soundness | 5.4 | none (Lemma 8.1 is the scaled form, not mechanized) | ✓ Complete | 0 | Natural-number ceiling division |
 | SMT Encoding | 5.6 | Theorem 8.1, formula-level | ✓ Complete | 0 | Requires the decoder, model and encoding hypotheses |
 | Val.beq_comm | Helper | | ✓ Complete | 0 | Tuple/list recursion discharged |
 | Satisfiability | Cor. | Corollary 8.1, formula-level | ✓ Complete | 0 | Both directions fully proven |
@@ -524,7 +529,7 @@ non-tuple TVARs, and the four connectives):
   configuration that respects the typing context (`ConfigRespectsContext`)
 - **ε-Dominance Composition (Lemma 6.18)**: weak ε-dominance composes with tolerance 2ε
 - **Rounding Soundness (Lemma 5.4)**: the natural-number ceiling-division identity
-  `v · P ≥ n ⟺ v ≥ ⌈n/P⌉`; the semantics' threshold rounding `⌈n · P⌉` (Lemma 8.1) is not mechanized
+  `v · P ≥ n ⟺ v ≥ ⌈n/P⌉`; the semantics' scaled form `v ≥ n ⟺ v · P ≥ ⌈n · P⌉` (Lemma 8.1) is not mechanized
 - **QF-LIA Encoding Soundness (Theorem 5.6)**: SMT truth of the encoded formula matches TVL truth
   under the decoded model, given the decoder, model-totality, numeric-invariant and successful-encoding
   hypotheses of Section 5, with values and thresholds already scaled

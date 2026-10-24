@@ -63,7 +63,7 @@ Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 releas
 - **(1.5.0)** `inadequate_precision` follows Definition 8.6: it warns when some value `v` of a float domain has `v·P` not an integer, read from the exact decimal written. It used to warn only when two values collided after rounding, or when a range resolution was misaligned, so an aligned-looking set such as `[0.0005, 0.5]` with P = 1000 is now reported.
 - **(1.5.0)** Banded objectives with zero variance: with `std = 0` the TOST statistics are taken as +∞ or −∞, so a mean strictly inside the band passes and a mean exactly on a band edge is `inconclusive`. Before, every zero-variance result was `inconclusive` (formal semantics Definition 9.6).
 - **(1.5.0)** Banded objectives with fewer than 2 observations: a single observation outside the band is `out_of_band` and the gate returns `Reject`, as for any point estimate outside the band (formal semantics §9.5). Before, it was `inconclusive`. An in-band single observation, or none, is still `inconclusive` (`spec/promotion-gate-io.md` §3.4).
-- **(1.5.0)** An `int` or `float` TVAR with a bare list domain such as `[1, 2]` was read as an unbounded range, so `a == b` on `a: [1, 2]`, `b: [3, 4]` was reported SAT with `a = 0`, `b = 0`. A bare list of numbers is now a finite set, like `{set: [...]}`. Two follow-ups to the unreleased banded-objective changes above: a NaN, negative or infinite `std`, or an `n` that is not a non-negative integer, makes a banded objective `inconclusive` instead of evidence; and a `samples` list with one value is the point estimate, even when `n: 1` is also given (it used to fall back to a mean of 0).
+- **(1.5.0)** An `int` or `float` TVAR with a bare list domain such as `[1, 2]` was read as an unbounded range, so `a == b` on `a: [1, 2]`, `b: [3, 4]` was reported SAT with `a = 0`, `b = 0`. A bare list of numbers is now a finite set, like `{set: [...]}`. Two follow-ups to the unreleased banded-objective changes above: an `n` that is not a non-negative integer makes a banded objective `inconclusive` instead of evidence, and so does a NaN, negative or infinite `std` when `n >= 2` (with `n < 2` the `std` is not read, so a single observation outside the band is still `out_of_band`); and a `samples` list with one value is the point estimate, even when `n: 1` is also given (it used to fall back to a mean of 0).
 - **(1.5.0)** The `runtime_invalid_profile` diagnostic for a `clopper_pearson_exact_v1` monitor whose power bounds `scipy.stats.beta` cannot evaluate no longer repeats the monitor name in its message; the path locates the monitor (RFC 0003 §5.10).
 
 ## [1.5.0] - 2026-10-23
@@ -262,7 +262,7 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 
 ---
 
-## [0.9.0] - 2025-01-26
+## [0.9.0] - 2025-01-26 (date from pre-public history; not verifiable in this repository)
 
 > This entry predates the public repository (its first commit is dated 2026-04-13). The release date and the test count below come from the earlier private history and cannot be checked against this repository.
 
@@ -341,7 +341,7 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 - Configuration schema: `tvl-configuration.schema.json`
 - Measurement schema: `tvl-measurement.schema.json`
 - GitHub Actions CI pipeline
-- 69 unit tests covering type system, constraints, and promotion policy
+- 69 unit tests (count from pre-public history; not verifiable in this repository) covering type system, constraints, and promotion policy
 
 ### Fixed
 
