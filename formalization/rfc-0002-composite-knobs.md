@@ -684,7 +684,8 @@ expander). The surface accepts ONLY the sugar key.
 4. standard telemetry names (§3.10);
 5. a byte-stable **golden expansion test** (known-answer fixture);
 6. demonstrated fail-closed behavior under the §3.6 fold (a red-first test
-   in the consuming SDK).
+   in the consuming SDK: a test shown to fail before the implementation and to
+   pass after it).
 
 **Catalog v1:**
 

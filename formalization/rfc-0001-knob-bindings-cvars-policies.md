@@ -27,7 +27,8 @@ with exactly one typed binding — **Tuned | Fixed | Calibrated** — and extend
 - a `cvars` block declaring **calibrated variables** (CVARs): parsed and governed,
   **excluded from structural SAT and from the optimizer search space**;
 - a `policies` block declaring named operational policies (first concrete strategy:
-  `cascade`), aligned with the effectuation knob-kind `policy`;
+  `cascade`), aligned with the effectuation knob-kind `policy` (a knob that selects or
+  parameterizes runtime behaviour instead of being searched; §3.8);
 - `promotion_policy.require_calibration` — a strict evidence mode whose certificate
   freshness is validated against a **hash-covered calibration context**;
 - formal **namespace/scope rules** replacing the current ambiguity where dotted names
@@ -37,7 +38,7 @@ with exactly one typed binding — **Tuned | Fixed | Calibrated** — and extend
 The bilevel-programming literature gives this the standard reading: tuned variables
 are **outer variables**, calibrated variables are **inner variables**, and the
 calibrator is the (memoized) **response function** (Franceschi et al., ICML 2018).
-We know of no mainstream HPO framework that models inner variables natively (the
+We know of no mainstream hyperparameter optimization (HPO) framework that models inner variables natively (the
 tools surveyed are listed in §8); TVL 1.1 makes them a first-class governed construct.
 
 ## 2. Scope freeze (Phase 0)
@@ -64,7 +65,7 @@ tools surveyed are listed in §8); TVL 1.1 makes them a first-class governed con
 - CVAR substitution-as-constant into structural constraints;
 - relative/implicitly-prefixed name resolution (v1 resolution is exact-match only);
 - workflow-ownership *semantics* for `scope` (v1 is metadata + one consistency lint);
-- FE/BE product views of cvars/policies/certificates.
+- frontend/backend (FE/BE) product views of cvars/policies/certificates.
 
 ## 3. Formal model (Phase 1)
 
@@ -112,8 +113,8 @@ The optimizer-visible search space is exactly the tuned projection:
 Every optimizer suggestion `t` satisfies `dom(t) = N_T`. CVARs, fixed values, policy
 internals, and certificates are **invisible** to the optimizer (Property P2). The
 typing context for structural constraints is unchanged: **Γ ranges over `N_T`
-only** — `cvars` do not enter Γ, `Config(Δ, E_τ)`, or `F^str` (Property P5; §3.8 has
-the lint that makes violations precise).
+only** — `cvars` do not enter Γ, `Config(Δ, E_τ)`, or `F^str` (Property P5; the lint
+`cvar_in_structural_constraint` makes violations precise).
 
 ### 3.3 CVAR declarations
 
@@ -180,7 +181,7 @@ rejection conditions:
 
 | # | Rejection | Meaning |
 |---|---|---|
-| R1 | `cycle` | the dependency graph is not a DAG *(unreachable in v1 by construction; normative for the deferred CVAR→CVAR extension)* |
+| R1 | `cycle` | the dependency graph is not a directed acyclic graph (DAG) *(unreachable in v1 by construction; normative for the deferred CVAR→CVAR extension)* |
 | R2 | `missing_ref` | a `depends_on` entry resolves to no TVAR declaration |
 | R3 | `duplicate_provider` | two sources provide the same output name — including `dom(f) ∩ (N_T ∪ N_C) ≠ ∅` |
 | R4 | `phase_mismatch` | a value is consumed before the phase that produces it |
@@ -331,7 +332,7 @@ with these TVL-specific restrictions on the value space:
    never hashed.
 2. Numeric serialization follows JCS/ECMAScript shortest-round-trip rules (JCS
    already fixes `1` vs `1.0`, exponent form, and `-0` → `0`).
-3. Strings are Unicode-NFC-normalized **before** JCS serialization.
+3. Strings are normalized to Unicode Normalization Form C (NFC) **before** JCS serialization.
 4. Objects with duplicate keys are rejected at parse time (loaders MUST error, not
    last-wins).
 5. `ctx_schema_version` is part of `ctx_core`, so any future change to the
@@ -460,7 +461,8 @@ the gate-count invariant, not unresolved-name errors.
 - Each stage runs `k_i ≥ 1` samples (`k_i` is a per-stage **cardinality** tuned
   variable, not part of the policy), votes over caller-defined equivalence keys, and
   exposes content-free vote statistics. The v1 gate predicate is
-  `escalate ⟺ margin < θ_i`.
+  `escalate ⟺ margin < θ_i`, where `margin` is the winning key's share of all votes,
+  abstentions included (the `vote_margin` formula is in RFC 0002 §11).
 - **Totality and determinism**:
   - *Empty/abstain-only vote* (no valid keys): `margin = 0`, hence the gate
     escalates for any `θ_i > 0`; `θ_i = 0` means "never escalate" by the strict
@@ -589,7 +591,7 @@ TVL validators.
 | **P4** | Resolver completeness | `¬(R1 ∨ … ∨ R8) ∧ all calibrators ≠ ⊥ ⟹ Accept` — exact converse of P3 by construction | Phase 3: completeness side of the resolver model (no implicit rejection) |
 | **P5** | SAT preservation | For any module M and its cvar/policy-stripped projection M⁻: `compile_constraints(M)` and `compile_constraints(M⁻)` produce identical variable sets (= `N_T`) and identical clause sets; satisfiability coincides | Phase 3: encoding-equality model; Phase 4: lock test asserting solver domain keys = tvar names on modules with cvars |
 | **P6** | Namespace uniqueness | Each namespace reference (`depends_on`, `gates[].threshold`) resolves to exactly one declaration of the required kind or errs; duplicate names across tvars ∪ cvars ∪ policies err; prefix collisions diagnosed per §3.7(5) | Phase 3: shadowing/collision/kind-mismatch model; Phase 4: lints `cvar_shadows_tvar`, `policy_name_conflict`, `namespace_prefix_collision`, `missing_ref`, `duplicate_stage` |
-| **P7** | Fail-closed strictness | Under `strict(M, c)`: each of {R6, R8, calibrator ⊥, gate exception (§3.6), gate no_decision} ⟹ no promotion ∧ no winner-by-objective fallback | Phase 3: promotion-verdict reachability model (all five verdicts reachable, none promotes); →SDK spy tests on the four leak sites |
+| **P7** | Fail-closed strictness | Under `strict(M, c)`: each of {R6, R8, calibrator ⊥, gate exception (§3.6), gate no_decision} ⟹ no promotion ∧ no winner-by-objective fallback | Phase 3: promotion-verdict reachability model (all five verdicts reachable, none promotes); →SDK spy tests on the four leak sites (the SDK code paths that could fall back to the best-scoring trial: gate no_decision, insufficient samples, gate exception, terminal selector) |
 | **P8** | Privacy | The certificate and `SignalObservation` shapes (both defined in §3.5) are closed: every field is an identifier, type, hash, finite number, count, split label, or enum — no raw-content-typed field exists to leak. `policies[].parameters` is explicitly outside the guarantee | Phase 4: schema-level closed-shape check over the §3.5 shapes; →SDK canary test in observation emission |
 
 ## 5. Documented assumptions

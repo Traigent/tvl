@@ -78,7 +78,8 @@ Let B be the number of BREACHED slots and U the number of UNKNOWN slots. The per
 | otherwise | `UNKNOWN(inconclusive)` |
 
 These labels describe only the historical condition, not present quality or source MET.
-For k=2, n=3, `BBU → BREACHED`, `MMU → MET`, `BMU → UNKNOWN`. A startup or missing slot can therefore coexist
+For k=2, n=3, writing a history as its slot verdicts from oldest to current (B = BREACHED, M = MET,
+U = UNKNOWN): `BBU → BREACHED`, `MMU → MET`, `BMU → UNKNOWN`. A startup or missing slot can therefore coexist
 with a definite result. `BBM` also satisfies the historical condition, but its current MET window emits
 neither allowed breach event (`S:1805`), so it produces no persistence notification.
 k=n requires consecutive breaches; k=n=1 leaves eligibility at an allowed trigger unchanged.
@@ -267,7 +268,7 @@ These are projection rules, not additional report fields:
 | Persistence result, slot identities and constituent UNKNOWN reasons | none; customer-side only |
 
 A summary can itself be sensitive: this RFC makes no anonymization or observability privacy claim.
-Customer attestations are not independently verified population or source correctness.
+Customer attestations do not independently verify population or source correctness.
 
 ### 2.6 Schemas and diagnostics
 
@@ -336,7 +337,7 @@ expected future quality, a new false-alarm allocation or proof that an attested 
 
 Formal semantics §14 and the Lean work must state: completion soundness; notification-subset and
 no-new-look properties under those hypotheses; exact aggregate comparison equivalence; and conservative
-1.4 embedding preserving TVAR, structural, promotion and runtime denotations. Lean statements for completion
+1.4 embedding preserving tuned-variable (TVAR), structural, promotion and runtime denotations. Lean statements for completion
 soundness and exact mean comparison are in `proofs/TVL/Runtime/Persistence.lean`, with scope and build status in
 `proofs/PROOF_SUMMARY.md`; the other properties remain proof obligations. None of this claims passing
 conformance, controller execution or production enablement.

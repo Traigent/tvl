@@ -16,7 +16,8 @@ Conformance case paths are relative to `conformance/cases/runtime/` in this repo
 rule of this RFC, not a statement about existing code.
 
 **Conservative readings.** Where a point is not settled by the design decisions of §16.1, this RFC takes the most
-conservative reading (fail closed, `unres` or `UNKNOWN`, refusal of an unsupported construct) and lists the choice in
+conservative reading (fail closed, the `unres` (unresolved) unit classification or the `UNKNOWN` verdict (§3.3–§3.4),
+refusal of an unsupported construct) and lists the choice in
 §16.
 
 ## 1. Motivation
@@ -52,7 +53,8 @@ event. Separating them gives three things a single `runtime:` block cannot:
 
 **What this RFC is not.** It adds no general temporal logic to the surface (temporal logic appears only as the
 denotation of a sealed catalogue, §3.3), no sliding windows, no programmable remediation, and no change to the
-structural or derived constraint semantics, the SMT encoding or ε-dominance (§6.1). It specifies no evaluator: TVL is
+structural or derived constraint semantics, the SMT (satisfiability modulo theories) encoding or ε-dominance (formal
+semantics §9.3; §6.1). It specifies no evaluator: TVL is
 a specification language with a validator and a compiler (§3.5).
 
 ## 2. Scope
@@ -288,8 +290,8 @@ minimal decimal strings and integer parameters as JSON integers (§11.4).
 | `label` | `^[A-Za-z_][A-Za-z0-9_]*$`; for catalogue checkers, a member of the checker's label list (§4.2.2) | — |
 
 Outside `backend_v1` the ranges for g, `min_samples`, f, α_FA, H, K and the closure age reuse the hosted latency
-profile's ranges. W must divide 24 so that windows tile the UTC day and the windows per horizon `m = 24·H/W` is an
-integer.
+profile's ranges. W must divide 24 so that windows tile the UTC day and the number of windows per horizon, `m = 24·H/W`, is
+an integer.
 
 #### 4.2.1 Closed enums and lexical forms (normative)
 
@@ -452,7 +454,7 @@ column except `method` becomes D with the profile's default (§4.2, §10.1); `wi
 | `resolution` | D `terminal_status_v1` | D | D | D | F |
 | `sampling` | per T6 | F | per T6 | F | F |
 | `window` | R | R | R | F | F |
-| `decision.method` | R | R (`exact_count_v1`) | R (`_rational_v2`) | R | R (`exact_count_v1`) |
+| `decision.method` | R | R (`exact_count_v1`) | R (`clopper_pearson_rational_v2`) | R | R (`exact_count_v1`) |
 | `decision.model` | D `iid_bernoulli_within_window_v1` | F | D | F | F |
 | `confidence` | R | F | F | R (`rate_bound`); F (`zero_tolerance`) | F |
 | `false_alarm_budget` | R | F | R | R (`rate_bound`); F (`zero_tolerance`) | F |
@@ -603,8 +605,8 @@ For a decimal field (such as `confidence` or `false_alarm_budget`) whose value i
 
 | Code | Sev. | Trigger | Case |
 |---|---|---|---|
-| `runtime_met_unreachable_at_min_samples` | E; W under `backend_v1` | a primary `rate_bound` runtime monitor whose met test fails at N = `min_samples` even with k = u = 0: rational: (1 − θ)^N > 1 − c; float: `beta.ppf(c, 1, N) > θ`. Episodes could never close using windows of exactly that size; windows with more units can still reach MET. Example: θ 0.01, c 0.95 needs N ≥ 299, since 0.99²⁹⁹ ≈ 0.0495 ≤ 0.05 < 0.99²⁹⁸ ≈ 0.0500 | E: `lints/met-unreachable-298.yml`; boundary `lints/met-reachable-299.yml` (code absent); W under `backend_v1`: `lints/backend-met-unreachable-warning.yml` |
-| `runtime_breach_unreachable_at_min_samples` | W | a primary `rate_bound` runtime monitor that cannot breach at N = `min_samples` even with k = N: rational: θ^N ≥ α_w; float: the hosted latency profile's computation finds no breaching k | `lints/primary-breach-unreachable-warning.yml` |
+| `runtime_met_unreachable_at_min_samples` | E; W under `backend_v1` | a primary `rate_bound` runtime monitor whose met test fails at N = `min_samples` even with k = u = 0 (k violating and u unresolved counted units, §6.7–§6.8): rational: (1 − θ)^N > 1 − c; float: `beta.ppf(c, 1, N) > θ`. Episodes could never close using windows of exactly that size; windows with more units can still reach MET. Example: θ 0.01, c 0.95 needs N ≥ 299, since 0.99²⁹⁹ ≈ 0.0495 ≤ 0.05 < 0.99²⁹⁸ ≈ 0.0500 | E: `lints/met-unreachable-298.yml`; boundary `lints/met-reachable-299.yml` (code absent); W under `backend_v1`: `lints/backend-met-unreachable-warning.yml` |
+| `runtime_breach_unreachable_at_min_samples` | W | a primary `rate_bound` runtime monitor that cannot breach at N = `min_samples` even with k = N: rational: θ^N ≥ α_w (the per-window false-alarm budget α_FA / m, §6.8); float: the hosted latency profile's computation finds no breaching k | `lints/primary-breach-unreachable-warning.yml` |
 | `chance_constraint_shadowed` | W | a promotion monitor and a `promotion_policy.chance_constraints` entry with the same name as the monitor or its requirement: the chance constraint's Reject still wins the gate join (§6.11) | `promotion/chance-constraint-shadow-warning.yml` |
 | `runtime_liveness_missing` | W | a primary monitor that no `evidence_liveness` requirement covers | `lints/primary-liveness-missing-warning.yml` |
 
@@ -864,8 +866,9 @@ each with probability `p_w`:
 | `zero_tolerance`, `exact_count_v1` (§6.9) | at least one unit of the population violates | the population was completely covered, has at least `min_samples` units, and none violates |
 
 `UNKNOWN(reason)` promises neither. The rate claims assume sound classifications (§6.4), outcome-independent sampling,
-and that each window's violation count k among its N counted units is dominated by Bin(N, θ) when `p_w ≤ θ` (and
-dominates it when `p_w ≥ θ`). Units
+and that each window's violation count k among its N counted units is stochastically dominated by Bin(N, θ), the
+binomial count of N independent trials each with probability θ (P[k ≥ j] ≤ P[Bin(N, θ) ≥ j] for every j; formal
+semantics §12.14), when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`). Units
 the evaluator could not classify — unresolved, unplaceable or dropped — never strengthen a verdict: the promises hold
 whatever those units' complete histories turn out to be.
 
@@ -1052,6 +1055,8 @@ duration, not a recovery duration. The terminality of OVERDUE does not authorize
 needs its originating episode open (§7.4).
 
 **Deadline feasibility.** Closing needs K_close = max(K_floor, K_agent) adjacent MET windows after the opening window,
+where K_floor and K_agent are the `closure_windows` of the organisation floor (§9.4) and of the agent's own monitor
+(composed by maximum, §9.2);
 so the earliest closing window ends at e₀ + K_close · W; `recovery_deadline_impossible` iff T < K_close · W, and equality
 is feasible (`lints/recovery-deadline-equality-feasible.yml`). This is the earliest window separation, not a guarantee:
 closure also requires the closing windows to be fresh (`closure_max_age_hours`) at the closing evaluation, so delayed
@@ -1326,7 +1331,8 @@ responses:
 | response directives | an evaluator's controller; the SDK pulls them | closed records |
 | next steps | the hosted platform's next-step channel | references and closed operations only; no names, labels or environment strings (§8.4) |
 
-`tvl-runtime-local/1`, the token map and the checker registry stay customer-side.
+`tvl-runtime-local/1` (the compiled declarations for customer-side evaluators, §11.4.4), the token map and the checker
+registry stay customer-side.
 
 ### 8.2 Local → hosted projection
 

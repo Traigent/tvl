@@ -33,9 +33,9 @@ and nothing else: no new action, no new authority, no window shape, no statistic
 established alerting or deployment system (§6).
 
 **Scope study.** The constructs were selected from a 38-scenario expressiveness study of TVL 1.3 against alerting and
-repair practice (SRE burn-rate alerting, Prometheus/Alertmanager, Datadog monitors, complex event processing, Dwyer's
+repair practice (site reliability engineering (SRE) burn-rate alerting, Prometheus/Alertmanager, Datadog monitors, complex event processing, Dwyer's
 specification patterns, progressive-delivery analysis). Deliberately out of scope, with reasons in §6: sliding windows and
-exact multi-window burn alerts, K-of-N persistence, comparison against a previous configuration (canary analysis),
+exact multi-window burn alerts, K-of-N persistence (notify only after at least K breached windows among the last N), comparison against a previous configuration (canary analysis),
 success notifications, and guards on any action other than `notify`. Also out of scope, without a §6 entry: aggregate
 budgets, anomaly detection and calendars.
 
@@ -84,7 +84,8 @@ approval has been given, until the first of:
 
 If the originating scope closes or the response revision changes after the optimization or deploy has started, the attempt stays open until that effect records its outcome or succeeds, and then closes; no later effect starts.
 
-The third group records **no outcome**: either nothing is left to repair, or a person decided. Waiting for approval or
+The last two closures (scope closure or revision change before the pending effect, and approval declined or expired
+before the effect starts) record **no outcome**: either nothing is left to repair, or a person decided. Waiting for approval or
 holding while authority is unreachable (RFC 0003 §7.3) keeps the attempt open and records nothing.
 
 **Outcomes.** Each attempt records at most one optimize outcome and at most one deploy outcome. Outcomes are terminal
@@ -293,7 +294,9 @@ Formal semantics §13 defines the attempt lifecycle and its outcome function (§
 over window records (§2.3), and guard evaluation as a function into {TRUE, FALSE, UNDECIDED} with Kleene connectives
 and the `notify` resolution of §2.4.
 
-Lean (`proofs/TVL/Runtime/Guards.lean`) formalizes the following statements, each with its recorded class:
+Lean (`proofs/TVL/Runtime/Guards.lean`) formalizes the following statements, each with its recorded class
+(`proofs/PROOF_SUMMARY.md`: SUBSTANTIVE means proved with content beyond its definitions; BY-CONSTRUCTION means proved
+but true by definition or by the chosen representation):
 
 - `undecided_never_suppresses` (SUBSTANTIVE, small): for every guard valuation, replacing any guard's value by
   UNDECIDED never turns "delivered" into "suppressed". A truth-table property of the resolution; it says nothing
@@ -364,7 +367,7 @@ notifications only and documents the mutual-inhibition trap.
 ## 7. Recorded decisions and limitations
 
 1. **Success outcomes** (§6): deferred beyond 1.4; no success notification trigger.
-2. **Contract format tags — closed, ruling A.** Projected new constructs use `/2` and version `"1.4"`; without them,
+2. **Contract format tags — closed (owner decision).** Projected new constructs use `/2` and version `"1.4"`; without them,
    artifacts use frozen `/1` and version `"1.3"`, regardless of authored version. Refusal rules are recorded in §3.
 3. **Guards in packs over module monitors.** Disallowed in 1.4; pack guards may name only pack monitors.
 4. **`attempt_open` for `deploy: never`.** The attempt closes when a promoted candidate exists; the candidate's later

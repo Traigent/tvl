@@ -98,7 +98,7 @@ The core TVL module fields fall into three categories based on their role in the
 
 #### 1.5.1 Semantic Fields (Under Formal Semantics)
 
-These fields have precise mathematical meaning and are subject to the theorems in this document:
+These fields have precise mathematical meaning and are subject to the theorems in this document. The table uses notation defined later: `E_τ` is the environment snapshot (§3.2), `𝒟⟦d⟧` the domain interpretation (§3.3), `F^str` the structural-feasibility predicate (§6.1) and `≻_ε` ε-Pareto dominance (§9.3).
 
 | Category | Field | Semantic Role |
 |----------|-------|---------------|
@@ -172,7 +172,7 @@ Acceptable(c, Y_c, M) ⟺ ChancePass(c, Y_c, M) ∧ BandPass(c, Y_c, M)
 Where:
 - `Y_c` is the evaluation result (observed objective values, chance outcomes)
 - `ChancePass` checks that all chance constraints are satisfied
-- `BandPass` checks that all banded objectives fall within their equivalence bands
+- `BandPass` checks that every banded objective passes the TOST equivalence test of §9.5: its confidence interval lies strictly inside the band, which a point estimate inside the band does not by itself establish
 
 These require *evaluation* — the configuration must be run to observe outcomes.
 
@@ -768,7 +768,7 @@ If `Γ ⊢ φ : prop` and `c` is a configuration respecting `Γ` (i.e., `∀x �
 - Other atoms: Analogous reasoning.
 
 **Inductive cases (connectives)**:
-- (T-And): By IH, `⟦φ⟧(c), ⟦ψ⟧(c) ∈ 𝔹`. Conjunction is total on 𝔹, so `⟦φ ∧ ψ⟧(c) ∈ 𝔹`.
+- (T-And): By the induction hypothesis (IH), `⟦φ⟧(c), ⟦ψ⟧(c) ∈ 𝔹`. Conjunction is total on 𝔹, so `⟦φ ∧ ψ⟧(c) ∈ 𝔹`.
 - (T-Or), (T-Not), (T-Impl): Similar. □
 
 ---
@@ -939,15 +939,15 @@ For any well-formed structural constraint set `Φ^str` and configuration `c`, de
 *Proof*: Evaluate each atom once and combine the results bottom-up over the finite formula structure. A comparison or equality atom compares one value with one literal, or (T-TVarEq, T-TupleVarEq) two configuration values; a membership atom `x ∈ S` scans `S`; a tuple atom compares its components (Definition 5.2). So each atom takes time linear in its own size plus the size of the values it reads from `c`, counting set elements, tuple components and the length of the values compared. Atoms may read the same value of `c` repeatedly, so the total time is `O(|Φ^str| · (1 + |c|))`, which is polynomial. □
 
 **Theorem 7.2 (Satisfiability Decidability)**.
-For any well-formed structural constraint set `Φ^str` over finite domains, determining whether `∃c: F^str(c, Φ^str) = true` is decidable (in NP).
+For any well-formed structural constraint set `Φ^str` over finite domains, determining whether `∃c: F^str(c, Φ^str) = true` is decidable and in NP (the class of problems whose proposed solutions can be checked in polynomial time).
 
 *Proof sketch*:
 1. All TVAR domains are finite (Definition 3.6, Lemma 3.1)
 2. Therefore, the configuration space `Config(Δ, E_τ)` is finite
 3. Satisfiability can be decided by guess-and-check: guess configuration, verify in polynomial time (Theorem 7.1)
 4. This places satisfiability in NP
-5. It is NP-hard (reduction from SAT via boolean TVARs)
-6. Therefore, satisfiability is NP-complete
+5. It is NP-hard, that is, every problem in NP reduces to it in polynomial time (reduction from SAT, Boolean satisfiability, via boolean TVARs)
+6. Therefore, satisfiability is NP-complete (in NP and NP-hard)
 
 For practical implementation, TVL constraints compile to QF_LIA (quantifier-free linear integer arithmetic) which modern SMT solvers decide (§8). Solver running time depends on the workload; this document gives no performance bound. □
 
@@ -983,7 +983,7 @@ Both phases are decidable, so consistency is decidable. □
 
 This section is non-normative. It demonstrates one implementation strategy for deciding structural feasibility. A conforming validator may use another solver or a direct decision procedure if it preserves the judgments defined in Sections 2–6. Internal solver representation is not part of the TVL interchange contract.
 
-We define the compilation from TVL constraints to SMT-LIB format.
+We define the compilation from TVL constraints to SMT-LIB format, the standard input language of SMT solvers.
 
 ### 8.1 Encoding Function
 
@@ -1205,7 +1205,7 @@ The restriction loses nothing: a model of `encode(Δ, φ, P, idx)` satisfies the
 
 *Proof*:
 
-**Encoding direction** (`⟦φ⟧(c) = true ⟹ encode(c) ⊨ encode(φ)`):
+**Encoding direction** (`⟦φ⟧(c) = true ⟹ m ⊨ encode(φ)` for the model `m` built from `c` below):
 
 Construct SMT model `m` from configuration `c` via `encode_value`. We show `m ⊨ encode(φ)`.
 
@@ -1297,16 +1297,16 @@ StatDominates(c, c', Y_c, Y_{c'}, M) ⟺
 For each standard objective `i` (non-banded), using normalized difference `δ_i`:
 
 1. **Non-inferiority test**: H₀: `δ_i ≤ -ε[i]` (candidate is worse by at least ε)
-   - If p-value < α, reject H₀ (evidence candidate is not worse)
+   - If p-value < α, reject H₀ (evidence candidate is not worse by ε[i] or more; a smaller regression is still allowed)
 2. **Superiority test**: H₀: `δ_i ≤ ε[i]` (candidate is not better by more than ε)
    - If p-value < α, reject H₀ (evidence candidate is strictly better)
 3. **Inferiority test**: H₀: `δ_i ≥ -ε[i]` (candidate is within the allowed regression margin)
    - If p-value < α, reject H₀ (evidence candidate regressed beyond the margin)
 
 **Statistical Test Specification**:
-- For continuous objectives with raw samples: Use **Welch's t-test** (unequal variance assumed)
+- For continuous objectives with raw unpaired samples: Use **Welch's t-test** (unequal variance assumed)
 - For continuous objectives with aggregated statistics (mean, std, n): Use **Welch's t-test** with Welch-Satterthwaite degrees of freedom
-- For paired samples (same evaluation instances): Use **paired t-test**
+- For paired samples (same evaluation instances): Use **paired t-test**; for matched observations it takes precedence over Welch's test
 - When variance equality is known: Student's t-test is permitted as an optimization
 
 Promotion requires:
@@ -1323,6 +1323,8 @@ For banded objective with target `[L, U]` and significance `α`:
 TOST_pass(μ̂, s, n, [L,U], α) ⟺
     (H₀: μ ≤ L rejected at α) ∧ (H₀: μ ≥ U rejected at α)
 ```
+
+Here `μ̂`, `s` and `n` are the sample mean, sample standard deviation and sample size of the objective's observations (Definition 9.7), and `μ` is the true mean.
 
 Equivalently, a configuration passes the band constraint iff the **(1 - 2α) confidence interval** for the mean lies strictly inside the open interval `(L, U)`. With `s = 0` that interval is the single point `μ̂`, so a mean strictly inside the band passes and a mean exactly on `L` or `U` does not (the null for that edge is not rejected).
 
@@ -1469,8 +1471,8 @@ return NoDecision("insufficient evidence")
 In the current promotion contract, non-inferiority is an intersection-union test: every per-objective non-inferiority test is evaluated at `α`. The configured `adjust` method applies separately to the superiority family used for the union claim that at least one objective improved beyond `ε` and the inferiority family used for the union claim that at least one objective regressed beyond `ε`.
 
 - `none` provides no family-level correction for either union family.
-- Bonferroni and Holm control family-wise error for each adjusted family under their standard conditions.
-- Benjamini-Hochberg controls false discovery rate under independence or positive regression dependency; it does not control family-wise error.
+- Bonferroni and Holm control family-wise error (the probability of at least one false rejection in the family) for each adjusted family under their standard conditions.
+- Benjamini-Hochberg controls false discovery rate (the expected share of false rejections among all rejections) under independence or positive regression dependency among the test statistics (Benjamini and Yekutieli, 2001); it does not control family-wise error.
 
 These results do not by themselves bound every route to an erroneous promotion. Such a bound also depends on test validity, data generation, selection effects, evaluator reliability, chance and band checks, and whether the evidence was collected independently of candidate selection. A certificate MUST state the tests and assumptions actually used rather than generalize this proposition into a universal agent guarantee.
 
@@ -1558,7 +1560,7 @@ An implementation MAY use the informative SMT encoding in §8, another solver en
 1. Implement ε-Pareto comparison per §9.3 with direction normalization (§9.4)
 2. Support statistical testing with direction-normalized differences (Definition 9.4)
 3. Apply the configured multiple-testing adjustment separately to the superiority and inferiority p-value families as specified in §9.8
-4. Verify evaluation results include sample size for proper df calculation
+4. Verify evaluation results include sample size for proper degrees-of-freedom (df) calculation
 5. Distinguish demonstrated failure (`Reject`) from insufficient evidence (`NoDecision`)
 
 ### 10.6 Runtime Monitor Requirements
@@ -1649,7 +1651,7 @@ Surface syntax, syntax-level closed enums and lexical constraints are normative 
 | `evidence_liveness` | `windows` | runtime | `exact_count_v1` |
 | `aggregate_bound` (TVL 1.5) | `customer_side` | runtime | `exact_aggregate_v1` (§14.2–§14.3) |
 
-For a rate monitor, `0 < θ < 1`, `0 < α_w ≤ 1`, `0 ≤ c_conf ≤ 1`, `0 ≤ f ≤ 1`, and `min_samples ≥ 1`; a profile may impose narrower domains. `θ` is the maximum violation rate and `f` is `max_unresolved_fraction`. Episode parameters satisfy `K ≥ 1` and positive closure age. Recovery deadline `T` and liveness allowance `L` are positive integers in their declared units. Resource limits are positive and part of the compiled contract. Unsupported domains or missing evidence contracts are refused, never interpreted by an unspecified default.
+For a rate monitor, `0 < θ < 1`, `0 < α_w ≤ 1` (the per-window false-alarm allocation, §12.6), `0 ≤ c_conf ≤ 1`, `0 ≤ f ≤ 1`, and `min_samples ≥ 1`; a profile may impose narrower domains. `θ` is the maximum violation rate and `f` is `max_unresolved_fraction`. Episode parameters satisfy `K ≥ 1` (`K = closure_windows`, §12.8) and positive closure age. Recovery deadline `T` and liveness allowance `L` are positive integers in their declared units. Resource limits are positive and part of the compiled contract. Unsupported domains or missing evidence contracts are refused, never interpreted by an unspecified default.
 
 `zero_tolerance` restricts its violation predicate to `exact_pred`; `rate_bound` may use a metric, exact pattern, or checker predicate. `backend_v1` fixes `rate_bound`, `unit: trace`, metric `wall_clock_latency_ms`, `source: backend_trace_metadata`, `method: clopper_pearson_exact_v1`, `sampling: unverified`, and the hosted latency profile's parameter domains and defaults; it forbids `among` and `threshold_factor`. It is not a synonym for the rational profile. A checker runs customer-side, including when evaluating an evaluation set. `single_producer: true` declares that every event of a unit is emitted by one producer; a unit that contradicts the declaration is not classified on its strength. A protocol is a finite deterministic automaton with declared handling of unlisted transitions. `trigger.hours` is present iff the trigger is `episode_open_for`; the referenced monitor must emit the selected event.
 
@@ -1746,7 +1748,7 @@ Hosted metadata monitors (`backend_v1`) read only unit metadata. Their violation
 2. `head_sampled_declared(r)`: each unit is selected or not at its start, before its outcome exists, with probability `r`, and the decision is recorded on the unit. A unit selected after its outcome is known (tail sampling) contradicts the declaration; a window containing one is `UNKNOWN(sampling_biased)`.
 3. `hash_bernoulli_committed_v1(r)`: each unit is selected with probability `r` by a selection that is committed before the window starts, depends on nothing about the unit's outcome, and can be checked after the window. The selection rule and its commitment belong to the evaluator profile; the mode is usable only where an evaluator profile supports it. Any secret input of the selection stays customer-side.
 
-An omitted `sampling` on `customer_side` means census: every unit in scope is selected. A sampling rate below one is never census evidence. Fixed-list strata are separate monitors with separate allocations; there is no implicit pooling. Sampling supports rate claims under the stated model, not “always” or “never” prevention. Customer reports are `client_attested`; metadata recount and verified configuration attribution are different evidence qualifications.
+An omitted `sampling` on `customer_side` means census: every unit in scope is selected. A sampling rate below one is never census evidence. Fixed-list strata (subpopulations named by tags from a fixed list) are separate monitors, each with its own false-alarm allocation (§12.6); there is no implicit pooling. Sampling supports rate claims under the stated model, not “always” or “never” prevention. Customer reports are `client_attested`: claims resting on them rely on the customer's own report rather than a hosted recount; metadata recount and verified configuration attribution are different evidence qualifications.
 
 **Definition 12.11 (Report counts)**. A customer-side window report (RFC §11.4.3) is bound to a contract digest, monitor reference, monitor revision and window, and states the counts
 
@@ -1787,7 +1789,7 @@ Empty upper tails are zero and lower tails at or above `N` are one. Endpoints us
 | `rate_bound`, `clopper_pearson_exact_v1` | the hosted latency profile's floating-point computation of the same tests (Definition 12.14); no probability bound is claimed | as for `BREACHED` |
 | `zero_tolerance`, `exact_count_v1` | at least one unit of the population violates (`V_q(h)` for some population unit) | the window's population was completely covered — census selection, every selected unit accounted for and classified, none unplaceable, every unit's history complete — it has at least `min_samples` units, and none violates |
 
-`UNKNOWN(r)` promises neither, with a closed reason `r`. The rate claims assume sound classifications, outcome-independent selection, and that each window's violation count is stochastically dominated by `Bin(N,θ)` when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`); IID Bernoulli units are a sufficient special case. `sampling: unverified` does not satisfy the selection assumption by its name. Units the evaluator could not classify never strengthen a verdict: the promises hold whatever their complete histories turn out to be.
+`UNKNOWN(r)` promises neither, with a closed reason `r`. The rate claims assume sound classifications, outcome-independent selection, and that each window's violation count is stochastically dominated by `Bin(N,θ)` (for the count `X`, `Pr[X≥j]≤Pr[Bin(N,θ)≥j]` for every `j`; §12.14) when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`); IID Bernoulli units are a sufficient special case. `sampling: unverified` does not satisfy the selection assumption by its name. Units the evaluator could not classify never strengthen a verdict: the promises hold whatever their complete histories turn out to be.
 
 Each window reason names why a window's verdict is `UNKNOWN`, that is, why neither `MET` nor `BREACHED` is established:
 
@@ -2536,13 +2538,14 @@ Verdict reasons such as `insufficient`, `incomplete`, `sampling_biased`, `awaiti
 ## Appendix C: References
 
 1. Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate: a practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society: Series B*, 57(1), 289-300.
-2. Bradley, A. R., & Manna, Z. (2007). *The Calculus of Computation*. Springer.
-3. Clopper, C. J., & Pearson, E. S. (1934). The use of confidence or fiducial limits illustrated in the case of the binomial. *Biometrika*, 26(4), 404-413.
-4. de Moura, L., & Bjørner, N. (2008). Z3: An Efficient SMT Solver. *TACAS*.
-5. Deb, K., et al. (2002). A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II. *IEEE TEC*.
-6. Holm, S. (1979). A simple sequentially rejective multiple test procedure. *Scandinavian Journal of Statistics*, 6(2), 65-70.
-7. Pierce, B. C. (2002). *Types and Programming Languages*. MIT Press.
-8. Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power approach for assessing the equivalence of average bioavailability. *Journal of Pharmacokinetics and Biopharmaceutics*, 15(6), 657-680.
+2. Benjamini, Y., & Yekutieli, D. (2001). The control of the false discovery rate in multiple testing under dependency. *The Annals of Statistics*, 29(4), 1165-1188.
+3. Bradley, A. R., & Manna, Z. (2007). *The Calculus of Computation*. Springer.
+4. Clopper, C. J., & Pearson, E. S. (1934). The use of confidence or fiducial limits illustrated in the case of the binomial. *Biometrika*, 26(4), 404-413.
+5. de Moura, L., & Bjørner, N. (2008). Z3: An Efficient SMT Solver. *TACAS*.
+6. Deb, K., et al. (2002). A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II. *IEEE TEC*.
+7. Holm, S. (1979). A simple sequentially rejective multiple test procedure. *Scandinavian Journal of Statistics*, 6(2), 65-70.
+8. Pierce, B. C. (2002). *Types and Programming Languages*. MIT Press.
+9. Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power approach for assessing the equivalence of average bioavailability. *Journal of Pharmacokinetics and Biopharmaceutics*, 15(6), 657-680.
 
 ---
 
