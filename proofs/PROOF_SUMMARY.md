@@ -232,8 +232,8 @@ theorem strict_dominance_does_not_compose_informal : True := trivial
 ```
 
 This Lean theorem only states `True`; nothing about strict dominance is proved. The
-counter-example is given in the file's comments, and is the one of the formal semantics (§9.8,
-after Lemma 9.2) with two maximized objectives and ε = δ = 10:
+counter-example is given in the file's comments. It matches the counter-example in the formal
+semantics (§9.8, after Lemma 9.2), with two maximized objectives and ε = δ = 10:
 - y₁ = [0, 0], y₂ = [-20, 10], y₃ = [-10, -10]
 - y₁ ≻ε y₂ (y₁ − y₂ = [20, -10]: better by more than ε on A, within ε on B)
 - y₂ ≻ε y₃ (y₂ − y₃ = [-10, 20]: within ε on A, better by more than ε on B)
@@ -594,7 +594,7 @@ Each entry uses exactly one class. A helper's class concerns only its own statem
 | `compiled_contract_correct_statement` | `TVL/Runtime/Compiler.lean` | OPEN | Normalized-language compiler target; no actual source parser, normalization or wire-projection proof. |
 | `raw_bounds_glb` | `TVL/Runtime/Compose.lean` | SUBSTANTIVE |  |
 | `checked_bounds_meet_iff` | `TVL/Runtime/Compose.lean` | BY-CONSTRUCTION |  |
-| `compose_partial_statement` | `TVL/Runtime/Compose.lean` | OPEN | OPEN static normalized-contract GLB/reachability target. Authored rule identity/survival, approval/severity/deploy order, repeat bounds and provenance remain; platform grants and registration are external. Catalogue-wide refinement is unproved. |
+| `compose_partial_statement` | `TVL/Runtime/Compose.lean` | OPEN | OPEN static normalized-contract target for the greatest lower bound (GLB) and reachability. Authored rule identity/survival, approval/severity/deploy order, repeat bounds and provenance remain; platform grants and registration are external. Catalogue-wide refinement is unproved. |
 | `severity_meet_glb` | `TVL/Runtime/Declarations.lean` | SUBSTANTIVE |  |
 | `absent_notify_severity` | `TVL/Runtime/Declarations.lean` | BY-CONSTRUCTION |  |
 | `deploy_meet_glb` | `TVL/Runtime/Declarations.lean` | SUBSTANTIVE | `optimize.deploy` order (`never` stricter than `if_promoted`, RFC 0003 §7.6); finite case analysis, like `severity_meet_glb`. |
@@ -663,7 +663,8 @@ for the boundary and trusted-input limits.
 
 `TVL/Runtime/Guards.lean` is imported by `Main.lean`. The model folds guard lists with the
 three-valued (strong Kleene) connectives of formal semantics Definition 13.8: a conjunction is
-FALSE if any guard is FALSE, a disjunction is TRUE if any guard is TRUE, and UNDECIDED
+FALSE if any guard is FALSE, TRUE if every guard is TRUE, and UNDECIDED otherwise; a
+disjunction is TRUE if any guard is TRUE, FALSE if every guard is FALSE, and UNDECIDED
 otherwise. It also uses a validated notify-only rule type, unchanged occurrence identity/scope,
 and the exact monitor unless graph of Definition 13.10 (an edge from a rule's source monitor to
 each monitor named by an episode guard in its `unless`; attempt guards add no edge). These statements do not prove controller execution,

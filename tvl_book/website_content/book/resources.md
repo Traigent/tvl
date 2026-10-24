@@ -16,11 +16,11 @@ This sheet describes the TVL 1.5 toolchain.
 | `tvl-check-structural <spec>` | Satisfiability of the structural constraints: prints a satisfying assignment; or, when none exists (UNSAT, unsatisfiable), an UNSAT core, a set of constraints that cannot all hold together; or an undecided result with an issue code when it cannot decide. |
 | `tvl-check-operational <spec>` | Derived preconditions against `environment.context`, and that declared `exploration.budgets` are well formed: `max_trials` and `max_wallclock_s` positive, `max_spend_usd` at least 0. |
 | `tvl-lint <spec>` | Normative lints (for example missing `min_effect` or duplicate TVARs, the tuned variables a module declares). It reports diagnostics; it does not reformat YAML. |
-| `tvl-ci-gate <module> <incumbent> <candidate>` | Offline promotion gate: compares incumbent and candidate measurement bundles under the module's promotion policy and prints `Promote`, `Reject`, `NoDecision` or `Error`. |
+| `tvl-ci-gate <module> <incumbent> <candidate>` | Offline promotion gate: compares incumbent and candidate measurement bundles (files of measured results: objective statistics and chance or monitor counts) under the module's promotion policy and prints `Promote`, `Reject`, `NoDecision` or `Error`. |
 | `tvl-measure-validate <module> <config> <measurements>` | Checks a configuration and its measurement bundle against the module. |
 | `tvl-config-validate <module> <config>` | Checks a configuration assignment against the module's domains and constraints. |
-| `tvl-compose <overlay>` | Flattens an overlay chain into one module and checks the narrowing rules. |
-| `tvl-compile-runtime <module> --token-map <map> --out-dir <dir>` | Compiles a module or pack into a version-tagged runtime contract and local artifacts. `--token-map` and `--out-dir` are required. |
+| `tvl-compose <overlay>` | Flattens an overlay chain into one module and checks the narrowing rules. An overlay is a file that changes a base module, and the narrowing rules say it may only narrow what the base allows, never widen it. |
+| `tvl-compile-runtime <module> --token-map <map> --out-dir <dir>` | Compiles a module or pack (a separate document of requirements and monitors that an organization applies across agents) into a version-tagged runtime contract and local artifacts. `--token-map` and `--out-dir` are required. |
 | `tvl-microsim-bridge <spec>` | Generates `microsim_presets.json` for the Orientation RAG interactive lab. It reads a legacy `configuration_space` block, not `tvars` (see the [lab page](../microsims/orientation-rag-circuit/index.md)). |
 
 !!! hint "Combine Commands"
@@ -92,7 +92,7 @@ Operational feasibility failed.
 measurement bundles. Text output starts with `Decision: <Promote|Reject|NoDecision|Error>` and a `Reason:` line.
 For `Promote`, `Reject` and `NoDecision` these are followed by any warnings and an `== Evidence Summary ==` block;
 for `Error` the gate prints only those two lines. If a bundle is not promotion-ready, it prints the readiness issues
-instead.
+instead. Promotion-ready means the bundle matches the module and carries the evidence the module requires; it says nothing about whether the candidate would win the promotion.
 
 The exit code follows the decision: 0 for `Promote`, 2 for `Reject`, `NoDecision`, `Error`, a bundle that is not
 promotion-ready, or any other error.
@@ -109,6 +109,6 @@ Exit 1 is not a defined outcome. See the [error code reference](../../../docs/re
 
 ## Further Reading
 
-- TVL Unification Design v2.0 — architecture and deterministic export strategy.
-- CAIN Extended Abstract — motivation for TVars and governed optimization.
-- DVL Drift Playbook — pairing configuration changes with dataset checks.
+- [Formal semantics](../../../formalization/tvl-formal-semantics.md) — the normative meaning of every TVL construct.
+- [Accepted RFCs](../../../formalization/) — the design records for TVL 1.1 to 1.5 (RFC 0001–0005).
+- [Language reference](../../../docs/reference/language.md) — fields, rules and diagnostics in one place.

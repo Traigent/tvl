@@ -3,7 +3,7 @@ hide:
   - toc
 ---
 
-# Orientation RAG · Analog Circuit Lab
+# Orientation Retrieval-Augmented Generation (RAG) · Analog Circuit Lab
 
 <iframe src="./main.html" height="560px" scrolling="no" style="width: 100%; border: none; overflow: hidden;"></iframe>
 
@@ -26,6 +26,9 @@ Weight):
 | Latency Gauge (ms) | `480 + 3*k + 0.45*tokens - 50*weight` |
 | Cost Meter (USD) | `0.00018*k + 0.00052*tokens + 0.005` |
 | Quality Score | `70 + 45*weight + 12*k/64 - penalty(latency)`, clamped to 20–99 |
+
+Here `penalty(latency)` = `12 * min(latency / 800, 1)` with latency in ms, so it grows from 0 to at most 12 points as
+latency approaches 800 ms.
 
 Warnings light up when violated:
 

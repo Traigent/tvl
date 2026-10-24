@@ -61,7 +61,7 @@ constraints:
       then: temperature <= 0.5
 ```
 
-### Complete Example
+### Structural Constraint Fragment
 
 ```yaml
 # Fragment: structural constraints showcasing all syntax forms
@@ -124,7 +124,9 @@ Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback t
 
 The lab shows three warnings. Only the rerank rule has the shape of a TVL structural constraint (an implication over
 knobs). The latency and cost warnings check simulated outcomes; in TVL, limits on measured outcomes belong in
-`objectives` or promotion-policy chance constraints, not in structural constraints:
+`objectives` or promotion-policy chance constraints (caps on a violation rate, checked against evaluation results at a
+stated confidence; see [formal semantics Definition 9.8](../../../formalization/tvl-formal-semantics.md)), not in
+structural constraints:
 
 - **Latency under 800 ms** — raises amber/red when the simulated configuration breaches the ceiling.
 - **Cost under $0.12** — highlights the response-token capacitor if the API budget slips.

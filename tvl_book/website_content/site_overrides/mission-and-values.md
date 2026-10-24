@@ -25,7 +25,7 @@ decisions are grounded in transparent evidence.
 2. **Type-Safe Configuration**  
    TVL declares explicit types, domains, and constraints, and its validators check configurations against them.
    That lets an optimizer that honours the spec search only admissible configurations; it does not by itself make
-   downstream systems behave predictably. TVL has no physical-unit type, so record units in TVAR names (for example `timeout_s`).
+   downstream systems behave predictably. TVL has no physical-unit type, so record units in TVAR names. A TVAR is a tuned variable declared under `tvars`; for example, `timeout_s` is a TVAR whose name records that its value is a timeout in seconds.
 
 3. **Evidence Over Anecdote**  
    Decisions rely on repeatable evaluations, reproducible manifests, and clear metrics—not late-night hunches.

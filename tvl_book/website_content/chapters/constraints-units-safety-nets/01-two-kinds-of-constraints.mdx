@@ -22,7 +22,8 @@ TVL separates constraints into two categories:
 <PredictionPrompt prompt="Before reading the table, decide which rule belongs in the operational-precondition field (`constraints.derived`): `temperature <= 0.8` or `env.context.provider_input_price_usd_per_1k_tokens <= 0.05`.">
 
 The `env.context.*` rule belongs in `constraints.derived` because it depends on the execution environment. `temperature <= 0.8`
-is a structural rule because it is a formula over TVARs and can be checked before any trials run.
+is a structural rule because it is a formula over tuned variables (TVARs, the settings the optimizer may
+choose) and can be checked before any trials run.
 
 </PredictionPrompt>
 

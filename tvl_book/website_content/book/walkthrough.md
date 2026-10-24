@@ -34,8 +34,13 @@ pip install -e .
 - Create a sample evaluation dataset (e.g., `questions.jsonl`) and run the optimization snippet provided.
 
 ### 3. Seamless vs Parameter Modes
-- Experiment with `injection_mode="seamless"` vs `"parameter"` by editing the walkthrough sample.
-- Observe how TVL specs capture the same ranges when you translate these modes into static files.
+- Experiment with `injection_mode="seamless"` vs `"parameter"` by editing the walkthrough sample. These are the two ways
+  the Traigent SDK hands a tuned configuration to your function. In `"seamless"` mode it overrides the values of
+  matching variables assigned inside the function (for example `model = "gpt-3.5"`). In `"parameter"` mode it passes the
+  configuration in as an explicit function argument (for example `config.model`).
+- Observe how TVL specs capture the same ranges when you translate these modes into static files. Either way, the range
+  of values to try becomes a TVAR (a tuned variable): for example `model` as `type: enum[str]` with
+  `domain: ["gpt-3.5", "gpt-4o"]` in the `tvars` list.
 
 ### 4. Multi-Objective Runs
 - Reuse the walkthrough’s multi-objective example or jump to Lab 2 for the full multi-objective tradeoff script.

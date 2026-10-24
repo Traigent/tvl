@@ -61,7 +61,7 @@ The judge is not an afterthought. Once several experts run, the real system beha
 - whether the judge scores, ranks, or selects
 - how ties and close calls are handled
 
-In other words, the judge becomes another tuned component on the same evaluation plane.
+In other words, the judge becomes another tuned component. Its evidence inputs, its scoring or selection behavior, and its tie handling must be evaluated too.
 
 ```yaml
 tvars:
@@ -95,7 +95,7 @@ That is why routed expertise needs the same evidence discipline as any other tun
 ## Operational Checklist
 
 - Log which experts ran and why they were selected.
-- Measure marginal gain per added expert, not just final best-of-N accuracy.
+- Measure marginal gain per added expert, not just final best-of-N accuracy (the accuracy you get when the highest-scored of N candidate outputs is chosen).
 - Treat judge prompts and rubrics as governed variables too.
 - Record whether the winning expert varies across evaluation-set slices.
 

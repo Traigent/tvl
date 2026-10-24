@@ -21,14 +21,14 @@ related_sections:
 
 ## Scenario
 
-Production latency spikes after a provider-side model change. A candidate hotfix overlay is available, but the team is unsure whether it is safe to promote immediately.
+Production latency spikes after a provider-side model change. A candidate hotfix overlay (an urgent, small file of overrides that `tvl-compose` applies to the base module) is available, but the team is unsure whether it is safe to promote immediately.
 
 Incident packet:
 
 - provider-side change happened 20 minutes ago
 - latency of the FAQ (frequently asked questions) flow moved from 3.8 to 7.2 seconds at p95 (the 95th percentile:
   95% of answers are faster)
-- the production budget and rollback manifest still exist
+- the production budget and rollback manifest (the record of which configuration to return to and how) still exist
 - a hotfix overlay was prepared under pressure and may or may not narrow the surface safely
 
 Base spec fragment:
@@ -82,8 +82,10 @@ Mock validation notes:
 ### Step 1. Triage the Failure (10 min)
 
 - Did parsing, linting, or schema validation fail?
-- Did structural satisfiability fail?
-- Did an operational precondition fail because the environment changed?
+- Did structural satisfiability fail? (Structural satisfiability asks whether any configuration the module allows meets all
+  of its structural constraints.)
+- Did an operational precondition fail because the environment changed? (Operational preconditions are checks of the
+  declared environment, such as budgets and context values, that must hold before a run.)
 
 <PredictionPrompt prompt="Before you inspect the overlay, predict the most likely failure class here: malformed overlay, structural contradiction, or operational precondition failure.">
 

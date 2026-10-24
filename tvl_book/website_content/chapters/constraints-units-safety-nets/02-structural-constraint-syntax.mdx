@@ -2,7 +2,7 @@
 id: chapter-03-structural-constraint-syntax
 slug: structural-constraint-syntax
 title: Structural Constraint Syntax
-summary: Structural rules use a small TVL formula language over TVARs. Learn the
+summary: Structural rules use a small TVL formula language over tuned variables (TVARs). Learn the
   common forms first and the solver theory second.
 chapter: constraints-units-safety-nets
 estimated_minutes: 7
@@ -16,7 +16,8 @@ opal_bridge: false
 ---
 
 You do not need to memorize solver terminology to write good structural rules. In practice, most
-authors use a small TVL formula language over TVARs:
+authors use a small TVL formula language over tuned variables (TVARs, the settings the optimizer may
+choose):
 
 | TVL Syntax | Meaning | Avoid |
 |----------------|---------|----------|
@@ -45,7 +46,7 @@ constraints:
       then: temperature <= 0.5
 ```
 
-### Complete Example
+### Constraint Syntax Example
 
 ```yaml
 # Fragment: structural constraints showcasing all syntax forms

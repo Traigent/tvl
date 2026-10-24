@@ -1,6 +1,6 @@
 # tvl-parse
 
-Parses a TVL module YAML file and prints the raw AST (YAML → JSON).
+Parses a TVL module YAML file and prints the raw abstract syntax tree (AST): the module's parsed structure, printed as JSON (YAML → JSON), without schema checks.
 
 ```
 tvl-parse spec/examples/rag-support-bot.tvl.yml --format json

@@ -15,8 +15,8 @@ The table below maps each TVL section to its responsibilities.
 | `evaluation_set` | Dataset URI and optional seed for reproducibility |
 | `tvars` | Tuned variables with explicit types (for example `bool`, `int`, `float`, `enum[str]`; full list below) and domains |
 | `constraints` | Structural rules and operational preconditions |
-| `objectives` | Metrics to maximize/minimize, including banded targets |
-| `promotion_policy` | ε-Pareto dominance settings, α-level, min effects, chance constraints |
+| `objectives` | Metrics to maximize/minimize, including banded targets (an acceptable range `[L, U]` instead of a direction) |
+| `promotion_policy` | ε-Pareto dominance settings (a candidate must be no worse than the incumbent beyond a tolerance ε on every objective and better by more than ε on at least one), α-level (the significance level of the statistical tests), min effects (the smallest change per objective that counts), chance constraints (a cap on a violation rate, checked at a stated confidence) |
 | `exploration` | Deprecated. Legacy, non-semantic search hints kept for compatibility; put search strategy and budgets in a separate run plan |
 
 ## Minimal Working Spec
@@ -82,7 +82,7 @@ promotion_policy:
     - Every TVAR has an explicit `type` and `domain`?
     - Objectives declared with `direction: maximize` or `minimize`?
     - `promotion_policy` includes `min_effect` for each objective?
-    - `environment.snapshot_id` is an RFC3339 timestamp?
+    - `environment.snapshot_id` is an RFC 3339 timestamp (the internet date-time format, for example `2025-01-20T00:00:00Z`)?
 
 ## Validation Warm-Up
 
@@ -186,8 +186,8 @@ TVL enforces explicit typing on all tuned variables:
 | `enum[str]` | Finite set of strings | `["gpt-4o", "claude-3"]` |
 | `enum[int]` | Finite set of integers | `[100, 500, 1000]` |
 | `enum[float]` | Finite set of floats | `[0.1, 0.5, 0.9]` |
-| `tuple[...]` | Product type | Cartesian product of component domains |
-| `callable[Proto]` | Protocol reference | Registry-backed function lookup |
+| `tuple[...]` | Product type (a fixed-length group of values, such as `tuple[int, int]`) | `components: [[256, 512], [0, 64]]` (one domain per component; allowed values are all pairings) |
+| `callable[Proto]` | Reference to an implementation of the protocol (interface name) `Proto` | `registry: book.rerankers` (the implementation is looked up in a named registry) |
 
 ## Common Pitfalls
 

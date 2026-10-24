@@ -25,7 +25,10 @@ TVL isn't just theory. Every chapter links to concrete assets:
 
 - TVL specs under `tvl_book/examples/`
 - CLI commands that exercise `tvl_tools` plug-ins
-- Integration manifests that wire Triagent, TVO, and DVL together
+- Integration manifests that wire Triagent, TVO, and DVL together. Triagent is the name the illustrative
+  [example manifest](../../examples/ch5_integration_manifest.yaml) uses for the optimizer-side command-line tool, TVO is
+  the TVL Optimizer, and DVL is a data-validation layer that checks evaluation datasets (see
+  [Chapter 5](../book/chapter-05-integration.md)).
 - Future labs sourced from `Traigent/examples/core` and `Traigent/playground`
 
 Treat this site as your control center: read a chapter, run the associated script, and capture notes or

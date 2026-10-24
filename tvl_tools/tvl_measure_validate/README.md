@@ -1,6 +1,6 @@
 # tvl-measure-validate
 
-Validates a configuration together with a measurement bundle against a TVL module (structural, operational, chance checks).
+Validates a configuration together with a measurement bundle against a TVL module (structural, operational, chance checks). Structural checks test the configuration against the module's domains and structural constraints. Operational checks test each observed objective value against its band or SLO target. Chance checks test whether the evidence bounds each chance constraint's violation rate.
 
 ```
 tvl-measure-validate spec/examples/rag-support-bot.tvl.yml \
@@ -13,4 +13,4 @@ tvl-measure-validate spec/examples/rag-support-bot.tvl.yml \
 - Legacy top-level `objectives` and `chance` fields are still parsed with deprecation warnings.
 
 - Exit 0: all checks pass
-- Exit 2: structural/operational/chance violation, schema failure, or (for a module that uses requirements, monitors or responses) a bundle that is not promotion-ready
+- Exit 2: structural/operational/chance violation, schema failure, or (for a module that uses requirements, monitors or responses) a bundle that is not promotion-ready (it lacks the evidence the promotion gate needs, such as enough observations; this says nothing about whether the candidate deserves promotion)

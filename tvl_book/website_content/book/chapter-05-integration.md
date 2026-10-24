@@ -24,10 +24,10 @@ The TVL toolchain provides focused CLI tools for validation and CI integration:
 
 | Tool | Purpose |
 |------|---------|
-| `tvl-parse` | Parse YAML to JSON AST, basic syntax checking |
+| `tvl-parse` | Parse YAML to a JSON abstract syntax tree (AST, the module as structured data), basic syntax checking |
 | `tvl-lint` | Normative lints: missing min_effect, duplicate TVARs, etc. |
 | `tvl-validate` | JSON Schema + lint validation (combines parse + lint) |
-| `tvl-check-structural` | SAT/SMT satisfiability of structural constraints |
+| `tvl-check-structural` | SAT/SMT satisfiability of structural constraints (a solver checks that at least one configuration meets all of them) |
 | `tvl-check-operational` | Static check of derived preconditions against the declared environment, plus budget positivity (it does not estimate cost or observe a run) |
 | `tvl-config-validate` | Check a configuration assignment against spec domains |
 | `tvl-measure-validate` | Validate measurements against spec + promotion policy |

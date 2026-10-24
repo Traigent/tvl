@@ -1,6 +1,6 @@
 # tvl-ci-gate
 
-Offline run of the TVL promotion gate: it reads the module and two measurement bundles and prints a decision. It does not deploy anything. It evaluates t-tests per objective (Welch, or paired when requested), TOST bands, Clopper-Pearson bounds for chance constraints, and a multiple-comparison adjustment (`adjust`: default Holm; `BH`, the Benjamini-Hochberg procedure, controls the false discovery rate within each adjusted family of tests (superiority, inferiority) only when those tests are independent or positively dependent, and it does not control the family-wise error rate).
+Offline run of the TVL promotion gate: it reads the module and two measurement bundles and prints a decision. It does not deploy anything. It evaluates t-tests per objective (Welch, or paired when requested), TOST bands (TOST is two one-sided tests: a banded objective passes when the confidence interval for its mean lies strictly inside the target band), Clopper-Pearson bounds for chance constraints (an upper confidence bound on the violation rate), and a multiple-comparison adjustment (`adjust`: default Holm; `BH`, the Benjamini-Hochberg procedure, controls the false discovery rate within each adjusted family of tests (superiority, inferiority) only when those tests are independent or positively dependent, and it does not control the family-wise error rate).
 
 ```
 tvl-ci-gate spec/examples/rag-support-bot.tvl.yml \

@@ -31,7 +31,7 @@ concept_refs:
 primary_example: /examples/text-to-sql.tvl.yml
 ---
 
-Map-reduce with LLMs takes a task that is too broad or too noisy for a single pass and turns it into
+Map-reduce with large language models (LLMs) takes a task that is too broad or too noisy for a single pass and turns it into
 two governable stages: bounded map work and bounded reduction. The pattern is close to batching, but
 the intent is different. Batching keeps multiple items in one prompt. Map-reduce intentionally
 splits the work first, then asks a reducer to reconcile the partial outputs.

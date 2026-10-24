@@ -11,8 +11,8 @@ A section of text that is separate from the main flow of text.
 Admonitions are designed so that they can be quickly skipped over
 if the user is not concerned with the topic.
 
-In mkdocs-material admonitions are used to store text such as abstracts, 
-note, info, tip, success, question, warning, failure, danger, bug, example and quote.
+In mkdocs-material, the admonition types include abstract, note, info, tip, success, question, warning, failure,
+danger, bug, example and quote.
 
 [mkdocs-material admonitions documentation](https://squidfunk.github.io/mkdocs-material/reference/admonitions/)
 
@@ -22,9 +22,9 @@ note, info, tip, success, question, warning, failure, danger, bug, example and q
 
 Using an automatic process that generates HTML from the markdown files.
 
-Automatic builds for mkdocs can be automatically executed whenever any part of the mkdocs.yml or the files
-in the ```docs``` directory change.  On GitHub, a GitHub action can be configured to achieve this.
-A process that regenerates and/or redeploys the documentation automatically whenever changes are made to source files, typically triggered by a continuous integration (CI) tool or build server.
+The process regenerates and redeploys the documentation whenever source files change, typically triggered by a
+continuous integration (CI) tool or build server. For mkdocs, a build can run whenever any part of `mkdocs.yml` or the
+files in the `docs` directory change. On GitHub, a GitHub Action (an automated workflow) can be configured to do this.
 *Helps keep documentation current without manual rebuilds, as long as the triggers are configured and each build and deployment succeeds.*
 
 
@@ -91,13 +91,12 @@ Modern textbooks allow hyper-personalization to be done in real-time using chatb
 
 #### Edit Icon
 
-The ability to add an "Edit Icon" to the top of each page in a textbook.
+A control at the top of each page that links readers to an interface for editing the page's source text.
 
-Mkdocs material allows the Edit Icon to move the user directly to a form
-where they can click the Edit icon to change text.  By doing a Save
-a GitHub action can be triggered to update the HTML of the site.
+In mkdocs-material, clicking the Edit icon opens the page's source text in an editing form. When the reader saves a
+change, a configured GitHub Action (an automated workflow) can be triggered to rebuild the HTML of the site.
 
-This feature allows non-technical staff to change and preview changes without having to setup a local build process on their local computer or server.
+This feature lets non-technical staff change text and preview the result without having to set up a build process on their own computer or server.
 
 #### Keyword Search
 
@@ -114,7 +113,7 @@ A dedicated section that provides definitions and explanations of key terms, jar
 
 An integrated link within the documentation that directs users to the corresponding source file on GitHub.
 
-Edit links encourage community involvement by allowing readers to propose edits, corrections, or improvements through pull requests.  Users do not need to understand how the build process works on their local systems to generate an updated web page.
+Edit links encourage community involvement by allowing readers to propose edits, corrections, or improvements through pull requests (proposals to merge their changes into the source).  Users do not need to understand how the build process works on their local systems to generate an updated web page.
 
 #### Intelligent Textbook
 
@@ -124,7 +123,7 @@ See Also: [Levels of Intelligent Textbook](#levels-of-intelligent-textbooks)
 
 #### ISO Definition
 
-A term definition is considered to be consistent with ISO metadata registry guideline ISO/IEC 11179 if it meets the following criteria:
+A term definition is considered to be consistent with ISO/IEC 11179 (the standard of the International Organization for Standardization (ISO) and the International Electrotechnical Commission (IEC) for metadata registries) if it meets the following criteria:
 
 1. Precise
 2. Concise
@@ -209,7 +208,7 @@ See the [MicroSims for Education Website](https://dmccreary.github.io/microsims/
 
 #### MicroSite
 
-A website that runs on a web server with no need for complex heavy APIs to expensive services such as a search engine.
+A website that runs on a web server using only its own files, with no need to call the application programming interfaces (APIs, the programmatic access points) of complex or expensive external services such as a hosted search engine.
 
 #### Navigation
 
@@ -225,21 +224,19 @@ screens that are wide landscape displays.  We discourage top navigation.
 
 The JavaScript library most commonly used to render MicroSims.
 
-Although there
-are many other JavaScript libraries that can be used, because there
-is a huge number of p5.js programs available for indexing by
-web crawlers used by generative AI tools, p5.js dominates
-the MicroSim ecosystems.
+Many other JavaScript libraries could be used. However, p5.js dominates the MicroSim ecosystem.
+The reason is that a huge number of p5.js programs are available for indexing by the web crawlers that generative AI
+tools use.
 
-Other specialized libraries such as vis.js are used for tasks such
+Other specialized libraries such as [vis.js](#visjs) are used for tasks such
 as simulating graph traversal algorithms.
 
 #### Quiz Management
 
-Allow pages to contain self-assessments where the answers are hidden until the user
-clicks on a "Show Answer" control.
+Quiz management lets pages include self-assessments with revealable answers: the answers are hidden until the user
+clicks a "Show Answer" control.
 
-Allow multiple-choice questions in a list to use the ordered-list labels A. B. C. D.
+Quiz management also supports lettered labels (A. B. C. D.) for multiple-choice answers.
 
 #### Scaffolding
 
@@ -249,10 +246,11 @@ Scaffolding allows students to build on what they already know and reach higher 
 
 #### Search
 
-Create a search function as part of the build process.
+Search is a feature, created as part of the build process, that finds the pages matching a reader's query.
 
-The mkdocs material theme generates a reverse index JSON file that is used to
-list the pages that match search keywords.
+The mkdocs material theme generates a reverse index: a JSON (JavaScript Object Notation, a plain-text data format)
+file that maps each keyword to the pages containing it. The search feature uses this file to list the pages that match
+the search keywords.
 
 Note that standard mkdocs search matches keywords and does not use embeddings, so it does not
 retrieve or rank documents by semantic similarity; it finds related pages only when they share words.
@@ -267,7 +265,7 @@ Intelligent textbooks frequently create [embeddings](#embedding) for words, phra
 
 Summaries automatically generated when a webpage link is shared on social platforms, often including a title, description, and image.
 
-Metadata added to web pages that control how content is displayed when shared on social media platforms.
+Page metadata supplies the title, description, and image used in these previews when a link is shared on social media platforms.
 
 Social media preview increases the appeal and clarity of shared links, encouraging users to engage with and disseminate the documentation.
 

@@ -6,7 +6,7 @@ VS Code extension for [TVL (Tuned Variables Language)](https://tvl-lang.org), a 
 
 No workflow in this repository publishes the extension to the VS Code Marketplace or Open VSX, so the supported route is to build it from this repository and install the resulting `.vsix` file (see [Installation](#installation-from-source)).
 
-> **TVL 1.3 support:** Includes syntax highlighting, snippets, bundled JSON Schemas, and field-addressed diagnostics for the TVL 1.3 runtime blocks (`requirements`, `monitors`, `responses`) and organisation floor packs (`tvl_pack`), as accepted in RFC 0003 (TVL 1.3.0). The bundled JSON Schemas are copies of the repository's schemas, which also cover TVL 1.4 and 1.5. The syntax highlighting and snippets cover the TVL 1.3 constructs only, not the constructs added in 1.4 and 1.5.
+> **TVL 1.3 support:** Includes syntax highlighting, snippets, bundled JSON Schemas, and field-addressed diagnostics for the TVL 1.3 runtime blocks (`requirements`, `monitors`, `responses`) and organisation floor packs (`tvl_pack`: a separate document holding an organisation's minimum requirements and monitors, which individual modules are then composed with; see section 9.4 of [RFC 0003](../formalization/rfc-0003-runtime-requirements-monitors-responses.md)), as accepted in RFC 0003 (TVL 1.3.0). The bundled JSON Schemas are copies of the repository's schemas, which also cover TVL 1.4 and 1.5. The syntax highlighting and snippets cover the TVL 1.3 constructs only, not the constructs added in 1.4 and 1.5.
 
 ## Scope note
 
@@ -115,7 +115,7 @@ tvl-validate --help
 
 ## Example TVL 1.3 File
 
-This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`:
+This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`. It lets the optimizer choose between two models (`gpt-4o` and `gpt-4o-mini`) for quality. It requires that at most 5% of traces take longer than 2000 ms (`latency_2s`). It adds an evidence-liveness check that fails when more than 4 consecutive reporting windows have no usable latency evidence (`latency_2s_live`). It sends a warning notification when a breach of the latency requirement begins (`latency_alerts`).
 
 ```yaml
 tvl:

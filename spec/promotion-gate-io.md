@@ -55,8 +55,9 @@ objective_values:
     n: 50
 ```
 
-Pre-computed objective summaries are not part of the canonical CLI contract.
-`tvl-ci-gate` requires raw samples or aggregated `mean/std/n`.
+No other summary form is part of the canonical CLI contract. A summary without `samples` or without all three of
+`mean`, `std` and `n` (for example, the deprecated top-level `objectives` map) is not accepted as promotion evidence:
+`tvl-ci-gate` requires raw samples or the complete aggregated `mean/std/n`.
 
 ### 1.2 Chance Constraint Outcomes
 
@@ -157,7 +158,7 @@ evidence:
       p_value_noninf: 1.8e-09      # H₀: candidate worse by > ε
       p_value_super: 0.5           # H₀: candidate not better by > ε (the improvement equals ε exactly)
       p_value_inferior: 1.0        # H₀: candidate is within the allowed regression margin
-      adjusted_p_noninf: null      # Non-inferiority is unadjusted (IUT)
+      adjusted_p_noninf: null      # Non-inferiority is unadjusted (intersection-union test, §4.1)
       adjusted_p_super: 0.5        # After multiplicity adjustment (union component)
       adjusted_p_inferior: 1.0     # After multiplicity adjustment (union component)
       epsilon: 10
@@ -301,9 +302,9 @@ finite non-negative `std`; anything else is `inconclusive`.
 - **`std = 0`** (`n ≥ 2`): each test statistic is +∞ or −∞ by the sign of its numerator. A mean strictly inside
   `(L, U)` passes; a mean exactly on `L` or `U` gives `t = 0` for that edge, so the result is `inconclusive`.
 
-For banded objective with target [L, U] and significance α:
+For a banded objective with target [L, U] and significance level α:
 
-**Important**: TOST uses **(1 - 2α) confidence interval**, not (1 - α).
+**Important**: TOST uses a confidence interval with confidence level **1 − 2α**, rather than 1 − α.
 
 For α = 0.05, use **90% CI** (not 95% CI).
 
@@ -357,7 +358,8 @@ ci_upper = beta.ppf(1 - alpha_tail, k + 1, n - k) if k < n else 1.0
 
 **NOT included**:
 
-- Non-inferiority p-values (IUT; no multiplicity correction required)
+- Non-inferiority p-values. These form an intersection-union test (IUT): promotion needs every objective's
+  non-inferiority test to pass at α, so no multiplicity correction is required
 - Chance constraint p-values (separate confidence budget)
 - TOST p-values for banded objectives (treated separately)
 
@@ -459,12 +461,12 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 | BH correction | 10 objectives, 2 superiority p-values raw < 0.05 but adjusted > 0.05 | BH | NoDecision |
 | TOST pass | Mean = 100, band = [95, 105], n = 50, std = 5 | TOST (90% CI) | Promote (if other tests pass) |
 | TOST fail (power) | Mean = 100, band = [95, 105], n = 5, std = 8 | TOST (90% CI) | NoDecision |
-| TOST fail (OOB) | Mean = 110, band = [95, 105] | TOST (90% CI) | Reject |
+| TOST fail (out of band) | Mean = 110, band = [95, 105] | TOST (90% CI) | Reject |
 | Chance pass | 0/120 violations, θ = 0.03, γ = 0.95 | Clopper-Pearson | (contributes to Promote) |
 | Chance fail | 8/100 violations, θ = 0.05, γ = 0.95 | Clopper-Pearson | Reject |
 | Paired samples | Same eval set for both configs, `paired: true` on the candidate's objective, and sample lists of equal length | Paired t-test | (uses paired test) |
 
-Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough observations for the named tests to reject at α. The same effects with too few observations give `NoDecision`.
+Effect sizes alone never decide statistical objective comparisons: a `Promote` row, or a `Reject` row that comes from a significant inferiority test, assumes enough observations for the named tests to reject at α; the same effects with too few observations give `NoDecision`. Two `Reject` rows fall outside this caveat: a failed chance constraint, and an objective mean outside its band (a point estimate, which needs only n ≥ 1), still give `Reject` when the objective tests lack enough observations.
 
 ---
 

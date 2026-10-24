@@ -16,7 +16,7 @@ In our Getting Started guide we will walk you through the basic steps in
 creating a minimal intelligent textbook with three chapters.
 
 This getting started guide assumes you have Python 3 installed on your local system
-and you have the permissions to install conda and pip.
+and you have the permissions to install conda and pip, two Python package-management tools (conda is available from [docs.conda.io](https://docs.conda.io); pip is installed with Python 3, see [pip.pypa.io](https://pip.pypa.io)).
 
 ## Directory Structure
 
@@ -46,6 +46,8 @@ Quizzes
 
 ## Admonitions
 
+Admonitions are separate, highlighted callout blocks (such as notes and warnings) set apart from the main text.
+
 How to add admonitions to your pages.
 
 Admonitions
@@ -59,7 +61,7 @@ Prompt Admonition
 
 ## Adding a MicroSim
 
-Adding an interactive simulation is as easy as copying a single iframe directly
+Adding an interactive simulation is as easy as copying a single iframe (an HTML element that embeds another web page, here the interactive simulation) directly
 into your markdown file.
 
 Adding a MicroSim

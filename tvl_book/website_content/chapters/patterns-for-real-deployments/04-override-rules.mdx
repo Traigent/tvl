@@ -26,6 +26,6 @@ The current implementation validates enum narrowing, range narrowing, and budget
 rejects an overlay that drops a structural or derived clause of the base, unless the overlay restates
 it, replaces it with a strictly tighter bound on the same symbol, or declares a waiver with a reason
 under `_tvl_overlay.waives`. A waiver records a human decision; it does not prove the clause was
-vacuous. Resolution changes are merged without validation, so keep them to safe narrowing.
+vacuous. (A clause is vacuous when it can no longer restrict anything. For example, narrowing a range can make the `when` condition of an implication impossible, so the rule never applies.) Resolution changes are merged without validation, so keep them to safe narrowing.
 
 </ConceptCallout>

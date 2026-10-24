@@ -2019,7 +2019,7 @@ A `tvl_pack` is a separate TVL 1.3 document containing pack identity, requiremen
 | rollback target | certified fingerprint or `last_certified` |
 | customer labels in `label_in` / `among` | indices in the declared checker label list |
 | customer checker ID | keyed commitment `customer:<commitment>`; catalogue IDs retain their catalogue identity |
-| environment label | opaque environment reference, resolved only at the authorized read edge |
+| environment label | opaque environment reference; the hosted platform resolves it to its stored label in its own authorized store (RFC 0003 §8.2) |
 | selector tool names | validated code identifiers |
 | numbers, enums, event types, method/sampling names | closed values; decimal parameters as minimal decimal strings, integer parameters, counts and durations as JSON integers (RFC 0003 §8.2) |
 
@@ -2045,7 +2045,7 @@ The **conservative-extension claim** is equality of the legacy projection with `
 
 The numbered statements below are **claimed proof obligations** about the language and about exact binomial tests, not declarations that Lean files compile or that any implementation satisfies them. `proofs/PROOF_SUMMARY.md` is the authority for each statement's proof status. Obligations about how an evaluator profile meets the contracts of §§12.4–12.11 — the soundness of its classification and counting rules, its episode and obligation procedures, and its response execution — are stated with that profile, outside TVL. Every statement assumes the relevant `WF_rt` conditions.
 
-For statistical statements require `N∈ℕ`, `θ,α,c_conf∈ℚ`, `0<θ<1`, `0<α≤1`, `0≤c_conf≤1`. A true rate `p` may be real with `0≤p≤1`. Under a binomial model, a Lean representation uses the nonnegative real cast of `p` (e.g. `p_nn : NNReal` with real value `p`) and a proof `p_nn≤1` for `PMF.binomial`; rational thresholds/budgets are cast without rounding. Tail probabilities can then be expressed as finite sums of PMF masses, cast from `ENNReal` to real using finiteness. This describes the required mathematical types, not an unverified pinned-library API signature.
+For statistical statements require `N∈ℕ`, `θ,α,c_conf∈ℚ`, `0<θ<1`, `0<α≤1`, `0≤c_conf≤1`. A true rate `p` may be real with `0≤p≤1`. Under a binomial model, a Lean representation uses the nonnegative real cast of `p` (e.g. `p_nn : NNReal` with real value `p`) and a proof `p_nn≤1` for `PMF.binomial` (a PMF is a probability mass function: a distribution over a countable set); rational thresholds/budgets are cast without rounding. Tail probabilities can then be expressed as finite sums of PMF masses. Those masses live in `ENNReal`, the extended nonnegative reals `[0, ∞]`; because each sum is finite (not `∞`), it can be cast to an ordinary real number. This describes the required mathematical types, not an unverified pinned-library API signature.
 
 Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j, Pr[X≥j]≤Pr[Y≥j]`. A count `K` is a **good window** for `(N,θ)` when `K ≤st Bin(N,θ)` and a **bad window** when `Bin(N,θ) ≤st K`; IID Bernoulli units with `p≤θ` (respectively `p≥θ`) suffice. For random `N`, require these conditions for each conditional law given `N`, not just an unconditional marginal. No independence between different windows is required below.
 

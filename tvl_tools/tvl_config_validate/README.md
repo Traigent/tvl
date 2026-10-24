@@ -1,6 +1,6 @@
 # tvl-config-validate
 
-Validates a configuration assignment against a TVL module (schema + structural constraints).
+Validates a configuration assignment against a TVL module (schema + structural constraints: rules over the module's tuned variables that restrict which configurations are allowed).
 
 ```
 tvl-config-validate spec/examples/rag-support-bot.tvl.yml spec/configurations/rag-support-bot.config.yml --json

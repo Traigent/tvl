@@ -210,8 +210,9 @@ export default function Home() {
                 </div>
                 <CardTitle>Type-Safe Specifications</CardTitle>
                 <CardDescription>
-                  Typed TVARs and deterministic validation keep constraints and
-                  promotion gates reviewable before rollout.
+                  Typed tuned variables (TVARs: settings declared with a name, type, and allowed
+                  domain) and deterministic validation keep constraints and promotion gates
+                  reviewable before rollout.
                 </CardDescription>
               </CardHeader>
             </Card>

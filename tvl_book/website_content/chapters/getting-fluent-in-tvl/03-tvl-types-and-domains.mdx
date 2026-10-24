@@ -49,7 +49,7 @@ usually `int`; a safety threshold is usually `float`.
   | Type | When it is worth using |
   |------|-------------------------|
   | `tuple[...]` | When one governed choice is naturally a product of several smaller choices |
-  | `callable[Proto]` | When a runtime resolves approved implementations from a registry rather than from inline YAML |
+  | `callable[Proto]` | When a runtime resolves approved implementations from a registry rather than from inline YAML; `Proto` is a protocol identifier naming the callable interface an implementation must provide |
 
   These forms are useful, but they are not part of the minimum mental model for writing a clean first
   TVL module.

@@ -34,7 +34,7 @@ A RAG (retrieval-augmented generation) agent looks up documents before it answer
 
 ## Lab 2 · Multi-Objective Tradeoff
 
-- **Concepts reinforced:** Chapter 4 (patterns) and Chapter 5 (integration) with Pareto trade-offs.
+- **Concepts reinforced:** Chapter 4 (patterns) and Chapter 5 (integration) with Pareto trade-offs. Objectives compete (for example quality against cost), and one configuration Pareto-dominates another only if it is no worse on every objective and better on at least one.
 - **Entry point:** `examples/core/multi-objective-tradeoff/run_openai.py`
 - **Command:**
   ```bash

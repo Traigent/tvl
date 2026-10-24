@@ -1,6 +1,7 @@
 # TVL + OPAL Lean Proofs
 
-This public library contains TVL core proofs (typing, SMT encoding and dominance),
+This public library contains TVL core proofs (typing, the encoding for
+satisfiability modulo theories (SMT) solvers, and dominance),
 OPAL declarative-core proofs, and Lean models for the runtime extensions: TVL 1.3
 (RFC 0003), TVL 1.4 reactive guards (RFC 0004, `Guards.lean`) and TVL 1.5 persistence
 (RFC 0005, `Persistence.lean`). All three versions are accepted; TVL 1.5 is the latest.

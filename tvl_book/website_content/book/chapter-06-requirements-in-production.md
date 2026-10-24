@@ -11,8 +11,11 @@ also evaluates promotion monitors from fully resolved counts (Story 3).
 
 !!! info "Which TVL version this chapter describes"
     This chapter uses the runtime blocks introduced in TVL 1.3 (accepted 2026-10-21). TVL 1.4 and TVL 1.5, the latest
-    accepted version, add reactive outcomes, notification guards, breach persistence and census aggregates, which this
-    chapter does not cover. The 1.3 constructs used here remain valid: the snippets are checked with the TVL 1.5
+    accepted version, add four things this chapter does not cover. Reactive outcomes let a response report that a repair
+    failed, and notification guards add conditions to a `notify` rule
+    ([RFC 0004](../../../formalization/rfc-0004-reactive-outcomes-and-guards.md)). Breach persistence notifies only
+    after a requirement breached in a set number of recent windows, and census aggregates bound a sum or mean over every
+    unit in a window ([RFC 0005](../../../formalization/rfc-0005-persistence-and-census-aggregates.md)). The 1.3 constructs used here remain valid: the snippets are checked with the TVL 1.5
     reference tools by `tests/test_runtime_doc_snippets.py`.
 
 ```mermaid
@@ -117,7 +120,7 @@ tvl-validate campus-latency.tvl.yml
 ### The monitor looks at windows, not at single answers
 
 `answers_in_two_seconds_prod` judges a 6-hour **window** at a time. Each window ends in one of three verdicts.
-The examples below assume all units are resolved and placeable, evidence is timely, and the declared statistical
+The examples below assume all units are resolved (classified as satisfying or violating) and placeable (assignable to a window by their start time), evidence is timely, and the declared statistical
 model and sampling assumptions hold.
 
 | Window (UTC) | What the monitor saw | Verdict |
@@ -133,7 +136,7 @@ The first row is the one to remember: **a quiet window is never "fine".** With t
 
 !!! tip "Hackathon Move: pick `min_samples` from a table, not a guess"
     A window of N answers can only be `MET` if N is large enough to rule out the limit. For a 5% limit at 95% confidence that is 59 answers;
-    for 1%, it is 299; for 0.1%, it is 2,995. If you pick a smaller `min_samples`, `tvl-validate` tells you before production does:
+    for 1%, it is 299; for 0.1%, it is 2,995. These are best-case minimums: they assume none of the N answers violates the requirement. If you pick a smaller `min_samples`, `tvl-validate` tells you before production does:
     `runtime_met_unreachable_at_min_samples`.
 
 Three smaller knobs complete the picture. `grace_minutes` lets late evidence arrive before a window is decided. `false_alarm_budget` and
@@ -243,17 +246,20 @@ Three things are different from Story 1.
 * **`MET` is harder to earn.** A zero-tolerance window is `MET` only when the platform is sure it saw *everything*: every unit complete, every event
   producer accounted for. An empty window is `UNKNOWN(insufficient)`, never `MET`: an idle agent has no violations only because it has no traffic.
 * **A guard can act before the effect.** `block_action` suppresses the charge in your own process when the violation is certain. It is available only for
-  patterns that can be certain in advance (`absence`, `bounded_existence`, `precedence`, `protocol`).
+  patterns that can be certain in advance: `absence` (no event may match), `bounded_existence` (at most a set number of
+  events may match), `precedence` (an event needs an earlier one, as in this story) and `protocol` (events must follow
+  an allowed sequence).
 * **`on_check_error` has no default.** If the guard cannot decide at that moment (the evidence is incomplete, relevant events are unordered, a limit
   overflows), do we block or let it through? `block` fails closed. `allow` lets the call proceed and records the unit as unresolved. TVL makes you choose.
 
 !!! pitfall "Reliability Pitfall: guards need limits"
-    A rule that remembers across events (`precedence`, `bounded_response`, `protocol`) must declare `limits`. Delete the `limits` line above and
+    A rule that remembers across events (`precedence`, `bounded_response`, `protocol`) must declare `limits`.
+    (`bounded_response` requires every initiating event to get a matching, correlated response within a deadline.) Delete the `limits` line above and
     `tvl-validate` stops you (`runtime_invalid_profile`).
 
 ## Story 3 · Gate the release with the same requirement
 
-The groundedness rule, "at most 5% of answers may be ungrounded", should also decide whether a **candidate** is allowed to ship. Instead of
+The groundedness rule, "at most 5% of answers may be ungrounded" (an answer is grounded when the source documents the agent retrieved support it), should also decide whether a **candidate** is allowed to ship. Instead of
 copying the predicate, add a second monitor to the same requirement with `phase: promotion`. It reads counts from the evaluation set.
 
 <!-- snippet: campus-gate kind=body -->
@@ -309,7 +315,7 @@ monitors:
     decision: { method: exact_count_v1 }
 ```
 
-`customer:groundedness` is a checker you bind yourself. It runs on your side; TVL knows only its name and its list of labels.
+`customer:groundedness` is a checker you bind yourself. It runs on your side; TVL knows only its name and its list of labels. TVL has no built-in definition of groundedness: your checker decides which answers get the label `ungrounded`, and each answer with a label in `label_in` counts as a violation.
 
 The evaluation harness writes the candidate's measurement bundle with counts under `monitor_outcomes`, named after
 the **promotion monitors**. `n` counts resolved units and `k` those that violate; optional `u` and `pl` count
@@ -326,7 +332,7 @@ monitor_outcomes:
   no_crm_delete_gate: { n: 500, k: 0, complete: true }
 ```
 
-`tvl-ci-gate campus.tvl.yml incumbent.yml candidate.yml` joins those monitors with the gate you already had.
+To try the gate, save the header of Story 1's module (everything above its `requirements:` line) followed by the fragment above as `campus.tvl.yml`, and save the incumbent's measurement bundle, shaped like `candidate-7`, as `incumbent.yml` and the bundle above as `candidate.yml`. Then `tvl-ci-gate campus.tvl.yml incumbent.yml candidate.yml` joins those monitors with the gate you already had.
 Assuming the legacy gate passes and counts have no unresolved or unplaceable units:
 
 | `grounded_answers_gate` | `no_crm_delete_gate` | Gate result |
@@ -473,7 +479,7 @@ TVL's 1.3 vocabulary is deliberately small and sealed. Things people ask for tha
 ## Before you ship: a checklist
 
 1. `tvl-validate` exits 0 on the module and on every pack (warnings included).
-2. Every primary monitor has an `evidence_liveness` partner.
+2. Every primary monitor (a runtime `rate_bound` or `zero_tolerance` monitor, as opposed to a burn monitor, a promotion monitor, or an obligation monitor that checks a `recovery_time` or `evidence_liveness` requirement) has an `evidence_liveness` partner.
 3. `min_samples` is no smaller than the table value for your `max_rate` and `confidence`, and your real traffic fills a window.
 4. Each recovery promise is at least `closure_windows * tumbling_hours` hours.
 5. Each guard has an `on_check_error` you chose on purpose.

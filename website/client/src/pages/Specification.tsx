@@ -312,7 +312,7 @@ export default function Specification() {
                 <CardHeader>
                   <CardTitle>Schema Quick Guide</CardTitle>
                   <CardDescription>
-                    Use this when you need to know which schema validates which TVL artifact and which CLI checks to run.
+                    Use this when you need to know which schema validates which TVL artifact and which command-line interface (CLI) checks to run.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

@@ -17,7 +17,7 @@ opal_bridge: false
 ---
 
 - **Explicit tuned variables** make the changeable surface reviewable instead of leaving it buried in prompts or runtime code.
-- **Clear rule boundaries** separate structural design rules from operational preconditions over `env.context.*`.
+- **Clear rule boundaries** separate structural design rules from operational preconditions over `env.context.*` (the numeric operating assumptions, such as provider price or baseline latency, declared under `environment.context`).
 - **Reusable evaluation hooks** keep metric definitions attached to objectives instead of scattered across scripts.
 - **Governed promotion** requires declared evidence before production changes roll out.
 - **Deterministic exports** make generated files and downstream artifacts reproducible in CI.

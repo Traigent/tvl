@@ -13,7 +13,7 @@ tuned_variables:
   - rubric
   - aggregation policy
 decision_axes:
-  - Better calibration vs more latency and token cost
+  - Better calibration (verdicts that match trusted reference labels) vs more latency and token cost
   - Richer disagreement vs coordination overhead
   - Dynamic judge selection vs reproducibility
 failure_modes:
@@ -81,12 +81,12 @@ Disagreement is only useful if the system can tell whether it reflects:
 - genuine perspective diversity
 - or just noisy restatements of the same mistake
 
-That is why committee composition and aggregation rules should be visible in the evidence bundle, not
-buried in prompt text.
+That is why committee composition and aggregation rules should be visible in the evidence bundle (the recorded configuration, measurements, and identifiers
+behind a release decision), not buried in prompt text.
 
 <PitfallCard title="Cosmetic Committees">
   A committee of nearly identical judges can create the appearance of rigor without improving
-  calibration. Diversity source and aggregation policy matter at least as much as committee size.
+  calibration (here, judge reliability: how often the committee's verdicts match trusted reference labels such as human grading, not TVL's calibration of variables from evidence). Diversity source and aggregation policy matter at least as much as committee size.
 </PitfallCard>
 
 ## Operational Checklist

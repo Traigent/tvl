@@ -1,6 +1,6 @@
 # Chapter 1 · Why TVL Exists
 
-TVL grew out of a simple observation: **LLM applications never sit still**. Model catalogs evolve, latency budgets
+TVL grew out of a simple observation: **large language model (LLM) applications never sit still**. Model catalogs evolve, latency budgets
 oscillate with traffic spikes, and cost ceilings reset when finance reviews the bill. Hard-coded configuration
 forces engineers to either over-provision permanently or ship blind during drift events. TVL reframes
 configuration as a tuned, governed artifact that evolves alongside the environment.
@@ -9,10 +9,14 @@ configuration as a tuned, governed artifact that evolves alongside the environme
 
 - **Type-safe tuning variables** separate categorical choice from continuous ranges.
 - **Deterministic exports** make generated files (such as `params.yaml`) reproducible in CI.
-- **Declarative constraints** (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers.
-- **Governed promotion** requires statistical evidence before production changes roll out: ε-Pareto dominance tested at a
-  chosen significance level `alpha`, plus chance constraints at a stated confidence. The error control holds only under
-  the tests' assumptions (see [formal semantics §9](../../../formalization/tvl-formal-semantics.md)).
+- **Declarative constraints** capture business and safety rules next to the numbers. They are written in typed
+  disjunctive normal form (DNF, an OR of AND-groups of simple conditions), which tools can pass to a SAT/SMT solver
+  (a program that decides whether a set of logical conditions can all be true at once).
+- **Governed promotion** requires statistical evidence before production changes roll out: ε-Pareto dominance (a
+  candidate is at least as good on every objective within a tolerance ε and clearly better on at least one) tested at a
+  chosen significance level `alpha`, plus chance constraints (limits on a violation rate, checked at a stated
+  confidence). The error control holds only under the tests' assumptions (see
+  [formal semantics §9](../../../formalization/tvl-formal-semantics.md)).
 
 !!! example "Night-Before-Launch Scenario"
     The onboarding chatbot is hours away from orientation week. A new model release promises higher quality,

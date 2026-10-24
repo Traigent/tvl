@@ -32,14 +32,14 @@ small governed surface that another engineer can review, tune, and promote safel
 
 ## Starter Scenario
 
-You are reviewing a campus support assistant that currently uses a simple RAG flow:
+You are reviewing a campus support assistant that currently uses a simple retrieval-augmented generation (RAG) flow, in which retrieved passages supply context for the model's answer:
 
 1. retrieve FAQ passages
 2. answer with one small model
 3. return the final response
 
 The team wants to make the workflow more agentic, but not by adding uncontrolled complexity. Your job is to restate
-one candidate scaffold as a governed surface that a reviewer could tune, evaluate, and approve.
+one candidate scaffold (the workflow structure: which steps run, in what order, and how their outputs combine) as a governed surface that a reviewer could tune, evaluate, and approve.
 
 Pick one starting scaffold:
 
@@ -166,7 +166,7 @@ Running example at this step:
 
 - evaluation set: campus FAQ tasks where routing quality matters
 - outcomes: answer accuracy and latency
-- promotion evidence: manifest plus budget and rollback notes
+- promotion evidence: manifest (a record of the configuration and the promotion evidence) plus budget and rollback notes
 - rollback trigger: quality gain disappears or latency budget breaks on the target slice
 
 ## Review Rubric
