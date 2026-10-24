@@ -1354,6 +1354,8 @@ For `k = n`, the upper bound is 1 by convention.
 
 **Precondition**: n ≥ 1. If n = 0 (no trials), the chance constraint check is undefined; implementations MUST report an error.
 
+The measurement schema (`spec/grammar/tvl-measurement.schema.json`) requires `trials` on every `chance_outcomes` entry with minimum 1, so a canonical bundle with zero or missing trials is refused at load with a schema error before any gate runs. The gate's own `zero_trials` error is reached when it is called on counts that did not pass through that check: a bundle handed to the gate directly (`python/tvl/promotion.py`), or a deprecated top-level `chance` summary converted to counts from `summary.trials`, which the schema does not constrain.
+
 **Edge case (k = 0)**: Zero observed violations can pass only when the one-sided upper bound for `n` trials is at or below `θ`; zero observed violations alone is not sufficient.
 
 **Definition 9.9 (Band Objective Satisfaction)**.
@@ -1624,6 +1626,7 @@ Surface syntax, syntax-level closed enums and lexical constraints are normative 
 | `zero_tolerance` | runtime: `customer_side`; promotion: `evaluation_set` | runtime or promotion; promotion iff the source is `evaluation_set` | `exact_count_v1` |
 | `recovery_time` | `episodes` | runtime | `exact_count_v1` |
 | `evidence_liveness` | `windows` | runtime | `exact_count_v1` |
+| `aggregate_bound` (TVL 1.5) | `customer_side` | runtime | `exact_aggregate_v1` (§14.2–§14.3) |
 
 For a rate monitor, `0 < θ < 1`, `0 < α_w ≤ 1`, `0 ≤ c_conf ≤ 1`, `0 ≤ f ≤ 1`, and `min_samples ≥ 1`; a profile may impose narrower domains. `θ` is the maximum violation rate and `f` is `max_unresolved_fraction`. Episode parameters satisfy `K ≥ 1` and positive closure age. Recovery deadline `T` and liveness allowance `L` are positive integers in their declared units. Resource limits are positive and part of the compiled contract. Unsupported domains or missing evidence contracts are refused, never interpreted by an unspecified default.
 
@@ -2484,6 +2487,7 @@ embedding are specification obligations here, not claims of checked runtime impl
 | Registry domain used | `unverifiable_registry_domain` |
 | Callable type used | `unverifiable_callable_type` |
 | Float precision inadequate | `inadequate_precision` |
+| `cvars`, `policies` or `composites` declared (RFC 0001/0002) | `outside_proved_subset` (severity `info`, once per declared family; never affects `ok` or exit status) |
 
 ### B.4 Runtime Validation and Lint Codes (TVL 1.3)
 
