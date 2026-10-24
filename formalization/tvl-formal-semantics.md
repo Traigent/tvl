@@ -33,7 +33,7 @@ A Turing-complete language can express any computation, so some questions about 
 
 For TVL to serve as a trustworthy specification language, we must establish:
 
-1. **Well-defined syntax**: Unambiguous grammar with formal AST
+1. **Well-defined syntax**: Unambiguous grammar with a formal abstract syntax tree (AST)
 2. **Well-defined semantics**: Mathematical meaning for every construct
 3. **Type soundness**: Well-typed modules don't produce runtime type errors
 4. **Decidability**: All validation questions are decidable
@@ -67,7 +67,7 @@ The formal semantics and soundness proofs in this document apply to the **core T
 | Registry domains (`domain: { registry: ... }`) | External state interaction | Future work |
 | Filter expressions in registry refs | Filter language not formalized | Future work |
 | Callable types (`type: callable[Protocol]`) | Protocol typing not defined | Future work |
-| `cvars`/`policies` ([RFC 0001](rfc-0001-knob-bindings-cvars-policies.md), landed 2026-06-05: calibrated variables and named operational policies) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
+| `cvars`/`policies` ([RFC 0001](rfc-0001-knob-bindings-cvars-policies.md), landed 2026-06-05: calibrated variables and named operational policies) | Post-dates the Lean proof tree (machine-checked proofs in the Lean 4 theorem prover, `proofs/`); no formalization exists | Not yet formalized |
 | `composites` ([RFC 0002](rfc-0002-composite-knobs.md), landed 2026-06-06: composite knobs) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
 
 **Implications**:
@@ -734,9 +734,17 @@ Given environment typing context `Γ_env`:
 ────────────────────────────────── (T-Scale)
 Γ_env ⊢ n · x : float
 
-Γ_env ⊢ e₁ : τ₁    Γ_env ⊢ e₂ : τ₂
-────────────────────────────────── (T-Add)
+Γ_env ⊢ e : τ    τ ∈ {int, float}
+───────────────────────────────── (T-Num)
+Γ_env ⊢ e : num
+
+Γ_env ⊢ e₁ : num    Γ_env ⊢ e₂ : num
+──────────────────────────────────── (T-Add)
 Γ_env ⊢ e₁ + e₂ : num
+
+Γ_env ⊢ e₁ : num    Γ_env ⊢ e₂ : num
+──────────────────────────────────── (T-Sub)
+Γ_env ⊢ e₁ - e₂ : num
 
 Γ_env ⊢ e : num
 ────────────────────── (T-DerivedCmp)
@@ -928,7 +936,7 @@ This section records formal results about the normative core under the stated as
 **Theorem 7.1 (Structural Constraint Evaluation)**.
 For any well-formed structural constraint set `Φ^str` and configuration `c`, determining `F^str(c, Φ^str)` is decidable in polynomial time.
 
-*Proof*: Evaluate each atom once and combine the results bottom-up over the finite formula structure. A comparison or equality atom compares one value with one literal; a membership atom `x ∈ S` scans `S`; a tuple atom compares its components (Definition 5.2). So each atom takes time linear in its own size, counting set elements, tuple components and the length of the values compared, and the total time is linear in the size of `Φ^str` together with `c`. □
+*Proof*: Evaluate each atom once and combine the results bottom-up over the finite formula structure. A comparison or equality atom compares one value with one literal, or (T-TVarEq, T-TupleVarEq) two configuration values; a membership atom `x ∈ S` scans `S`; a tuple atom compares its components (Definition 5.2). So each atom takes time linear in its own size plus the size of the values it reads from `c`, counting set elements, tuple components and the length of the values compared. Atoms may read the same value of `c` repeatedly, so the total time is `O(|Φ^str| · (1 + |c|))`, which is polynomial. □
 
 **Theorem 7.2 (Satisfiability Decidability)**.
 For any well-formed structural constraint set `Φ^str` over finite domains, determining whether `∃c: F^str(c, Φ^str) = true` is decidable (in NP).
@@ -1147,7 +1155,7 @@ For a precision-aligned domain D with precision P, the scaling function is injec
 ```
 
 **Choosing an exact precision**.
-There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling needs a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is a power of ten at least as large as the maximum decimal scale after parsing the values exactly. The normative conformance requirement and required fallback behavior are stated in §10.4.
+There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling needs a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is `P = 10^k`, where `k` is at least the largest number of decimal places among the values after parsing them exactly (for example, `0.001` needs `k ≥ 3`, so `P = 10` is not enough). The normative conformance requirement and required fallback behavior are stated in §10.4.
 
 ### 8.6 Formula Encoding
 
@@ -1177,6 +1185,8 @@ Where:
 - `P` is the precision factor used during encoding
 - `idx_{t.domain}⁻¹` is the inverse of the domain indexing function
 
+`decode` is partial: it is undefined when `m` gives an enum TVAR (or enum component) an index outside `{0,...,|D|-1}`. The domain assertions of §8.3 exclude such models, so `decode` is defined on every model of `encode(Δ, φ, P, idx)`.
+
 ### 8.8 Encoding Soundness
 
 **Theorem 8.1 (Encoding Soundness)**.
@@ -1188,7 +1198,7 @@ Where:
 For every SMT model `m` that assigns each declared SMT variable a value of its sort, and every structural formula `φ`, where `encode(Δ, φ, P, idx)` contains the domain assertions of §8.3 as well as the encoded formula (§8.1):
 
 ```
-m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
+m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) is defined ∧ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
 ```
 
 *Proof*:
@@ -1200,7 +1210,7 @@ Construct SMT model `m` from configuration `c` via `encode_value`. We show `m �
 1. **Domain constraints**: For an enum TVAR set `m(t) = idx_D(c(t))`. For a range TVAR set the index variable `m(t_idx) = (c(t) − a)/r`, not `encode_value(c(t))`; since `c(t) ∈ D`, this is an integer in `{0,...,N}`, and the defined `t` then equals `encode_value(c(t))`. So the domain assertions hold.
 
 2. **Atoms**:
-   - Equality: `c(x) = v` ⟺ `idx(c(x)) = idx(v)` ⟺ `m(x) = encode_value(v)` ✓
+   - Equality: `c(x) = v` ⟺ `encode_value(c(x)) = encode_value(v)` ⟺ `m(x) = encode_value(v)`, because `encode_value` is injective on each domain: the identity on bool and int values, `scale` on P-aligned float values (Lemma 8.2), `idx_D` on enum values, and componentwise on tuples ✓
    - Comparison (≥): `c(x) ≥ n` ⟹ `scale(c(x)) ≥ ⌈n·P⌉` by Lemma 8.1 ✓
    - Other comparisons: Analogous via Lemma 8.1
 
@@ -1824,7 +1834,7 @@ Promote₁₃ ⟺ Promote₁₂ ∧ ∀μ ∈ PromotionMonitors(M), verdict_μ=M
 
 Thus any rejection dominates any inconclusive monitor. Passing all monitors does not turn an existing `NoDecision` into promotion. A module without promotion monitors has exactly §9.7's meaning. Chance constraints retain Definition 9.8 and their existing failure behavior; no chance constraint is deleted or silently replaced by a monitor on the same quantity (`chance_constraint_shadowed` is a warning). Promotion monitors are acceptability evidence, not additions to the objective vector or the dominance relation.
 
-**Definition 12.16 (Release gate)**. The public release gate is the evaluator of TVL's own tools (`tvl-ci-gate`, `tvl-measure-validate`). It decides a promotion monitor only from complete counts, using the standard exact binomial tests, and defers everything else. For a valid outcome `{n,k,u,pl}` (natural numbers, `k ≤ n`; anything else is the readiness issue `missing_monitor_counts`), apply the first matching row:
+**Definition 12.16 (Release gate)**. The public release gate is the evaluator of TVL's own tools (`tvl-ci-gate`, `tvl-measure-validate`). It decides a promotion monitor only from complete counts, using the standard exact binomial tests, and defers everything else. For a valid outcome `{n,k,u,pl}` (natural numbers, `k ≤ n`; an absent outcome or `k > n` is the readiness issue `missing_monitor_counts`, and a value of the wrong type fails the measurement schema, RFC §6.11), apply the first matching row:
 
 | Order | Condition | Result |
 |---|---|---|
@@ -1867,7 +1877,7 @@ Thus any rejection dominates any inconclusive monitor. Passing all monitors does
 
 `RECOVERED`, `OVERDUE` and `CANCELLED` are terminal: once established, the obligation keeps that state. How an evaluator profile establishes these states from window and lifecycle records, and how it records later lifecycle changes beside a terminal state, are that profile's (Definition 12.7). `recovery_recovered`, `recovery_overdue` and `recovery_cancelled` mark the obligation reaching that state. Project `RECOVERED↦MET`, `OVERDUE↦BREACHED`, and `PENDING`, `CANCELLED` and lifecycle unavailability to `UNKNOWN` with their reasons (`pending`, `cancelled`, `lifecycle_unavailable`). The terminality of `OVERDUE` does not authorize effects forever: a service effect still needs its originating episode open (§12.10).
 
-Report `window_recovery_duration = closing_window.end−e₀` when resolution exists and, separately, `wall_clock_lifecycle_duration = closed_at−opened_at` when both timestamps exist. A cancelled episode has a withdrawal duration, not a recovery duration. Neither displayed duration substitutes for the state.
+Report `window_recovery_duration_ms = closing_window.end−e₀` when resolution exists and, separately, `wall_clock_lifecycle_duration_ms = closed_at−opened_at` when both timestamps exist (both in milliseconds, RFC §6.13). A cancelled episode has a withdrawal duration, not a recovery duration. Neither displayed duration substitutes for the state.
 
 **Definition 12.19 (Recovery feasibility)**. With the composed required closure count `K_close`, the earliest possible closing window after the opening window ends at `e₀+K_close·W`. Therefore `recovery_deadline_impossible` holds iff `T<K_close·W`; equality is feasible in window time. This is only an earliest separation: closure also needs its windows to be fresh at the closing evaluation (Definition 12.17), so delayed evaluations can postpone or prevent closure and yield `OVERDUE` although the windows were `MET` in time. When an episode has enough consecutive `MET` windows to close but they are too old at an evaluation, that fact is reported as `closure_blocked_by_lag` beside the state; it does not change the state.
 
@@ -2001,7 +2011,8 @@ A `tvl_pack` is a separate TVL 1.3 document containing pack identity, requiremen
 |---|---|
 | requirement/monitor/response/rule names, protocol states, module/pack module names, selector `ref` | opaque locally minted references |
 | suspend fallback | closed enum `static_unavailable` or `route_to_human` |
-| degrade fallback / rollback target | certified fingerprint or `last_certified` |
+| degrade fallback | certified fingerprint |
+| rollback target | certified fingerprint or `last_certified` |
 | customer labels in `label_in` / `among` | indices in the declared checker label list |
 | customer checker ID | keyed commitment `customer:<commitment>`; catalogue IDs retain their catalogue identity |
 | environment label | opaque environment reference, resolved only at the authorized read edge |

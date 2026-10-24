@@ -733,7 +733,7 @@ the golden expansion fixtures and SDK property tests for every pattern that
 offers `unroll`. Outside the conditions, and for non-`signal_accept` loops,
 no equivalence is claimed.
 
-### 3.9 Surface syntax (draft normative for validator implementations)
+### 3.9 Surface syntax (draft normative for validator implementations; now normative in the grammar, see §11)
 
 **The arm surface form** — ONE shape, used EVERYWHERE an `Arm` appears
 (cascade `arms[]`, loop `body`, ensemble `arms[]` and `judge`):
@@ -805,6 +805,9 @@ enums, finite numbers only — nothing content-typed; P8 discipline):
 - loop: `iterations_used`, `stop_reason` (enum over StopDecl kinds ∪
   `exhausted`).
 
+§11 gives the formulas for `vote_margin`, `vote_agreement` and
+`gate_margin_pass_rate`.
+
 ### 3.11 Error-code surface (exact diagnostics)
 
 New codes introduced by this RFC (each with a happy + rejecting conformance
@@ -813,7 +816,9 @@ execution rules above are in **1:1 correspondence** — every code below is
 emitted by exactly the cited rule, and every rule that rejects cites exactly
 one of these codes or a REUSED RFC 0001 code (`missing_ref` family,
 `cascade_arity`, `unknown_gate_kind` — reused with identical semantics on
-the composite construct):
+the composite construct). §11 records two exceptions in the reference validators:
+`unknown_aggregate_kind` has a second emitter, and R9 has no rejecting static
+fixture.
 
 | Code | Emitted by |
 |---|---|
@@ -915,6 +920,11 @@ API.
 
 ## 5. Property claims (Phase 2)
 
+`Cal` is the coverage fold's set of calibratable members (§3.6) and `N_X` the
+composite namespace (§3.1). MUST-BE-SAT marks a deliberately broken model variant
+that must yield a counterexample; the note below the table explains why each check
+has one.
+
 | Claim | Statement | Verification plan |
 |---|---|---|
 | **C1** Constructor disjointness | every composite node has exactly one kind from the closed registry; cross-kind/unknown fields reject | model checking (kind partition); lints with exact diagnostics (§3.11) |
@@ -978,7 +988,7 @@ The claims above hold under, and only under:
 ## 7. Field categorization (P8 alignment)
 
 P8 is RFC 0001's privacy property (RFC 0001 §4): the persisted certificate and
-signal-observation shapes are closed, with no field that can carry raw content.
+signal-observation shapes are closed, with no raw-content-typed field.
 "The P8 surface" below means those closed, content-free shapes.
 
 Composites introduce **no content-typed fields**: kinds, placements, arity,
@@ -1008,9 +1018,9 @@ increment (§2).
 - **Composition-over-inheritance** in API design (Bloch, *Effective Java*,
   3rd ed., items 18–20; React's component model) and the LangChain-Chains →
   LCEL/DSPy migration: these motivate sealing structure and naming recipes.
-  In taxonomy-as-inheritance, each new pattern is a new subclass in a class
-  hierarchy; in our reading, that approach gave way to composition under the
-  kind of pressure the pattern catalog absorbs.
+  In taxonomy-as-inheritance, each new pattern is a new subclass, so the class
+  hierarchy grows with every pattern. Composition with a named catalog (§3.7)
+  adds a pattern as a catalog entry over the same sealed constructors instead.
 
 ## 9. Acceptance criteria for this RFC
 

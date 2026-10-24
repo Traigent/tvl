@@ -143,23 +143,23 @@ decision: "Reject"   # "Promote" | "Reject" | "NoDecision" | "Error"
 evidence:
   per_objective:
     latency_p95_ms:
-      test_type: "welch"           # "welch" | "paired" | "student"
+      test_type: "welch"           # "welch" | "paired" ("precomputed" only for library calls with pre-computed p-values)
       n_incumbent: 10
       n_candidate: 10
       mean_incumbent: 143.8
       mean_candidate: 133.8
       delta: -10.0                 # candidate - incumbent (negative is better for minimize)
-      std_pooled: 5.2
-      t_statistic: -4.31
-      df: 17.8                     # Degrees of freedom (Welch-Satterthwaite)
-      p_value_noninf: 0.0002       # H₀: candidate worse by > ε
-      p_value_super: 0.021         # H₀: candidate not better by > ε
-      p_value_inferior: 0.9998     # H₀: candidate is within the allowed regression margin
+      std_pooled: 4.21
+      t_statistic: 10.62           # Non-inferiority statistic (σᵢ × delta + εᵢ) / SE
+      df: 17.9                     # Degrees of freedom (Welch-Satterthwaite)
+      p_value_noninf: 1.8e-09      # H₀: candidate worse by > ε
+      p_value_super: 0.5           # H₀: candidate not better by > ε (the improvement equals ε exactly)
+      p_value_inferior: 1.0        # H₀: candidate is within the allowed regression margin
       adjusted_p_noninf: null      # Non-inferiority is unadjusted (IUT)
-      adjusted_p_super: 0.032      # After multiplicity adjustment (union component)
+      adjusted_p_super: 0.5        # After multiplicity adjustment (union component)
       adjusted_p_inferior: 1.0     # After multiplicity adjustment (union component)
       epsilon: 10
-      verdict: "superior"          # "superior" | "noninferior" | "inferior" | "inconclusive"
+      verdict: "noninferior"       # "superior" | "noninferior" | "inferior" | "inconclusive"
 
     accuracy:
       test_type: "welch"
@@ -169,28 +169,28 @@ evidence:
       mean_candidate: 0.91
       delta: 0.04
       std_pooled: 0.035
-      t_statistic: 5.71
-      df: 97.2
-      p_value_noninf: 0.0001
-      p_value_super: 0.15          # Not significant for superiority
-      p_value_inferior: 0.9999     # No evidence of regression beyond ε
+      t_statistic: 8.49
+      df: 90.9
+      p_value_noninf: 1.9e-13
+      p_value_super: 0.0029        # Significant for superiority
+      p_value_inferior: 1.0        # No evidence of regression beyond ε
       adjusted_p_noninf: null
-      adjusted_p_super: 0.1500
+      adjusted_p_super: 0.0058     # Holm over [0.0029, 0.5]
       adjusted_p_inferior: 1.0
       epsilon: 0.02
-      verdict: "noninferior"       # Passes non-inferiority but not superiority
+      verdict: "superior"          # Passes non-inferiority and superiority
 
     response_length:               # Banded objective
       test_type: "tost"
       n: 50
-      mean: 99.2
-      std: 4.1
-      ci_lower: 98.0               # 90% CI lower (for α=0.05)
-      ci_upper: 100.4              # 90% CI upper
+      mean: 100.0
+      std: 2.5
+      ci_lower: 99.41              # 90% CI lower (for α=0.05)
+      ci_upper: 100.59             # 90% CI upper
       band_lower: 95
       band_upper: 105
-      p_value_lower: 0.001         # H₀: μ ≤ 95
-      p_value_upper: 0.0001        # H₀: μ ≥ 105
+      p_value_lower: 1e-300        # H₀: μ ≤ 95 (clipped at 1e-300)
+      p_value_upper: 1e-300        # H₀: μ ≥ 105 (clipped at 1e-300)
       verdict: "in_band"           # "in_band" | "out_of_band" | "inconclusive"
 
   chance_constraints:
@@ -198,12 +198,12 @@ evidence:
       violations: 2
       trials: 100
       observed_rate: 0.02
-      ci_lower: 0.0024             # Clopper-Pearson lower bound (reported for completeness)
-      ci_upper: 0.0660             # One-sided upper bound at confidence γ
+      ci_lower: 0.0015             # Clopper-Pearson lower bound (reported for completeness)
+      ci_upper: 0.0814             # One-sided upper bound at confidence γ
       threshold: 0.05
       confidence: 0.99
       verdict: "fail"              # "pass" | "fail" | "error" (undefined check, e.g. zero_trials)
-      reason: "ci_upper (0.0660) > threshold (0.05)"
+      reason: "ci_upper (0.0814) > threshold (0.05)"
 
   summary:
     all_noninferior: true          # All objectives pass non-inferiority
@@ -381,7 +381,9 @@ When α ≤ 0.5, adjusting the inferiority family cannot make a candidate promot
 
 Return `"Error"` first, before any other branch, when a check is undefined. Today this is a chance constraint with zero trials or no trial count (`zero_trials`, Definition 9.8 of the formal semantics). `Error` is neither `Reject` nor `NoDecision`. The evidence bundle lists the codes in `summary.chance_error_codes`, and `summary.decision_reason` names the constraints.
 
-`tvl-ci-gate` reports this decision as `Decision: Error` and exits 2. With `--json` it prints:
+`tvl-ci-gate` reports this decision as `Decision: Error` and exits 2. Through the CLI, only a bundle that uses the
+deprecated top-level `chance` summary can reach this decision (see below), so `warnings` lists
+`deprecated_measurement_chance` for that bundle. With `--json` it prints:
 
 ```json
 {
@@ -389,7 +391,13 @@ Return `"Error"` first, before any other branch, when a check is undefined. Toda
   "decision": "Error",
   "error": "zero_trials: no trials for chance constraints: toxicity_rate",
   "codes": ["zero_trials"],
-  "warnings": [],
+  "warnings": [
+    {
+      "code": "deprecated_measurement_chance",
+      "message": "Top-level 'chance' is deprecated. Use 'chance_outcomes.<name>.violations' and 'chance_outcomes.<name>.trials'.",
+      "source": "candidate.json"
+    }
+  ],
   "evidence": { "...": "..." }
 }
 ```
@@ -401,7 +409,7 @@ With canonical `chance_outcomes`, a `trials` of 0 or a missing `trials` is a sch
 Return `"Promote"` if ALL of the following are true:
 
 1. All non-inferiority tests pass (raw `p_value_noninf < α` for all standard, non-banded objectives)
-2. At least one superiority test passes after selected adjustment (`p_super_test < α` for at least one standard objective)
+2. At least one superiority test passes after selected adjustment (for at least one standard objective, `adjusted_p_super < α` when `adjust` is not `"none"`, otherwise `p_value_super < α`)
 3. All banded objectives pass TOST
 4. All chance constraints pass
 5. No inferiority test demonstrates a regression (§5.2, item 1)
@@ -434,12 +442,12 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 | Within noise | All deltas < ε, high variance | Welch per obj | NoDecision |
 | Superior on one | Better on obj1 by > ε (superiority significant), non-inferiority significant on the others | Welch per obj | Promote |
 | BH correction | 10 objectives, 2 superiority p-values raw < 0.05 but adjusted > 0.05 | BH | NoDecision |
-| TOST pass | Mean = 100, band = [95, 105], n = 50, σ = 5 | TOST (90% CI) | Promote (if other tests pass) |
-| TOST fail (power) | Mean = 100, band = [95, 105], n = 5, σ = 8 | TOST (90% CI) | NoDecision |
+| TOST pass | Mean = 100, band = [95, 105], n = 50, std = 5 | TOST (90% CI) | Promote (if other tests pass) |
+| TOST fail (power) | Mean = 100, band = [95, 105], n = 5, std = 8 | TOST (90% CI) | NoDecision |
 | TOST fail (OOB) | Mean = 110, band = [95, 105] | TOST (90% CI) | Reject |
 | Chance pass | 0/120 violations, θ = 0.03, γ = 0.95 | Clopper-Pearson | (contributes to Promote) |
 | Chance fail | 8/100 violations, θ = 0.05, γ = 0.95 | Clopper-Pearson | Reject |
-| Paired samples | Same eval set for both configs | Paired t-test | (uses paired test) |
+| Paired samples | Same eval set for both configs, `paired: true` on the candidate's objective, and sample lists of equal length | Paired t-test | (uses paired test) |
 
 Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough observations for the named tests to reject at α. The same effects with too few observations give `NoDecision`.
 
@@ -468,7 +476,7 @@ Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough obse
 
 ## 8. Error Codes
 
-The full catalog of diagnostics is [docs/reference/error-codes.md](../docs/reference/error-codes.md). The codes below are the ones emitted for promotion inputs.
+The diagnostic catalog is [docs/reference/error-codes.md](../docs/reference/error-codes.md); its introduction lists the codes it does not yet cover. The codes below are the ones emitted for promotion inputs.
 
 **Measurement bundle not promotion-ready** (`tvl-ci-gate` exits 2 with no decision; `tvl-measure-validate` reports `promotion_ready: false`):
 

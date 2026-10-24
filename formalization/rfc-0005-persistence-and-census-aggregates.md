@@ -381,7 +381,7 @@ evaluator exists.
 | `aggregate-deploy-if-promoted.yml` | response_deploy_without_promotion_monitor |
 | `persist-pack-ref-rewrite.yml`; `aggregate-pack-tightening.yml` | canonical trigger reference; lte decreases/gte increases |
 | `version-15-missing.yml`; `version-14-new-construct.yml` | runtime_version_required; declared_version_below_constructs |
-| `old-reader-new-construct.yml`; `format-v3-without-new-construct.yml` | schema_error or unsupported_construct by entrypoint; schema_error |
+| `old-reader-new-construct.yml`; `format-v3-without-new-construct.yml` | schema_error or unsupported_construct by entrypoint; runtime_unsafe_egress (the projected contract fails its format schema) |
 | `legacy-14-meaning.yml`; `legacy-artifact-bytes.yml`; `version-15-alone.yml` | unchanged 1.4 outcomes/bytes at fixed toolchain; prior format selection |
 
 ## 6. Alternatives considered

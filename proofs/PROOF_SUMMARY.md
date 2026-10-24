@@ -50,7 +50,7 @@ proofs/
     ├── Basic.lean          # Core definitions (162 lines)
     ├── Types.lean          # Type system formalization (133 lines)
     ├── TypeSoundness.lean  # Theorem 4.2 (194 lines)
-    ├── SMTEncoding.lean    # Lemma 5.4, Theorem 5.6 (1985 lines)
+    ├── SMTEncoding.lean    # Lemma 5.4, Theorem 5.6 (1988 lines)
     ├── Dominance.lean      # Lemma 6.18 (117 lines)
     ├── OPALCore.lean       # OPAL declarative core (929 lines; see OPALCORE_README.md)
     ├── Gate.lean           # Promotion decision join (84 lines; see Runtime (TVL 1.3))
@@ -231,11 +231,14 @@ theorem strict_dominance_does_not_compose_informal : True := trivial
 ```
 
 This Lean theorem only states `True`; nothing about strict dominance is proved. The
-counter-example is documented in the file's comments:
-- y₁ = [100, 50], y₂ = [90, 50], y₃ = [90, 40], ε = [10, 10]
-- y₁ ≻ε y₂ (strictly better on A)
-- y₂ ≻ε y₃ (strictly better on B)
-- But y₁ ≽₂ε y₃, NOT y₁ ≻₂ε y₃
+example in the file's comments (y₁ = [100, 50], y₂ = [90, 50], y₃ = [90, 40], ε = [10, 10])
+does not work: each claimed strict improvement is exactly 10, which is not more than ε = 10.
+A valid counter-example, from the formal semantics (§9.8, after Lemma 9.2), with two maximized
+objectives and ε = [10, 10]:
+- y₁ = [0, 0], y₂ = [-15, 10], y₃ = [-5, -5]
+- y₁ ≻ε y₂ (y₁ − y₂ = [15, -10]: better by more than ε on A, within ε on B)
+- y₂ ≻ε y₃ (y₂ − y₃ = [-10, 15]: within ε on A, better by more than ε on B)
+- But y₁ − y₃ = [5, 5], so y₁ ≽₂ε y₃, NOT y₁ ≻₂ε y₃
 
 **Lines of Code**: 117
 **Sorry Count** (unproved `sorry` placeholders in the file): 0
@@ -361,7 +364,7 @@ decoder returns for that variable has an integer representation.
 - **Comparison atoms (geq, leq)**: ✓ Proven using `NumericDecodePreservation`
 - **Membership atoms (mem)**:
   - ✓ Empty list `[]`: Proven (encodes to `ff`, trivially false)
-  - ✓ Singleton `[v]`: Proven using `Val.beq_comm` for BEq symmetry
+  - ✓ Singleton `[v]`: Proven using `Val.beq_comm`, the symmetry of Lean's Boolean equality `==` (`BEq`; see Helper Lemmas)
   - ✓ Multi-element `v :: v' :: vs`: Proven via `mem_encoding_soundness` with list induction
 
 **Helper Lemmas**:
@@ -402,7 +405,7 @@ through `decode_val`.
 - **Backward direction**: ✓ Proven using `smt_encoding_soundness`
 - **Forward direction**: ✓ Proven using `decode_encode_config_agree` and `evalFormula_ext`
 
-**Lines of Code**: 1985
+**Lines of Code**: 1988
 **Sorry Terms**: 0
 
 ---
@@ -453,8 +456,10 @@ through `decode_val`.
 - This is always unsatisfiable, which is correct semantics
 
 ### Comparison Thresholds
-- Restricted to non-negative values per paper spec
-- Negative thresholds would need different ceiling formula
+- Comparison atoms take any integer threshold (`Atom.geq`/`Atom.leq` take an `Int`), and the
+  grammar admits signed numbers
+- Only the separate rounding lemma `rounding_soundness_nonneg` is restricted to natural numbers;
+  negative thresholds would need a different ceiling formula there
 
 ### Tuples
 - Included in type grammar for completeness
@@ -528,8 +533,8 @@ non-tuple TVARs, and the four connectives):
 
 These core files contain no `sorry` terms.
 
-**Lines of core proof code**: 2591 (`Basic`, `Types`, `TypeSoundness`, `SMTEncoding`, `Dominance`;
-`wc -l`, 2026-10-24; the whole `proofs/` library, excluding Mathlib, is 4803 lines)
+**Lines of core proof code**: 2594 (`Basic`, `Types`, `TypeSoundness`, `SMTEncoding`, `Dominance`;
+`wc -l`, 2026-10-24; the whole `proofs/` library, excluding Mathlib, is 4806 lines)
 **Theorems proven**: 5 (Type Soundness, ε-Composition, Rounding Soundness, SMT Encoding, Satisfiability)
 
 ---

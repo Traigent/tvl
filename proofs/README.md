@@ -88,7 +88,7 @@ rg -n '^import' Main.lean TVL --glob '*.lean'
 
 CI enforcement:
 
-- `.github/workflows/lean-proofs.yml` builds the proofs with `lake build` on every change under `proofs/`, and fails if any Lean source contains `sorry`, `admit` or an `axiom` declaration.
+- `.github/workflows/lean-proofs.yml` builds the proofs with `lake build` on every change under `proofs/`, and fails if any Lean source contains the word `sorry` or `admit`, or a line that starts with `axiom`. This is a text check: it misses an axiom declared after a modifier or an attribute (for example `private axiom` or `@[simp] axiom`).
 
 Focused builds include `lake build TVL.Runtime.BinomialGeneric` and
 `lake build TVL.OPALCore`. The existing proof CI enforces a strict source policy.

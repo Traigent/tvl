@@ -150,11 +150,13 @@ For technical reviews, state results with their scope:
 > or direct procedure that preserves its judgments (§10.4).
 
 **Q: What if floats cause precision issues?**
-> A: The reference encoding represents float values as integers scaled by a precision factor. In the reference
-> checker the default factor is 1000 (steps of 0.001), and a float range's `resolution` changes it. Comparisons stay
-> exact when every domain value lies on the scaled grid (precision-aligned, §8.5) and thresholds are rounded by
-> direction (§8.4). Otherwise an implementation must use an exact encoding or report that the reference encoding is
-> unavailable (§10.4).
+> A: The informative reference encoding (§8.3–8.4) represents float values as integers scaled by a precision factor
+> `P`. Comparisons stay exact when every domain value lies on the scaled grid (precision-aligned, §8.5) and thresholds
+> are rounded by direction (§8.4). Otherwise an implementation must use an exact encoding or report that the reference
+> encoding is unavailable (§10.4). The reference checker uses such an exact encoding: it parses each float range's
+> endpoints and effective resolution as exact rationals (the default resolution is 0.001, §2.4), encodes a value as
+> its integer grid index `(value − origin) / step`, and compares values and thresholds in exact rational arithmetic.
+> It does not multiply by a fixed factor.
 
 **Q: How do you ensure promotion decisions are correct?**
 > A: Promotion uses ε-Pareto dominance with statistical hypothesis tests (§9.4). The `adjust` setting selects the
@@ -175,22 +177,27 @@ For technical reviews, state results with their scope:
 
 ### Encoding rules
 
-This sketch follows semantics §8.3–8.4 and the reference checker. Integer values stay unscaled; only float values and
-float thresholds are scaled by `P`.
+This sketch follows the informative scaled encoding of semantics §8.3–8.4; the reference checker uses exact grid
+indices instead (see the FAQ above). Integer values stay unscaled; only float values and float thresholds are scaled
+by `P`. Compute `n · P` in exact rational arithmetic: in binary64, `0.07 * 100` is `7.000000000000001`, whose ceiling
+is 8, not 7.
 
 ```python
 import math
+from fractions import Fraction
 
-def encode_threshold(op: str, n: float, P: int) -> int:
+def encode_threshold(op: str, n: str, P: int) -> int:
     # Float TVAR compared with a constant n (semantics Definition 8.5).
+    # n is the threshold's decimal text, parsed exactly.
+    q = Fraction(n) * P
     if op == ">=":
-        return math.ceil(n * P)
+        return math.ceil(q)
     if op == ">":
-        return math.floor(n * P) + 1
+        return math.floor(q) + 1
     if op == "<=":
-        return math.floor(n * P)
+        return math.floor(q)
     if op == "<":
-        return math.ceil(n * P) - 1
+        return math.ceil(q) - 1
     raise ValueError(op)
 
 # Interval a <= x <= b on a float TVAR:  ceil(a * P) <= x_scaled <= floor(b * P)

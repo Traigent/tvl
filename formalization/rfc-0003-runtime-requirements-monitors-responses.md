@@ -595,7 +595,9 @@ shape-versus-registry layering of RFC 0001 and RFC 0002 (`T:spec/grammar/tvl.sch
 
 Each `runtime_*_out_of_range` code names exactly one field; there is no shared code for two fields. A value of the wrong
 JSON type (a string where an integer is required) fails the schema, so `tvl-validate` reports `schema_error` and not an
-out-of-range code; `tvl-lint`, which runs no schema (§5.1), reports the field's out-of-range code.
+out-of-range code; `tvl-lint`, which runs no schema (§5.1), reports the field's out-of-range code for an integer field.
+For a decimal field (such as `confidence` or `false_alarm_budget`) whose value is not an exact decimal number (§4.2),
+`tvl-lint` reports `runtime_invalid_profile` instead.
 
 ### 5.5 Statistics and power
 
@@ -1620,8 +1622,8 @@ failure output: `"code": "unsupported_construct"` and `"construct"` ∈ {`requir
 | Entrypoint (`T:pyproject.toml:38-47`) | Module with runtime blocks | `tvl_pack` | Other 1.3 input | Exit |
 |---|---|---|---|---|
 | `tvl-parse` | parses (no semantic check, `T:tvl_tools/tvl_parse/cli.py:14-30`) | parses | — | unchanged |
-| `tvl-validate` | schema, then lints (§5) | pack schema, then `lint_pack` | — | 0 no issue; 2 any issue, warnings included (unchanged rule, `T:tvl_tools/tvl_validate/cli.py:76-77`) |
-| `tvl-lint` | lints | `lint_pack` | — | 0 / 2 as today (`T:tvl_tools/tvl_lint/cli.py:65-66`) |
+| `tvl-validate` | schema, then lints (§5) | pack schema, then `lint_pack` | — | 0 no issue; 2 any issue, warnings included (unchanged rule, `T:tvl_tools/tvl_validate/cli.py:76-77`; for `info` issues see Errata) |
+| `tvl-lint` | lints | `lint_pack` | — | 0 / 2 as today (`T:tvl_tools/tvl_lint/cli.py:65-66`; for `info` issues see Errata) |
 | `tvl-ci-gate` (canonical `<module> <incumbent> <candidate>`) | runs the runtime lints first and stops on any error-severity issue (exit 2, issues listed; warnings do not stop it); evaluates promotion monitors with the release gate and joins them (§6.11); runtime monitors do not change the gate | refuses (`tvl_pack`) | `monitor_outcomes` implemented; readiness on the candidate only (§11.3) | 0 Promote; 2 otherwise (unchanged, `T:tvl_tools/tvl_ci_gate/cli.py:139-142`) |
 | `tvl-ci-gate --policy` (deprecated) | refuses any runtime block: this path reads YAML without schema validation (`T:tvl_tools/tvl_ci_gate/cli.py:29-50`) | refuses | refuses `monitor_outcomes` in either bundle | 2 |
 | `tvl-measure-validate` | implements `monitor_outcomes` with the release gate (§6.11), treating the bundle as a candidate | refuses as the module argument | refuses a runtime report given as the measurement (`runtime_report`) | 2 on refusal (as today) |
@@ -1848,8 +1850,9 @@ names and name references.
 ### 11.5 CLI contracts of the new and extended tools
 
 Both tools accept `--format text|json` (default `text`; `cli_utils.add_common_args`), print one result object in JSON
-mode, and report issues in the existing issue shape `{code, message, path, severity}`; an unreadable input is reported in
-the existing error shape `{ok: false, file, error}` (`cli_utils.handle_error`). Exit 0 means success; exit 2
+mode, and report issues in the existing issue shape `{code, message, path, severity}`. `tvl-compose` reports an
+unreadable input in the existing error shape `{ok: false, file, error}` (`cli_utils.handle_error`); `tvl-compile-runtime`
+reports it in its own output object (below) with `ok: false`, `contract_digest: null` and one `schema_error` issue. Exit 0 means success; exit 2
 means failure; no other exit code is used by these two tools.
 
 **`tvl-compile-runtime`**
@@ -2221,6 +2224,9 @@ measured; closure itself can still be delayed by evaluation lag, which §6.13 re
 ### 16.3 Open questions (this revision)
 
 Each is settled here by the most conservative reading and needs confirmation at review.
+
+> Note (2026-10-24): this list is kept as written for review. The RFC was accepted on 2026-10-21 with these readings
+> as written, so they are the TVL 1.3 readings; see Errata and later changes.
 
 1. **Version omitted.** An omitted `tvl_version` on a module with runtime blocks is `runtime_version_required`, not
    `declared_version_below_constructs`, so that omission keeps legacy version handling on legacy modules.

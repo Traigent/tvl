@@ -121,7 +121,7 @@ Abstract syntax (extends §2 of the formal semantics):
 
 ```
 CVarDecl ::= ⟨ name : Ident,
-               type : Type,                      (* same Type grammar as TVarDecl *)
+               type : Type,                      (* same Type grammar as TVarDecl; since narrowed, see §11 *)
                domain? : ValidityDomain,         (* OPTIONAL, see below *)
                calibration : CalibrationSpec,
                governance? : ⟨ require_calibration : Bool ⟩,
@@ -223,7 +223,8 @@ Certificate ::= ⟨ subject : ⟨ cvar : Ident,
 
 There is **no open `payload` field** in the v1 certificate: every field is one of
 the closed shapes above (identifiers, types, hashes, counts, enum) — this is what
-makes Property P8 checkable at the schema level. Implementations needing more
+makes Property P8 checkable at the schema level. (`TargetProperty` is left
+undefined here; §11 records that it is a closed identifier string.) Implementations needing more
 context attach it *outside* the certificate object.
 
 The decision vocabulary is shared with the per-config guarantee certificates already
