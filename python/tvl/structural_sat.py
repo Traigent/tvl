@@ -104,12 +104,19 @@ NON_FINITE_CODE = "structural_non_finite_domain"
 UNRESOLVED_DOMAIN_CODE = "structural_unresolved_domain"
 PAIR_TABLE_TOO_LARGE_CODE = "structural_pair_table_too_large"
 EXPANSION_TOO_LARGE_CODE = "structural_expansion_too_large"
+VALUE_TOO_LARGE_CODE = "structural_value_too_large"
 
 _ORDERING_OPS = {"<", "<=", ">", ">="}
 # Largest allowed-assignment table one TVAR-vs-TVAR equality atom may build. Domains are
 # deduplicated first (so an enum-vs-enum table has at most min(|D|, |D'|) rows); this bound
 # is counted BEFORE any table is materialised.
 _MAX_PAIR_TABLE = 1_000_000
+# Exact keys (:func:`_atom_key`) and witness text are structural, so a tuple member costs its
+# EXPANDED size: ``value = (value, value)`` thirty times is 31 objects but 2**31 nodes. One
+# enum domain's members may expand to at most this many nested nodes in total (scalar members
+# are free), and nest at most this deep; both are counted by identity BEFORE any key is built.
+_MAX_VALUE_NODES = 1_000_000
+_MAX_VALUE_DEPTH = 100
 
 
 class _EncodingOverflow(Exception):
@@ -122,6 +129,21 @@ class _PairTableTooLarge(Exception):
     def __init__(self, left: str, right: str, rows: int) -> None:
         super().__init__(left, right, rows)
         self.left, self.right, self.rows = left, right, rows
+
+
+class _ValueTooLarge(StructuralParseError):
+    """An enum domain's members expand past ``_MAX_VALUE_NODES`` nodes or ``_MAX_VALUE_DEPTH`` levels.
+
+    A :class:`StructuralParseError` for direct :func:`build_structural_model` callers;
+    :func:`check_structural` reports it undecided.
+    """
+
+    def __init__(self, variable: str) -> None:
+        super().__init__(
+            f"enum domain of '{variable}' has members whose nested components exceed "
+            f"{_MAX_VALUE_NODES} expanded nodes or {_MAX_VALUE_DEPTH} levels of nesting"
+        )
+        self.variable = variable
 
 
 class _ExpansionTooLarge(StructuralParseError):
@@ -290,7 +312,8 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
         domains = extract_domains(module.get("tvars", {}))
     except ExactLiteralLimitError as exc:
         raise StructuralParseError(f"TVAR domain literal out of bounds: {exc}") from exc
-    for domain in domains.values():
+    for path, domain in domains.items():
+        _check_value_budget(path, domain)
         _dedupe_enum_values(domain)
     model = cp_model.CpModel() if cp_model is not None else None
     variables: Dict[str, Any] = {}
@@ -381,6 +404,14 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
         _encode_expression_assumptions(model, var_map, domains, structural.expressions)
     except _EncodingOverflow as exc:
         return _overflow_result(exc.variable)
+    except _ValueTooLarge as exc:
+        return _undecided(
+            VALUE_TOO_LARGE_CODE,
+            f"Structural satisfiability could not be decided: the enum domain of '{exc.variable}' "
+            f"has members whose nested (shared or deep) tuple components expand to more than "
+            f"{_MAX_VALUE_NODES} nodes or {_MAX_VALUE_DEPTH} levels; exact comparison would have "
+            "to expand every shared component. Flatten or shrink the values.",
+        )
     except _ExpansionTooLarge as exc:
         result = _undecided(
             EXPANSION_TOO_LARGE_CODE,
@@ -530,6 +561,46 @@ def _non_finite_issue(tvars: Any) -> Optional[str]:
 
 def _is_empty_enum(domain: Domain) -> bool:
     return domain.kind == "enum" and not domain.values
+
+
+def _check_value_budget(path: str, domain: Domain) -> None:
+    """Raise :class:`_ValueTooLarge` if ``domain``'s members expand past the value budget.
+
+    Each distinct container is sized once (memoised by identity), so the check is linear in
+    the objects actually held, not in their expansion; a cycle (``&a [*a]``) or a nesting
+    deeper than ``_MAX_VALUE_DEPTH`` is refused rather than recursed into. Every occurrence of
+    a member is charged (``[v] * 1000`` costs 1000 times ``v``), because :func:`_atom_key`
+    and the witness formatters expand each occurrence.
+    """
+    if domain.kind != "enum" or not domain.values:
+        return
+    sizes: Dict[int, int] = {}
+    in_progress: set = set()
+
+    def expanded(node: Any, depth: int) -> int:
+        if not isinstance(node, (tuple, list)):
+            return 1
+        known = sizes.get(id(node))
+        if known is not None:
+            return known
+        if depth > _MAX_VALUE_DEPTH or id(node) in in_progress:
+            raise _ValueTooLarge(path)
+        in_progress.add(id(node))
+        total = 1
+        for child in node:
+            total += expanded(child, depth + 1)
+            if total > _MAX_VALUE_NODES:
+                raise _ValueTooLarge(path)
+        in_progress.discard(id(node))
+        sizes[id(node)] = total
+        return total
+
+    budget = 0
+    for member in domain.values:
+        if isinstance(member, (tuple, list)):
+            budget += expanded(member, 1)
+            if budget > _MAX_VALUE_NODES:
+                raise _ValueTooLarge(path)
 
 
 def _dedupe_enum_values(domain: Domain) -> None:

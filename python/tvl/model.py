@@ -477,6 +477,30 @@ def _product_limit_error(name: str, size: int) -> ValueError:
     )
 
 
+def _reject_reversed_range(
+    name: str,
+    range_vals: list,
+    minimum: float,
+    maximum: float,
+    exact_minimum: Optional[Fraction],
+    exact_maximum: Optional[Fraction],
+) -> None:
+    """Raise ``ValueError`` for a scalar range whose lower bound exceeds its upper bound.
+
+    Semantics §2.4: ``{range: [a, b]}`` is well-formed only if ``a <= b``. Compared exactly
+    (source lexemes) when both endpoints are exact, else as binary64.
+    """
+    if exact_minimum is not None and exact_maximum is not None:
+        reversed_range = exact_minimum > exact_maximum
+    else:
+        reversed_range = minimum > maximum
+    if reversed_range:
+        raise ValueError(
+            f"{name}: range domain [{range_vals[0]}, {range_vals[1]}] is empty "
+            f"(lower bound exceeds upper bound; a range [a, b] requires a <= b)"
+        )
+
+
 def _range_grid(comp: dict) -> Optional[tuple]:
     """``(kind, lo, step, count)`` of a tuple-component range, computed exactly; None if malformed.
 
@@ -499,7 +523,9 @@ def _range_grid(comp: dict) -> Optional[tuple]:
         # Semantics §2.4: float-range resolution is optional, default 0.001.
         step = step if step is not None else Fraction(1, 1000)
         n_steps = math.floor((hi - lo) / step)
-        return ("float", lo, step, max(n_steps, 0) + 1)
+        # Reversed endpoints (hi < lo) give an EMPTY grid, never a clamped singleton: the
+        # range is malformed (semantics §2.4, a <= b) and is rejected by the caller.
+        return ("float", lo, step, max(n_steps + 1, 0))
     lo_i, hi_i = int(lo_raw), int(hi_raw)
     return ("int", lo_i, 1, max(hi_i - lo_i + 1, 0))
 
@@ -666,6 +692,7 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                     # their binary64 roundings above.
                     exact_minimum = exact_number_or_none(range_vals[0])
                     exact_maximum = exact_number_or_none(range_vals[1])
+                    _reject_reversed_range(name, range_vals, minimum, maximum, exact_minimum, exact_maximum)
                 if kind == "float":
                     # Positivity is decided exactly (an underflowed 1e-400 is positive).
                     step = _positive_step(spec.get("resolution"))
