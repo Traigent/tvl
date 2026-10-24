@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -212,21 +214,21 @@ def _resolve_range_values(name: str, idx: int, comp: dict) -> List[Any]:
         return []
     lo_raw, hi_raw = r[0], r[1]
     resolution = comp.get("resolution")
-    if (
+    is_float_range = isinstance(lo_raw, float) or isinstance(hi_raw, float)
+    has_resolution = (
         resolution is not None
         and isinstance(resolution, (int, float))
+        and not isinstance(resolution, bool)
         and float(resolution) > 0
-    ):
+    )
+    if has_resolution or is_float_range:
         lo_f, hi_f = float(lo_raw), float(hi_raw)
-        step = float(resolution)
-        n_steps = int(round((hi_f - lo_f) / step))
-        return [round(lo_f + i * step, 12) for i in range(n_steps + 1)]
-    if isinstance(lo_raw, float) or isinstance(hi_raw, float):
-        raise ValueError(
-            f"{name}: tuple component {idx} has float range "
-            f"[{lo_raw}, {hi_raw}] but no 'resolution'; "
-            f"add resolution to enumerate grid points"
-        )
+        # Semantics §2.4: float-range resolution is optional, default 0.001.
+        step = float(resolution) if has_resolution else 0.001
+        # Definition 3.6: floor((b - a) / r) steps; the tolerance keeps
+        # (1.0 - 0.0) / 0.1 = 9.999999... at 10 steps.
+        n_steps = int(math.floor((hi_f - lo_f) / step + 1e-9))
+        return [round(lo_f + i * step, 12) for i in range(max(n_steps, 0) + 1)]
     lo, hi = int(lo_raw), int(hi_raw)
     return list(range(lo, hi + 1))
 

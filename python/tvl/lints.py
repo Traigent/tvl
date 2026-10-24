@@ -2080,6 +2080,18 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
             _check_structural_expression(expr, expr_path, context, issues)
 
 
+def _supports_ordering(type_info: "TypeInfo") -> bool:
+    """T-Cmp: ordering needs elem(tau) in {int, float}; numeric enums qualify, string/bool enums do not."""
+    if type_info.kind in {"int", "float"}:
+        return True
+    if type_info.kind == "enum":
+        values = type_info.domain_values
+        return bool(values) and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in values
+        )
+    return False
+
+
 def _check_structural_expression(expr: Any, path: List[Any], context: TypeContext, issues: List[Issue]) -> None:
     if expr is None:
         return
@@ -2275,7 +2287,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
                 return
         else:
             value = _convert_literal_value(value_type, rhs_raw)
-        if op in {"<", "<=", ">", ">="} and type_info.kind not in {"int", "float"}:
+        if op in {"<", "<=", ">", ">="} and not _supports_ordering(type_info):
             add(
                 {
                     "code": "constraint_operator_type_mismatch",

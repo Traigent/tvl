@@ -612,6 +612,10 @@ def _encode_value_comparison(
 ) -> None:
     """Encode ``ident <op> literal``; unencodable literals and operators are false."""
     op = condition.operator
+    if domain.kind == "enum" and op in {"<", "<=", ">", ">="} and _is_numeric_enum(domain):
+        # Non-numeric enums keep the legacy index comparison (the lint rejects them upstream).
+        _encode_enum_ordering(model, var, domain, op, condition.value, bool_var)
+        return
     try:
         encoded_value = _encode_literal_value(domain, op, condition.value)
     except Exception:
@@ -624,6 +628,44 @@ def _encode_value_comparison(
         _reify_comparison(model, var, op, encoded_value, bool_var)
     else:
         model.Add(bool_var == 0)
+
+
+def _is_numeric_enum(domain: Domain) -> bool:
+    values = list(domain.values or [])
+    return bool(values) and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
+
+
+def _encode_enum_ordering(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    domain: Domain,
+    op: str,
+    value: Any,
+    bool_var: cp_model.BoolVar,
+) -> None:
+    """T-Cmp on a numeric enum: reify membership over the indices whose VALUE satisfies ``op``.
+
+    String/bool enums or a non-numeric literal cannot be ordered: the atom is false.
+    """
+    values = list(domain.values or [])
+
+    def numeric(x: Any) -> bool:
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+    if not numeric(value) or not values or not all(numeric(v) for v in values):
+        model.Add(bool_var == 0)
+        return
+    test = {"<": lambda a: a < value, "<=": lambda a: a <= value, ">": lambda a: a > value, ">=": lambda a: a >= value}[op]
+    allowed = [i for i, v in enumerate(values) if test(v)]
+    others = [i for i in range(len(values)) if i not in set(allowed)]
+    if allowed:
+        model.AddLinearExpressionInDomain(var, cp_model.Domain.FromValues(allowed)).OnlyEnforceIf(bool_var)
+    else:
+        model.Add(bool_var == 0)
+    if others:
+        model.AddLinearExpressionInDomain(var, cp_model.Domain.FromValues(others)).OnlyEnforceIf(bool_var.Not())
+    else:
+        model.Add(bool_var == 1)
 
 
 def _encode_literal_value(domain: Domain, op: str, value: Any) -> Optional[int]:

@@ -275,8 +275,8 @@ class StructuralSatTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.assignment["mixed"], (0.2, 20))
 
-    def test_tuple_float_range_no_resolution_raises(self) -> None:
-        """Float range without resolution on tuple component raises ValueError."""
+    def test_tuple_float_range_no_resolution_defaults_to_0_001(self) -> None:
+        """Float range without resolution on a tuple component uses the default 0.001 (semantics 2.4)."""
         doc = _base_module()
         doc["tvars"] = [
             {
@@ -290,9 +290,8 @@ class StructuralSatTests(unittest.TestCase):
                 },
             },
         ]
-        with self.assertRaises(ValueError) as ctx:
-            check_structural(doc)
-        self.assertIn("resolution", str(ctx.exception))
+        result = check_structural(doc)
+        self.assertTrue(result.ok)
 
     def test_tuple_string_true_not_coerced_to_bool(self) -> None:
         """Quoted string 'true' in a tuple stays a string, not boolean True."""
