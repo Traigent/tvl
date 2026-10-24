@@ -12,13 +12,13 @@ example_refs: []
 opal_bridge: false
 ---
 
-`tvl-compose` validates safe narrowing for the following:
+`tvl-compose` checks these narrowing rules, within the limits given in the last column:
 
-| Override Type | Allowed | Not Allowed |
-|--------------|---------|-------------|
-| Enum domain | Remove values | Add new values |
-| Numeric range | Narrow bounds | Widen bounds |
-| Budget | Decrease | Increase beyond base |
+| Override Type | Allowed | Not Allowed | Checked only when |
+|--------------|---------|-------------|-------------------|
+| Enum domain | Remove values | Add new values | both base and overlay domains are plain lists (a `set:` wrapper or a change of domain shape is not checked) |
+| Numeric range | Narrow bounds | Widen bounds | both domains are mappings with `range` |
+| Budget | Decrease | Increase beyond base | the key (`max_trials`, `max_spend_usd` or `max_wallclock_s`) is present in both; removing a budget is not checked |
 
 <ConceptCallout title="Current Validation Scope" tone="info">
 

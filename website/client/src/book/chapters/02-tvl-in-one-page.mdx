@@ -98,8 +98,8 @@ Each checker answers a different question about the same file (<Ref to="language
 A module on its own changes nothing. On the way to production it meets three more things.
 
 <Mermaid
-  alt="Flow from top to bottom. You write the module. Your optimizer proposes a candidate configuration. Your evaluator measures it, producing the candidate's evidence bundle. The tvl-ci-gate tool decides, taking that bundle and the incumbent's evidence bundle as its two inputs. Your deployment then acts on the decision."
-  caption="Figure 2.1. The life of a spec, and who does each step. A module allows designs. You propose one design as a candidate. Running it on the evaluation set gives an evidence bundle. The promotion decision compares the candidate's bundle with the incumbent's, and says whether the evidence supports replacing the incumbent. Your own deployment process performs any replacement."
+  alt="Flow from top to bottom. You write the module. Your optimizer proposes a candidate configuration. Your evaluator measures it, producing the candidate's evidence bundle. The tvl-ci-gate tool decides, taking the module, that bundle and the incumbent's evidence bundle as its three inputs. Your deployment then acts on the decision."
+  caption="Figure 2.1. The life of a spec, and who does each step. A module allows designs. You propose one design as a candidate. Running it on the evaluation set gives an evidence bundle. The promotion decision compares the candidate's bundle with the incumbent's under the module's promotion policy, and says whether the evidence supports replacing the incumbent. Your own deployment process performs any replacement."
   chart={`%%{init: {"flowchart": {"rankSpacing": 26, "nodeSpacing": 40, "padding": 6}}}%%
 flowchart TD
   W([You]) -->|"you write"| M[Module]

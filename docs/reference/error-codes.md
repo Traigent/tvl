@@ -157,7 +157,7 @@ This document catalogs the diagnostic codes of the module and pack linter (`tvl.
 
 ### `unsupported_strict_interval`
 - **Severity**: error
-- **Description**: Strict inequality (`<`) used in interval for integer TVAR.
+- **Description**: Strict lower bound (`<` before the TVAR) used in an interval for an integer TVAR. A strict upper bound does not trigger this code.
 - **Example**: `expr: "1 < int_var <= 5"`
 - **Remediation**: Use non-strict bounds for integer TVARs: write `"2 <= int_var <= 5"`, which admits the same integers.
 
@@ -215,7 +215,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 ### `structural_ill_typed_atom`
 - **Severity**: error
 - **Reported by**: `tvl-check-structural`
-- **Description**: An atom has no well-defined truth value under the typing rules (formal semantics T-Eq, T-Neq, T-Cmp, T-TVarEq), so the checker does not decide the module. Cases: the identifier is not a declared TVAR; an unsupported operator; ordering (`<`, `<=`, `>`, `>=`) two TVARs; comparing TVARs of different element types; ordering a non-numeric operand; comparing a numeric TVAR with a non-numeric literal; comparing a `bool` TVAR with a non-bool literal. `tvl-validate` reports most of these first as `undeclared_tvar` or `constraint_type_mismatch`.
+- **Description**: An atom has no well-defined truth value under the typing rules (formal semantics T-Eq, T-Neq, T-Cmp, T-TVarEq), so the checker does not decide the module. Cases: the identifier is not a declared TVAR; an unsupported operator; ordering (`<`, `<=`, `>`, `>=`) two TVARs; comparing TVARs of different element classes (numeric, `bool`, non-numeric enum); ordering a non-numeric operand; comparing a numeric TVAR with a non-numeric literal; comparing a `bool` TVAR with a non-bool literal. `tvl-validate` reports most of these first as `undeclared_tvar` or `constraint_type_mismatch`. The element-class check is coarser than T-TVarEq, which requires equal element types: the checker treats `int` and `float` as one numeric class, so `int_var = float_var` is decided rather than reported (the lint accepts it too), and it accepts any two enum-domain TVARs here, leaving tuple arity to the lint's `constraint_type_mismatch`.
 - **Example**: `expr: "use_cot = 1"` where `use_cot` is `bool` (a bool never equals the number 1). The message is `atom 'use_cot == 1' in 'use_cot = 1' compares a bool TVAR with a non-bool literal (T-Eq/T-Neq).`
 - **Remediation**: Fix the atom: declare the TVAR, or compare it with a literal of its own type (`use_cot = true`).
 
@@ -302,13 +302,13 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_budget_max_wallclock`
 - **Severity**: error
-- **Description**: `exploration.budgets.max_wallclock_s` is not positive.
+- **Description**: `exploration.budgets.max_wallclock_s` is not positive. (The schema separately requires a whole number of seconds, at least 1.)
 - **Example**: `budgets: { max_wallclock_s: -1 }`
-- **Remediation**: Set `max_wallclock_s` to a positive number.
+- **Remediation**: Set `max_wallclock_s` to a whole number of seconds, at least 1 (for example `3600`); fractions such as `0.5` are rejected.
 
 ### `unsupported_derived_expression`
 - **Severity**: error
-- **Description**: A derived constraint is not of the form `symbol OP value`, where OP is `<=`, `>=`, `<`, `>` or `=`.
+- **Description**: A derived constraint is not of the form `LinExpr OP Number`, where `LinExpr` is a sum or difference of terms such as `env.context.a` or `2 * env.context.b` (and plain numbers), and OP is `<=`, `>=`, `<`, `>` or `=`.
 - **Example**: `require: "env.context.a"`
 - **Remediation**: Write the constraint as a linear expression over `env.context.*` symbols compared with a number.
 
@@ -968,9 +968,9 @@ These diagnostics indicate that the module uses features outside the formally ve
 ### `inadequate_precision`
 - **Severity**: warning
 - **Code**: W6003
-- **Description**: Float domain has values that collide under the current precision factor.
+- **Description**: A float domain is not aligned to the current precision factor: its range resolution is not a whole multiple of 1/P, or some of its values collide when scaled by P.
 - **Example**: `domain: { range: [0.0001, 0.001], resolution: 0.0001 }` with precision P=1000
-- **Impact**: SMT encoding soundness (Theorem 8.1) does not hold; constraint checking may be incorrect.
+- **Impact**: The preconditions of SMT encoding soundness (Theorem 8.1) are not met, so the theorem does not cover this module; constraint checking may be incorrect.
 - **Formal Property**: Domain is not precision-aligned per Definition 8.6.
 - **Remediation**: Choose a precision factor that exactly aligns every declared decimal value and range step; the diagnostic reports one exact-alignment factor when it can derive one. Otherwise use an exact rational or index encoding. A factor based only on the smallest gap between values is not sufficient.
 
@@ -1046,7 +1046,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
 | `structural_undecided_without_solver` | error | Structural | No OR-Tools; fallback could not decide |
 | `structural_encoding_overflow` | error | Structural | Exact encoding too large for the solver |
-| `structural_solver_inconclusive` | error | Structural | Solver status not INFEASIBLE; undecided |
+| `structural_solver_inconclusive` | error | Structural | Solver status not OPTIMAL, FEASIBLE or INFEASIBLE; undecided |
 | `structural_witness_unverified` | error | Structural | Witness failed the exact re-check |
 | `structural_witness_too_large` | error | Structural | Witness value too large to print exactly |
 | `structural_ill_typed_atom` | error | Structural | Atom has no typed truth value |
@@ -1253,7 +1253,7 @@ A value of the wrong JSON type, for example a string where an integer is require
 | `response_suspend_without_human` | error | lint | `suspend` without an explicit `approval: human`, including an omitted approval | write `approval: human` explicitly |
 | `response_suspend_unconfirmed` | error | lint | `suspend` triggered by an event other than `episode_continued`, `episode_open_for` or `recovery_overdue` | trigger on one of those three events |
 | `response_irreversible_without_approval` | error | lint | `optimize`, `rollback`, `throttle` or `degrade` with `approval: none` | use `standing` or `human` |
-| `response_rollback_target_uncertified` | error | platform | a rollback `target` or degrade `fallback` fingerprint has no valid configuration-attributed certificate | use `last_certified` or a fingerprint that is certified |
+| `response_rollback_target_uncertified` | error | platform | a rollback `target` or degrade `fallback` fingerprint has no valid configuration-attributed certificate | for rollback, use `last_certified` or a certified fingerprint; for degrade, use a certified fingerprint (64 lowercase hex characters; `last_certified` is not accepted there) |
 | `response_guard_not_enforceable` | error | lint | `block_action` or `halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | use a guard only on `absence`, `bounded_existence`, `precedence` or `protocol`, on `unit_violation` |
 | `response_on_check_error_missing` | error | lint | a guard without `on_check_error` | choose `block` (fail closed) or `allow` |
 | `response_rule_repeat_unbounded` | error | lint | an action other than `notify` repeats without `max_repeats` | add `max_repeats` |

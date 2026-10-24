@@ -305,21 +305,21 @@ clean `k: 0` result is `NoDecision`.
 
 ## 4. What MET, BREACHED and UNKNOWN mean
 
-Every runtime verdict is one of three values.
+Every runtime verdict is one of three values. The confidence and false-alarm wording in the table is a probability
+claim only for `clopper_pearson_rational_v2`, under the assumptions in section 6 ("What the guarantee does and does not
+say"). The float method `clopper_pearson_exact_v1` runs the same tests but claims no probability bound, and
+zero-tolerance verdicts come from counting, not statistics.
 
 | Verdict | Meaning |
 |---|---|
-| `MET` | the evidence in the window was strong enough to say the requirement holds, at the confidence you asked for |
-| `BREACHED` | the evidence was strong enough to say the requirement is violated, within the false-alarm budget you set |
+| `MET` | the evidence in the window was strong enough to say the requirement holds (for the rational method, at the confidence you asked for) |
+| `BREACHED` | the evidence was strong enough to say the requirement is violated (for the rational method, within the false-alarm budget you set) |
 | `UNKNOWN(reason)` | the evidence could not support either statement |
 
-These promises are statistical only for `clopper_pearson_rational_v2`, under the assumptions in section 6 ("What the
-guarantee does and does not say"). The float method `clopper_pearson_exact_v1` runs the same tests but claims no
-probability bound, and zero-tolerance verdicts come from counting, not statistics.
-
-**Absence of evidence is never `MET`.** An empty window, a window with too few units or a window whose units could not
-be classified is never quietly fine: it is `UNKNOWN`, unless a zero-tolerance window has an established violation,
-which is `BREACHED` at any size. `UNKNOWN` always carries one reason from a closed list:
+**Absence of evidence is never `MET`.** An empty window, a window with too few units, or a window with more
+unclassifiable units than `max_unresolved_fraction` tolerates is never quietly fine: it is `UNKNOWN`, unless a
+zero-tolerance window has an established violation, which is `BREACHED` at any size. Units that could not be
+classified never strengthen a verdict, and a zero-tolerance `MET` needs every unit classified. `UNKNOWN` always carries one reason from a closed list:
 
 | Reason | Plain meaning | Fix |
 |---|---|---|
@@ -1280,8 +1280,8 @@ not enabled, and with `response_action_unsupported` for an action it cannot carr
 
 | Tool | Reads | Exit 2 means |
 |---|---|---|
-| `tvl-validate` | module or pack | any issue, warnings included |
-| `tvl-lint` | module or pack | any issue (no schema check) |
+| `tvl-validate` | module or pack | any warning or error (info-only diagnostics exit 0) |
+| `tvl-lint` | module or pack | any warning or error (no schema check; info-only diagnostics exit 0) |
 | `tvl-compose --pack` / `--meet` | module + pack(s); with `--meet`, module + one module or pack | any composition error |
 | `tvl-ci-gate module incumbent candidate` | module + two bundles | not `Promote` (including `NoDecision`, `Error` and not ready) |
 | `tvl-compile-runtime` | module or pack + token map | any error, or unreadable input |
@@ -1299,7 +1299,7 @@ These were tried against the validator and are rejected. Each has the closest wo
 | a set or wildcard of tools | one tool per selector | one requirement per tool, or a two-state `protocol` with `unlisted: ignore` |
 | "A and B" or "A or B" in one violation | a violation is one predicate | encode it as a `protocol` |
 | the user's message or the receiver of a handoff | the event list is closed; `handoff` takes no `tool` | have the agent emit its own marker as a tool call |
-| two thresholds or two window lengths on one predicate | two monitors with the same predicate, source and environment collide (`runtime_duplicate_key`) | a burn monitor gives a second tier at a fixed multiple |
+| two thresholds or two window lengths on one predicate | two monitors with the same predicate, evidence source, environment, attribution and decision method (and no differing `threshold_factor`) collide (`runtime_duplicate_key`) | a burn monitor gives a second tier at a fixed multiple |
 | groups against each other, drift week over week, time of day | windows are independent and UTC-aligned | one requirement per group |
 | "never leak X" about content as a hard rule | content is judged by a checker, which is an estimate, and `zero_tolerance` needs a certain violation (`runtime_zero_tolerance_inexact`) | a `rate_bound` on the checker's bad label, with enough traffic |
 | sliding windows | reserved; any `window` key besides `tumbling_hours` and `grace_minutes` is a schema error | shorter tumbling windows |
@@ -1312,7 +1312,7 @@ the token map, the checker bodies and which constructs a platform has enabled. T
 
 * [Language reference: TVL 1.3 section](../reference/language.md#tvl-13-requirements-monitors-responses): every field, type, default and allowed value
 * [Error codes](../reference/error-codes.md#tvl-13-diagnostics): what each diagnostic means and what to do
-* The examples in [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3): 23 worked modules, from a latency promise to refund workflows and consent-gated exports
+* The examples in [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3): 23 worked examples (22 modules and one organisation pack), from a latency promise to refund workflows and consent-gated exports
 * [Chapter 6 of the book](https://github.com/Traigent/tvl/blob/main/tvl_book/website_content/book/chapter-06-requirements-in-production.md): the same ideas as stories
 
 

@@ -24,7 +24,8 @@ tvl-check-structural my-spec.tvl.yml
 tvl-check-operational my-spec.tvl.yml --json
 ```
 
-- `tvl-check-structural` asks whether at least one valid configuration exists.
+- `tvl-check-structural` asks whether at least one configuration satisfies the declared domains and structural
+  constraints. That is structural feasibility only; operational preconditions are the next check.
 - `tvl-check-operational` asks whether the current `env.context.*` assumptions let the study proceed.
 
 If those pass, add targeted tests so future edits do not quietly break the contract. For unit testing

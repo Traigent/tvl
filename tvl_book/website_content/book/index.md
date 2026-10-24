@@ -13,8 +13,9 @@ read chapters sequentially, explore examples in your editor, or remix the conten
 
 Large language model (LLM) applications operate in environments where models, latencies, and costs shift daily.
 TVL turns brittle configuration files into governed, type-safe specifications. An optimizer such as TVO (the TVL
-Optimizer in the Traigent platform) searches the declared space, and the TVL promotion gate refuses candidates that
-break the declared constraints. This textbook guides software engineering students through that mindset
+Optimizer in the Traigent platform) searches the declared space. Separate checks test configurations against the
+declared domains and constraints, and the TVL promotion gate decides from measurement evidence, under the module's
+promotion policy, whether a candidate may replace the incumbent. This textbook guides software engineering students through that mindset
 shift—from hard-coded parameters to adaptive, auditable configuration for agents, services, and other LLM-backed workflows.
 
 ```mermaid

@@ -22,12 +22,12 @@ The TVL toolchain provides focused CLI tools for validation and CI integration:
 | `tvl-parse` | Parse YAML to JSON AST, basic syntax checking |
 | `tvl-lint` | Normative lints: missing min_effect, duplicate TVARs, etc. |
 | `tvl-validate` | JSON Schema + lint validation (combines parse + lint) |
-| `tvl-check-structural` | SAT/SMT satisfiability of structural constraints |
+| `tvl-check-structural` | Satisfiability of structural constraints (OR-Tools CP-SAT, or a fallback search when CP-SAT is unavailable) |
 | `tvl-check-operational` | Static check of operational preconditions against `env.context.*` (`constraints.derived`) and budgets |
 | `tvl-config-validate` | Check a configuration assignment against spec domains |
 | `tvl-measure-validate` | Validate measurements against spec + promotion policy |
 | `tvl-ci-gate` | Offline dry-run promotion gate for CI: runs the gate on incumbent and candidate measurements and reports the decision and its evidence |
-| `tvl-compose` | Flatten overlay files into valid TVL modules |
+| `tvl-compose` | Flatten overlay files into one TVL module (add `--validate`, or run `tvl-validate`, to check the result) |
 
 <ConceptCallout title="Install the CLI Once" tone="info">
 

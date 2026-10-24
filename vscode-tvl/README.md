@@ -4,7 +4,7 @@
 
 VS Code extension for [TVL (Tuned Variables Language)](https://tvl-lang.org), a typed, machine-checkable language for specifying what an AI agent must achieve, which parts of its design may vary, and what evidence is required before a candidate may be accepted.
 
-The extension is not published to the VS Code Marketplace or Open VSX. Build it from this repository and install the resulting `.vsix` file (see [Installation](#installation-from-source)).
+No workflow in this repository publishes the extension to the VS Code Marketplace or Open VSX, so the supported route is to build it from this repository and install the resulting `.vsix` file (see [Installation](#installation-from-source)).
 
 > **TVL 1.3 support:** Includes syntax highlighting, snippets, bundled JSON Schemas, and field-addressed diagnostics for the TVL 1.3 runtime blocks (`requirements`, `monitors`, `responses`) and organisation floor packs (`tvl_pack`), as accepted in RFC 0003 (TVL 1.3.0). The bundled JSON Schemas are copies of the repository's schemas, which also cover TVL 1.4 and 1.5. The syntax highlighting and snippets cover the TVL 1.3 constructs only, not the constructs added in 1.4 and 1.5.
 

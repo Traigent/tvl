@@ -34,7 +34,8 @@ Warnings light up when violated:
 - `rerank_weight >= 0.3` whenever `retriever_top_k >= 40`
 
 Only the last one has the shape of a TVL structural constraint (a rule over knobs). The first two limit simulated
-outcomes; in a TVL module such limits belong in objectives or chance constraints.
+outcomes; in a TVL module such limits belong in objectives or chance constraints (rules that bound how often a
+measured outcome may violate a threshold, checked with stated confidence from evaluation evidence).
 
 Use the preset buttons to replay three scenarios. The built-in presets in `app.js` are:
 

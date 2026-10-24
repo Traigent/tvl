@@ -21,4 +21,5 @@ primary_example: /examples/book/ch4_base_module.tvl.yml
 
 Managing multiple environments (dev, staging, production) often requires slight variations of the same TVL
 spec. This chapter covers module composition patterns using `tvl-compose`, a preprocessing tool that flattens
-overlay files into valid TVL modules.
+overlay files into one TVL module. Flattening does not by itself make the result valid: add `--validate`, or run
+`tvl-validate` on the output, to check it.

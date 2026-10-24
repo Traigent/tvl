@@ -255,7 +255,7 @@ The mkdocs material theme generates a reverse index JSON file that is used to
 list the pages that match search keywords.
 
 Note that standard mkdocs search matches keywords and does not use embeddings, so it does not
-retrieve semantically similar documents.
+retrieve or rank documents by semantic similarity; it finds related pages only when they share words.
 
 #### Semantic Search
 

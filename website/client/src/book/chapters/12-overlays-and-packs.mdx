@@ -13,7 +13,7 @@ summary: "Ordinary overlays first, then organisation packs: how a stricter bound
 
 <h2 id="ch12-overlay">Overlays tighten</h2>
 
-For the busy season the team wants at most 3% slow replies, not 5%. They keep version 10 and write an overlay, a file that extends a module and replaces parts of it, which `tvl-compose` turns into a new module. An overlay may only extend a file in its own folder, so it sits next to version 10, in `ch11/`. Under `overrides` a list replaces the base list whole, so an overlay that supplies `requirements` must restate every base requirement by name; one left out counts as dropped (<Ref to="rfc-0003" section="section 9.1">RFC 0003</Ref>). The start, and the one changed entry:
+For the busy season the team wants at most 3% slow replies, not 5%. They keep version 10 and write an overlay, a file that extends a module and replaces parts of it, which `tvl-compose` turns into a new module. An overlay may only extend a file in the folder of the overlay you compose, or below it, so it sits next to version 10, in `ch11/`. Under `overrides` a list replaces the base list whole (`tvars` is the one exception, merged by name), so an overlay that supplies `requirements` must restate every base requirement by name; one left out counts as dropped (<Ref to="rfc-0003" section="section 9.1">RFC 0003</Ref>). The start, and the one changed entry:
 
 <Example file="ch11/strict.overlay.yml" checker="tvl-compose" expect="composed" title="The team's overlay of version 10" lines="3-7,25-29" />
 

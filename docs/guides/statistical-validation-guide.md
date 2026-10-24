@@ -62,8 +62,8 @@ The reference gate returns one of three decisions, or `Error` when a check is un
 | Decision | Meaning |
 | --- | --- |
 | `Promote` | The candidate passed every required acceptability check, established non-inferiority on all directional objectives, and established a required improvement. |
-| `Reject` | A hard check failed: a chance constraint did not pass (a TVL 1.2 chance constraint rejects on any non-pass, including inconclusive counts), an observed point estimate fell outside a hard band, or the evidence demonstrated regression beyond the allowed margin. |
-| `NoDecision` | The available evidence was insufficient to justify either promotion or rejection. |
+| `Reject` | A hard check failed: a chance constraint did not pass (a TVL 1.2 chance constraint rejects on any non-pass, including inconclusive counts), an observed point estimate fell outside a hard band, the evidence demonstrated regression beyond the allowed margin, or (TVL 1.3) a promotion monitor's verdict was `BREACHED`. |
+| `NoDecision` | The available evidence was insufficient to justify either promotion or rejection (this includes a TVL 1.3 promotion monitor whose verdict was `UNKNOWN`, when nothing rejects). |
 
 Invalid, inconsistent or unbound inputs, or inputs that cannot support the declared checks, are not a decision: the tools report them as errors (see the error codes in [Promotion Gate I/O](../../spec/promotion-gate-io.md)) and the candidate is not promotion-ready. One such case reaches the gate itself: a chance constraint with zero trials or no trial count makes its check undefined, so the gate returns `Error` with the code `zero_trials`, neither `Reject` nor `NoDecision`. In `tvl-ci-gate`, canonical `chance_outcomes` with `trials` 0 or missing are refused earlier as a schema error (exit 2, no decision); a deprecated top-level `chance` summary with `summary.trials: 0` reaches the gate, which prints `Decision: Error` and exits 2.
 

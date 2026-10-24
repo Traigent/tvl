@@ -154,7 +154,7 @@ Chapter 3 promised the limits. RFC 0002's six claims, such as that nesting has n
 
 <div className="book-limits">
 
-- **Proofs.** The machine-checked proofs predate composites, so they say nothing about a module that uses them, and no lint warns you yet (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
+- **Proofs.** The machine-checked proofs predate composites, so they say nothing about a module that uses them. A lint flags them only with the info diagnostic `outside_proved_subset`, which does not change the exit status (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
 - **Tools.** The public tools check shapes, references and the two obligations. They do not run a composite, expand a pattern, estimate a cost or unroll a loop, and cannot promote a module that requires calibration.
 - **Your runtime's job.** It runs composites, expands patterns and checks every certificate in the tree.
 - **Assumptions.** Chapter 7's assumptions hold here too. Costs and escalation chances are estimates, not guarantees.

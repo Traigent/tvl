@@ -23,8 +23,9 @@ decisions are grounded in transparent evidence.
    first-class citizens in every workflow.
 
 2. **Type-Safe Configuration**  
-   TVL enforces explicit types, units, and constraints so optimizers explore confidently and downstream systems
-   remain predictable.
+   TVL declares explicit types, domains, and constraints, and its validators check configurations against them.
+   That lets an optimizer that honours the spec search only admissible configurations; it does not by itself make
+   downstream systems behave predictably. TVL has no physical-unit type, so record units in TVAR names (for example `timeout_s`).
 
 3. **Evidence Over Anecdote**  
    Decisions rely on repeatable evaluations, reproducible manifests, and clear metrics—not late-night hunches.

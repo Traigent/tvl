@@ -161,7 +161,7 @@ promise once overdue stays overdue.
 The third requirement, `latency_evidence_flows`, says: if the last five windows all produced no usable evidence, report `STALE`. Without it, a
 broken pipeline only produces `UNKNOWN` windows: they never count as `MET`, but nothing in the module reports that the
 evidence has stopped. The validator warns when it is missing (`runtime_liveness_missing`), and because `tvl-validate`
-exits 2 on any issue, the warning stops your CI. That is deliberate.
+exits 2 on any warning or error (info diagnostics do not count), the warning stops your CI. That is deliberate.
 
 ## Story 2 · "Never charge without an authorization"
 
@@ -477,7 +477,7 @@ TVL's 1.3 vocabulary is deliberately small and sealed. Things people ask for tha
 3. `min_samples` is no smaller than the table value for your `max_rate` and `confidence`, and your real traffic fills a window.
 4. Each recovery promise is at least `closure_windows * tumbling_hours` hours.
 5. Each guard has an `on_check_error` you chose on purpose.
-6. Each action above `notify` has an approval path that exists in your platform, and you know who signs the grant.
+6. Each action that needs approval (`optimize`, `rollback`, `throttle`, `degrade`, `suspend`) has an approval path that exists in your platform: a human approver, or, where you use `standing` approval, someone who signs the grant. (`notify`, `open_next_step` and the local guards need none.)
 7. You compose with your organization's packs before you compile, and the result still validates.
 
 ## Break it on purpose
@@ -495,4 +495,4 @@ Learn the diagnostics by causing them. Each edit is to Story 1's module.
 
 For the full field list see the [language reference](https://github.com/Traigent/tvl/blob/main/docs/reference/language.md#tvl-13-requirements-monitors-responses), and for what each code means see the
 [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md#tvl-13-diagnostics). The [guide](https://github.com/Traigent/tvl/blob/main/docs/guides/requirements-monitors-responses.md) goes deeper on
-windows, confidence and approvals, and [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3) has 23 worked modules to copy from.
+windows, confidence and approvals, and [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3) has 23 worked examples to copy from (22 modules and one organisation pack).

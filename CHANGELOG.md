@@ -258,6 +258,8 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 
 ## [0.9.0] - 2025-01-26
 
+> This entry predates the public repository (its first commit is dated 2026-04-13). The release date and the test count below come from the earlier private history and cannot be checked against this repository.
+
 ### Added
 
 #### Type System

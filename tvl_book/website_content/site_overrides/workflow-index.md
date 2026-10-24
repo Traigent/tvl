@@ -12,7 +12,10 @@ This section is an overview of some of the workflows we use to generate intellig
 
 ### Course Description
 
-### Bloom Taxonomy
+### Bloom's Taxonomy
+
+Classify each learning objective by Bloom's taxonomy, a standard ordering of cognitive levels from remembering
+and understanding up to evaluating and creating.
 
 ### Concept Enumeration
 
@@ -21,3 +24,6 @@ List the concepts the course must cover, one per line, before ordering them by d
 ### Concept Dependency
 
 ### Learning Graph
+
+A learning graph has one node per concept and a directed edge from each concept to the concepts it depends on,
+so lessons can be ordered so that prerequisites come first.

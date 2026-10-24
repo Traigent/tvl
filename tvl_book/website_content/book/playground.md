@@ -44,9 +44,10 @@ Set `TRAIGENT_MOCK_MODE=true` if you want to experiment without live API keys.
 ## Connecting Back to TVL
 
 - Exported optimization runs can be kept alongside the artifacts described in Chapter 5.
-- The UI’s “Compare Runs” tab helps you compare runs by eye. It does not validate overlays or decide promotion:
-  compose and validate overlays with `tvl-compose --validate` (Chapter 4), and decide promotion from measurement
-  bundles with `tvl-ci-gate` (Chapter 5).
+- The UI’s “Compare Runs” tab helps you compare runs by eye. It does not validate overlays (files that change parts
+  of a base module and are merged into it) or decide promotion: compose and validate overlays with
+  `tvl-compose --validate` (Chapter 4), and decide promotion with `tvl-ci-gate` from measurement bundles, the files
+  that record measured objective values and outcomes for the incumbent and the candidate (Chapter 5).
 - Pull generated problems into `examples/` to seed new labs or CI smoke tests.
 
 !!! tip "Capture the UI"

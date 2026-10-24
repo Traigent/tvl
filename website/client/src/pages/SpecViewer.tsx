@@ -34,7 +34,7 @@ const specConfigs: Record<string, SpecConfig> = {
   },
   "ebnf-grammar": {
     title: "TVL EBNF Grammar",
-    description: "Extended Backus-Naur Form grammar defining the complete syntax of the TVL language.",
+    description: "Extended Backus-Naur Form grammar for the abstract syntax of TVL modules and packs. It is not exhaustive: the JSON Schema captures the normative surface syntax.",
     filePath: "/docs/tvl.ebnf",
     downloadPath: "/docs/tvl.ebnf",
     language: "ebnf",

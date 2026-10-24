@@ -44,7 +44,7 @@ Spaces grow fast. TVL describes the space; it does not need to try every design 
 
 <h2 id="ch3-reference">Types and domains: a compact reference</h2>
 
-The table sums up the six types. "Rules may use" lists the operators a rule may apply to it (<Ref to="constraint-language" section="“Type Checking Rules”">constraint language reference</Ref>).
+The table sums up the six type forms a module can declare. (The formal semantics also names a base type `str`; the schema does not accept it as a TVAR type, so use `enum[str]` for named options.) "Rules may use" lists the operators a rule may apply to it (<Ref to="constraint-language" section="“Type Checking Rules”">constraint language reference</Ref>).
 
 | Type, and its variable in the tour file | Domain | Rules may use | Written semantics |
 |---|---|---|---|
@@ -61,7 +61,7 @@ The tour file declares seven tuned variables, at least one of each type. Its fir
 
 <Example file="ch03/every-type.tvl.yml" checker="tvl-validate" expect="lint:unverifiable_callable_type" title="The tour file: three new forms" lines="29-42" />
 
-- **Numbers you compare.** A list of numbers can be an `enum[int]` or an `int` with `set:`. For counts and limits, use `int` with `set:`. Current lints and the constraint reference reject ordering comparisons, such as `<=`, on numeric enums, although the formal typing rules permit them. This book follows the form the tools accept.
+- **Numbers you compare.** A list of numbers can be an `enum[int]` or an `int` with `set:`. For counts and limits, use `int` with `set:`. Ordering comparisons, such as `<=`, work on both: the lints, the constraint reference and the formal typing rules accept them on an enum whose values are all numbers. This book uses `int` with `set:` because it says the values are counts.
 - **Tuples.** A tuple holds values that go together, such as a chunk size and its overlap. Its domain is every combination of its components, so `chunking` has four values; the rule `chunking in {(256, 0), (512, 64)}` keeps two. Rules over tuples have a written meaning, but the current machine-checked proofs, in the Lean proof assistant, do not cover them.
 
 <h2 id="ch3-resolution">Resolution turns a range into a list</h2>

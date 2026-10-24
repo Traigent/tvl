@@ -13,14 +13,14 @@ This sheet describes the TVL 1.5 toolchain.
 |---------|----------------|
 | `tvl-parse <spec>` | Parses the YAML and prints it as JSON. |
 | `tvl-validate <spec>` | JSON Schema validation, then the normative lints. It does not solve constraints. |
-| `tvl-check-structural <spec>` | Satisfiability of the structural constraints: prints a satisfying assignment, or an UNSAT core. |
-| `tvl-check-operational <spec>` | Derived preconditions against `environment.context`, and that declared `exploration.budgets` are positive. |
-| `tvl-lint <spec>` | Normative lints (for example missing `min_effect` or duplicate TVARs). It reports diagnostics; it does not reformat YAML. |
+| `tvl-check-structural <spec>` | Satisfiability of the structural constraints: prints a satisfying assignment; or, when none exists (UNSAT, unsatisfiable), an UNSAT core, a set of constraints that cannot all hold together; or an undecided result with an issue code when it cannot decide. |
+| `tvl-check-operational <spec>` | Derived preconditions against `environment.context`, and that declared `exploration.budgets` are well formed: `max_trials` and `max_wallclock_s` positive, `max_spend_usd` at least 0. |
+| `tvl-lint <spec>` | Normative lints (for example missing `min_effect` or duplicate TVARs, the tuned variables a module declares). It reports diagnostics; it does not reformat YAML. |
 | `tvl-ci-gate <module> <incumbent> <candidate>` | Offline promotion gate: compares incumbent and candidate measurement bundles under the module's promotion policy and prints `Promote`, `Reject`, `NoDecision` or `Error`. |
 | `tvl-measure-validate <module> <config> <measurements>` | Checks a configuration and its measurement bundle against the module. |
 | `tvl-config-validate <module> <config>` | Checks a configuration assignment against the module's domains and constraints. |
 | `tvl-compose <overlay>` | Flattens an overlay chain into one module and checks the narrowing rules. |
-| `tvl-compile-runtime <module>` | Compiles a module or pack into a version-tagged runtime contract and local artifacts. |
+| `tvl-compile-runtime <module> --token-map <map> --out-dir <dir>` | Compiles a module or pack into a version-tagged runtime contract and local artifacts. `--token-map` and `--out-dir` are required. |
 | `tvl-microsim-bridge <spec>` | Generates `microsim_presets.json` for the Orientation RAG interactive lab. It reads a legacy `configuration_space` block, not `tvars` (see the [lab page](../microsims/orientation-rag-circuit/index.md)). |
 
 !!! hint "Combine Commands"
@@ -82,15 +82,17 @@ Operational feasibility failed.
 !!! info "Remediation steps"
     - A derived-constraint violation means the declared environment does not meet a precondition: fix the
       environment values or the precondition.
-    - A budget error means a declared `exploration.budgets` value is not positive. The check does not estimate
+    - A budget error means a declared `max_trials` or `max_wallclock_s` is not positive, or `max_spend_usd` is
+      negative (0 is allowed). The check does not estimate
       cost and does not look at external policy limits or datasets.
 
 ### CI Gate Summary
 
 `tvl-ci-gate <module> <incumbent> <candidate>` reads the module's objectives and promotion policy and two
-measurement bundles. Text output starts with `Decision: <Promote|Reject|NoDecision|Error>` and a `Reason:` line,
-followed by any warnings and an `== Evidence Summary ==` block. If a bundle is not promotion-ready, it prints the
-readiness issues instead.
+measurement bundles. Text output starts with `Decision: <Promote|Reject|NoDecision|Error>` and a `Reason:` line.
+For `Promote`, `Reject` and `NoDecision` these are followed by any warnings and an `== Evidence Summary ==` block;
+for `Error` the gate prints only those two lines. If a bundle is not promotion-ready, it prints the readiness issues
+instead.
 
 The exit code follows the decision: 0 for `Promote`, 2 for `Reject`, `NoDecision`, `Error`, a bundle that is not
 promotion-ready, or any other error.
@@ -98,8 +100,9 @@ promotion-ready, or any other error.
 ### Exit Codes
 
 - `0` – success under the tool's contract (no issue, or only `info` issues; `Promote` for the gate).
-- `2` – any reported `error` or `warning` issue, a validation or parse failure, or a gate decision other than
-  `Promote`.
+- `2` – a validation or parse failure, any reported `error` issue, a `warning` issue from the checking tools
+  (`tvl-validate`, `tvl-lint` and similar), or a gate decision other than `Promote`. `tvl-compile-runtime` stops
+  on errors only: it reports warnings and still exits 0.
 - `5` – `tvl-config-validate` only: the configuration fails validation or uses a construct it refuses.
 
 Exit 1 is not a defined outcome. See the [error code reference](../../../docs/reference/error-codes.md#exit-codes).

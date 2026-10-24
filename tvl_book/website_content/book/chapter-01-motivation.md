@@ -136,7 +136,7 @@ exploration:
 ```
 
 !!! info "Validate Your Spec"
-    Download `/examples/rag-support-bot.tvl.yml` from tvl-lang.org (source:
+    This uses a separate example spec, not the campus module above. Download `/examples/rag-support-bot.tvl.yml` from tvl-lang.org (source:
     [`spec/examples/rag-support-bot.tvl.yml`](../../../spec/examples/rag-support-bot.tvl.yml)) and run
     `tvl-validate rag-support-bot.tvl.yml` to check the spec against the TVL schema and the normative lints.
     `tvl-validate` does not solve constraints: run `tvl-check-structural rag-support-bot.tvl.yml` to find

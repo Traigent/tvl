@@ -89,13 +89,13 @@ Monitors check window by window. A breached window opens an <Term id="episode">e
 
 <TryIt>
 
-Run `tvl-validate spec/examples/book/ch09/support-bot.tvl.yml`. It prints `Schema + lint checks passed.`
+Run `tvl-validate spec/examples/book/ch09/support-bot.tvl.yml`. It exits 0 and prints two `outside_proved_subset` info lines, one for the module's cvars and one for its composites: they note that the Lean proofs do not cover those constructs, and they do not change the exit status. The runtime blocks themselves raise no diagnostic.
 
 </TryIt>
 
 <KeyTakeaways>
   <ul>
     <li>`rate_bound` allows a share of bad units; `zero_tolerance` allows none, takes only event patterns and is never sampled.</li>
-    <li>Seven sealed predicates. Selectors read no field values; correlation ids and `ref`s tie approvals to actions. Recovery deadlines run in window time.</li>
+    <li>Seven sealed predicates. Selectors match only an event's type and its declared `tool`, `status` and `ref` fields, never other payload fields; correlation ids and `ref`s tie approvals to actions. Recovery deadlines run in window time.</li>
   </ul>
 </KeyTakeaways>

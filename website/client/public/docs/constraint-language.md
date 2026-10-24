@@ -231,7 +231,7 @@ constraints:
 ## Compilation to SMT
 
 The reference implementation (`python/tvl/structural_sat.py`) builds an OR-Tools CP-SAT model, and falls back to
-enumerating the domains when CP-SAT is not installed. The SMT-LIB form shown below is an illustrative encoding
+enumerating the domains when CP-SAT is not installed. SMT (satisfiability modulo theories) solvers decide whether a formula over typed variables, such as integers, has a solution; the SMT-LIB form shown below is an illustrative encoding
 (formal semantics §8, which is non-normative); a validator may use any solver that gives the same answers.
 
 1. **Boolean TVARs**: Boolean variables

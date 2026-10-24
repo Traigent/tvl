@@ -79,8 +79,10 @@ The Orientation RAG lab is a toy model with three presets. Jump between **Baseli
 <iframe src="../microsims/orientation-rag-circuit/main.html#budget-shift" height="640px" scrolling="no" style="width: 100%; border: none;"></iframe>
 
 - Compare the latency and cost read-outs before and after each preset.
-- Click **Copy YAML** to capture the snapshot TVO would export.
-- Note how the constraint badges align with promotion gates—green across the board before approving production.
+- Click **Copy YAML** to capture a simulation snapshot of the slider values. It is not a schema-valid TVL
+  configuration or a TVO export.
+- The badges test simple latency, cost, and rerank thresholds. They are not promotion-gate evidence: a real gate
+  decides from measured evidence for the incumbent and the candidate (see the CI recipe below).
 
 !!! integration "CI Recipe"
     ```bash

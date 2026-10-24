@@ -475,7 +475,7 @@ The schema requires `max_trials` and `max_wallclock_s` to be integers at least 1
 
 `tvl-check-operational` checks the present values after numeric conversion, unless `skip_budget_checks` is set: `max_trials` and `max_wallclock_s` must be positive, and `max_spend_usd` must be at least 0. These checks do not estimate cost or establish search feasibility.
 
-`max_spend_usd: 0` is valid and means no paid spending is allowed. A runtime must refuse every trial whose cost is positive or unknown, or refuse the module. It must never run zero trials and report success.
+`max_spend_usd: 0` is valid and means no paid spending is allowed. A runtime that honours this budget should refuse every trial whose cost is positive or unknown, or refuse the module, rather than run zero trials and report success. This is guidance for executing runtimes, not a TVL conformance requirement.
 
 `tvl-compose` checks certain budget reductions as described below. The executing runtime/profile is responsible for enforcing spending, time and trial limits.
 
@@ -644,7 +644,8 @@ A waiver records that **a human decided to drop the clause and why**. It deliber
 a waiver that quietly accepted a non-vacuous clause would be worse than having no mechanism
 at all. The value is that a declared removal is distinguishable from a silent one in review.
 
-Interpretation:
+### What each CLI tool checks
+
 
 *   `tvl-validate` checks structure, schema, and lints, but it is not the satisfiability prover.
 *   `tvl-check-structural` answers the SAT/UNSAT question for structural constraints.
@@ -915,7 +916,7 @@ monitor is a `runtime` `rate_bound` monitor with `threshold_factor`; a *promotio
 `zero_tolerance` monitors declare no sampling.
 
 **References.** `recovery_time.of` names a runtime monitor with an episode (a primary monitor). `evidence_liveness.of` names a runtime window monitor
-(primary or burn). A cycle of requirement - `of` - monitor - `requirement` - requirement is `runtime_dependency_cycle`. Two runtime monitors with the
+(primary or burn). Requirements and monitors must not refer to each other in a cycle: an obligation requirement names a monitor in `of`, that monitor names a requirement in its `requirement` field, and if following these links returns to a requirement already visited, the module is `runtime_dependency_cycle`. Two runtime monitors with the
 same effective key are `runtime_duplicate_key`, even if their requirements have different names or different bounds. For a primary or burn monitor the
 key is requirement identity, source, environment, attribution, method and `threshold_factor`; for an obligation monitor it is requirement identity; a
 `backend_v1` monitor uses the hosted latency key (`exceeds` and environment). Promotion monitors are not checked for duplicate keys.
@@ -1062,14 +1063,22 @@ fired by that evaluation, so a newly opened attempt is visible. Each repeat rech
 occurrence is not delivered later when its guard changes. Use `episode_continued` or repeats to
 recheck. Guards preserve trigger, scope and occurrence identity and grant no effect authority.
 
-The unless graph adds an edge from each guarded notification's source monitor to every monitor
-in its `unless`. For outcome rules, use the referenced optimize rule's trigger monitor. Cycles,
-including self-loops, are `runtime_guard_cycle`; attempt guards add no edges. An `only_while` on
-its own source is `runtime_guard_redundant` (warning). Conjunction guards may be symmetric.
-Guard sets and outcome triggers are immutable under overlays and meets; list order/duplicates
-are immaterial. Absorbed pack monitor aliases are rewritten in guards too. Hosted projection
-uses closed enums and tokenized references; `backend_v1` is unchanged. The compiler picks the compiled format from the
-projected constructs, in this order: any projected 1.5 construct (persistence or census aggregate) selects `/3` and version
+**No mutual silencing.** The *unless graph* has an edge from each guarded notification's source
+monitor to every monitor named by an `episode_open` guard in its `unless`. The source monitor is the
+rule's trigger monitor; for an outcome rule it is the trigger monitor of the referenced optimize
+rule. A cycle in this graph, including a self-loop, is `runtime_guard_cycle`. `attempt_open` guards
+(which test whether an optimize attempt is open) add no edges. An `only_while` guard on the rule's
+own source monitor is `runtime_guard_redundant` (warning). Two rules may each use `only_while` on
+the other's monitor (the conjunction pattern): that is not a cycle.
+
+**Composition.** Guard sets and outcome triggers cannot be changed by overlays or by a *meet*
+(`tvl-compose --meet`, which combines two contracts into one at least as strict as both); list
+order and duplicates do not matter. When pack monitors are absorbed under an alias, guards that
+name them are rewritten too.
+
+**Hosted projection and format.** Hosted projection uses closed enums and tokenized references;
+`backend_v1` is unchanged. The compiler picks the compiled format from the
+projected constructs, in this order: any projected 1.5 construct (persistence or census aggregate) selects format `/3` (`tvl-runtime-contract/3` and `tvl-runtime-local/3`) and version
 `"1.5"`, even when 1.4 constructs are also present; otherwise projected 1.4 constructs select `/2` and version `"1.4"`;
 otherwise `/1` and version `"1.3"` (see Companion documents below, RFC 0004 §3 and RFC 0005 §2.5).
 

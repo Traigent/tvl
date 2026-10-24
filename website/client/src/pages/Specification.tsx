@@ -47,7 +47,7 @@ export default function Specification() {
             </p>
             <p className="text-base text-muted-foreground mb-8 max-w-3xl leading-7">
               That gives product and engineering one shared artifact: product can state goals, evaluation sets, desired
-              properties, and release expectations; engineering can wire tuning, CI, and runtime checks against the
+              properties, and release expectations; engineering can wire tuning, continuous integration (CI), and runtime checks against the
               same definition. For software engineers, the key mindset shift is that agent quality is not explained by
               code alone: changing models, quotas, latency budgets, and tool behavior are exactly why tuning and
               repeated evaluation matter. TVL then lets teams declare the tunable variables, the shared evaluation set,

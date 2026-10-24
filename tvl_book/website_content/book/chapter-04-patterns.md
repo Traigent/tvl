@@ -22,7 +22,7 @@ This keeps the core spec simple while enabling powerful composition patterns.
 ```yaml
 # ch4_base_module.tvl.yml - full TVL module (file in tvl_book/examples/)
 tvl:
-  module: corp.support.rag_bot
+  module: book.overlays.base
 
 environment:
   snapshot_id: "2025-01-20T00:00:00Z"

@@ -8,10 +8,13 @@ if you want to run them without API keys.
 
 - **Concepts reinforced:** Chapter 2 (configuration anatomy), Chapter 3 (constraint guards), Chapter 5 (promotion evidence).
 - **Entry point:** [`microsims/orientation-rag-circuit/index.md`](../microsims/orientation-rag-circuit/index.md)
-- **How to explore:** Use the preset buttons to replay incidents, then adjust sliders to recover all constraints.
+- **How to explore:** Use the preset buttons to replay incidents, then adjust sliders to bring the latency guardrail and the
+  rerank policy back to green. With the shipped slider ranges the lowest simulated cost is about $0.14, above the $0.12
+  budget, so the cost badge can reach only its warning band, not "On budget".
 - **What to inspect:** Latency/cost/quality gauges, constraint badges, and the YAML snapshot that mirrors `params.yaml`.
 - **Optional automation:** Regenerate presets with `tvl-microsim-bridge path/to/spec.yml`. In TVL 1.5 the bridge reads
-  a legacy `configuration_space` block, not `tvars`, so a current TVL module yields empty presets.
+  a legacy `configuration_space` block, not `tvars`, so a current TVL module without runtime blocks yields empty presets.
+  A module with `requirements`, `monitors` or `responses`, or a `tvl_pack`, is refused with `unsupported_construct` (exit 2).
 
 ## Lab 1 · Hello World RAG
 
@@ -70,7 +73,8 @@ if you want to run them without API keys.
 
 - Swap in real API keys (remove `TRAIGENT_MOCK_MODE`) to benchmark live services.
 - Modify the configuration spaces and rerun; compare manifests and promotion decisions.
-- Export a configuration file and a measurement bundle, then check them against the module with
+- Export a configuration file and a measurement bundle (the measured objective values and outcomes for that
+  configuration; format in [Promotion Gate I/O](https://github.com/Traigent/tvl/blob/main/spec/promotion-gate-io.md)), then check them against the module with
   `tvl-measure-validate module.tvl.yml config.yml measurements.yml`.
 - Capture screenshots of interesting runs (console output, Streamlit charts) and drop them into
   `tvl_book/figures/` for inclusion in case studies or the Playground page.

@@ -103,7 +103,7 @@ Passing a TVL gate means that the candidate met the declared requirements under 
 
 ## TVL 1.3: requirements in production
 
-**TVL Reactive Contracts** brings together runtime requirements, monitors, response policies, the promotion gate and approvals under the tagline **“monitor requirements, govern adaptation.”** The contract monitor gives a verdict; local guards `block_action` and `halt_unit` act in process before the effect. A **reactive rule** retains its narrower §13 meaning: a notify-only rule with an outcome trigger, an `unknown_for` trigger, or an `only_while` or `unless` guard.
+**TVL Reactive Contracts** brings together runtime requirements, monitors, response policies, the promotion gate and approvals under the tagline **“monitor requirements, govern adaptation.”** The contract monitor gives a verdict; local guards `block_action` and `halt_unit` act in process before the effect. A **reactive rule** (added in TVL 1.4, [RFC 0004](formalization/rfc-0004-reactive-outcomes-and-guards.md)) retains its narrower §13 meaning: a notify-only rule with an outcome trigger, an `unknown_for` trigger, or an `only_while` or `unless` guard.
 
 TVL 1.3 (accepted 2026-10-21) is a conservative extension of TVL 1.2: a module without the new blocks means exactly what it meant before. It adds three optional blocks: `requirements` (what must keep holding once the agent runs, such as "at most 5% of traces take longer than 2 s" or "the agent never calls a forbidden tool"), `monitors` (which evidence checks a requirement, before release or in production, and with what statistics) and `responses` (what should happen when a monitor reports a breach, from a notification to a human-approved suspend). A separate `tvl_pack` document carries organisation floors that modules can only tighten.
 
@@ -159,7 +159,7 @@ The current language version is **TVL 1.5**. TVL 1.1 added calibrated variables 
 
 ## Specification boundary
 
-TVL standardizes what a conforming module means and what a verifier must check. It does not standardize search algorithms, optimizer architecture, candidate scheduling, optimizer sample allocation, or internal solver representation. Monitor sampling and decision schedules of TVL 1.3 monitors are part of the language contract. Those mechanisms may be documented by individual implementations without becoming part of the language contract. Likewise, for TVL 1.3 the language defines what a runtime requirement means and what each verdict promises; how an evaluator decides from runtime evidence and how a platform executes responses are not part of the language contract.
+TVL standardizes what a conforming module means and what a verifier must check. It does not standardize search algorithms, optimizer architecture, candidate scheduling, optimizer sample allocation, or internal solver representation; individual implementations may document these without making them part of the language contract. The sampling and decision schedules that TVL 1.3 monitors declare are different: they are part of the language contract. Likewise, for TVL 1.3 the language defines what a runtime requirement means and what each verdict promises; how an evaluator decides from runtime evidence and how a platform executes responses are not part of the language contract.
 
 ## License
 

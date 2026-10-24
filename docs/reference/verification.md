@@ -51,7 +51,7 @@ The undecided cases are:
 | `structural_non_finite_domain` | a TVAR declaration contains NaN or an infinity |
 | `structural_unresolved_domain` | an atom uses a registry domain that is not resolved |
 | `structural_pair_table_too_large` | an equality between two enum TVARs needs more than 1,000,000 value pairs |
-| `structural_expansion_too_large` | an expression expands to more than 10,000 clauses |
+| `structural_expansion_too_large` | expanding an expression's `in` sets and negated intervals gives more than 10,000 clauses (a Boolean formula whose own `and`/`or` expansion exceeds that limit is instead reported as an invalid structural constraint, with `status: "error"`) |
 | `structural_value_too_large` | enum members expand to more than 1,000,000 nested nodes or 100 levels |
 
 The [error code catalog](./error-codes.md) describes each one.

@@ -124,8 +124,8 @@ Different domain, same reasoning pattern. Do not copy it directly.
 1. **Base scaffold:** routed expertise. Fast reviews go to a cheaper model; hard logic reviews go to a stronger one.
 2. **Added controller:** confidence-gated escalation to human review when the strong model is uncertain.
 3. **TVARs:** `routing_threshold`, `confidence_gate`, `fast_model_id`, `strong_model_id`.
-   **Structural rule:** `confidence_gate` must be at least `routing_threshold`. TVL constraints compare a TVAR with a
-   number, not two TVARs with each other, so give both thresholds the same small grid (for example
+   **Structural rule:** `confidence_gate` must be at least `routing_threshold`. TVL constraints can test two TVARs for
+   equality or inequality (`=`, `!=`), but ordering (`<=`, `>=`) compares a TVAR only with a number, so give both thresholds the same small grid (for example
    `range: [0.6, 0.8]` with `resolution: 0.1`) and write one clause per grid value above the lowest: `when: routing_threshold >= 0.7` / `then: confidence_gate >= 0.7`,
    and the same for `0.8`.
    **Operational precondition:** the evaluation slice must contain at least 50 logic-review samples.
