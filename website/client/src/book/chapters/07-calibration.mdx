@@ -21,7 +21,7 @@ summary: "Calibrated values are fitted from separate calibration evidence, carry
 
 Some tickets are harder than the bot can handle. The team adds a safety net: the bot samples its reply several times and lets the samples vote. The <Term id="vote-margin">vote margin</Term> says how clearly one answer won. TVL leaves its formula to your runtime; a common one is the winner's share of the votes minus the runner-up's. With 5 samples, 4 votes for one answer and 1 for another give 4/5 − 1/5 = 0.6, and 5 identical replies give 1. When the margin is below a threshold, the bot hands the ticket to the large model.
 
-Which threshold? The right one depends on the other knobs. A small model at temperature 0.7 is likely to agree with itself less often than a medium one at 0.2, so a threshold that suits one may be wrong for the other. Every time the search proposes new values, the threshold must be fitted again, from evidence. TVL 1.1 calls such a value a <Term id="cvar">calibrated variable</Term>, or cvar: it is fitted, never searched (<Ref to="rfc-0001" section="section 1">RFC 0001</Ref>). An <Term id="rfc">RFC</Term> ("request for comments") is a design document that defines part of TVL. Calibrating here means fitting a value from evidence, not the machine-learning sense of matching confidence scores to frequencies.
+Which threshold? The right one depends on the other knobs. A small model at temperature 0.7 is likely to agree with itself less often than a medium one at 0.2, so a threshold that suits one may be wrong for the other. Every time the search proposes new values for the threshold's declared parents, the threshold needs a fresh fit from evidence; a calibrator may reuse a fit it already made for the same values. TVL 1.1 calls such a value a <Term id="cvar">calibrated variable</Term>, or cvar: it is fitted, never searched (<Ref to="rfc-0001" section="section 1">RFC 0001</Ref>). An <Term id="rfc">RFC</Term> ("request for comments") is a design document that defines part of TVL. Calibrating here means fitting a value from evidence, not the machine-learning sense of matching confidence scores to frequencies.
 
 Every value in a configuration has exactly one of three bindings (<Ref to="rfc-0001" section="section 3.1">RFC 0001</Ref>):
 
@@ -31,7 +31,7 @@ Every value in a configuration has exactly one of three bindings (<Ref to="rfc-0
 | Fixed | your runtime | nowhere in the module | a request timeout |
 | Calibrated | a calibrator, from evidence | `cvars` | `escalation_threshold` |
 
-A <Term id="fixed-value">fixed value</Term> is never searched and never declared; it only must not reuse a declared name (<Ref to="rfc-0001" section="section 3.4, R3">RFC 0001</Ref>).
+A <Term id="fixed-value">fixed value</Term> is never searched and never declared; it must not reuse a declared name (<Ref to="rfc-0001" section="section 3.4, R3">RFC 0001</Ref>), and, like a calibrated value, it is rejected if it violates a declared type or validity domain (R5).
 
 <Mermaid
   alt="A flow diagram from left to right. Your search proposes the tuned values. The tuned values, through their declared parents the model and the temperature, and the calibration tickets both feed the calibrator. The calibrator fits the escalation threshold and issues its certificate. The tuned values, the threshold and the fixed values from your runtime form the resolved configuration, which is measured on the evaluation set, a separate set of tickets."
@@ -115,7 +115,7 @@ The context has a core that is always hashed and that no module can switch off: 
 
 <h2 id="ch7-strict">Abstention and strict mode</h2>
 
-A calibrator may also <Term id="abstention">abstain</Term>: return no value, for example when no threshold meets its target. That is an honest answer, reported as `no_decision` (<Ref to="rfc-0001" section="section 3.4">RFC 0001</Ref>). A module is in a <Term id="strict-mode">strict evidence mode</Term> when it sets `require_calibration`, in its promotion policy or on a cvar; declares any chance constraint; targets a guaranteed selection in its operational profile; or uses a cvar whose target is backed by a certificate (<Ref to="rfc-0001" section="section 3.6">RFC 0001</Ref>). So version 5 was strict already, through its limit on slow replies; with no cvar, it needed no certificate. In a strict mode, too few tickets, a failed certificate check, an abstention, or an error while checking the evidence each mean no promotion. The outcome is "no certified selection", never the candidate with the best score. Outside strict modes, RFC 0001 permits a declared fixed fallback and requires its use to be recorded. The current module schema provides no field for declaring that fallback.
+A calibrator may also <Term id="abstention">abstain</Term>: return no value, for example when no threshold meets its target. That is an honest answer, reported as `no_decision` (<Ref to="rfc-0001" section="section 3.4">RFC 0001</Ref>). A module is in a <Term id="strict-mode">strict evidence mode</Term> when it sets `require_calibration`, in its promotion policy or on a cvar; declares any chance constraint; targets a certified selection in its operational profile; or uses a cvar whose target is backed by a certificate (<Ref to="rfc-0001" section="section 3.6">RFC 0001</Ref>). So version 5 was strict already, through its limit on slow replies; with no cvar, it needed no certificate. In a strict mode, too few tickets, a failed certificate check, an abstention, or an error while checking the evidence each mean no promotion. The outcome is "no certified selection", never the candidate with the best score. Outside strict modes, RFC 0001 permits a declared fixed fallback and requires its use to be recorded. The current module schema provides no field for declaring that fallback.
 
 <TryIt>
 
@@ -146,7 +146,7 @@ tvl-ci-gate spec/examples/book/ch07/support-bot.tvl.yml \
   book/support-bot/bundles/slo-pass/seed-0/candidate.synthetic.measure.yml
 ```
 
-It prints `"error": "Measurement bundles are not promotion-ready."`, lists this issue for each bundle, and exits with status 2, with no decision at all. It does not fall back to judging the objectives, on which the candidate is superior. The gate refuses under every strict-mode trigger, not only an explicit request: a module with a chance constraint and a calibrated value is refused even when its promotion policy does not ask for calibration. Your runtime must still check the certificates.
+It prints `"error": "Measurement bundles are not promotion-ready."`, lists this issue for each bundle, and exits with status 2, with no decision at all. It does not fall back to judging the objectives, on which the candidate is superior. The gate refuses under every strict-mode trigger it can see in the module, not only an explicit request: a module with a chance constraint and a calibrated value is refused even when its promotion policy does not ask for calibration. Two limits: a chance constraint in a module with nothing to calibrate, such as version 5, still gets a decision; and a certified-selection target belongs to the operational profile, which the gate does not receive. Your runtime must still check the certificates.
 
 Every case, what RFC 0001 says, and what `tvl-ci-gate` does today with version 6 (version 5 for the last row):
 
@@ -170,7 +170,7 @@ Chapter 3 promised the limits. Tests check that cvars and policies never change 
 <div className="book-limits">
 
 - **Proofs.** The machine-checked proofs predate cvars and policies, so they say nothing about a module that uses them, and, unlike for a registry, no lint warns you yet (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
-- **Tools.** The public tools check declarations only: they neither fit values nor check certificates, and refuse to promote a module that requires calibration under any strict-mode trigger.
+- **Tools.** The public tools check declarations only: they neither fit values nor check certificates, and refuse to promote a module that requires calibration under any strict-mode trigger they can see in the module (a certified-selection target in the operational profile is not visible to them).
 - **Your runtime's job.** Separate tickets, the ticket floor and certificate checks are yours to enforce.
 - **Assumptions.** All of it assumes separate calibration and evaluation tickets and stable ticket hashes (<Ref to="rfc-0001" section="section 5">RFC 0001</Ref>).
 - **Undeclared influences.** A certificate notices only what its context covers: an undeclared influence, such as retrieval in version 6, never makes it stale.
@@ -183,6 +183,6 @@ Chapter 3 promised the limits. Tests check that cvars and policies never change 
     <li>A tuned value is searched, a fixed value comes from your runtime, and a cvar is fitted from calibration evidence for each choice of its declared parents.</li>
     <li>Cvars never enter the rules or the search. Bound a cvar with its validity domain, not with a rule. Calibration tickets must not overlap the evaluation set, and too few are rejected.</li>
     <li>A certificate binds one value to a hashed context. A new value of a declared parent, or of any covered key, makes it stale. An undeclared influence does not.</li>
-    <li>In a strict evidence mode, a failed certificate check, an abstention or too little evidence means no promotion, never a fallback to the best score. Today's tools cannot validate certificates. Version 6 explicitly requires them, so its gate refuses to decide, and it refuses under every strict-mode trigger.</li>
+    <li>In a strict evidence mode, a failed certificate check, an abstention or too little evidence means no promotion, never a fallback to the best score. Today's tools cannot validate certificates. Version 6 explicitly requires them, so its gate refuses to decide. The gate refuses under every strict-mode trigger it can see in the module, except a chance constraint in a module with nothing to calibrate.</li>
   </ul>
 </KeyTakeaways>

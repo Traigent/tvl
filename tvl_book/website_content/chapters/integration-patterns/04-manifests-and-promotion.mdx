@@ -17,13 +17,14 @@ example_refs:
 opal_bridge: true
 ---
 
-After a successful <Term id="triagent-integration">TVO</Term> run, <Term id="triagent-integration">Triagent</Term>
-emits a manifest bundling:
+After a successful <Term id="triagent-integration">TVO</Term> run, the integration should record a manifest
+bundling the fields below. This repository does not generate it: the example pipeline
+(`tvl_book/examples/ch5_integration_pipeline.sh`) only prints a pre-written manifest. The required fields are:
 
 - Resolved spec SHA and artifact locations
 - Validation logs from the CLI tools
 - Promotion gate decision (pass/fail/defer)
-- DVL drift checks (pass/fail with links)
+- <Term id="dvl-integration">DVL</Term> (data-validation layer) drift checks (pass/fail with links)
 - Rollback instructions if thresholds regress
 
 Treat the manifest as a living audit trail. Every deployment should point to it.

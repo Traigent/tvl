@@ -13,7 +13,7 @@ summary: "The response ladder and who must approve each step; declaring an actio
 
 <h2 id="ch11-ladder">The ladder</h2>
 
-A <Term id="response-policy">response policy</Term> maps a monitor event to one action from TVL's sealed response ladder, subject to that action's authority rules.
+A <Term id="response-policy">response policy</Term> is a list of rules, each mapping a monitor event to one action from TVL's sealed response ladder, subject to that action's authority rules.
 
 On a slow-reply breach the team wants to warn, open a next step, roll back after six hours, and stop taking tickets if recovery is overdue. A response is a named list of rules, each with an `id`, a `trigger` (a monitor and one of its events) and one action, `do`, from a sealed ladder ordered by impact on production (<Ref to="semantics" section="section 12.10">formal semantics</Ref>):
 
@@ -73,7 +73,7 @@ Suspend, the top rung, needs `approval: human` per episode, even under a standin
 
 <KeyTakeaways>
   <ul>
-    <li>One monitor event, one action from a sealed ladder. Repairs need a standing grant at least; suspend needs a person, and only a human resume lifts it. Declaring is not permitting.</li>
+    <li>Each rule maps one monitor event to one action from a sealed ladder; several rules may react to the same event. Repairs need a standing grant at least; suspend needs a person, and only a human resume lifts it. Declaring is not permitting.</li>
     <li>An optimization and its deploy need separate authority. Only a promoted candidate may deploy; only production evidence can establish recovery.</li>
   </ul>
 </KeyTakeaways>

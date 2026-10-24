@@ -20,7 +20,7 @@ path_tags:
 primary_example: /examples/ci_pipeline.sh
 ---
 
-TVL earns its keep when paired with real engineering workflow: a validator in CI, an optimizer that
+TVL earns its keep when paired with real engineering workflow: a validator in continuous integration (CI), an optimizer that
 explores candidate configurations, and evidence artifacts that support rollout review.
 
 In our stack, those surrounding systems include Triagent/TVO for optimization and DVL for dataset
@@ -47,4 +47,4 @@ and <Term id="opal-bridge">OPAL</Term> fill those downstream roles. The contract
 
 </ConceptCallout>
 
-<MermaidDiagram chart={"flowchart LR\n    A[TVL Spec] -->|tvl-validate| B[CI Gate]\n    B -->|valid| C[Optimizer]\n    C -->|promotion proof| D[Deployment Review]\n    C -->|dataset dependencies| E[Data Validation]\n    E -->|blocking checks| D"} />
+<MermaidDiagram chart={"flowchart LR\n    A[TVL Spec] -->|tvl-validate| B[CI Gate]\n    B -->|valid| C[Optimizer]\n    C -->|promotion evidence| D[Deployment Review]\n    C -->|dataset dependencies| E[Data Validation]\n    E -->|blocking checks| D"} />

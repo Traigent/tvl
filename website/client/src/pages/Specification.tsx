@@ -151,7 +151,7 @@ export default function Specification() {
                 </CardTitle>
                 <CardDescription className="text-sm leading-6">
                   Constraints, evaluation sets, and promotion rules stop being copied across notebooks, docs, and CI.
-                  The same definition can drive validation, gating, and safer-by-construction rollout checks.
+                  The same definition can drive validation, gating, and rollout checks against the declared requirements; what those checks show depends on the evidence and evaluator behind them.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -163,7 +163,7 @@ export default function Specification() {
                 </CardTitle>
                 <CardDescription className="text-sm leading-6">
                   As models, tools, quotas, costs, and product priorities change, teams can revisit the same spec:
-                  observe the new world state, retune the declared TVARs, and keep the same checks attached.
+                  observe the new world state, retune the declared tuned variables (TVARs), and keep the same checks attached.
                 </CardDescription>
               </CardHeader>
             </Card>

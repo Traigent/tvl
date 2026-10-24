@@ -94,7 +94,7 @@ The candidate solved 9.3 points more tickets. The p-values for "not worse" and "
 
 <h2 id="ch6-outcomes">Three decisions, from real runs</h2>
 
-`tvl-ci-gate` takes the module and two bundles, incumbent then candidate. It checks acceptability first, the candidate alone against the bands and chance constraints, and only then compares the two (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). An objective not shown to be non-inferior gives NoDecision; a chance constraint not shown to hold gives Reject.
+`tvl-ci-gate` takes the module and two bundles, incumbent then candidate. It checks acceptability first, the candidate alone against the bands and chance constraints, and only then compares the two (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). An objective shown to be worse by more than its margin gives Reject. An objective not yet shown to be non-inferior gives NoDecision, when nothing else rejects the candidate. A chance constraint not shown to hold gives Reject.
 
 <Mermaid
   alt="A decision flow from top to bottom, in four questions. First: is a chance constraint not shown to hold, or is a band's mean outside its range? Yes leads to Reject. No leads to the second question: is a regression beyond a margin demonstrated on some objective? Yes leads to Reject. No leads to the third question: is every band shown inside its range by TOST? No leads to NoDecision. Yes leads to the last question: not worse on every objective and better on at least one? Yes leads to Promote; no leads to NoDecision."
@@ -207,7 +207,7 @@ Now judge the same candidate on 50 tickets:
 python book/support-bot/run_scenario.py slo-few --seed 0
 ```
 
-Among the last lines it prints, the gate's:
+The final lines include the gate's output:
 
 ```text
   exit 2  decision=Reject

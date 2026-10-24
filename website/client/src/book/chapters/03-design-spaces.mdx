@@ -50,14 +50,14 @@ The table sums up the six types. "Rules may use" lists the operators a rule may 
 |---|---|---|---|
 | `bool`: `use_retrieval` | the list `[true, false]` | `=` `!=` | yes |
 | `int`: `retrieval_k`, `max_tool_calls` | `range: [a, b]`, every whole number from a to b; or `set:` with a list | `=` `!=` `<` `<=` `>` `>=` `in` | yes |
-| `float`: `temperature` | `range: [a, b]` with a `resolution` (the step) | the same as `int`; `=` gives a warning | yes |
+| `float`: `temperature` | `range: [a, b]` with an optional `resolution` (the step; 0.001 if omitted) | the same as `int`; `=` gives a warning | yes |
 | `enum[str]`, `enum[int]`, `enum[float]`: `model` | a list of values | `=` `!=` `in` | yes |
 | `tuple[...]`: `chunking` | `components:`, one domain per position | `=` `!=` `in`, with values such as `(256, 0)` | yes |
 | `callable[P]`: `reranker` | `registry:`, the name of an outside catalogue, with an optional `filter` and `version` | `=` `!=` `in` | **no** |
 
 "Written semantics" says whether the formal semantics defines the type's meaning (<Ref to="semantics" section="section 1.4">formal semantics</Ref>). It does not claim that the current machine-checked proofs cover every construct.
 
-The tour file declares one tuned variable of each type. Its first four are the support bot's knobs from version 2. Here are the other three: an `int` range, a tuple and a registry-backed callable.
+The tour file declares seven tuned variables, at least one of each type. Its first four are the support bot's knobs from version 2. Here are the other three: an `int` range, a tuple and a registry-backed callable.
 
 <Example file="ch03/every-type.tvl.yml" checker="tvl-validate" expect="lint:unverifiable_callable_type" title="The tour file: three new forms" lines="29-42" />
 
@@ -66,7 +66,7 @@ The tour file declares one tuned variable of each type. Its first four are the s
 
 <h2 id="ch3-resolution">Resolution turns a range into a list</h2>
 
-Always give a float range a <Term id="resolution">resolution</Term>, the step between its values. The formal semantics treats a float range without one as not well formed (<Ref to="semantics" section="section 2.4">formal semantics</Ref>). With a resolution, a range is a list: start at the lower bound and add the resolution while the value stays at or below the upper bound (<Ref to="semantics" section="section 3.3">formal semantics</Ref>). The support bot's range also meets two conditions that today's tools need: the resolution divides 1 exactly, as 0.1 does, and the lower bound is a whole number of steps from zero, as 0.0 is. With other choices, the current tools can build a different list from the one the formal semantics defines. A temperature of 0.25 lies between two steps, so it is outside the domain:
+Give a float range a <Term id="resolution">resolution</Term>, the step between its values. It is optional: for a float TVAR range without one, the formal semantics uses a step of 0.001, and for an int range a step of 1 (<Ref to="semantics" section="section 2.4">formal semantics</Ref>). Giving one explicitly is still good practice, because it sets the search grid. With its resolution, a range is a list: start at the lower bound and add the resolution while the value stays at or below the upper bound (<Ref to="semantics" section="section 3.3">formal semantics</Ref>). The support bot's range also meets two conditions that today's tools need: the resolution divides 1 exactly, as 0.1 does, and the lower bound is a whole number of steps from zero, as 0.0 is. With other choices, the current tools can build a different list from the one the formal semantics defines. A temperature of 0.25 lies between two steps, so it is outside the domain:
 
 <Example file="ch03/candidate-temperature-025.yml" title="A candidate between two grid points" />
 
@@ -85,7 +85,7 @@ Configuration validation failed:
 
 Your team keeps a catalogue of rerankers, the components that re-order search results, and it changes every week. A `callable` type with a <Term id="registry">registry</Term> domain points at the catalogue instead of copying its names into the module.
 
-You pay for this with the formal guarantees. Inside the <Term id="formally-verified-subset">formally verified subset</Term>, the formal semantics defines exactly what your file means, and its theorems apply: for example, the one that ties a solver's SAT answer to the meaning of your rules (Theorem 8.1). A registry's values come from outside, when the module is used, and TVL does not define what it means for a component to "implement" the named protocol. So both forms sit outside the subset. The tools still check the file, but those theorems say nothing about it, and the linter warns you (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
+You pay for this with the formal guarantees. Inside the <Term id="formally-verified-subset">formally verified subset</Term>, the formal semantics defines exactly what your file means, and its theorems can apply: for example, the one that ties a solver's SAT answer to the meaning of your rules (Theorem 8.1). That theorem also needs its own preconditions: float domains aligned to one precision factor, index variables for ranges, and thresholds rounded in the right direction. A registry's values come from outside, when the module is used, and TVL does not define what it means for a component to "implement" the named protocol. So both forms sit outside the subset. The tools still check the file, but those theorems say nothing about it, and the linter warns you (<Ref to="semantics" section="section 1.4">formal semantics</Ref>).
 
 <TryIt>
 

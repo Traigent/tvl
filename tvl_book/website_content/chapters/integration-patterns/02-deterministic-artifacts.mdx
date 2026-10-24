@@ -12,7 +12,9 @@ example_refs: []
 opal_bridge: false
 ---
 
-Every TVL workflow produces deterministic artifacts for auditability:
+A TVL workflow can keep this audit bundle. The spec, configuration, and measurements are reproducible
+from fixed inputs; tool reports and `provenance.json` also carry execution metadata, such as
+timestamps and durations, that differs between runs:
 
 - `spec.tvl.yml` — the validated TVL module
 - `config.yml` — the promoted configuration assignment

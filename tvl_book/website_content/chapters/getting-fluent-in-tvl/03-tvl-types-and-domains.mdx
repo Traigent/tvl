@@ -31,7 +31,7 @@ to expose something more advanced.
 |------|---------------|-----------------|
 | `bool` | A real on/off engineering switch | `[true, false]` |
 | `int` | Counts, limits, rounds, shard sizes | `range: [1, 10]` or `set: [1, 2, 4, 8]` |
-| `float` | Thresholds or continuous trade-off knobs | `range: [0.0, 1.0]` with optional `resolution` |
+| `float` | Thresholds or continuous trade-off knobs | `range: [0.0, 1.0]` with an optional `resolution` (0.001 if omitted for a float TVAR range; giving one sets the search grid) |
 | `enum[str]` | A short approved list of named options | `["gpt-4o", "claude-3"]` |
 | `enum[int]` | A small approved list of integer settings | `[100, 500, 1000]` |
 

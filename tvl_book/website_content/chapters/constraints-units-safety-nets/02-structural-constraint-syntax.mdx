@@ -18,7 +18,7 @@ opal_bridge: false
 You do not need to memorize solver terminology to write good structural rules. In practice, most
 authors use a small TVL formula language over TVARs:
 
-| TVL Syntax | Meaning | NOT This |
+| TVL Syntax | Meaning | Avoid |
 |----------------|---------|----------|
 | `model = "gpt-4o"` | Equality | `model == "gpt-4o"` |
 | `temperature <= 0.5` | Comparison | `params.temperature <= 0.5` |
@@ -26,6 +26,10 @@ authors use a small TVL formula language over TVARs:
 | `A or B` | Disjunction | `A \|\| B` |
 | `not A` | Negation | `!A` |
 | `x in {"a", "b"}` | Set membership | `x in ["a", "b"]` |
+
+The grammar (`spec/grammar/tvl.ebnf`) uses `=` and `{...}`. The reference parser also accepts `==` and
+`[...]`, but portable specs should not rely on that. A dotted name such as `params.temperature` is valid
+only when a TVAR is declared with exactly that name; do not add a prefix to a TVAR name.
 
 ### Expression Form vs Implication Form
 
@@ -69,7 +73,8 @@ constraints:
 <PitfallCard title="Debugging Constraint Failures" tone="reliability">
 
 Run `tvl-check-structural spec.yml` to see which constraints are unsatisfiable.
-The tool reports an UNSAT core when available, showing the minimal conflicting subset.
+The tool reports an UNSAT core when available: a conflicting subset of the constraints, not
+necessarily the smallest one.
 Use `--json` for machine-readable output.
 
 </PitfallCard>

@@ -20,10 +20,12 @@ Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback t
 
 <MicrosimEmbed title="Orientation RAG Circuit" src="/book-assets/microsims/orientation-rag-circuit/main.html#latency-spike" height={640} />
 
-Each warning mirrors a structural constraint:
+The lab shows two kinds of warning. Only the rerank rule is a structural constraint (a rule over TVARs);
+the latency and cost warnings are thresholds on simulated outcomes, the kind of target a real module
+states as an objective or a measured requirement:
 
-- **Latency under 800 ms** — raises amber/red when the simulated configuration breaches the ceiling.
-- **Cost under $0.12** — highlights the response-token capacitor if the API budget slips.
-- **Rerank weight ≥ 0.3** — conditional guard for `retriever_top_k >= 40` to prevent noisy answers.
+- **Latency under 800 ms** (simulated outcome) — raises amber/red when the simulated configuration breaches the ceiling.
+- **Cost under $0.12** (simulated outcome) — highlights the response-token capacitor if the API budget slips.
+- **Rerank weight ≥ 0.3** (structural) — conditional guard for `retriever_top_k >= 40` to prevent noisy answers.
 
 Challenge yourself to bring all three back to green without dropping quality below 75.
