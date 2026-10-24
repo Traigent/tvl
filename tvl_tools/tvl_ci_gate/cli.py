@@ -166,6 +166,23 @@ def main() -> None:
             monitors=module.get("monitors"),
         )
 
+        if decision == "Error":
+            # Undefined check (e.g. zero_trials): an error, not Reject/NoDecision.
+            diag = {
+                "ok": False,
+                "decision": "Error",
+                "error": evidence.get("summary", {}).get("decision_reason", "Error"),
+                "codes": evidence.get("summary", {}).get("chance_error_codes", []),
+                "warnings": warnings,
+                "evidence": evidence,
+            }
+            if args.json:
+                print(json.dumps(diag, indent=2))
+            else:
+                print("Decision: Error")
+                print(f"Reason: {diag['error']}")
+            raise SystemExit(2)
+
         result = {
             "ok": decision == "Promote",
             "decision": decision,

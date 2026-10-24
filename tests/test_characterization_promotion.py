@@ -1670,7 +1670,7 @@ CASES = [('samples_single_inc',
    []),
   {},
   ('ok',
-   ('Reject',
+   ('Error',
     {'per_objective': {},
      'chance_constraints': {'a': {'violations': 10,
                                   'trials': 20,
@@ -1688,8 +1688,9 @@ CASES = [('samples_single_inc',
                                   'ci_upper': 1.0,
                                   'threshold': 0.0,
                                   'confidence': 0.95,
-                                  'verdict': 'fail',
-                                  'reason': 'No trials available'},
+                                  'verdict': 'error',
+                                  'reason': 'zero_trials: chance constraint check is undefined with no trials',
+                                  'code': 'zero_trials'},
                             'c': {'violations': 30,
                                   'trials': 20,
                                   'observed_rate': 0.0,
@@ -1706,8 +1707,9 @@ CASES = [('samples_single_inc',
                                  'ci_upper': 1.0,
                                  'threshold': 0.2,
                                  'confidence': 0.95,
-                                 'verdict': 'fail',
-                                 'reason': 'No trials available'}},
+                                 'verdict': 'error',
+                                 'reason': 'zero_trials: chance constraint check is undefined with no trials',
+                                 'code': 'zero_trials'}},
      'summary': {'all_noninferior': True,
                  'any_superior': False,
                  'all_bands_pass': True,
@@ -1715,7 +1717,8 @@ CASES = [('samples_single_inc',
                  'all_chance_pass': False,
                  'adjustment_method': 'holm',
                  'fdr_controlled_at': None,
-                 'decision_reason': 'Chance constraints failed: a, b, c, '}}))),
+                 'decision_reason': 'zero_trials: no trials for chance constraints: b, ',
+                 'chance_error_codes': ['zero_trials', 'zero_trials']}}))),
  ('gate_chance_pass_only',
   'gate',
   ({},
@@ -2581,3 +2584,16 @@ def test_gate_requires_scipy(monkeypatch):
         "scipy is required for TVL promotion and chance-constraint evaluation. "
         "Install the runtime dependencies before using tvl-ci-gate."
     )
+
+
+def test_missing_trials_count_is_zero_trials_error():
+    from tvl.promotion import epsilon_pareto_gate
+
+    policy = {"chance_constraints": [{"name": "c", "threshold": 0.1, "confidence": 0.9}]}
+    for outcome in ({"violations": 0}, {}, {"violations": 0, "trials": 0}):
+        decision, evidence = epsilon_pareto_gate(
+            {"objective_values": {}}, {"objective_values": {}, "chance_outcomes": {"c": outcome}}, policy, []
+        )
+        assert decision == "Error"
+        assert evidence["chance_constraints"]["c"]["code"] == "zero_trials"
+        assert evidence["summary"]["chance_error_codes"] == ["zero_trials"]

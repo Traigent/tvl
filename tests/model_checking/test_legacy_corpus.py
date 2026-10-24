@@ -56,7 +56,18 @@ INJECTED_POLICIES = [
 ]
 
 
+def _severity(issue) -> str:
+    if isinstance(issue, dict):
+        return str(issue.get("severity", "")).lower()
+    return str(getattr(issue, "severity", "")).lower()
+
+
 def _issues_key(issues) -> list:
+    # Info-severity diagnostics are excluded ONLY: injecting cvars/policies
+    # legitimately adds the informational `outside_proved_subset` note by design.
+    # Errors and warnings must still be identical with and without the blocks.
+    issues = [i for i in issues if _severity(i) != "info"]
+
     # lint_module yields Issue objects for most checks but plain dicts for
     # some (e.g. schema-shaped diagnostics) — normalize both.
     def _key(issue):

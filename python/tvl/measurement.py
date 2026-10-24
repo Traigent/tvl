@@ -285,6 +285,12 @@ def _chance_issue(constraint: dict[str, Any], chance_outcomes: dict[str, Any]) -
         threshold=constraint.get("threshold", 0.0),
         confidence=constraint.get("confidence", 0.95),
     )
+    if result.verdict == "error":
+        return {
+            "constraint": name,
+            "code": result.code or "chance_error",
+            "message": result.reason or "Chance constraint check is undefined",
+        }
     if result.verdict != "pass":
         return {
             "constraint": name,

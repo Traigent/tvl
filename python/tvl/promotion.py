@@ -90,8 +90,9 @@ class ChanceResult:
     ci_upper: float
     threshold: float
     confidence: float
-    verdict: str  # "pass" or "fail"
+    verdict: str  # "pass", "fail", or "error" (undefined check, e.g. zero_trials)
     reason: str = ""
+    code: str = ""  # error code when verdict == "error"
 
 
 @dataclass
@@ -105,6 +106,7 @@ class PromotionEvidence:
     all_bands_pass: bool = True
     any_band_out_of_band: bool = False
     all_chance_pass: bool = True
+    chance_error_codes: List[str] = field(default_factory=list)
     adjustment_method: str = "none"
     fdr_controlled_at: Optional[float] = None
     decision_reason: str = ""
@@ -129,6 +131,8 @@ class PromotionEvidence:
                 "decision_reason": self.decision_reason,
             },
         }
+        if self.chance_error_codes:
+            out["summary"]["chance_error_codes"] = list(self.chance_error_codes)
         if self.promotion_monitors:
             out["promotion_monitors"] = dict(self.promotion_monitors)
         return out
@@ -173,7 +177,7 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
 
 def _chance_to_dict(c: ChanceResult) -> Dict[str, Any]:
     """Convert ChanceResult to dict."""
-    return {
+    out = {
         "violations": c.violations,
         "trials": c.trials,
         "observed_rate": c.observed_rate,
@@ -184,6 +188,9 @@ def _chance_to_dict(c: ChanceResult) -> Dict[str, Any]:
         "verdict": c.verdict,
         "reason": c.reason,
     }
+    if c.code:
+        out["code"] = c.code
+    return out
 
 
 def epsilon_pareto_gate(
@@ -208,6 +215,7 @@ def epsilon_pareto_gate(
         - "Promote": Candidate passes all non-inferiority tests and at least one superiority
         - "Reject": Evidence demonstrates regression beyond the allowed margin
         - "NoDecision": Insufficient evidence to promote or reject
+        - "Error": A check is undefined (e.g. ``zero_trials``); neither Reject nor NoDecision
     """
     require_scipy()
 
@@ -358,6 +366,8 @@ def _test_all_chance_constraints(
         evidence.chance_constraints[name] = result
         if result.verdict != "pass":
             evidence.all_chance_pass = False
+        if result.verdict == "error":
+            evidence.chance_error_codes.append(result.code)
 
 
 def _test_promotion_monitors(
@@ -924,9 +934,11 @@ def _test_chance_constraint(
     ci_upper <= threshold.
     """
     violations = outcome.get("violations", 0)
-    trials = outcome.get("trials", 0)
+    trials = outcome.get("trials")
 
-    if trials <= 0:
+    # Definition 9.8 precondition: n = 0 (or no trial count at all) makes the
+    # chance check undefined. That is an error outcome, neither Reject nor NoDecision.
+    if trials is None or trials <= 0:
         return ChanceResult(
             name=name,
             violations=0,
@@ -936,8 +948,9 @@ def _test_chance_constraint(
             ci_upper=1.0,
             threshold=threshold,
             confidence=confidence,
-            verdict="fail",
-            reason="No trials available",
+            verdict="error",
+            reason="zero_trials: chance constraint check is undefined with no trials",
+            code="zero_trials",
         )
 
     if violations < 0 or violations > trials:
@@ -1059,6 +1072,11 @@ def _adjust_pvalues(p_values: List[float], method: str) -> List[float]:
 
 def _make_legacy_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
     """Make the TVL 1.2 promotion decision based on legacy evidence."""
+    # Validation errors come first (spec §9.7 Error branch): not Reject, not NoDecision.
+    if evidence.chance_error_codes:
+        failing = [n for n, r in evidence.chance_constraints.items() if r.verdict == "error"]
+        return ("Error", f"zero_trials: no trials for chance constraints: {', '.join(failing)}")
+
     # Hard acceptability failures take precedence over inconclusive comparisons.
     if not evidence.all_chance_pass:
         failing = [
@@ -1117,7 +1135,7 @@ def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
 def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
     """Make final promotion decision based on evidence, joining promotion monitors when present."""
     legacy_dec, legacy_reason = _make_legacy_decision(evidence)
-    if not evidence.promotion_monitors:
+    if legacy_dec == "Error" or not evidence.promotion_monitors:
         return (legacy_dec, legacy_reason)
     decision = join_promotion_decisions(
         legacy_dec, [result.get("verdict") for result in evidence.promotion_monitors.values()],
