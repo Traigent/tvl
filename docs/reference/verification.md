@@ -32,13 +32,53 @@ When a TVL example is labeled **SAT**, it means the structural verifier found at
 
 When an example is labeled **UNSAT**, it means no such assignment exists. The configured search space is empty, so optimization should not begin.
 
-Typical structural verifier outputs are:
+The structural checker gives one of three results:
 
-*   **SAT** + a witness assignment such as `model = "gpt-4o", retriever.k = 5`
-*   **UNSAT** + an UNSAT core or conflicting expression set showing which clauses cannot all hold together
-*   **undecided** (only without OR-Tools) + the issue `structural_undecided_without_solver`
+*   **SAT** + a witness assignment such as `model = "gpt-4o", retriever.k = 5`. The checker reports SAT only after it re-checks the witness with exact arithmetic: every value must be an exact member of its declared domain, and every constraint must hold. `tvl-check-structural` exits 0 and its JSON has `status: "passed"`.
+*   **UNSAT** + an UNSAT core or conflicting expression set showing which clauses cannot all hold together. UNSAT comes only from OR-Tools CP-SAT returning `INFEASIBLE`, or from a fallback search that tried every value of every domain. The tool exits 2 with `status: "unsat"`.
+*   **undecided** + an issue with a code. The module is neither reported SAT nor UNSAT. The tool exits 2 with `status: "undecided"` and an `issues` list.
 
-The solver result is exact when OR-Tools (a required dependency) is installed. If OR-Tools cannot be imported, the checker falls back to a search over sampled candidate values: domain bounds and the literals that constraints compare against, with neighbours. A witness that fallback finds is a real SAT result. When it finds none, it reports UNSAT only if it tried every value of every domain (booleans, enums and bounded integers). Otherwise, for example with a float TVAR, the result is **undecided**: `tvl-check-structural` exits 2 with the error `structural_undecided_without_solver`, and its JSON output has `status: "undecided"` and an `issues` list. It never reports an UNSAT it has not shown. Install OR-Tools to decide such a module.
+The undecided cases are:
+
+| Code | When |
+|------|------|
+| `structural_undecided_without_solver` | OR-Tools is not installed and the fallback search could not try every value |
+| `structural_solver_inconclusive` | CP-SAT returned a status other than a solution or `INFEASIBLE` |
+| `structural_encoding_overflow` | the exact integer encoding of a numeric TVAR is too large for the solver |
+| `structural_witness_unverified` | the solver's witness failed the exact re-check |
+| `structural_witness_too_large` | a witness value is too large to print exactly |
+| `structural_ill_typed_atom` | an atom has no typed truth value (unknown TVAR, mismatched types, a bool compared with a number) |
+| `structural_non_finite_domain` | a TVAR declaration contains NaN or an infinity |
+| `structural_unresolved_domain` | an atom uses a registry domain that is not resolved |
+| `structural_pair_table_too_large` | an equality between two enum TVARs needs more than 1,000,000 value pairs |
+| `structural_expansion_too_large` | an expression expands to more than 10,000 clauses |
+| `structural_value_too_large` | enum members expand to more than 1,000,000 nested nodes or 100 levels |
+
+The [error code catalog](./error-codes.md) describes each one.
+
+OR-Tools is a required dependency. If it cannot be imported, the checker falls back to a search over candidate values: domain bounds, the literals that constraints compare against, with neighbours, and whole float grids of up to 2001 points when the total search stays small. A witness that the fallback finds is checked like any other. When it finds none, it reports UNSAT only if it tried every value of every domain. Otherwise the result is undecided with `structural_undecided_without_solver`. Install OR-Tools to decide such a module.
+
+### Exact values
+
+The checker compares numbers exactly, as rationals, never as binary64 floats:
+
+*   A numeric literal is read from its source text. `0.1` means exactly one tenth, and `0.100000000000000001` is a different value.
+*   A float range with a resolution is the grid `min + i * resolution` for whole numbers `i` from 0 up to the largest point not above `max` (formal semantics Definition 3.6). A resolution that does not divide the range is fine: `{range: [0, 1], resolution: 0.3}` is `{0, 0.3, 0.6, 0.9}`, so `t >= 0.95` is UNSAT.
+*   Strict comparisons are exact: on that grid `t > 0.6` admits `0.9` and not `0.6`.
+*   An `int` TVAR compared with a fractional literal is decided exactly: `n = 1.5` is false for every integer, `n > 1.5` means `n >= 2`, and `n != 1.5` is always true. (`tvl-validate` rejects such a literal for an `int` TVAR as `constraint_type_mismatch`; the structural checker still decides it exactly when run on its own.)
+*   A `bool` TVAR equals only `true` or `false`. It never equals `1` or `0`; comparing it with a number is `structural_ill_typed_atom`.
+*   NaN and infinities are not TVL values. A domain that contains one is rejected (`structural_non_finite_domain`; `tvl-validate` reports `non_finite_domain_value`).
+*   An enum domain is a set. Repeated members collapse into one before the check; `tvl-validate` still reports them as `duplicate_domain_value`.
+*   A reversed range such as `{range: [5, 1]}` is malformed (formal semantics §2.4) and is rejected, not treated as empty. `tvl-validate` reports it as `invalid_range_domain`.
+
+### Witness fields in the JSON output
+
+`tvl-check-structural --json` gives the witness twice:
+
+*   `exact_assignment` is the exact witness. Each numeric value is a string: a terminating decimal such as `"0.3"` when one exists, else a fraction `"p/q"`. Tuple values are converted component by component. Non-numeric values (strings, booleans) are unchanged. Use this field when you need the exact value.
+*   `assignment` is kept for compatibility. Its numbers are plain binary64 floats and ints, so it can lose precision: two different grid points can round to the same float.
+
+Both fields are `null` when the result is not SAT. The text output prints the exact witness.
 
 ## Structural Verifier
 
@@ -52,7 +92,7 @@ Purpose:
 
 *   load declared TVAR domains
 *   parse `constraints.structural`
-*   decide whether the constraint set is satisfiable (exactly with OR-Tools; without it, the fallback search described above may return undecided instead)
+*   decide whether the constraint set is satisfiable, or report undecided with a code (see the table above)
 *   emit a witness assignment when satisfiable
 *   emit an UNSAT core or conflicting expressions when not satisfiable
 

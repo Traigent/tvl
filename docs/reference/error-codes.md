@@ -83,6 +83,14 @@ This document catalogs the diagnostic codes of the module and pack linter (`tvl.
 - **Description**: An enumerated TVAR domain lists the same member more than once. Without this error, repeated members would collapse into one choice, which inflates the apparent domain size and makes encoding ambiguous.
 - **Example**: `domain: ["gpt-4o", "gpt-4o"]`
 - **Remediation**: Remove the repeated value.
+- **Note**: The domain is a set (formal semantics Definition 3.6). `tvl-check-structural` does not report this code: it removes repeated members and checks the remaining set.
+
+### `non_finite_domain_value`
+- **Severity**: error
+- **Reported by**: `tvl-validate`, `tvl-lint`
+- **Description**: A TVAR domain contains NaN or an infinity. TVL numeric domains are rationals (formal semantics Definitions 3.1-3.2), so these values are not admitted. The message names the TVAR and the value, and the path points at it. `tvl-check-structural` reports the same input as `structural_non_finite_domain`.
+- **Example**: `domain: { range: [0.0, .inf] }` gives `TVAR 't' domain contains inf; ...`
+- **Remediation**: Use finite bounds and values.
 
 ### `invalid_tuple_domain`
 - **Severity**: error
@@ -171,6 +179,80 @@ This document catalogs the diagnostic codes of the module and pack linter (`tvl.
 - **Description**: OR-Tools is not installed, and the fallback search neither found a satisfying assignment nor tried every value of every domain (for example, the module has a float TVAR). Satisfiability is undecided. The checker does not report this as UNSAT. It exits 2; with `--json` the result has `status: "undecided"` and an `issues` list holding this code.
 - **Example**: a module whose structural constraints involve a float TVAR, checked without OR-Tools, where the sampled values find no witness
 - **Remediation**: Install OR-Tools (`pip install ortools`) and run the check again.
+
+### Other undecided results of `tvl-check-structural`
+
+The codes below are also reported by `tvl-check-structural` when it cannot decide a module. Each one is severity `error`. The checker does not report the module as SAT or UNSAT. It exits 2; with `--json` the result has `status: "undecided"`, `ok: false`, `assignment` and `exact_assignment` set to `null`, and an `issues` list holding the code. Every message starts with `Structural satisfiability could not be decided:`.
+
+### `structural_encoding_overflow`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The exact integer encoding of a numeric TVAR (its grid index range, or a coefficient times a bound) would leave the range the solver handles safely (about ±2^62). The message names the variable.
+- **Example**: `{ name: t, type: float, domain: { range: [0.0, 1.0e+30], resolution: 1.0e-30 } }`
+- **Remediation**: Narrow the range or use a coarser `resolution`.
+
+### `structural_solver_inconclusive`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: OR-Tools CP-SAT returned a status other than a solution or `INFEASIBLE` (for example `MODEL_INVALID` or `UNKNOWN`). Only `INFEASIBLE` proves UNSAT, so the result is undecided. The message names the status.
+- **Example**: no small module is known to reach it; it guards against solver limits and encoding errors.
+- **Remediation**: Simplify the constraints or narrow the domains and run the check again; if it persists on a small module, report it as a toolchain bug.
+
+### `structural_witness_unverified`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The solver found an assignment, but the checker re-evaluates every witness exactly before it reports SAT, and this one failed: a value is not an exact member of its declared domain, or the assignment does not satisfy every constraint under exact evaluation.
+- **Example**: no well-formed input is known to reach it; it is a final check on the encoding.
+- **Remediation**: Report it as a toolchain bug, with the module.
+
+### `structural_witness_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The witness has a value whose exact text would need more than 2000 digits in its numerator or denominator, so it cannot be reported exactly.
+- **Example**: a float grid whose origin or step has very many digits
+- **Remediation**: Use literals with fewer digits or smaller exponents.
+
+### `structural_ill_typed_atom`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: An atom has no well-defined truth value under the typing rules (formal semantics T-Eq, T-Neq, T-Cmp, T-TVarEq), so the checker does not decide the module. Cases: the identifier is not a declared TVAR; an unsupported operator; ordering (`<`, `<=`, `>`, `>=`) two TVARs; comparing TVARs of different element types; ordering a non-numeric operand; comparing a numeric TVAR with a non-numeric literal; comparing a `bool` TVAR with a non-bool literal. `tvl-validate` reports most of these first as `undeclared_tvar` or `constraint_type_mismatch`.
+- **Example**: `expr: "use_cot = 1"` where `use_cot` is `bool` (a bool never equals the number 1). The message is `atom 'use_cot == 1' in 'use_cot = 1' compares a bool TVAR with a non-bool literal (T-Eq/T-Neq).`
+- **Remediation**: Fix the atom: declare the TVAR, or compare it with a literal of its own type (`use_cot = true`).
+
+### `structural_non_finite_domain`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: A TVAR declaration contains NaN or an infinity (`.nan`, `.inf`, `-.inf`). TVL numeric domains are rationals (formal semantics Definitions 3.1-3.2), so these values are not admitted. The message gives the path of the value. `tvl-validate` reports the same input as `non_finite_domain_value`.
+- **Example**: `domain: { range: [0.0, .inf] }`
+- **Remediation**: Use finite bounds and values.
+
+### `structural_unresolved_domain`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: An atom references a TVAR whose domain comes from a registry (or a tuple with a registry component). The registry is not resolved during the check, so the atom has no values to decide over.
+- **Example**: `domain: { registry: model_catalog }` with `expr: "model = 'gpt-4o'"`
+- **Remediation**: Resolve the registry to an explicit list of values before the structural check.
+
+### `structural_pair_table_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: An equality or inequality between two enum TVARs needs a table of equal-value pairs larger than 1,000,000 rows. Repeated members are removed first, so the table has at most as many rows as the smaller domain has members. The message names both TVARs and the row count.
+- **Example**: `expr: "a = b"` where `a` and `b` are enum domains that share more than a million values
+- **Remediation**: Narrow one or both domains.
+
+### `structural_expansion_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: Expanding one expression's `in` sets and negated intervals into clauses gives more than 10,000 clauses (the parser's DNF clause limit). Each `in` set multiplies the count. The message gives the path of the expression.
+- **Example**: `expr: "v0 in {0,...,9} and v1 in {0,...,9} and ... and v4 in {0,...,9}"` (10^5 clauses)
+- **Remediation**: Split the expression into several constraints or simplify it.
+
+### `structural_value_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The members of one enum or tuple domain expand to more than 1,000,000 nested nodes in total, or nest deeper than 100 levels. YAML aliases can make a small file stand for a very large value; the checker counts the expanded size before it compares values.
+- **Example**: a tuple member built by repeating an alias inside itself many times
+- **Remediation**: Flatten or shrink the values.
 
 ---
 
@@ -816,6 +898,27 @@ These codes come from the `composites` block introduced by RFC 0002 (`formalizat
 - **Example**: a module with two top-level `tvars:` keys
 - **Remediation**: Keep one copy of the key and merge the values into it.
 
+### `complex_mapping_key`
+- **Severity**: error (at parse time)
+- **Description**: A YAML mapping key is itself a mapping or a sequence. TVL keys are scalars. Such a key is rejected rather than skipped, because a tagged collection key can construct to a plain string and silently replace an explicit key without tripping the duplicate-key check. The message names the kind of node and its line and column, for example `complex_mapping_key: a mapping key must be a scalar, found a sequence (line 2, column 3)`.
+- **Example**: `? [a, b]` followed by `: 1`
+- **Remediation**: Use a plain string key.
+
+### YAML loading limits (`YAMLLimitError`)
+
+Every TVL tool reads YAML through one hardened loader. A document that exceeds one of its limits is rejected as a YAML parse error before any other check. These failures have no diagnostic code: `tvl-validate` prints `Error: YAML syntax error: <message>` and exits 2, and `tvl-check-structural --json` returns `status: "error"` with the message in `error`.
+
+| Limit | Message |
+|-------|---------|
+| Input larger than 5 MiB | `YAML input too large (<size> bytes > 5242880 byte limit)` |
+| More than 5000 resolved aliases | `YAML alias-expansion budget exceeded (5000); possible entity-expansion DoS` |
+| Merge keys (`<<`) copy more than 100,000 key/value pairs in total | `YAML merge-key expansion budget exceeded (100000 inherited key/value pairs, line <n>); possible merge-expansion DoS` |
+| A float literal with more than 400 digits | `numeric literal has <n> digits (limit 400) (line <n>, column <n>)` |
+| A float literal whose exponent is beyond ±400 | `numeric literal exponent exceeds +-400 (line <n>, column <n>)` |
+| Nesting too deep for the parser | `YAML nesting too deep to parse safely` |
+
+Every finite binary64 number can be written within the literal limits. The merge budget is charged before each copy, so a document whose merges double at each level fails fast instead of hanging. Numeric literals inside structural constraint expressions have the same 400-digit limit; `tvl-check-structural` reports a longer one as `invalid structural constraint: numeric literal out of bounds: ...` and exits 2.
+
 ### `schema_error`
 - **Severity**: error
 - **Description**: Module fails JSON Schema validation.
@@ -938,9 +1041,20 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `non_numeric_derived_symbol` | error | Operational | env.context symbol not numeric |
 | `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
 | `duplicate_domain_value` | error | Domain | Repeated enum member |
+| `non_finite_domain_value` | error | Domain | NaN or infinity in a domain |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
 | `structural_undecided_without_solver` | error | Structural | No OR-Tools; fallback could not decide |
+| `structural_encoding_overflow` | error | Structural | Exact encoding too large for the solver |
+| `structural_solver_inconclusive` | error | Structural | Solver status not INFEASIBLE; undecided |
+| `structural_witness_unverified` | error | Structural | Witness failed the exact re-check |
+| `structural_witness_too_large` | error | Structural | Witness value too large to print exactly |
+| `structural_ill_typed_atom` | error | Structural | Atom has no typed truth value |
+| `structural_non_finite_domain` | error | Structural | NaN or infinity in a TVAR declaration |
+| `structural_unresolved_domain` | error | Structural | Atom over an unresolved registry domain |
+| `structural_pair_table_too_large` | error | Structural | TVAR equality table over 1,000,000 rows |
+| `structural_expansion_too_large` | error | Structural | Expression expands past 10,000 clauses |
+| `structural_value_too_large` | error | Structural | Enum members too large or too deep |
 | `derived_references_bindings` | error | Derived | Bindings in derived |
 | `empty_objectives` | error | Objective | No objectives |
 | `duplicate_objective` | error | Objective | Duplicate objective name |
@@ -1008,6 +1122,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `missing_stop_predicate` | error | Composite (1.2) | external_accept without predicate |
 | `stop_signal_outside_state` | error | Composite (1.2) | Stop input not in state_keys |
 | `duplicate_key` | error | Schema | Repeated YAML mapping key (parse time) |
+| `complex_mapping_key` | error | Schema | Mapping or sequence used as a YAML key (parse time) |
 | `schema_error` | error | Schema | JSON Schema violation |
 | `invalid_document` | error | Schema | Top level is not a mapping |
 | `unverifiable_registry_domain` | warning | Formal | Registry domain used |

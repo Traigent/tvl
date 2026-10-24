@@ -125,6 +125,8 @@ All constraints are type-checked against the declared TVARs:
 
 **Important**: Float equality (`=`) with a numeric literal generates a warning (`float_equality`) because floating-point comparison may be unstable. Consider using range constraints instead.
 
+**Note**: A `bool` TVAR is never equal to a number: `use_cot = 1` is a type error (`constraint_type_mismatch` in `tvl-validate`, `structural_ill_typed_atom` in `tvl-check-structural`), not the same as `use_cot = true`. Numeric literals are compared exactly, as written: an `int` TVAR compared with a fractional literal such as `1.5` is reported by `tvl-validate` as `constraint_type_mismatch`, and if the structural checker runs on it anyway it decides the atom exactly (`n > 1.5` holds for `n >= 2`).
+
 **Note**: Ordering comparisons between TVARs (e.g., `a >= b`) are not supported. TVAR-to-TVAR checks are supported for equality/inequality (e.g., `a = b`).
 
 ## Operational Preconditions (`constraints.derived`)
@@ -234,7 +236,7 @@ enumerating the domains when CP-SAT is not installed. The SMT-LIB form shown bel
 
 1. **Boolean TVARs**: Boolean variables
 2. **Integer TVARs**: bounded integer variables (in SMT terms, QF_LIA: quantifier-free linear integer arithmetic)
-3. **Float TVARs**: Scaled to integers (default precision: 1000)
+3. **Float TVARs**: a float range is encoded by its exact grid index. The range `{range: [a, b], resolution: r}` is the grid `a + i*r` (formal semantics Definition 3.6; `r` defaults to 0.001), and the solver variable is the whole number `i`. Literals are converted to grid indices with exact rational arithmetic, so a resolution that does not divide the range, or a strict comparison, gives the same answer as checking the grid points one by one. Only a legacy float domain given by `min`/`max`/`precision` alone (no `range`) is still scaled by `precision` (default 1000) with origin 0.
 4. **Enum TVARs**: Encoded as bounded integers
 5. **DNF formulas**: each clause becomes a Boolean literal; an expression holds when one of its clauses holds
 
@@ -246,7 +248,7 @@ TVL constraint:
   then: "temperature <= 0.5"
 ```
 
-Illustrative SMT-LIB encoding (temperature scaled by 1000):
+Illustrative SMT-LIB encoding, for `temperature` declared as `{range: [0.0, 2.0], resolution: 0.001}`. The solver variable is the grid index `i`, with `temperature = 0.001 * i`, so `temperature <= 0.5` becomes `i <= 500`:
 ```smt
 (declare-const use_cot Bool)
 (declare-const temperature Int)

@@ -13,6 +13,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Error `structural_undecided_without_solver`: without OR-Tools, the fallback structural search no longer reports an UNSAT it has not shown. It reports SAT when it finds a witness, UNSAT only when it tried every value of every domain, and otherwise this error (`tvl-check-structural` exits 2, JSON `status: "undecided"`).
 - Gate decision `Error` with code `zero_trials`: a chance constraint with zero trials or no trial count makes its check undefined (Definition 9.8), so the gate returns `Error` before any other branch, instead of `Reject`. When the gate returns it, `tvl-ci-gate` prints `Decision: Error` and exits 2 (canonical `chance_outcomes` with `trials` 0 or missing are a schema error at load, exit 2; a deprecated `chance` summary with `summary.trials: 0` reaches the gate and gives `Error`).
 - Error `duplicate_key`: a YAML mapping that repeats a key is rejected at parse time (RFC 0001 §3.5(4)); the message names the key, line and column. A key that overrides one inherited through `<<` is not a duplicate.
+- `tvl-check-structural` JSON field `exact_assignment` (and `StructuralResult.exact_assignment`): the witness with every numeric value as an exact decimal or `"p/q"` string, tuple components included. The existing `assignment` field keeps plain binary64 numbers for compatibility and can merge distinct grid points. The text output prints the exact witness.
+- Undecided results of `tvl-check-structural` (exit 2, JSON `status: "undecided"`), each with its own error code: `structural_encoding_overflow`, `structural_solver_inconclusive`, `structural_witness_unverified`, `structural_witness_too_large`, `structural_ill_typed_atom`, `structural_non_finite_domain`, `structural_unresolved_domain`, `structural_pair_table_too_large`, `structural_expansion_too_large` and `structural_value_too_large`. The checker reports one of these instead of a SAT or UNSAT it cannot show.
+- Lint error `non_finite_domain_value`: NaN or an infinity in a TVAR domain.
+- Parse-time error `complex_mapping_key`: a YAML mapping key that is a mapping or a sequence is rejected.
+- YAML loading limits: merge keys (`<<`) may copy at most 100,000 key/value pairs in total, a float literal may have at most 400 digits and an exponent within ±400, and a document nested too deeply to parse is rejected. Each is a YAML parse error.
 
 ### Changed
 
@@ -29,6 +34,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Publication review corrections to the website pages and book chapters.
 - Formal roadmap (`formalization/tvl-formal-roadmap.md`) rewritten as a status page: it records which core results exist on paper and in Lean, with their scope, and lists the remaining work without dates.
 - Formal semantics §11.1 lists the core results already proved in Lean and the areas that remain; the proof of Theorem 7.1 counts the size of set and tuple atoms instead of treating every atom as constant time.
+- Float range TVARs are encoded by exact grid index (Definition 3.6) instead of being scaled by a precision of 1000. Only legacy `min`/`max`/`precision` float domains keep the precision scaling.
+- Ordering comparisons (`<`, `<=`, `>`, `>=`) and intervals are allowed on enums whose values are all numbers (T-Cmp, T-Interval); string enums still reject them.
+- The domain model (`tvl.model`) gives a float range inside a tuple component the default step 0.001 when it has no `resolution`, instead of raising an error. The JSON Schema still requires the `resolution` there, so such a module is still a schema error.
+- Repeated enum members are treated as one set member by `tvl-check-structural`; `tvl-validate` still reports `duplicate_domain_value`.
+- `tvl-ci-gate --help` no longer describes the tool as a dry run.
+
+### Fixed
+
+Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
+
+- **(1.5.0)** False UNSAT on strict float comparisons: the strict bound was applied twice, so a satisfiable module such as `t > 0.5`, `t < 0.7` on `{range: [0, 1], resolution: 0.1}` was reported UNSAT. Strict and non-strict bounds are now computed exactly on the grid.
+- **(1.5.0)** False SAT from a resolution that does not divide the range: the checker searched a finer grid than the declared one, so `{range: [0, 1], resolution: 0.3}` with `t >= 0.95` was reported SAT with `t = 1.0`, which is not on the grid `{0, 0.3, 0.6, 0.9}`. Witnesses could also be off-grid when the range did not start at 0.
+- **(1.5.0)** Every CP-SAT status other than a solution was treated as UNSAT. Only `INFEASIBLE` now proves UNSAT; any other status is `structural_solver_inconclusive`.
+- **(1.5.0)** Without OR-Tools, the fallback search could report UNSAT for a satisfiable module (for example `x > 0.3`, `x < 0.31` on a float range). It now reports UNSAT only after trying every value, and otherwise `structural_undecided_without_solver`.
+- **(1.5.0)** Range endpoints and numeric literals were compared as binary64 floats. So `e = 0.100000000000000001` was reported SAT for an enum holding only `0.1`, and `n > 1.5`, `n <= 2` on an `int` range was reported UNSAT. Both are now read exactly from their source text and decided exactly.
+- **(1.5.0)** Tuple grids were built by rounding to 12 decimals and by rounding the step count, which could add a point past the upper bound. Tuple grids now follow Definition 3.6 exactly, and the 10,000-value product limit is checked before any axis is built.
+- **(1.5.0)** Denial of service on loading: merge keys (`<<`) that double at each level, and float literals with a huge exponent such as `1.0e-99999999`, made every tool hang. Both are now rejected quickly by the loading limits above.
+- **(1.5.0)** Duplicate YAML mapping keys were accepted silently (the last value won). They are now rejected as `duplicate_key`, including keys repeated inside a mapping used as a merge source.
+- **(1.5.0)** Very small resolutions could raise `OverflowError`, and `in` sets and negated intervals could expand without a limit; the expansion is now bounded (`structural_expansion_too_large`).
+- **(1.5.0)** Negated strict intervals dropped their endpoints: `not (0 < x < 1)` on `{range: [0, 1], resolution: 0.5}` was reported UNSAT, though `x = 0` and `x = 1` satisfy it.
+- **(1.5.0)** `tvl-compile-runtime`: the local artefact carried every token-map entry, not only the entries the contract uses (`token_map_digest` still covers the whole map), and inputs were read before the schema and lint checks ran (RFC 0003 §11.4.4, §11.4.6, §11.5).
+- **(1.5.0)** A gate check with zero trials returned `Reject`; it now returns `Error` with `zero_trials` (see Added).
+- **(1.5.0)** `tvl-check-operational` rejected `max_spend_usd: 0` (see Changed).
+- Tuple equality between TVARs now checks arity and component types (formal semantics §4.7).
+- **(1.5.0)** `tvl-check-structural` read a reversed range such as `{range: [5, 1]}` as an empty domain and reported UNSAT. The range is malformed (§2.4) and is now refused; `tvl-validate` reports it as `invalid_range_domain`, as before.
 
 ## [1.5.0] - 2026-10-23
 
