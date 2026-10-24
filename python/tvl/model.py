@@ -24,6 +24,10 @@ class ExactLiteralLimitError(ValueError):
     """A numeric literal's mantissa or exponent exceeds the exact-arithmetic bounds."""
 
 
+class InvalidDomainError(ValueError):
+    """A TVAR domain is malformed (e.g. a scalar range whose lower bound exceeds its upper bound)."""
+
+
 class ExactFormatLimitError(ValueError):
     """An exact rational is too large to print within ``MAX_EXACT_STR_DIGITS`` digits."""
 
@@ -485,7 +489,7 @@ def _reject_reversed_range(
     exact_minimum: Optional[Fraction],
     exact_maximum: Optional[Fraction],
 ) -> None:
-    """Raise ``ValueError`` for a scalar range whose lower bound exceeds its upper bound.
+    """Raise ``InvalidDomainError`` for a scalar range whose lower bound exceeds its upper bound.
 
     Semantics §2.4: ``{range: [a, b]}`` is well-formed only if ``a <= b``. Compared exactly
     (source lexemes) when both endpoints are exact, else as binary64.
@@ -495,7 +499,7 @@ def _reject_reversed_range(
     else:
         reversed_range = minimum > maximum
     if reversed_range:
-        raise ValueError(
+        raise InvalidDomainError(
             f"{name}: range domain [{range_vals[0]}, {range_vals[1]}] is empty "
             f"(lower bound exceeds upper bound; a range [a, b] requires a <= b)"
         )

@@ -2418,10 +2418,19 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
         try:
             numeric = _coerce_numeric(value, kind)
         except ValueError:
+            if kind == "int" and isinstance(value, float) and not isinstance(value, bool):
+                # T-Cmp requires the literal to have type elem(int) = int; a fractional
+                # literal has type float, so it is the fractionality that is wrong.
+                message = (
+                    f"Fractional literal {value!r} cannot be compared with int TVAR "
+                    f"'{type_info.name}' (T-Cmp requires an integer literal)"
+                )
+            else:
+                message = f"Expected numeric literal for TVAR '{type_info.name}', got {value!r}"
             issues.append(
                 {
                     "code": "constraint_type_mismatch",
-                    "message": f"Expected numeric literal for TVAR '{type_info.name}', got {value!r}",
+                    "message": message,
                     "path": path,
                     "severity": "error",
                 }

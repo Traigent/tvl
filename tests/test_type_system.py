@@ -139,6 +139,20 @@ class IntTypeTests(unittest.TestCase):
         codes = _collect_codes(issues)
         self.assertNotIn("type_mismatch", codes)
 
+    def test_int_fractional_literal_message_names_fractionality(self) -> None:
+        """T-Cmp needs an int literal for an int TVAR; the message must say so."""
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "n", "type": "int", "domain": {"range": [0, 10]}},
+        ]
+        doc["constraints"] = {"structural": [{"expr": "n > 1.5"}]}
+        issues = [i for i in lint_module(doc) if i["code"] == "constraint_type_mismatch"]
+        self.assertEqual(len(issues), 1)
+        message = issues[0]["message"]
+        self.assertIn("Fractional literal 1.5", message)
+        self.assertIn("int TVAR 'n'", message)
+        self.assertNotIn("Expected numeric literal", message)
+
     def test_int_range_constraint(self) -> None:
         """Int range constraint is well-typed (Atom-Range rule)."""
         doc = _base_module()

@@ -305,6 +305,35 @@ def test_json_structural_parse_error(monkeypatch, capsys, tmp_path) -> None:
     }
 
 
+def _write_reversed(tmp_path: Path) -> Path:
+    path = _write(tmp_path, SAT)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "tvars:\n",
+            "tvars:\n  - name: reversed\n    type: float\n    domain:\n      range: [5, 1]\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_text_reversed_range_exits_2(monkeypatch, capsys, tmp_path) -> None:
+    code, out, err = _run(monkeypatch, capsys, str(_write_reversed(tmp_path)))
+    assert (code, out) == (2, "")
+    assert err.startswith("Error: invalid domain: ")
+    assert "empty" in err and "Traceback" not in err
+
+
+def test_json_reversed_range_exits_2(monkeypatch, capsys, tmp_path) -> None:
+    code, out, err = _run(monkeypatch, capsys, str(_write_reversed(tmp_path)), "--json")
+    assert (code, err) == (2, "")
+    docs = _docs(out)
+    assert len(docs) == 1
+    assert docs[0]["status"] == "error" and docs[0]["ok"] is False
+    assert docs[0]["error"].startswith("invalid domain: ")
+
+
 # --- candidate validation --------------------------------------------------- #
 
 def test_json_candidate_that_repairs_validates_sat(monkeypatch, capsys, tmp_path) -> None:
