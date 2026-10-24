@@ -115,12 +115,16 @@ class Runner:
         ids = [c for c in self.cfg["review"]["checks"]]
         return sum(1 for s in self.au.pair_states(ids) if s["status"] == "reviewed")
 
+    def rc(self, role: str) -> dict:
+        """Model config for a role; confirm falls back to the meta reviewer's config."""
+        return self.cfg.get(role) or self.cfg["meta"]
+
     # -- prompt
     def build_prompt(self, role: str, batch_path: Path) -> str:
         batch = json.loads(batch_path.read_text(encoding="utf-8"))
         checks_text = "\n".join(f"- {c['id']} (v{c['version']}) {c['title']}: {c['instructions']}" for c in batch["checks"])
         tpl = (PROMPTS / f"{role}.md").read_text(encoding="utf-8")
-        reviewer = self.cfg[role]["reviewer"]
+        reviewer = self.rc(role)["reviewer"]
         for k, v in {
             "{reviewer}": reviewer, "{repo}": str(self.au.root), "{batch_path}": str(batch_path.resolve()),
             "{batch_id}": batch["batch_id"], "{checks_text}": checks_text,
@@ -130,7 +134,7 @@ class Runner:
 
     # -- model call
     def call(self, role: str, prompt: str):
-        c = self.cfg[role]
+        c = self.rc(role)
         cmd = [a.replace("{repo}", str(self.au.root)).replace("{prompt}", prompt) for a in c["command"]]
         full = list(self.cfg.get("wrapper") or []) + cmd
         stdin = prompt if c.get("prompt_via") == "stdin" else None
@@ -149,7 +153,7 @@ class Runner:
     def run_batch(self, role: str, batch_path: Path) -> bool:
         batch = json.loads(batch_path.read_text(encoding="utf-8"))
         bid = batch["batch_id"]
-        reviewer = self.cfg[role]["reviewer"]
+        reviewer = self.rc(role)["reviewer"]
         prompt = self.build_prompt(role, batch_path)
         raw_path = self.runs / f"{bid}.raw.txt"
         raw_path.write_text("", encoding="utf-8")
@@ -270,6 +274,22 @@ class Runner:
                     return False
         return True
 
+    def confirm_loop(self) -> int:
+        """Run pending confirm batches (fixer rejections awaiting a second check)."""
+        paths = self.split_meta(self.plan("confirm"))
+        ran = 0
+        for p in paths:
+            if (self.au.audit / "STOP").exists() or (self.args.max_tokens and self.tokens >= self.args.max_tokens):
+                return 0
+            if self.args.max_batches and ran >= self.args.max_batches:
+                p.unlink()
+                continue
+            ran += 1
+            if not self.run_batch("confirm", p) and self.consec_fail >= 2:
+                print(f"two consecutive failures: {self.fail_reason}", file=sys.stderr)
+                return 3
+        return 3 if self.consec_fail >= 2 else 0
+
     def resample_loop(self, resample: str) -> int:
         """Second round: only meta batches for auto-accepted passes; no review batches."""
         checks = [ca.canon_check_id(c) for c in resample.split(",")]
@@ -356,6 +376,7 @@ def main(argv=None, root: Path | None = None, tracked: list[str] | None = None) 
     ap.add_argument("--max-tokens", type=int, default=0, help="stop when logged usage reaches T tokens (0 = no limit)")
     ap.add_argument("--meta-every", type=int, default=0, help="override meta.every_n_review_batches")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--confirm", action="store_true", help="run pending confirm batches for fixer rejections (no review batches)")
     ap.add_argument("--resample", default=None, help="second round: meta-review auto-accepted passes of these checks (comma list); no review batches")
     args = ap.parse_args(argv)
     r = Path(args.root) if args.root else (root or Path(__file__).resolve().parents[2])
@@ -374,6 +395,8 @@ def main(argv=None, root: Path | None = None, tracked: list[str] | None = None) 
         for p in paths:
             p.unlink()
         return 0
+    if args.confirm:
+        return rn.confirm_loop()
     if args.resample:
         return rn.resample_loop(args.resample)
     return rn.loop()

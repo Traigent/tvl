@@ -13,6 +13,10 @@ results = []
 if role == "review":
     for uid, cid in batch["pairs"]:
         results.append({"unit_id": uid, "check_id": cid, "verdict": "pass", "finding": "", "evidence": "no factual claim"})
+elif role == "confirm":
+    for r in batch["reviews"]:
+        results.append({"unit_id": r["unit_id"], "check_id": r["check_id"], "verdict": "agree",
+                        "finding": "agree: fixer is right", "evidence": "e", "corrects": r["record_id"]})
 else:
     for r in batch["reviews"]:
         results.append({"unit_id": r["unit_id"], "check_id": r["check_id"], "verdict": r["verdict"],

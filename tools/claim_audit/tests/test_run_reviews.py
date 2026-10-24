@@ -172,3 +172,22 @@ def test_resample_only_loop(tmp_path, monkeypatch):
     n = len(log(tmp_path))
     assert run(tmp_path, "--resample", "C01", monkeypatch=monkeypatch) == 0
     assert len(log(tmp_path)) == n
+
+
+def test_confirm_runner(tmp_path, monkeypatch):
+    setup(tmp_path, "ok", max_words=100)
+    au = ca.Audit(tmp_path, tracked=sorted(FILES))
+    u = au.units()[1]
+    rev = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                         role="review", reviewer="s", batch_id="b", finding="this finding has more than eight words in it", evidence="x:1")
+    meta = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                          role="meta", reviewer="sol", batch_id="m", finding="agree: still wrong", evidence="x:1", corrects=rev["record_id"])
+    adj = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="pass",
+                         role="adjudicate", reviewer="opus", batch_id="ADJ", finding="text is right", evidence="e",
+                         corrects=meta["record_id"], adjudication="rejected")
+    ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", [rev, meta, adj])
+    assert run(tmp_path, "--confirm", monkeypatch=monkeypatch) == 0
+    lg = log(tmp_path)
+    assert [r["role"] for r in lg] == ["confirm"] and lg[0]["recorded"] and lg[0]["reviewer"] == "sol"
+    s = [x for x in ca.Audit(tmp_path, tracked=sorted(FILES)).pair_states(["TVL-C01"]) if x["unit"]["unit_id"] == u["unit_id"]][0]
+    assert s["confirm"]["reviewer"] == "sol" and s["verdict"] == "pass"

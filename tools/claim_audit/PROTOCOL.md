@@ -69,6 +69,26 @@ Batch ids are `B-<yyyymmddHHMMSS>-<seq>-<role>` and are never reused: every issu
 Edit the text. The edited unit gets a new id, its pairs become pending, and only those are
 re-planned. Run `compact` afterwards to move history records to `audit/ledger-history.jsonl`.
 
+## Fix phase: dispositions, adjudication, confirmation, owner decisions
+1. A fixer works through the open issues and writes a dispositions file: a JSON list of
+   `{unit_id, check_id, path, disposition, note, evidence}` with `disposition` one of `fixed`, `rejected`
+   (the finding is wrong, the text stands) or `owner_decision` (needs the owner).
+2. `claim_audit.py adjudicate <dispositions.json> --reviewer opus` records `rejected` and `owner_decision` items as
+   role `adjudicate` records (`rejected` becomes verdict pass, `owner_decision` verdict issue; `adjudication` field;
+   `corrects` = the closing meta or review record; finding = note). The whole file is rejected, with every error listed,
+   if an item's unit text changed (only `fixed` items may refer to changed units), the pair has no closed issue,
+   or note or evidence is missing. `fixed` items are not recorded: the edited unit gets a new id and is re-reviewed.
+3. A rejection is final only after a second check. `plan --role confirm` lists rejections with no confirm record;
+   a second reviewer (for example "sol") answers agree or disagree per item (`run_reviews.py --confirm` does this with
+   `prompts/confirm.md`) and `record` stores role `confirm` (agree stores verdict pass, disagree stores issue and needs a
+   finding of at least 8 words). Agree turns the pair's verdict into pass. Disagree leaves it an issue. Until confirmed,
+   a rejected pair counts as an open issue.
+4. `owner_decision` pairs are listed in an "Owner decisions" section of `report` (and REPORT.md; `report --format json`
+   returns `{open_issues, owner_decisions}`). They do not count as open issues for the gate, and `coverage --strict`
+   prints them.
+5. Gate: `coverage --strict` passes only when no pair is pending or reviewed and there are no open issues
+   (issues that are neither owner_decision nor a confirmed rejection).
+
 ## Release gate
 `claim_audit.py coverage --strict` exits 0 (every applicable pair closed) and `claim_audit.py report`
 shows zero open issues, or each remaining issue is carried as an explicit owner decision in

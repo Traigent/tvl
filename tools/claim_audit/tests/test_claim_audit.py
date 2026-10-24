@@ -481,3 +481,141 @@ def test_auto_meta_never_supersedes_real_meta(tmp_path):
     ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", [real, auto])  # auto written after the real one
     s = ca.Audit(tmp_path, tracked=sorted(RS_FILES)).pair_states(["TVL-C01"])[0]
     assert s["meta"]["reviewer"] == "sol" and s["verdict"] == "issue" and s["resampled"]
+
+
+# ------------------------------------------------------------------ fix phase: adjudicate / confirm / gate
+AJ_FILES = {"a.md": "Alpha paragraph has plenty of words.\n\nBeta paragraph has plenty of words.\n\nGamma paragraph has plenty of words.\n"}
+ISSUE_F = "this statement clearly contradicts the formal semantics document"
+
+
+def _issue_setup(tmp_path):
+    """Three units, TVL-C01 issue on each (closed by auto-style meta agreeing); other pairs left pending."""
+    make_repo(tmp_path, AJ_FILES)
+    au = ca.Audit(tmp_path, tracked=sorted(AJ_FILES))
+    recs, closing = [], {}
+    for u in au.units():
+        rev = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                             role="review", reviewer="s", batch_id="b", finding=ISSUE_F, evidence="x:1")
+        meta = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                              role="meta", reviewer="sol", batch_id="m", finding="agree: " + ISSUE_F, evidence="x:1", corrects=rev["record_id"])
+        recs += [rev, meta]
+        closing[u["start_line"]] = (u, meta)
+    ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", recs)
+    return closing
+
+
+def _adj(tmp_path, items, reviewer="opus"):
+    f = tmp_path / "disp.json"
+    f.write_text(json.dumps(items))
+    return ca.main(["--root", str(tmp_path), "adjudicate", str(f), "--reviewer", reviewer], tracked=sorted(AJ_FILES))
+
+
+def _item(u, disp, **kw):
+    d = {"unit_id": u["unit_id"], "check_id": "TVL-C01", "path": u["path"], "disposition": disp, "note": "the text is right", "evidence": "x.md:5"}
+    d.update(kw)
+    return d
+
+
+def _states(tmp_path):
+    return {s["unit"]["start_line"]: s for s in ca.Audit(tmp_path, tracked=sorted(AJ_FILES)).pair_states(["TVL-C01"])}
+
+
+def test_adjudicate_records_rejected_and_owner_not_fixed(tmp_path):
+    cl = _issue_setup(tmp_path)
+    (u1, m1), (u3, m3), (u5, _) = cl[1], cl[3], cl[5]
+    assert _adj(tmp_path, [_item(u1, "rejected"), _item(u3, "owner_decision"), _item(u5, "fixed")]) == 0
+    led = [r for r in ca.read_jsonl(tmp_path / "audit" / "ledger.jsonl") if r["role"] == "adjudicate"]
+    assert len(led) == 2
+    by = {r["adjudication"]: r for r in led}
+    assert by["rejected"]["verdict"] == "pass" and by["rejected"]["corrects"] == m1["record_id"]
+    assert by["owner_decision"]["verdict"] == "issue" and by["owner_decision"]["corrects"] == m3["record_id"]
+    assert by["rejected"]["finding"] == "the text is right" and by["rejected"]["evidence"] == "x.md:5"
+
+
+def test_adjudicate_rejects_whole_file_on_error(tmp_path, capsys):
+    cl = _issue_setup(tmp_path)
+    u1, u3 = cl[1][0], cl[3][0]
+    bad = [_item(u1, "rejected"), _item(u3, "rejected", unit_id="deadbeefdeadbeef"), _item(u3, "owner_decision", note=""),
+           _item(u3, "weird")]
+    assert _adj(tmp_path, bad) == 1
+    err = capsys.readouterr().err
+    assert err.count("  - ") == 3
+    assert not [r for r in ca.read_jsonl(tmp_path / "audit" / "ledger.jsonl") if r["role"] == "adjudicate"]
+    # a fixed item whose unit changed/unknown is fine
+    assert _adj(tmp_path, [_item(u1, "fixed", unit_id="0000000000000000")]) == 0
+
+
+def test_rejection_open_until_confirmed_then_pass(tmp_path, capsys):
+    cl = _issue_setup(tmp_path)
+    u1 = cl[1][0]
+    _adj(tmp_path, [_item(u1, "rejected")])
+    assert _states(tmp_path)[1]["verdict"] == "issue"            # unconfirmed rejection still counts as open
+    assert len([i for i in ca.open_issues(ca.Audit(tmp_path, tracked=sorted(AJ_FILES))) if i["unit_id"] == u1["unit_id"]]) == 1
+    ca.main(["--root", str(tmp_path), "plan", "--role", "confirm"], tracked=sorted(AJ_FILES))
+    b = json.loads(last_batch(tmp_path).read_text())
+    assert b["role"] == "confirm" and b["pairs"] == [[u1["unit_id"], "TVL-C01"]]
+    adj_id = b["reviews"][0]["record_id"]
+    res = {"unit_id": u1["unit_id"], "check_id": "TVL-C01", "verdict": "disagree", "finding": "short", "evidence": "e", "corrects": adj_id}
+    rp = tmp_path / "c.json"
+    def sub(r):
+        rp.write_text(json.dumps({"batch_id": b["batch_id"], "reviewer": "sol", "role": "confirm", "results": [r]}))
+        return ca.main(["--root", str(tmp_path), "record", str(rp)], tracked=sorted(AJ_FILES))
+    assert sub(res) == 1                                           # disagree needs a real finding
+    assert sub(dict(res, verdict="agree", finding="agree: fixer is right", corrects="nope")) == 1
+    assert sub(dict(res, verdict="disagree", finding="the original issue stands because the semantics file says otherwise")) == 0
+    s = _states(tmp_path)[1]
+    assert s["verdict"] == "issue" and s["confirm"]["verdict"] == "issue"       # disagree: stays issue
+    # a fresh adjudication replaces; confirm again with agree
+    _adj(tmp_path, [_item(u1, "rejected", note="the text is right, see section")])
+    assert _states(tmp_path)[1]["confirm"] is None
+    ca.main(["--root", str(tmp_path), "plan", "--role", "confirm"], tracked=sorted(AJ_FILES))
+    b = json.loads(last_batch(tmp_path).read_text())
+    res = {"unit_id": u1["unit_id"], "check_id": "TVL-C01", "verdict": "agree", "finding": "agree: rejection is right", "evidence": "e", "corrects": b["reviews"][0]["record_id"]}
+    rp.write_text(json.dumps({"batch_id": b["batch_id"], "reviewer": "sol", "role": "confirm", "results": [res]}))
+    assert ca.main(["--root", str(tmp_path), "record", str(rp)], tracked=sorted(AJ_FILES)) == 0
+    assert _states(tmp_path)[1]["verdict"] == "pass"
+    assert u1["unit_id"] not in [i["unit_id"] for i in ca.open_issues(ca.Audit(tmp_path, tracked=sorted(AJ_FILES)))]
+    # nothing left to confirm
+    n = len(list((tmp_path / "audit" / "batches").glob("*.json")))
+    ca.main(["--root", str(tmp_path), "plan", "--role", "confirm"], tracked=sorted(AJ_FILES))
+    assert len(list((tmp_path / "audit" / "batches").glob("*.json"))) == n
+
+
+def test_owner_decision_reported_separately_and_not_open(tmp_path, capsys):
+    cl = _issue_setup(tmp_path)
+    u3 = cl[3][0]
+    _adj(tmp_path, [_item(u3, "owner_decision", note="needs the owner to pick wording")])
+    au = ca.Audit(tmp_path, tracked=sorted(AJ_FILES))
+    assert u3["unit_id"] not in [i["unit_id"] for i in ca.open_issues(au)]
+    od = ca.owner_decisions(au)
+    assert [o["unit_id"] for o in od] == [u3["unit_id"]]
+    capsys.readouterr()
+    ca.main(["--root", str(tmp_path), "report", "--format", "json"], tracked=sorted(AJ_FILES))
+    j = json.loads(capsys.readouterr().out)
+    assert len(j["owner_decisions"]) == 1 and len(j["open_issues"]) == 2
+    ca.main(["--root", str(tmp_path), "report", "--write"], tracked=sorted(AJ_FILES))
+    assert "# Owner decisions" in (tmp_path / "audit" / "REPORT.md").read_text()
+
+
+def test_strict_gate_needs_no_open_issues(tmp_path, capsys):
+    """Single check, single unit: closed pair with an issue fails strict; owner_decision passes and is printed."""
+    files = {"a.md": "Alpha paragraph has plenty of words.\n"}
+    make_repo(tmp_path, files)
+    cfg = yaml.safe_load((tmp_path / "audit" / "checks.yml").read_text())
+    cfg["checks"] = [c for c in cfg["checks"] if c["id"] == "TVL-C01"]
+    (tmp_path / "audit" / "checks.yml").write_text(yaml.safe_dump(cfg))
+    au = ca.Audit(tmp_path, tracked=sorted(files))
+    u = au.units()[0]
+    rev = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                         role="review", reviewer="s", batch_id="b", finding=ISSUE_F, evidence="x:1")
+    meta = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                          role="meta", reviewer="sol", batch_id="m", finding="agree: " + ISSUE_F, evidence="x:1", corrects=rev["record_id"])
+    ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", [rev, meta])
+    run = lambda: ca.main(["--root", str(tmp_path), "coverage", "--strict"], tracked=sorted(files))
+    assert run() == 1
+    f = tmp_path / "d.json"
+    f.write_text(json.dumps([{"unit_id": u["unit_id"], "check_id": "TVL-C01", "path": "a.md", "disposition": "owner_decision", "note": "owner picks", "evidence": "e"}]))
+    assert ca.main(["--root", str(tmp_path), "adjudicate", str(f)], tracked=sorted(files)) == 0
+    capsys.readouterr()
+    assert run() == 0
+    assert "OWNER DECISION" in capsys.readouterr().out

@@ -22,6 +22,8 @@ import yaml
 KINDS = ("prose", "code", "table", "heading")
 VERDICTS = ("pass", "issue", "na")
 ROLES = ("review", "meta")
+PLAN_ROLES = ROLES + ("confirm",)
+ADJUDICATIONS = ("rejected", "owner_decision")
 BANNED = [
     r"guaranteed",
     r"provably[\s-]+safe",
@@ -398,6 +400,13 @@ class Audit:
                     metas.setdefault(r["corrects"], r)  # an auto-meta never replaces a real one
                 else:
                     metas[r["corrects"]] = r  # latest real meta supersedes any auto-meta
+        adjs: dict[str, dict] = {}
+        confs: dict[str, dict] = {}
+        for r in led:
+            if r.get("role") == "adjudicate" and r.get("corrects"):
+                adjs[r["corrects"]] = r
+            elif r.get("role") == "confirm" and r.get("corrects"):
+                confs[r["corrects"]] = r
         out = []
         for u in self.units():
             for cid, c in checks.items():
@@ -408,7 +417,8 @@ class Audit:
                 if c["exclude_paths"] and glob_match(u["path"], c["exclude_paths"]):
                     continue
                 rev = reviews.get((u["unit_id"], u["text_hash"], cid, c["version"]))
-                st = {"unit": u, "check": c, "review": rev, "meta": None, "status": "pending", "verdict": None, "disputed": False, "resampled": False}
+                st = {"unit": u, "check": c, "review": rev, "meta": None, "status": "pending", "verdict": None, "disputed": False, "resampled": False,
+                      "adjudication": None, "adj": None, "confirm": None, "owner_decision": False}
                 if rev:
                     st["verdict"] = rev["verdict"]
                     if c["kind"] == "script":
@@ -423,6 +433,17 @@ class Audit:
                             st["resampled"] = meta["reviewer"] != "sampling" and rev["record_id"] in autos
                         else:
                             st["status"] = "reviewed"
+                    if st["verdict"] == "issue":
+                        closing = st["meta"] or rev
+                        adj = adjs.get(closing["record_id"])
+                        if adj and adj["text_hash"] == u["text_hash"]:
+                            st["adjudication"], st["adj"] = adj["adjudication"], adj
+                            if adj["adjudication"] == "owner_decision":
+                                st["owner_decision"] = True
+                            else:
+                                st["confirm"] = confs.get(adj["record_id"])
+                                if st["confirm"] and st["confirm"]["verdict"] == "pass":
+                                    st["verdict"] = "pass"
                 out.append(st)
         return out
 
@@ -441,6 +462,8 @@ def make_record(**kw) -> dict:
         "evidence": kw.get("evidence", "") or "",
         "corrects": kw.get("corrects"),
     }
+    if kw.get("adjudication") is not None:
+        rec["adjudication"] = kw["adjudication"]
     if kw.get("sample_mod") is not None:  # only new auto-meta records; old records keep their ids
         rec["sample_mod"] = kw["sample_mod"]
     rec["record_id"] = sha(json.dumps(rec, sort_keys=True, ensure_ascii=False))[:16]
@@ -592,7 +615,38 @@ def cut_batches(units: list[dict], max_words: int) -> list[list[dict]]:
     return batches
 
 
+def cmd_plan_confirm(au: Audit, args) -> int:
+    checks = au.checks()
+    sel = [s for s in au.pair_states() if s["adjudication"] == "rejected" and s["confirm"] is None]
+    by_unit: "OrderedDict[str, list]" = OrderedDict()
+    for s in sel:
+        by_unit.setdefault(s["unit"]["unit_id"], []).append(s)
+    units = [v[0]["unit"] for v in by_unit.values()]
+    print(f"rejections awaiting confirmation: {len(sel)}")
+    for chunk in cut_batches(units, args.max_words):
+        ids = {u["unit_id"] for u in chunk}
+        rows = [s for s in sel if s["unit"]["unit_id"] in ids]
+        bid = next_batch_id(au, "confirm")
+        cids = sorted({s["check"]["id"] for s in rows}, key=list(checks).index)
+        reviews = []
+        for s in rows:
+            closing = s["meta"] or s["review"]
+            reviews.append(dict(s["adj"], closing_verdict=closing["verdict"], closing_finding=closing["finding"],
+                                closing_evidence=closing["evidence"]))
+        batch = {
+            "batch_id": bid, "role": "confirm",
+            "checks": [{"id": c, "version": checks[c]["version"], "title": checks[c]["title"], "instructions": checks[c]["instructions"]} for c in cids],
+            "pairs": [[s["unit"]["unit_id"], s["check"]["id"]] for s in rows], "reviews": reviews, "units": chunk,
+        }
+        pth = au.audit / "batches" / f"{bid}.json"
+        pth.write_text(json.dumps(batch, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(pth)
+    return 0
+
+
 def cmd_plan(au: Audit, args) -> int:
+    if args.role == "confirm":
+        return cmd_plan_confirm(au, args)
     checks = au.checks()
     resample = [canon_check_id(c) for c in args.resample.split(",")] if getattr(args, "resample", None) else None
     if resample and args.role != "meta":
@@ -697,6 +751,101 @@ def cmd_plan(au: Audit, args) -> int:
     return 0
 
 
+def validate_confirm(au: Audit, data: dict, batch: dict) -> tuple[list[dict], list[str]]:
+    errs: list[str] = []
+    if not str(data["reviewer"]).strip():
+        errs.append("empty reviewer")
+    checks = au.checks()
+    states = {(s["unit"]["unit_id"], s["check"]["id"]): s for s in au.pair_states()}
+    pairs = {tuple(p) for p in batch.get("pairs", [])}
+    batch_adj = {r["record_id"] for r in batch.get("reviews", [])}
+    recs, seen = [], set()
+    for i, r in enumerate(data["results"]):
+        tag = f"results[{i}]"
+        key = (r.get("unit_id"), r.get("check_id"))
+        if key not in pairs:
+            errs.append(f"{tag}: pair {key} is not in batch")
+            continue
+        if key in seen:
+            errs.append(f"{tag}: duplicate result for {key}")
+            continue
+        seen.add(key)
+        st = states.get(key)
+        verdict = {"agree": "pass", "disagree": "issue", "pass": "pass", "issue": "issue"}.get(r.get("verdict"))
+        if verdict is None:
+            errs.append(f"{tag}: verdict must be agree or disagree")
+            continue
+        corrects = r.get("corrects")
+        if st is None or not st["adj"] or st["adjudication"] != "rejected" or corrects != st["adj"]["record_id"] or corrects not in batch_adj:
+            errs.append(f"{tag}: corrects {corrects!r} is not the current rejection adjudication for this pair")
+            continue
+        finding = (r.get("finding") or "").strip()
+        if not finding or (verdict == "issue" and len(finding.split()) < 8):
+            errs.append(f"{tag}: finding required (disagree needs at least 8 words)")
+            continue
+        recs.append(make_record(
+            unit_id=key[0], text_hash=st["unit"]["text_hash"], check_id=key[1], check_version=st["check"]["version"],
+            verdict=verdict, role="confirm", reviewer=data["reviewer"], batch_id=data["batch_id"], finding=finding,
+            evidence=(r.get("evidence") or "").strip(), corrects=corrects))
+    missing = pairs - seen
+    if missing and not errs:
+        pass  # partial confirmation batches are allowed; unconfirmed pairs stay open
+    return recs, errs
+
+
+def cmd_adjudicate(au: Audit, args) -> int:
+    items = json.loads(Path(args.dispositions).read_text(encoding="utf-8"))
+    errs: list[str] = []
+    if not isinstance(items, list):
+        print("REJECTED: dispositions file must be a JSON list", file=sys.stderr)
+        return 1
+    states = {(s["unit"]["unit_id"], s["check"]["id"]): s for s in au.pair_states()}
+    recs, seen = [], set()
+    for i, it in enumerate(items):
+        tag = f"item[{i}]"
+        disp = it.get("disposition")
+        if disp not in ("fixed", "rejected", "owner_decision"):
+            errs.append(f"{tag}: disposition must be fixed, rejected or owner_decision")
+            continue
+        if disp == "fixed":
+            continue  # the edited unit has a new id and is re-reviewed
+        key = (it.get("unit_id"), it.get("check_id"))
+        if key in seen:
+            errs.append(f"{tag}: duplicate item for {key}")
+            continue
+        seen.add(key)
+        st = states.get(key)
+        if st is None:
+            errs.append(f"{tag}: unit {key[0]} / check {key[1]} is not current (unit text changed or unknown); only 'fixed' items may refer to changed units")
+            continue
+        if it.get("path") and it["path"] != st["unit"]["path"]:
+            errs.append(f"{tag}: path {it['path']} does not match unit path {st['unit']['path']}")
+            continue
+        if st["status"] == "pending" or st["verdict"] != "issue" and not st["adjudication"]:
+            errs.append(f"{tag}: pair has no closed issue to adjudicate (status {st['status']}, verdict {st['verdict']})")
+            continue
+        if not (it.get("note") or "").strip() or not (it.get("evidence") or "").strip():
+            errs.append(f"{tag}: note and evidence are required")
+            continue
+        closing = st["meta"] or st["review"]
+        if st["adj"] and st["adj"]["adjudication"] == disp and st["adj"]["corrects"] == closing["record_id"] and st["adj"]["finding"] == it["note"].strip():
+            continue  # idempotent re-submission
+        recs.append(make_record(
+            unit_id=key[0], text_hash=st["unit"]["text_hash"], check_id=key[1], check_version=st["check"]["version"],
+            verdict="pass" if disp == "rejected" else "issue", role="adjudicate", reviewer=args.reviewer,
+            batch_id=f"ADJ-{Path(args.dispositions).stem}", finding=it["note"].strip(), evidence=it["evidence"].strip(),
+            corrects=closing["record_id"], adjudication=disp))
+    if errs:
+        print(f"REJECTED {args.dispositions}: {len(errs)} error(s)", file=sys.stderr)
+        for e in errs:
+            print("  - " + e, file=sys.stderr)
+        return 1
+    append_jsonl(au.audit / "ledger.jsonl", recs)
+    print(f"adjudicated {len(recs)} items ({sum(1 for r in recs if r['adjudication'] == 'rejected')} rejected, "
+          f"{sum(1 for r in recs if r['adjudication'] == 'owner_decision')} owner_decision); fixed items are not recorded")
+    return 0
+
+
 def validate_results(au: Audit, data: dict) -> tuple[list[dict], list[str]]:
     errs: list[str] = []
     for k in ("batch_id", "reviewer", "role", "results"):
@@ -708,6 +857,8 @@ def validate_results(au: Audit, data: dict) -> tuple[list[dict], list[str]]:
     if not bpath.exists():
         return [], [f"unknown batch {data['batch_id']}"]
     batch = json.loads(bpath.read_text(encoding="utf-8"))
+    if data["role"] == "confirm" and batch["role"] == "confirm":
+        return validate_confirm(au, data, batch)
     if data["role"] not in ROLES:
         errs.append(f"bad role {data['role']!r}")
     elif data["role"] != batch["role"]:
@@ -908,6 +1059,8 @@ def coverage_data(au: Audit) -> dict:
         "script_closed": sum(1 for s in states if s["status"] == "closed" and s["check"]["kind"] == "script"),
         "disputed": sum(1 for s in states if s["disputed"]),
         "overturn": overturn,
+        "open_issues": len(open_issues(au)),
+        "owner_decisions": len(owner_decisions(au)),
         "all_closed": total > 0 and tot["closed"] == total,
     }
 
@@ -939,17 +1092,34 @@ def cmd_coverage(au: Audit, args) -> int:
             else:
                 print(f"{cid:10s} {o['meta_sample_mod']:4d} {'0/0':>9s} {'n/a':>7s} {'n/a':>8s} {0:8d} {0:9d} {o['auto_accepted_passes']:12d} n/a")
     if args.strict:
+        for r in owner_decisions(au):
+            print(f"OWNER DECISION: {r['path']}:{r['start_line']} {r['check_id']}: {r['finding']}")
         if not d["all_closed"]:
             print("STRICT: FAIL, not every applicable pair is closed", file=sys.stderr)
             return 1
-        print("STRICT: OK")
+        if d["open_issues"]:
+            print(f"STRICT: FAIL, {d['open_issues']} open issues (not owner_decision, not rejected+confirmed)", file=sys.stderr)
+            return 1
+        print(f"STRICT: OK ({d['owner_decisions']} owner decisions pending)")
     return 0
+
+
+def owner_decisions(au: Audit) -> list[dict]:
+    out = []
+    for s in au.pair_states():
+        if s["owner_decision"] and s["verdict"] == "issue":
+            u = s["unit"]
+            out.append({"path": u["path"], "start_line": u["start_line"], "end_line": u["end_line"], "unit_id": u["unit_id"],
+                        "check_id": s["check"]["id"], "finding": s["adj"]["finding"], "evidence": s["adj"]["evidence"],
+                        "issue": (s["meta"] or s["review"])["finding"]})
+    out.sort(key=lambda r: (r["path"], r["start_line"], r["check_id"]))
+    return out
 
 
 def open_issues(au: Audit) -> list[dict]:
     out = []
     for s in au.pair_states():
-        if s["status"] != "pending" and s["verdict"] == "issue":
+        if s["status"] != "pending" and s["verdict"] == "issue" and not s["owner_decision"]:
             rec = s["meta"] or s["review"]
             u = s["unit"]
             out.append(
@@ -958,13 +1128,15 @@ def open_issues(au: Audit) -> list[dict]:
                     "check_id": s["check"]["id"], "status": s["status"], "finding": rec["finding"],
                     "evidence": rec["evidence"] or (s["review"]["evidence"] if s["review"] else ""),
                     "disputed": s["disputed"], "review_finding": s["review"]["finding"] if s["review"] else "",
+                    "rejection": ("unconfirmed" if s["adjudication"] == "rejected" and not s["confirm"]
+                                  else "confirm_disagreed" if s["adjudication"] == "rejected" else None),
                 }
             )
     out.sort(key=lambda r: (r["path"], r["start_line"], r["check_id"]))
     return out
 
 
-def render_report_md(issues: list[dict]) -> str:
+def render_report_md(issues: list[dict], owner: list[dict] | None = None) -> str:
     lines = ["# TVL claim audit: open issues", "", f"Open issues: {len(issues)}", ""]
     cur = None
     for r in issues:
@@ -975,15 +1147,25 @@ def render_report_md(issues: list[dict]) -> str:
         lines.append(f"- lines {r['start_line']}-{r['end_line']}, {r['check_id']}, {r['status']}{flag}")
         lines.append(f"  - finding: {r['finding']}")
         lines.append(f"  - evidence: {r['evidence']}")
+        if r.get("rejection"):
+            lines.append(f"  - fixer rejected this finding; rejection is {r['rejection'].replace('_', ' ')}")
+    lines += ["", "# Owner decisions", "", f"Owner decisions (do not block the gate): {len(owner or [])}", ""]
+    for r in owner or []:
+        lines.append(f"- {r['path']} lines {r['start_line']}-{r['end_line']}, {r['check_id']}")
+        lines.append(f"  - issue: {r['issue']}")
+        lines.append(f"  - fixer note: {r['finding']}")
+        lines.append(f"  - evidence: {r['evidence']}")
     return "\n".join(lines) + "\n"
 
 
 def cmd_report(au: Audit, args) -> int:
     issues = open_issues(au)
-    body = json.dumps(issues, indent=1, ensure_ascii=False) + "\n" if args.format == "json" else render_report_md(issues)
+    owner = owner_decisions(au)
+    body = (json.dumps({"open_issues": issues, "owner_decisions": owner}, indent=1, ensure_ascii=False) + "\n"
+            if args.format == "json" else render_report_md(issues, owner))
     print(body, end="")
     if args.write:
-        (au.audit / "REPORT.md").write_text(render_report_md(issues), encoding="utf-8")
+        (au.audit / "REPORT.md").write_text(render_report_md(issues, owner), encoding="utf-8")
     return 0
 
 
@@ -1014,7 +1196,7 @@ def main(argv: list[str] | None = None, root: Path | None = None, tracked: list[
     p.add_argument("--checks", default=None)
     p.add_argument("--max-words", type=int, default=3500)
     p.add_argument("--paths", default=None)
-    p.add_argument("--role", choices=ROLES, default="review")
+    p.add_argument("--role", choices=PLAN_ROLES, default="review")
     p.add_argument("--resample", default=None, help="second round: comma list of checks whose auto-accepted passes get a real meta review (needs --role meta)")
     p = sub.add_parser("record")
     p.add_argument("results")
@@ -1026,12 +1208,15 @@ def main(argv: list[str] | None = None, root: Path | None = None, tracked: list[
     p.add_argument("--format", choices=("md", "json"), default="md")
     p.add_argument("--write", action="store_true")
     sub.add_parser("compact")
+    p = sub.add_parser("adjudicate")
+    p.add_argument("dispositions")
+    p.add_argument("--reviewer", default="opus")
     args = ap.parse_args(argv)
     r = Path(args.root) if args.root else (root or Path(__file__).resolve().parents[2])
     au = Audit(r, tracked)
     fn = {
         "inventory": cmd_inventory, "plan": cmd_plan, "record": cmd_record, "run-script-checks": cmd_run_script_checks,
-        "coverage": cmd_coverage, "report": cmd_report, "compact": cmd_compact,
+        "coverage": cmd_coverage, "adjudicate": cmd_adjudicate, "report": cmd_report, "compact": cmd_compact,
     }[args.cmd]
     return fn(au, args)
 
