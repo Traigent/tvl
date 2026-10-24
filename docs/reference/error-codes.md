@@ -215,7 +215,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 ### `structural_ill_typed_atom`
 - **Severity**: error
 - **Reported by**: `tvl-check-structural`
-- **Description**: An atom has no well-defined truth value under the typing rules (formal semantics T-Eq, T-Neq, T-Cmp, T-TVarEq), so the checker does not decide the module. Cases: the identifier is not a declared TVAR; an unsupported operator; ordering (`<`, `<=`, `>`, `>=`) two TVARs; comparing TVARs of different element classes (numeric, `bool`, non-numeric enum); ordering a non-numeric operand; comparing a numeric TVAR with a non-numeric literal; comparing a `bool` TVAR with a non-bool literal. `tvl-validate` reports most of these first as `undeclared_tvar` or `constraint_type_mismatch`. The element-class check is coarser than T-TVarEq, which requires equal element types: the checker treats `int` and `float` as one numeric class, so `int_var = float_var` is decided rather than reported (the lint accepts it too), and it accepts any two enum-domain TVARs here, leaving tuple arity to the lint's `constraint_type_mismatch`.
+- **Description**: An atom has no well-defined truth value under the typing rules T-Eq, T-Neq, T-Cmp and T-TVarEq ([formal semantics §4.6](../../formalization/tvl-formal-semantics.md#46-scalar-atom-typing-rules)), so the checker does not decide the module. Cases: the identifier is not a declared TVAR; an unsupported operator; ordering (`<`, `<=`, `>`, `>=`) two TVARs; comparing TVARs of different element classes (numeric, `bool`, non-numeric enum); ordering a non-numeric operand; comparing a numeric TVAR with a non-numeric literal; comparing a `bool` TVAR with a non-bool literal. `tvl-validate` reports most of these first as `undeclared_tvar` or `constraint_type_mismatch`. The element-class check is coarser than T-TVarEq, which requires equal element types: the checker treats `int` and `float` as one numeric class, so `int_var = float_var` is decided here rather than reported (`tvl-validate` rejects it as `constraint_type_mismatch`), and it accepts any two enum-domain TVARs here, leaving tuple arity to the lint's `constraint_type_mismatch`.
 - **Example**: `expr: "use_cot = 1"` where `use_cot` is `bool` (a bool never equals the number 1). The message is `atom 'use_cot == 1' in 'use_cot = 1' compares a bool TVAR with a non-bool literal (T-Eq/T-Neq).`
 - **Remediation**: Fix the atom: declare the TVAR, or compare it with a literal of its own type (`use_cot = true`).
 
@@ -968,7 +968,7 @@ These diagnostics indicate that the module uses features outside the formally ve
 ### `inadequate_precision`
 - **Severity**: warning
 - **Code**: W6003
-- **Description**: A float domain is not aligned to the current precision factor: its range resolution is not a whole multiple of 1/P, or some of its values collide when scaled by P.
+- **Description**: A float domain is not precision-aligned to the current precision factor P (Definition 8.6): some value `v` of the domain has `v·P` not an integer. A range has the values `a + k·r`, so it is checked through its lower bound `a` and its resolution `r` (0.001 when omitted); when two values also collide after scaling, the message names them.
 - **Example**: `domain: { range: [0.0001, 0.001], resolution: 0.0001 }` with precision P=1000
 - **Impact**: The preconditions of SMT encoding soundness (Theorem 8.1) are not met, so the theorem does not cover this module; constraint checking may be incorrect.
 - **Formal Property**: Domain is not precision-aligned per Definition 8.6.
@@ -1036,7 +1036,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `invalid_budget_max_trials` | error | Operational | max_trials not positive |
 | `invalid_budget_max_spend` | error | Operational | max_spend_usd negative |
 | `invalid_budget_max_wallclock` | error | Operational | max_wallclock_s not positive |
-| `unsupported_derived_expression` | error | Operational | Derived constraint not `symbol OP value` |
+| `unsupported_derived_expression` | error | Operational | Derived constraint not `LinExpr OP Number` (a linear expression compared with a number) |
 | `unknown_derived_symbol` | error | Operational | env.context symbol not defined |
 | `non_numeric_derived_symbol` | error | Operational | env.context symbol not numeric |
 | `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
@@ -1128,7 +1128,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `unverifiable_registry_domain` | warning | Formal | Registry domain used |
 | `unverifiable_callable_type` | warning | Formal | Callable type used |
 | `outside_proved_subset` | info | Formal | cvars, policies or composites used (not in the Lean proofs) |
-| `inadequate_precision` | warning | Formal | Float precision too low |
+| `inadequate_precision` | warning | Formal | Float domain not aligned to precision P (Definition 8.6) |
 
 ---
 

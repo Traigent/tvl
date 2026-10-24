@@ -85,8 +85,8 @@ tvl-check-structural spec/examples/book/pilot/rag-support-bot.tvl.yml --json --c
     <table>
       <thead><tr><th>Sample size n</th><th>What you can say</th></tr></thead>
       <tbody>
-        <tr><td>10</td><td>far too few samples to say anything</td></tr>
-        <tr><td>50</td><td>enough for a rough impression only</td></tr>
+        <tr><td>10</td><td>too few samples to say much, unless the observed rate is far from the threshold</td></tr>
+        <tr><td>50</td><td>enough for a rough impression, or a decision when the observed rate is far from the threshold</td></tr>
         <tr><td>200</td><td>often enough for a cautious decision, if the observed rate is clear of the threshold</td></tr>
         <tr><td>800</td><td>often enough for a confident decision, unless the observed rate sits close to the threshold</td></tr>
       </tbody>

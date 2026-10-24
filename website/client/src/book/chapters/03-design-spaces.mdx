@@ -51,7 +51,7 @@ The table sums up the six type forms a module can declare. (The formal semantics
 | `bool`: `use_retrieval` | the list `[true, false]` | `=` `!=` | yes |
 | `int`: `retrieval_k`, `max_tool_calls` | `range: [a, b]`, every whole number from a to b; or `set:` with a list | `=` `!=` `<` `<=` `>` `>=` `in` | yes |
 | `float`: `temperature` | `range: [a, b]` with an optional `resolution` (the step; 0.001 if omitted) | the same as `int`; `=` gives a warning | yes |
-| `enum[str]`, `enum[int]`, `enum[float]`: `model` | a list of values | `=` `!=` `in` | yes |
+| `enum[str]`, `enum[int]`, `enum[float]`: `model` | a list of values | `=` `!=` `in`; also `<` `<=` `>` `>=` when every value is a number | yes |
 | `tuple[...]`: `chunking` | `components:`, one domain per position | `=` `!=` `in`, with values such as `(256, 0)` | yes |
 | `callable[P]`: `reranker` | `registry:`, the name of an outside catalogue, with an optional `filter` and `version` | `=` `!=` `in` | **no** |
 

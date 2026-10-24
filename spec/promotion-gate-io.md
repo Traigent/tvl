@@ -222,6 +222,8 @@ evidence:
 
 ### 3.1 Test Type Decision Tree
 
+This tree is for standard (non-banded) objectives; banded objectives follow §3.4.
+
 ```
 Does either arm have fewer than 2 observations (n < 2)?
 ├── YES: no variance estimate; the objective result is "inconclusive" (no test is run)
@@ -287,6 +289,16 @@ t = (σᵢ × (x̄_candidate - x̄_incumbent) - εᵢ) / SE_pooled
 TOST (two one-sided tests) shows that a mean lies inside a band: it runs one one-sided test
 against each band edge and passes only when both reject (formal semantics §9.5).
 
+For a band `[L, U]`, the candidate's statistics decide the result. They must be a finite mean, a whole-number `n` and, when `n ≥ 2`, a
+finite non-negative `std`; anything else is `inconclusive`.
+
+- **Point estimate outside the band** (`mean < L` or `mean > U`, with at least one observation): `out_of_band`, and the
+  decision is `Reject` (§5.2), even when `n < 2`.
+- **`n < 2` with the point estimate inside the band, or no observations**: no variance estimate, no test is run, and
+  the result is `inconclusive`.
+- **`std = 0`** (`n ≥ 2`): each test statistic is +∞ or −∞ by the sign of its numerator. A mean strictly inside
+  `(L, U)` passes; a mean exactly on `L` or `U` gives `t = 0` for that edge, so the result is `inconclusive`.
+
 For banded objective with target [L, U] and significance α:
 
 **Important**: TOST uses **(1 - 2α) confidence interval**, not (1 - α).
@@ -306,7 +318,8 @@ p₂ = P(T > t₂)  # One-sided
 
 **Pass condition**: max(p₁, p₂) < α
 
-**Equivalently**: (1 - 2α) CI for μ lies entirely within [L, U]
+**Equivalently**: the (1 - 2α) CI for μ lies strictly inside the open interval (L, U). A CI that touches a band
+edge does not pass; with `std = 0` the CI is the single point `mean`, so a mean exactly on an edge does not pass.
 
 ### 3.5 Clopper-Pearson for Chance Constraints
 
@@ -462,7 +475,7 @@ Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough obse
 
 ### 7.2 Edge Cases
 
-- **Empty or single-sample arm** (fewer than 2 observations in either arm): no variance can be estimated, so no t-test runs and the objective result is `inconclusive`; with every other check passing, the decision is `NoDecision`. `tvl-ci-gate` refuses a bundle whose objective has an empty `samples` list and no `mean/std/n` (`missing_statistical_evidence`, exit 2) before the gate runs.
+- **Empty or single-sample arm** (fewer than 2 observations in either arm): no variance can be estimated, so no t-test runs and the objective result is `inconclusive`; with every other check passing, the decision is `NoDecision`. For a banded objective, a single observation outside the band is still `out_of_band` and gives `Reject` (§3.4). `tvl-ci-gate` refuses a bundle whose objective has an empty `samples` list and no `mean/std/n` (`missing_statistical_evidence`, exit 2) before the gate runs.
 - **All objectives identical**: NoDecision (no superiority)
 - **No objectives defined**: the module schema requires at least one objective, so such a module is rejected at validation. Called directly in Python with no objectives and no failing checks, the gate returns `NoDecision`.
 

@@ -59,6 +59,11 @@ Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 releas
 - **(1.5.0)** `tvl-check-operational` rejected `max_spend_usd: 0` (see Changed).
 - Tuple equality between TVARs now checks arity and component types (formal semantics §4.7).
 - **(1.5.0)** `tvl-check-structural` read a reversed range such as `{range: [5, 1]}` as an empty domain and reported UNSAT. The range is malformed (§2.4) and is now refused; `tvl-validate` reports it as `invalid_range_domain`, as before.
+- **(1.5.0)** Equality between two TVARs now follows T-TVarEq exactly: both sides need the same element type, with no numeric widening. `tvl-validate` now rejects `int_var = float_var` and `enum[str]` against `enum[int]` as `constraint_type_mismatch`, and accepts `int_var = enum_int_var`, which it used to reject. Tuple TVARs need the same component types (T-TupleVarEq). `tvl-check-structural` still decides `int_var = float_var` (`docs/reference/error-codes.md`, `structural_ill_typed_atom`).
+- **(1.5.0)** `inadequate_precision` follows Definition 8.6: it warns when some value `v` of a float domain has `v·P` not an integer, read from the exact decimal written. It used to warn only when two values collided after rounding, or when a range resolution was misaligned, so an aligned-looking set such as `[0.0005, 0.5]` with P = 1000 is now reported.
+- **(1.5.0)** Banded objectives with zero variance: with `std = 0` the TOST statistics are taken as +∞ or −∞, so a mean strictly inside the band passes and a mean exactly on a band edge is `inconclusive`. Before, every zero-variance result was `inconclusive` (formal semantics Definition 9.6).
+- **(1.5.0)** Banded objectives with fewer than 2 observations: a single observation outside the band is `out_of_band` and the gate returns `Reject`, as for any point estimate outside the band (formal semantics §9.5). Before, it was `inconclusive`. An in-band single observation, or none, is still `inconclusive` (`spec/promotion-gate-io.md` §3.4).
+- **(1.5.0)** The `runtime_invalid_profile` diagnostic for a `clopper_pearson_exact_v1` monitor whose power bounds `scipy.stats.beta` cannot evaluate no longer repeats the monitor name in its message; the path locates the monitor (RFC 0003 §5.10).
 
 ## [1.5.0] - 2026-10-23
 

@@ -1322,9 +1322,9 @@ TOST_pass(μ̂, s, n, [L,U], α) ⟺
     (H₀: μ ≤ L rejected at α) ∧ (H₀: μ ≥ U rejected at α)
 ```
 
-Configuration passes the band constraint if the **(1 - 2α) confidence interval** for the mean falls entirely within `[L, U]`.
+Equivalently, a configuration passes the band constraint iff the **(1 - 2α) confidence interval** for the mean lies strictly inside the open interval `(L, U)`. With `s = 0` that interval is the single point `μ̂`, so a mean strictly inside the band passes and a mean exactly on `L` or `U` does not (the null for that edge is not rejected).
 
-**Important**: TOST uses (1 - 2α) CI, not (1 - α). For α = 0.05, this means a **90% CI** must lie within [L, U], not a 95% CI. This is because TOST performs two one-sided tests, each at level α.
+**Important**: TOST uses (1 - 2α) CI, not (1 - α). For α = 0.05, this means a **90% CI** must lie inside (L, U), not a 95% CI. This is because TOST performs two one-sided tests, each at level α.
 
 **Banded objectives are Layer 2 only**: Banded objectives are **excluded** from ε-Pareto dominance comparison (Layer 3). They function purely as acceptability filters:
 - A configuration with a point estimate outside the declared band is rejected; an on-target result with insufficient evidence for TOST is inconclusive
@@ -2017,7 +2017,7 @@ A `tvl_pack` is a separate TVL 1.3 document containing pack identity, requiremen
 | customer checker ID | keyed commitment `customer:<commitment>`; catalogue IDs retain their catalogue identity |
 | environment label | opaque environment reference, resolved only at the authorized read edge |
 | selector tool names | validated code identifiers |
-| numbers, enums, event types, method/sampling names | closed values; exact parameters serialized as decimal strings |
+| numbers, enums, event types, method/sampling names | closed values; decimal parameters as minimal decimal strings, integer parameters, counts and durations as JSON integers (RFC 0003 §8.2) |
 
 Anything unlisted is not exported. Unit IDs in reports/commitments must be SDK-minted opaque IDs, not arbitrary supplied names. Digests over contracts are computed after projection/tokenization, never used as an excuse to hash and export arbitrary raw content. An unresolved alias or unavailable token map fails closed (`runtime_unresolved_alias`); errors are closed codes without echoing inputs. Reports carry only closed counts, references, method/version identities, and commitments. Customer content/checkers remain customer-side. Only metadata monitors read observability data, and observability carries no privacy guarantee. This is a required data boundary, not a claim that a particular wire implementation has passed its canaries.
 

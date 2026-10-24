@@ -2174,7 +2174,7 @@ to the call is not yet known), `on_check_error: block` blocks the call. MET need
 every selected unit accounted for and classified, and the report's coverage attestation in full (§6.9); a window
 without traffic is UNKNOWN(insufficient). Closure reachability: 48 · 60 = 2880 ≥ 1 · 24 · 60 + 60 + 60 = 1560.
 
-## 16. Design decisions, resolutions and open questions
+## 16. Design decisions, resolutions and settled questions
 
 ### 16.1 Design decisions (recorded 2026-10-16)
 
@@ -2221,12 +2221,10 @@ measured; closure itself can still be delayed by evaluation lag, which §6.13 re
 | 25 | Legacy CLIs | for pre-1.3 documents every existing CLI keeps its exact prior behaviour | §11.2 |
 | 26 | Compilation and enablement | the compiler compiles any valid specification; capability, certificate and enablement checks happen at registration | §11.5, §12 |
 
-### 16.3 Open questions (this revision)
+### 16.3 Questions settled at acceptance
 
-Each is settled here by the most conservative reading and needs confirmation at review.
-
-> Note (2026-10-24): this list is kept as written for review. The RFC was accepted on 2026-10-21 with these readings
-> as written, so they are the TVL 1.3 readings; see Errata and later changes.
+Each question was open in the draft and is settled here by the most conservative reading. The RFC was accepted on
+2026-10-21 with these readings, so they are the TVL 1.3 readings.
 
 1. **Version omitted.** An omitted `tvl_version` on a module with runtime blocks is `runtime_version_required`, not
    `declared_version_below_constructs`, so that omission keeps legacy version handling on legacy modules.
@@ -2273,7 +2271,8 @@ Each is settled here by the most conservative reading and needs confirmation at 
 18. **Deploy triggers.** Only episode events may carry `deploy: if_promoted` (§7.6 item 7); a deploy from a
     `recovery_overdue` trigger, whose scope also has an episode, is not admitted in this revision.
 19. **Contract digests of existing `optimize` rules.** Filling `deploy: never` changes the compiled form, and so the
-    contract digest, of every module with an `optimize` rule compiled before this revision. The first scope enables only
+    contract digest, of every module with an `optimize` rule compiled before the 2026-10-21 revision that added
+    `deploy` (§7.6). The first scope enables only
     `notify` and `open_next_step` (§12), so a platform that follows it has registered no such contract.
 20. **Population membership.** `among` admits only a `checker_pred` (`runtime_among_not_checker`, §4.4 T4). For metric
     and exact predicates the violation reading and the satisfaction reading select opposite populations (for
@@ -2320,7 +2319,7 @@ tools, differ from it.
 - **Conformance families have grown.** The counts in §13 (and the 15 refusal cases of §5.2) are those at acceptance.
   RFC 0004 (TVL 1.4) and RFC 0005 (TVL 1.5) add cases to these families and add the families `semantic_traces/`,
   `persistence/`, `aggregate/` and `aggregate_report/`. The current inventory is `conformance/cases/runtime/`.
-- **§16.3 is a record of review.** §16.3 was written for review, and its heading and lead sentence ("needs
-  confirmation at review") are kept as recorded. The RFC was accepted on 2026-10-21 with those readings as written, so
-  they are the TVL 1.3 readings. Where an item names a possible later change (items 2, 18 and 20), that change needs a
-  new RFC.
+- **§16.3 heading (corrected in place).** At acceptance §16.3 still had its draft heading "Open questions (this
+  revision)" and the lead sentence "needs confirmation at review". The RFC was accepted on 2026-10-21 with those
+  readings as written, so the heading, the lead sentence and the §16 title now say they are settled; no reading
+  changed. Where an item names a possible later change (items 2, 18 and 20), that change needs a new RFC.

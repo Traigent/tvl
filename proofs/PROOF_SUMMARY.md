@@ -51,7 +51,7 @@ proofs/
     ├── Types.lean          # Type system formalization (133 lines)
     ├── TypeSoundness.lean  # Theorem 4.2 (194 lines)
     ├── SMTEncoding.lean    # Lemma 5.4, Theorem 5.6 (1988 lines)
-    ├── Dominance.lean      # Lemma 6.18 (117 lines)
+    ├── Dominance.lean      # Lemma 6.18 (119 lines)
     ├── OPALCore.lean       # OPAL declarative core (929 lines; see OPALCORE_README.md)
     ├── Gate.lean           # Promotion decision join (84 lines; see Runtime (TVL 1.3))
     └── Runtime/            # TVL 1.3, 1.4 and 1.5 modules (see the sections below)
@@ -231,16 +231,14 @@ theorem strict_dominance_does_not_compose_informal : True := trivial
 ```
 
 This Lean theorem only states `True`; nothing about strict dominance is proved. The
-example in the file's comments (y₁ = [100, 50], y₂ = [90, 50], y₃ = [90, 40], ε = [10, 10])
-does not work: each claimed strict improvement is exactly 10, which is not more than ε = 10.
-A valid counter-example, from the formal semantics (§9.8, after Lemma 9.2), with two maximized
-objectives and ε = [10, 10]:
-- y₁ = [0, 0], y₂ = [-15, 10], y₃ = [-5, -5]
-- y₁ ≻ε y₂ (y₁ − y₂ = [15, -10]: better by more than ε on A, within ε on B)
-- y₂ ≻ε y₃ (y₂ − y₃ = [-10, 15]: within ε on A, better by more than ε on B)
-- But y₁ − y₃ = [5, 5], so y₁ ≽₂ε y₃, NOT y₁ ≻₂ε y₃
+counter-example is given in the file's comments, and is the one of the formal semantics (§9.8,
+after Lemma 9.2) with two maximized objectives and ε = δ = 10:
+- y₁ = [0, 0], y₂ = [-20, 10], y₃ = [-10, -10]
+- y₁ ≻ε y₂ (y₁ − y₂ = [20, -10]: better by more than ε on A, within ε on B)
+- y₂ ≻ε y₃ (y₂ − y₃ = [-10, 20]: within ε on A, better by more than ε on B)
+- But y₁ − y₃ = [10, 10], so y₁ ≽₂ε y₃, NOT y₁ ≻₂ε y₃
 
-**Lines of Code**: 117
+**Lines of Code**: 119
 **Sorry Count** (unproved `sorry` placeholders in the file): 0
 
 ---
@@ -533,8 +531,8 @@ non-tuple TVARs, and the four connectives):
 
 These core files contain no `sorry` terms.
 
-**Lines of core proof code**: 2594 (`Basic`, `Types`, `TypeSoundness`, `SMTEncoding`, `Dominance`;
-`wc -l`, 2026-10-24; the whole `proofs/` library, excluding Mathlib, is 4806 lines)
+**Lines of core proof code**: 2596 (`Basic`, `Types`, `TypeSoundness`, `SMTEncoding`, `Dominance`;
+`wc -l`, 2026-10-24; the whole `proofs/` library, excluding Mathlib, is 4808 lines)
 **Theorems proven**: 5 (Type Soundness, ε-Composition, Rounding Soundness, SMT Encoding, Satisfiability)
 
 ---

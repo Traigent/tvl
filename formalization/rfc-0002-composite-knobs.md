@@ -1017,7 +1017,7 @@ increment (§2).
   `self_debug` at `max_iters = 1..K`.
 - **Composition-over-inheritance** in API design (Bloch, *Effective Java*,
   3rd ed., items 18–20; React's component model) and the LangChain-Chains →
-  LCEL/DSPy migration: these motivate sealing structure and naming recipes.
+  LCEL (LangChain Expression Language)/DSPy migration: these motivate sealing structure and naming recipes.
   In taxonomy-as-inheritance, each new pattern is a new subclass, so the class
   hierarchy grows with every pattern. Composition with a named catalog (§3.7)
   adds a pattern as a catalog entry over the same sealed constructors instead.

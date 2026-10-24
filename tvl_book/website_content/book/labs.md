@@ -6,10 +6,13 @@ if you want to run them without API keys.
 
 ## Micro Lab · Orientation RAG Circuit
 
+A RAG (retrieval-augmented generation) agent looks up documents before it answers; this lab is a toy model of one.
+
 - **Concepts reinforced:** Chapter 2 (configuration anatomy), Chapter 3 (constraint guards), Chapter 5 (promotion evidence).
 - **Entry point:** [`microsims/orientation-rag-circuit/index.md`](../microsims/orientation-rag-circuit/index.md)
-- **How to explore:** Use the preset buttons to replay incidents, then adjust sliders to bring the latency guardrail and the
-  rerank policy back to green. With the shipped slider ranges the lowest simulated cost is about $0.14, above the $0.12
+- **How to explore:** Adjust the sliders to bring the latency guardrail and the rerank policy back to green. The preset
+  buttons do not replay incidents as shipped: the bundled `microsim_presets.json` replaces the built-in presets with
+  entries that set only `max_tokens`, which no slider uses, so pressing a preset leaves the sliders where they are. With the shipped slider ranges the lowest simulated cost is about $0.14, above the $0.12
   budget, so the cost badge can reach only its warning band, not "On budget".
 - **What to inspect:** Latency/cost/quality gauges, constraint badges, and the YAML snapshot that mirrors `params.yaml`.
 - **Optional automation:** Regenerate presets with `tvl-microsim-bridge path/to/spec.yml`. In TVL 1.5 the bridge reads
