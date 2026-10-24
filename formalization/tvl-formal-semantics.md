@@ -300,18 +300,18 @@ DomainSpec ::= EnumDomain
              | TupleDomain
 
 EnumDomain    ::= [Literal+]                          (* Explicit enumeration *)
-RangeDomain   ::= {range: [Number, Number], resolution: Number}
+RangeDomain   ::= {range: [Number, Number], resolution?: Number}
 SetDomain     ::= {set: [Literal+]}                   (* Wrapped enumeration *)
 RegistryDomain::= {registry: Ident, filter?: String, version?: String}
 TupleDomain   ::= {components: [DomainSpec+]}         (* Product domain *)
 TupleLit      ::= (Literal, ..., Literal)             (* Tuple literal *)
 ```
 
-**Well-formedness for RangeDomain**: A range domain `{range: [a, b], resolution: r}` is well-formed iff:
-- `r > 0` (positive resolution)
+**Well-formedness for RangeDomain**: `resolution` is optional (`spec/grammar/tvl.ebnf`). The **effective resolution** `r` is the given `resolution`, or, if it is omitted, `1` for int ranges and `0.001` for float ranges. A range domain `{range: [a, b]}` with effective resolution `r` is well-formed iff:
+- `r > 0` (positive resolution; a given `resolution` must be positive)
 - `a ≤ b` (non-empty range)
-- For float ranges: `resolution` MUST be specified (required field)
-- For int ranges: `resolution` defaults to `1` if omitted
+
+Below, `{range:[a,b], resolution:r}` always denotes the range with its effective resolution `r`.
 
 ### 2.5 TVAR Declarations
 
@@ -525,7 +525,7 @@ Given environment `E_τ`, the domain interpretation function maps domain specs t
 
 𝒟⟦[v₁,...,vₙ]⟧(E_τ)              = {v₁,...,vₙ}
 𝒟⟦{range:[a,b], resolution:r}⟧(E_τ) = {a + i·r | i ∈ {0,...,N}}
-    where N = ⌊(b-a)/r⌋
+    where N = ⌊(b-a)/r⌋ and r is the effective resolution (§2.4)
 𝒟⟦{set:[v₁,...,vₙ]}⟧(E_τ)        = {v₁,...,vₙ}
 𝒟⟦{registry:R, filter:f}⟧(E_τ)   = ⊥   (* Outside verified subset *)
 𝒟⟦{components:[d₁,...,dₙ]}⟧(E_τ) = 𝒟⟦d₁⟧(E_τ) × ... × 𝒟⟦dₙ⟧(E_τ)
