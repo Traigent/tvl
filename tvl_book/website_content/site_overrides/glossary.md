@@ -121,7 +121,7 @@ A textbook that has the ability to respond to the needs of each student.
 
 See Also: [Levels of Intelligent Textbook](#levels-of-intelligent-textbooks)
 
-#### ISO Definition
+#### ISO Definition Criteria
 
 A term definition is considered to be consistent with ISO/IEC 11179 (the standard of the International Organization for Standardization (ISO) and the International Electrotechnical Commission (IEC) for metadata registries) if it meets the following criteria:
 
@@ -224,9 +224,7 @@ screens that are wide landscape displays.  We discourage top navigation.
 
 The JavaScript library most commonly used to render MicroSims.
 
-Many other JavaScript libraries could be used. However, p5.js dominates the MicroSim ecosystem.
-The reason is that a huge number of p5.js programs are available for indexing by the web crawlers that generative AI
-tools use.
+Many other JavaScript libraries could be used; p5.js is a common choice for MicroSims.
 
 Other specialized libraries such as [vis.js](#visjs) are used for tasks such
 as simulating graph traversal algorithms.

@@ -55,7 +55,7 @@ objective_values:
     n: 50
 ```
 
-No other summary form is part of the canonical CLI contract. A summary without `samples` or without all three of
+No other summary form is part of the canonical CLI contract. A summary with neither a non-empty `samples` list nor all three of
 `mean`, `std` and `n` (for example, the deprecated top-level `objectives` map) is not accepted as promotion evidence:
 `tvl-ci-gate` requires raw samples or the complete aggregated `mean/std/n`.
 
@@ -481,7 +481,7 @@ Effect sizes alone never decide statistical objective comparisons: a `Promote` r
 
 - **Empty or single-sample arm, standard objectives** (a non-banded objective with fewer than 2 observations in either the incumbent or the candidate arm): no variance can be estimated, so no t-test runs and the objective result is `inconclusive`; with every other check passing, the decision is `NoDecision`.
 - **Banded objectives** use the candidate's statistics only, so the incumbent's sample count does not matter. A candidate with fewer than 2 observations gives `out_of_band` (and `Reject`) when its point estimate is outside the band, and `inconclusive` when it is inside or there are no observations (§3.4).
-- **No statistics at all**: `tvl-ci-gate` refuses a bundle whose objective has an empty `samples` list and no `mean/std/n` (`missing_statistical_evidence`, exit 2) before the gate runs.
+- **No statistics at all**: `tvl-ci-gate` refuses such a bundle with exit 2 before the gate runs. An objective entry with an empty `samples` list and no complete `mean/std/n` fails the measurement schema, so the error is a schema message. A module objective with no entry in `objective_values` passes the schema and is reported as `missing_statistical_evidence` under `readiness_issues`.
 - **All objectives identical**: NoDecision (no superiority)
 - **No objectives defined**: the module schema requires at least one objective, so such a module is rejected at validation. Called directly in Python with no objectives and no failing checks, the gate returns `NoDecision`.
 

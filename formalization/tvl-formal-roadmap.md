@@ -34,7 +34,8 @@ Where this page and those documents differ, they win.
 **Scope of the Lean results for the core.** They cover the core subset as it stood on 2026-02-01: `tvars`,
 `constraints`, `objectives` and `promotion_policy`. The Lean atoms are `=`, `≠`, `≥`, `≤` and `∈` over non-tuple
 tuned variables (TVARs, declared in `tvars`; semantics §1.5.4), with `and`, `or`, `not` and implication. Float values and thresholds are taken as already scaled to integers,
-and comparison thresholds are non-negative. The encoding theorem is stated over the encoded formula; it does not model
+and comparison thresholds may be any integer; only the separate rounding lemma `rounding_soundness_nonneg` needs a
+non-negative threshold. The encoding theorem is stated over the encoded formula; it does not model
 the domain assertions of semantics §8.3. See `PROOF_SUMMARY.md` §2 and §8.
 
 **Build status.** `PROOF_SUMMARY.md` records that all modules compiled on 2026-02-01. The latest full `lake build`

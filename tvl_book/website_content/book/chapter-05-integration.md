@@ -28,7 +28,7 @@ The TVL toolchain provides focused CLI tools for validation and CI integration:
 | `tvl-lint` | Normative lints: missing min_effect, duplicate TVARs, etc. |
 | `tvl-validate` | JSON Schema + lint validation (combines parse + lint) |
 | `tvl-check-structural` | SAT/SMT satisfiability of structural constraints (a solver checks that at least one configuration meets all of them) |
-| `tvl-check-operational` | Static check of derived preconditions against the declared environment, plus budget positivity (it does not estimate cost or observe a run) |
+| `tvl-check-operational` | Static check of derived preconditions against the declared environment, plus budget checks (`max_trials` and `max_wallclock_s` must be positive, `max_spend_usd` at least 0; it does not estimate cost or observe a run) |
 | `tvl-config-validate` | Check a configuration assignment against spec domains |
 | `tvl-measure-validate` | Validate measurements against spec + promotion policy |
 | `tvl-ci-gate` | Offline promotion gate: compares incumbent and candidate measurement bundles under the module's promotion policy, prints `Promote`, `Reject`, `NoDecision` or `Error`, and exits 0 only for `Promote` |

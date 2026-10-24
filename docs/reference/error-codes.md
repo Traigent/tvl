@@ -2,7 +2,7 @@
 
 This document catalogs the diagnostic codes of the module and pack linter (`tvl.lints`, run by `tvl-lint`, `tvl-validate`, `tvl-compose --validate`, `tvl-ci-gate` and `tvl-compile-runtime`), the operational checker, the composition and compilation tools, and the gate readiness codes listed below. Each entry gives the severity, an explanation and remediation guidance. Not yet listed: the codes of `tvl-config-validate` and the configuration constraint evaluator (`tvl.constraints`, `tvl.configuration`), and most measurement-bundle and gate-evidence codes (`tvl.measurement`, `tvl-ci-gate`).
 
-A pack (`tvl_pack`) is a separate TVL 1.3 document that carries organisation floors (requirements, monitors and optional responses) that modules can only tighten; see the [runtime guide](../guides/requirements-monitors-responses.md#9-organisation-floors-with-packs).
+A pack (`tvl_pack`) is a separate document, introduced in TVL 1.3 and declaring `tvl_version` 1.3, 1.4 or 1.5, that carries organisation floors (requirements, monitors and optional responses) that modules can only tighten; see the [runtime guide](../guides/requirements-monitors-responses.md#9-organisation-floors-with-packs).
 
 ## Error Severity Levels
 
@@ -10,7 +10,7 @@ A pack (`tvl_pack`) is a separate TVL 1.3 document that carries organisation flo
 |----------|---------|--------|
 | `error` | Fatal validation failure | Blocks execution; module is rejected |
 | `warning` | Suspicious but valid pattern | The module is not invalid, but `tvl-validate`, `tvl-lint` and `tvl-compose --validate` still report `ok: false` and exit 2; `tvl-compile-runtime` allows warnings |
-| `info` | Information only | Printed and included in JSON output; never affects `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate` |
+| `info` | Information only | Included in JSON output, and printed in the text output of `tvl-validate` and `tvl-lint`; never affects `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate` |
 
 ---
 
@@ -34,13 +34,13 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 - **Severity**: error
 - **Description**: TVAR declaration lacks a `type` field.
 - **Example**: `{ name: x, domain: [1,2,3] }` (missing type)
-- **Remediation**: Add one supported type, for example `type: int`. The choices are `int`, `float`, `bool`, `enum[str]`, `tuple[...]` and `callable[ProtoId]`, where `ProtoId` is a protocol identifier such as `RerankerProto`.
+- **Remediation**: Add one supported type, for example `type: int`. The choices are `int`, `float`, `bool`, `enum[T]` with `T` one of `str`, `int` or `float`, `tuple[...]` and `callable[ProtoId]`, where `ProtoId` is a protocol identifier such as `RerankerProto`.
 
 ### `unsupported_tvar_type`
 - **Severity**: error
 - **Description**: TVAR uses an unrecognized type string.
 - **Example**: `type: string` (should be `enum[str]`)
-- **Remediation**: Use a supported type: `bool`, `int`, `float`, `enum[T]` with `T` one of `str`, `int` or `float` (for example `enum[str]`), `tuple[T1, T2, ...]` with one or more component types (for example `tuple[int, str]`), or `callable[ProtoId]` with a protocol identifier (for example `callable[RerankerProto]`). See formal semantics §2.3 for the type grammar.
+- **Remediation**: Use a supported type: `bool`, `int`, `float`, `enum[T]` with `T` one of `str`, `int` or `float` (for example `enum[str]`), `tuple[T1, T2, ...]` with one or more component types (for example `tuple[enum[str], float]`), or `callable[ProtoId]` with a protocol identifier (for example `callable[RerankerProto]`). See formal semantics §2.3 for the type grammar.
 
 ---
 
@@ -48,7 +48,7 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 
 ### `empty_domain`
 - **Severity**: error
-- **Description**: TVAR domain resolves to an empty set after specialization (turning the declared domain, such as a range or a registry reference, into its finite set of values; formal semantics Definition 3.6).
+- **Description**: TVAR domain resolves to an empty set after specialization (turning the declared domain, such as a list, set or range, into its finite set of values; formal semantics Definition 3.6). Registry domains are resolved outside TVL, so the linter does not check them for emptiness.
 - **Example**: `domain: []` for an enum TVAR
 - **Remediation**: Ensure domain contains at least one valid value.
 
@@ -348,7 +348,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_band_target`
 - **Severity**: error
-- **Description**: Banded objective target has invalid format. A banded objective declares an acceptable range instead of a direction: `target: [low, high]`, or `{ center, tol }`, where `tol` is the non-negative tolerance radius around `center`.
+- **Description**: Banded objective target has invalid format. A banded objective declares an acceptable range instead of a direction: `target: [low, high]`, or `{ center, tol }`, where `tol` is the tolerance radius around `center` and must be greater than 0.
 - **Example**: `band: { target: [1, "high"] }`
 - **Remediation**: Use `target: [low, high]` with numeric values or `{ center: num, tol: num }`.
 
@@ -571,7 +571,7 @@ These codes come from the `cvars` block introduced by RFC 0001 (`formalization/r
 
 ## Operational Policy Errors (TVL 1.1)
 
-These codes come from the `policies` block introduced by RFC 0001. Policies are operational declarations; the first supported strategy is `cascade`: stages run in order, and a gate after each stage decides whether to stop there or escalate to the next (RFC 0001 §3.8). Several of these codes are shared with composite cascades (see below).
+These codes come from the `policies` block introduced by RFC 0001. Policies are operational declarations; the first supported strategy is `cascade`: stages run in order, and a gate after each stage except the last decides whether to stop there or escalate to the next, so `m` stages have `m − 1` gates (RFC 0001 §3.8). Several of these codes are shared with composite cascades (see below).
 
 ### `invalid_policies`
 - **Severity**: error
@@ -952,7 +952,7 @@ These diagnostics indicate that the module uses features outside the formally ve
 - **Severity**: info
 - **Description**: The module declares a construct family that the Lean proofs do not model. It is emitted once per family present: `cvars`, `policies`, `composites` (an empty or absent section emits nothing). Callable domains are reported by `unverifiable_callable_type` instead.
 - **Example**: a module with a non-empty `cvars` list
-- **Impact**: The proved results (type soundness, and soundness of the SMT (satisfiability modulo theories) encoding) do not cover this construct. Info diagnostics are printed and included in JSON output, but never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
+- **Impact**: The proved results (type soundness, and soundness of the SMT (satisfiability modulo theories) encoding) do not cover this construct. Info diagnostics are included in JSON output and printed in the text output of `tvl-validate` and `tvl-lint` (a successful `tvl-compose --validate` prints only the composed module in text mode). They never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
 - **Remediation**: None required.
 
 ### `unverifiable_registry_domain`
@@ -1157,7 +1157,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 |---|---|
 | lint | `tvl-validate`, `tvl-lint`, `tvl-ci-gate` (which runs the runtime lints first) and `tvl-compile-runtime` (which runs the same lints before compiling and stops at the first lint error; lint warnings do not stop it). So `tvl-compile-runtime` can report every error code marked lint. |
 | compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
-| compile | `tvl-compile-runtime`, from its own compile steps (customer checker bindings, the token map, projection and the self-check). A code marked `lint, compile` comes from both the lints and those steps. |
+| compile | `tvl-compile-runtime`, from its own compile steps: customer checker bindings; the token map (a customer-side file that maps each customer-chosen name to its hosted reference); projection (rewriting the contract so only those hosted references leave the customer side); and the self-check. See [RFC 0003](../../formalization/rfc-0003-runtime-requirements-monitors-responses.md) §8.2, §11.4.6 and §11.5. A code marked `lint, compile` comes from both the lints and those steps. |
 | gate | `tvl-measure-validate`, `tvl-ci-gate` |
 | platform | defined by RFC 0003 for the platform that registers or evaluates your contract; no tool in this repository produces it |
 

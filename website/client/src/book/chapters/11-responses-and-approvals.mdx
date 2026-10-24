@@ -53,7 +53,7 @@ The triggering monitor's requirement must also have a promotion monitor (`respon
 
 At deployment, the contract and authority must still be current, the episode still open, and the deployed configuration unchanged from the recorded precondition. A configuration that breached in an open episode is ineligible.
 
-`deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`. Recovery, burn, liveness and unit triggers cannot use it. (A burn trigger comes from a burn monitor, which reports when the violation rate reaches a set multiple of the limit.)
+`deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`. Recovery, burn, liveness and unit triggers cannot use it. (A burn trigger comes from a burn monitor: a separate monitor on the same requirement whose statistical breach test uses a set multiple of the limit. Its `burn_breached` event fires on the first `BREACHED` window of each run of adjacent `BREACHED` windows.)
 
 If authority or the gate record cannot be reached, the deploy waits. A refused or failed deploy changes nothing in production and is not retried with another candidate. No rollback follows automatically.
 

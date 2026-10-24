@@ -90,7 +90,7 @@ holding while authority is unreachable (RFC 0003 §7.3) keeps the attempt open a
 
 **Outcomes.** Each attempt records at most one optimize outcome and at most one deploy outcome. Outcomes are terminal
 for their occurrence: a controller records one only when no retry of the same occurrence can change it (a retry of one
-occurrence is the same occurrence, RFC 0003 §7.4 item 1). How a controller retries one occurrence is its evaluator profile's (RFC 0003 §3.5), but
+occurrence is the same occurrence, RFC 0003 §7.4 item 1). How a controller retries one occurrence is defined by its evaluator profile (RFC 0003 §3.5), but
 a profile that supports this RFC states a **finite** retry bound (a count or a time) for deploy occurrences; reaching it
 records `deploy_failed`.
 

@@ -115,7 +115,7 @@ tvl-validate --help
 
 ## Example TVL 1.3 File
 
-This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`. It lets the optimizer choose between two models (`gpt-4o` and `gpt-4o-mini`) for quality. It requires that at most 5% of traces take longer than 2000 ms (`latency_2s`). It adds an evidence-liveness check that fails when more than 4 consecutive reporting windows have no usable latency evidence (`latency_2s_live`). It sends a warning notification when a breach of the latency requirement begins (`latency_alerts`).
+This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`. It lets the optimizer choose between two models (`gpt-4o` and `gpt-4o-mini`) for quality. It requires that at most 5% of traces take longer than 2000 ms (`latency_2s`). It adds an evidence-liveness check that fails when more than 4 consecutive reporting windows have no usable latency evidence (`latency_2s_live`). It declares a response (`latency_alerts`) that asks for a warning notification when a breach of the latency requirement begins; the notification is sent only by a platform that registers the compiled contract, not by this extension or the CLI tools.
 
 ```yaml
 tvl:

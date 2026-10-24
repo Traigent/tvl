@@ -1201,7 +1201,7 @@ Let `encode(Δ, φ, P, idx)` contain the domain assertions of §8.3 as well as t
 m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
 ```
 
-The restriction loses nothing: a model of `encode(Δ, φ, P, idx)` satisfies the domain assertions by definition, so Corollary 8.1 below quantifies over all models. A sort-correct model that breaks a domain assertion, such as one with an out-of-range enum index, satisfies no `encode(Δ, φ, P, idx)` and has no decoding; the theorem says nothing about it.
+The restriction loses nothing: a model of `encode(Δ, φ, P, idx)` satisfies the domain assertions by definition, so Corollary 8.1 below quantifies over all models. A sort-correct model that breaks a domain assertion satisfies no `encode(Δ, φ, P, idx)`, and the theorem says nothing about it. Its decoding is undefined when an enum index is out of range; otherwise it can be defined but lie outside `Config(Δ, E_τ)`, as for an int range index past `N`, which decodes to an integer outside the declared range.
 
 *Proof*:
 

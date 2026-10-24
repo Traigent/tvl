@@ -19,7 +19,7 @@ This sheet describes the TVL 1.5 toolchain.
 | `tvl-ci-gate <module> <incumbent> <candidate>` | Offline promotion gate: compares incumbent and candidate measurement bundles (files of measured results: objective statistics and chance or monitor counts) under the module's promotion policy and prints `Promote`, `Reject`, `NoDecision` or `Error`. |
 | `tvl-measure-validate <module> <config> <measurements>` | Checks a configuration and its measurement bundle against the module. |
 | `tvl-config-validate <module> <config>` | Checks a configuration assignment against the module's domains and constraints. |
-| `tvl-compose <overlay>` | Flattens an overlay chain into one module and checks the narrowing rules. An overlay is a file that changes a base module, and the narrowing rules say it may only narrow what the base allows, never widen it. |
+| `tvl-compose <overlay>` | Flattens an overlay chain into one module and checks the narrowing rules. An overlay is a file that changes a base module; the narrowing rules refuse the widenings the composer checks, such as adding enum values or raising a budget. Not every change is checked, and a waiver allows removing a clause; see [Overlay narrowing checks](../../../docs/reference/language.md#overlay-narrowing-checks). |
 | `tvl-compile-runtime <module> --token-map <map> --out-dir <dir>` | Compiles a module or pack (a separate document of requirements and monitors that an organization applies across agents) into a version-tagged runtime contract and local artifacts. `--token-map` and `--out-dir` are required. |
 | `tvl-microsim-bridge <spec>` | Generates `microsim_presets.json` for the Orientation RAG interactive lab. It reads a legacy `configuration_space` block, not `tvars` (see the [lab page](../microsims/orientation-rag-circuit/index.md)). |
 
@@ -109,6 +109,6 @@ Exit 1 is not a defined outcome. See the [error code reference](../../../docs/re
 
 ## Further Reading
 
-- [Formal semantics](../../../formalization/tvl-formal-semantics.md) — the normative meaning of every TVL construct.
+- [Formal semantics](../../../formalization/tvl-formal-semantics.md) — normative for the constructs it covers; its §1.4 (Scope of Formal Guarantees) lists what it leaves out, such as `cvars`, `policies` and `composites`, which the accepted RFCs define.
 - [Accepted RFCs](../../../formalization/) — the design records for TVL 1.1 to 1.5 (RFC 0001–0005).
 - [Language reference](../../../docs/reference/language.md) — fields, rules and diagnostics in one place.

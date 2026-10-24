@@ -378,7 +378,10 @@ item 7; error codes in §3.11):**
     `error`. Selection is the
     maximum score; ties break by the RFC 0001 deterministic total order
     over the candidates' serialized equivalence keys.
-  - `accept` (optional, either aggregate kind): `stat_at_least` evaluates
+  - `accept` (optional; the grammar allows it with either aggregate kind,
+    but only `majority_vote` takes a vote, so only there does it have a
+    vote statistic to read, §11; this RFC does not define the result of an
+    `accept` over `judge_max`): `stat_at_least` evaluates
     the named content-free vote statistic; failing it is an honest
     no-accept outcome that propagates to the consumer (under strict modes
     it feeds the fail-closed law). The acceptance inequality is `stat ≥ θ`

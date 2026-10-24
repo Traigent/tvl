@@ -1,6 +1,6 @@
 # tvl-measure-validate
 
-Validates a configuration together with a measurement bundle against a TVL module (structural, operational, chance checks). Structural checks test the configuration against the module's domains and structural constraints. Operational checks test each observed objective value against its band or SLO target. Chance checks test whether the evidence bounds each chance constraint's violation rate.
+Validates a configuration together with a measurement bundle against a TVL module (structural, operational, chance checks). Structural checks test the configuration against the module's domains and structural constraints. Operational checks test each observed objective value against its band or its SLO (service-level objective) `threshold`: a minimized objective fails above the threshold, a maximized one below it. Chance checks test whether the evidence bounds each chance constraint's violation rate.
 
 ```
 tvl-measure-validate spec/examples/rag-support-bot.tvl.yml \

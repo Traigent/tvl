@@ -631,7 +631,8 @@ make `BREACHED` slightly harder to reach in each window.
 ### How to choose
 
 1. **`max_rate`: the promise.** Take it from the business need ("at most 5% of traces take longer than 2 seconds"). The smaller it
-   is, the more traffic you need to *prove* it.
+   is, the more traffic a window needs to reach `MET`, that is, an upper confidence bound on the bad-unit rate at or
+   below the promise. `MET` is a statistical test result at the chosen `confidence`, not proof.
 2. **`confidence`: leave it at 0.95** unless you have a reason. 0.99 needs about 50% more units to reach `MET`; 0.90 needs
    about a quarter fewer.
 3. **`min_samples`: no smaller than what lets `MET` be reached.** If a window of exactly that many units can never be
