@@ -12,7 +12,7 @@ Three activities are related but distinct:
 | Evaluation | What happened when this candidate ran on the pinned evaluation set? | Names the evaluation context, metrics, and required observations |
 | Acceptance or promotion | Does the evidence satisfy the declared requirements? | Defines the decision rule and its inputs |
 
-Search algorithms, adaptive sampling, Bayesian optimization, successive halving, and scheduling are implementation choices. A tool may use any of them, or no optimizer at all, while consuming the same TVL module.
+Search algorithms, adaptive sampling, Bayesian optimization, successive halving (repeatedly dropping the weaker candidates and giving the survivors more evaluation budget), and scheduling are implementation choices. A tool may use any of them, or no optimizer at all, while consuming the same TVL module.
 
 ## Evidence must be bound to the specification
 
@@ -34,7 +34,7 @@ For promotion, a TVL module states three kinds of requirement in its objectives 
 
 1. **Directional objectives** express properties to maximize or minimize, such as task success, groundedness, cost, or latency.
 2. **Banded objectives** express an acceptable interval, such as a response length or tool-call count that should stay within a range.
-3. **Chance constraints** express an upper limit on the rate of an undesirable event, such as policy violations or latency-SLO breaches.
+3. **Chance constraints** express an upper limit on the rate of an undesirable event, such as policy violations or breaches of a latency service-level objective (SLO).
 
 Since TVL 1.3 a module can also declare runtime requirements in a separate `requirements` block, checked by monitors; see [Requirements, Monitors and Responses](requirements-monitors-responses.md).
 
@@ -42,7 +42,7 @@ These fields specify what a candidate must demonstrate. The evaluator implementa
 
 ## Candidate versus incumbent
 
-For a directional objective, TVL normalizes direction so that a positive difference always means the candidate is better:
+The incumbent is the currently accepted configuration that the candidate would replace; it is the baseline for every comparison. For a directional objective, TVL normalizes direction so that a positive difference always means the candidate is better:
 
 ```text
 normalized difference = direction sign × (candidate mean - incumbent mean)
@@ -85,8 +85,8 @@ TVL's current promotion contract uses an intersection-union rule for non-inferio
 
 The selected method changes the interpretation of the error control:
 
-- `bonferroni` and `holm` control family-wise error for the adjusted family under their standard assumptions.
-- `BH` controls false discovery rate under its stated dependence assumptions; it does not control the probability of any false discovery.
+- `bonferroni` and `holm` control the family-wise error rate (the probability of at least one false rejection in the family) under their standard assumptions.
+- `BH` (Benjamini–Hochberg) controls the false discovery rate (the expected share of false rejections among all rejections) under its stated dependence assumptions; it does not control the probability of any false discovery.
 - `none` applies no family-level correction.
 
 These statements concern the named statistical tests and their assumptions. They do not turn a TVL result into a universal guarantee about an agent.
@@ -97,11 +97,11 @@ These statements concern the named statistical tests and their assumptions. They
 
 TVL does not calculate a universal minimum sample size from that value. Sample-size planning also depends on variance, power, dependence, evaluator behavior, and the chosen test. An evaluation implementation should record its design and assumptions as process evidence.
 
-## PAC theory and TVL
+## PAC (probably approximately correct) theory and TVL
 
-PAC multi-objective optimization is useful background for implementations that use a proven algorithm under matching assumptions. For example, ε-PAL provides guarantees for its particular Gaussian-process active-learning procedure and problem setting.
+PAC results say that, except with a small stated probability, an answer is within a stated error of the true one. PAC multi-objective optimization is useful background for implementations that use a proven algorithm under matching assumptions. For example, [ε-PAL](https://www.jmlr.org/papers/v17/15-047.html) shows that, with high probability, the set it returns approximates the Pareto set (the configurations that no other configuration beats on one objective without losing on another; see [formal semantics §9.2](../../formalization/tvl-formal-semantics.md#92-pareto-dominance)) to within a tolerance ε. That guarantee holds only for its particular Gaussian-process active-learning procedure and problem setting.
 
-The TVL core specification makes no blanket PAC claim. A tool that advertises an `(ε, δ)` guarantee must identify:
+The TVL core specification makes no blanket PAC claim. A tool that advertises an `(ε, δ)` guarantee (within tolerance ε, except with probability at most δ, with the exact meaning of each given by the theorem it invokes) must identify:
 
 1. the algorithm and theorem being invoked;
 2. the observation and model assumptions;

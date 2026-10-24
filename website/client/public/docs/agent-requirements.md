@@ -6,11 +6,11 @@ An AI agent is rarely defined by one prompt or one model. Its behavior depends o
 
 Today these decisions are commonly split across code, configuration, evaluation notebooks, dashboards, and release procedures. The result is an under-specified system: reviewers can see how one candidate was built, but cannot reliably recover the full set of allowed designs or the conditions that make a candidate acceptable.
 
-TVL provides that missing contract.
+TVL, the Tuned Variables Language (see the [language reference](reference/language.md)), provides that missing contract.
 
 ## TVL specifies a space of agents
 
-A TVL module describes a set of admissible agent configurations:
+A TVL module $M$ describes a set $\mathcal{A}_{M}$ of admissible agent configurations, where each $a$ is one candidate configuration:
 
 $$
 \mathcal{A}_{M} = \{a \mid a \text{ is in the declared domains and satisfies the declared constraints}\}
@@ -89,7 +89,7 @@ Those choices affect how an implementation finds or evaluates candidates. They d
 
 Probably Approximately Correct (PAC) results state that, with at least a stated probability (the confidence), an answer is within a stated error of the true one. Such results can be relevant to a particular optimizer or evaluation procedure. A PAC guarantee depends on a named algorithm, assumptions about the observations, a precise error definition, and a proof or cited theorem that applies to that setting.
 
-TVL therefore treats PAC parameters or claims as implementation-specific evidence unless a future language profile defines their full semantics and conformance requirements. The core language does not promise that every conforming optimizer discovers an approximate Pareto set with a stated probability.
+TVL therefore treats PAC parameters or claims as implementation-specific evidence unless a future language profile defines their full semantics and conformance requirements. The core language does not promise that every conforming optimizer discovers an approximate Pareto set with a stated probability. (A Pareto set holds the configurations that no other configuration beats on one objective without losing on another; an approximate one allows a stated tolerance, see the [formal semantics §9.2–9.3](https://github.com/Traigent/tvl/blob/main/formalization/tvl-formal-semantics.md#92-pareto-dominance).)
 
 ## Reading a TVL module
 

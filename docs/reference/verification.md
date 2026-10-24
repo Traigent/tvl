@@ -35,7 +35,7 @@ When an example is labeled **UNSAT**, it means no such assignment exists. The co
 The structural checker gives one of three results:
 
 *   **SAT** + a witness assignment such as `model = "gpt-4o", retriever.k = 5`. The checker reports SAT only after it re-checks the witness with exact arithmetic: every value must be an exact member of its declared domain, and every constraint must hold. `tvl-check-structural` exits 0 and its JSON has `status: "passed"`.
-*   **UNSAT** + an UNSAT core or conflicting expression set showing which clauses cannot all hold together. UNSAT comes only from OR-Tools CP-SAT returning `INFEASIBLE`, or from a fallback search that tried every value of every domain. The tool exits 2 with `status: "unsat"`.
+*   **UNSAT** + an UNSAT core or conflicting expression set showing which clauses cannot all hold together. UNSAT comes only from CP-SAT (the constraint-programming solver in Google's OR-Tools library) returning `INFEASIBLE`, or from a fallback search that tried every value of every domain. The tool exits 2 with `status: "unsat"`.
 *   **undecided** + an issue with a code. The module is neither reported SAT nor UNSAT. The tool exits 2 with `status: "undecided"` and an `issues` list.
 
 The undecided cases are:
@@ -60,7 +60,7 @@ OR-Tools is a required dependency. If it cannot be imported, the checker falls b
 
 ### Exact values
 
-The checker compares numbers exactly, as rationals, never as binary64 floats:
+The checker compares numbers exactly, as rationals, never as binary64 floats (the IEEE 754 double-precision format, which rounds most decimals):
 
 *   A numeric literal is read from its source text. `0.1` means exactly one tenth, and `0.100000000000000001` is a different value.
 *   A float range with a resolution is the grid `min + i * resolution` for whole numbers `i` from 0 up to the largest point not above `max` (formal semantics Definition 3.6). A resolution that does not divide the range is fine: `{range: [0, 1], resolution: 0.3}` is `{0, 0.3, 0.6, 0.9}`, so `t >= 0.95` is UNSAT.
@@ -158,7 +158,7 @@ tvl-measure-validate module.tvl.yml config.yml measurements.yml
 tvl-ci-gate module.tvl.yml incumbent.measure.yml candidate.measure.yml --json
 ```
 
-These tools work with measured evidence, chance constraints, and the `promotion_policy` comparison rule.
+These tools work with measured evidence, chance constraints (limits on the rate of an undesirable event, which the evidence must support at a stated confidence; formal semantics Definition 9.8), and the `promotion_policy` comparison rule.
 
 **Keep the final evaluation independent of selection.** The gate compares one incumbent with one candidate. It cannot see how many candidates you tried or whether you chose the candidate on the same data. Choose on a tuning split, keep a separate evaluation set for the final comparison, and record how many candidates you tried. Repeated looks at the same evaluation set bias the result in the candidate's favour, and the formal semantics lists independent collection of the evidence among the assumptions behind a Promote (`formalization/tvl-formal-semantics.md`, section 9.8).
 
@@ -197,6 +197,6 @@ If you want parity with the reference toolchain, also implement:
 1. Configuration validation against the module domains
 2. Measurement-bundle validation
 3. Promotion-policy evaluation for incumbent vs candidate evidence
-4. Overlay composition if you support preprocessed layered specs
+4. Overlay composition, if you support layered specs: an overlay file names a base module and the fields to change, and `tvl-compose` merges them into one composed module before the checks run (see the [language reference](/specification/language-reference))
 
 The public contract is the semantic behavior, not the exact solver brand. You may use a CP-SAT solver (constraint programming with Boolean satisfiability techniques, as in OR-Tools, which the reference checker uses), an SMT solver (satisfiability modulo theories), brute-force enumeration for small domains, or another decision procedure, as long as SAT/UNSAT results and diagnostics remain faithful to the language semantics.

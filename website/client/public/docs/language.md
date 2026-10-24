@@ -3,7 +3,7 @@
 This page is a friendly guide to TVL.
 
 TVL specifies the allowed design space and desired properties of an AI agent. It does not prescribe the build process or search algorithm used to produce a candidate. Instead of treating TVL as a bag of keywords, this reference teaches the language by following one concrete agent all
-the way through: a simple campus FAQ RAG system. As you read, the example gives each TVL block a job, so the later
+the way through: a simple campus FAQ RAG (retrieval-augmented generation) system, which retrieves relevant documents and gives them to the model with the question. As you read, the example gives each TVL block a job, so the later
 rules feel grounded instead of abstract.
 
 If you are new to TVL, start with the example below and read it top to bottom once before diving into the rest of the
@@ -247,7 +247,7 @@ is empty and optimization should not begin.
 
 The user-facing verifier split is:
 
-*   `tvl-check-structural`: checks structural satisfiability and may return a witness assignment or UNSAT core
+*   `tvl-check-structural`: checks structural satisfiability and may return a witness assignment (one configuration that satisfies every structural constraint) or an UNSAT core (a set of constraints that already cannot all hold under the declared domains)
 *   `tvl-check-operational`: checks operational preconditions (`constraints.derived`) and declared budgets (positive `max_trials` and `max_wallclock_s`, `max_spend_usd` at least 0); it does not establish that the search can finish within them
 *   `tvl-measure-validate` and `tvl-ci-gate`: validate measured evidence and promotion readiness after evaluations have run
 
@@ -274,7 +274,7 @@ Each TVAR declares:
 | `float` | Numeric domain; a `range` may give a `resolution` (default 0.001, see below) | `range: [0.0, 1.0]`, `resolution: 0.1` |
 | `enum[str]`, `enum[int]`, `enum[float]` | Finite enumerations | `["gpt-4o", "gpt-4o-mini"]` |
 | `tuple[...]` | Structured tuple values | `tuple[int, float]` |
-| `callable[ProtoId]` | Registry-backed executable choices | `callable[RerankerProto]` |
+| `callable[ProtoId]` | Registry-backed executable choices; `ProtoId` is a protocol identifier, the interface every choice implements (here `RerankerProto`) | `callable[RerankerProto]` |
 
 ### Domain Shapes
 
@@ -332,7 +332,7 @@ TVL separates constraints into structural rules and operational preconditions (`
 
 ### Structural Constraints
 
-Structural constraints are formulas over TVARs. They define the structurally feasible search space and are the part checked by SAT/SMT-based tooling.
+Structural constraints are formulas over TVARs. They define the structurally feasible search space and are the part checked by SAT/SMT-based tooling (SMT: satisfiability modulo theories, SAT solving extended to typed values such as integers).
 
 Forms:
 
@@ -402,7 +402,7 @@ declarative: point to a metric contract or registry key, not to a Python functio
 
 ### Banded Objectives
 
-Use `band` when success means staying within a target interval rather than strictly maximizing or minimizing. TVL uses `TOST` for these banded checks.
+Use `band` when success means staying within a target interval rather than strictly maximizing or minimizing. TVL uses `TOST` (two one-sided tests) for these banded checks: the check passes when the evidence shows, at significance `alpha`, that the metric's mean lies inside the target interval.
 
 ```yaml
 objectives:
@@ -420,10 +420,10 @@ objectives:
 
 Key fields:
 
-*   `dominance`: TVL requires `epsilon_pareto`
+*   `dominance`: TVL requires `epsilon_pareto`: the candidate must be no worse than the incumbent on any objective by more than that objective's epsilon, and better on at least one by more than its epsilon
 *   `alpha`: significance budget
-*   `min_effect`: non-negative per-objective epsilon values
-*   `adjust`: optional multiple-testing adjustment (`none`, `bonferroni`, `holm`, `BH`)
+*   `min_effect`: non-negative per-objective epsilon values, the margins used by `epsilon_pareto`
+*   `adjust`: optional multiple-testing adjustment (`none`, `bonferroni`, `holm`, `BH` for Benjamini–Hochberg)
 *   `chance_constraints`: optional hard confidence-based constraints
 
 Example:
@@ -483,11 +483,11 @@ Portable requirement specifications should keep optimizer settings in an impleme
 
 Common fields:
 
-*   `strategy.type`: `random`, `grid`, `tpe`, `cmaes`, `nsga2`, `custom`
-*   `initial_sampling`
-*   `parallelism.max_parallel_trials`
-*   `convergence`
-*   `budgets`
+*   `strategy.type`: the search algorithm: `random`, `grid`, `tpe` (Tree-structured Parzen Estimator), `cmaes` (CMA-ES, covariance matrix adaptation evolution strategy), `nsga2` (NSGA-II, a multi-objective genetic algorithm) or `custom`
+*   `initial_sampling`: how the first candidates are chosen, for example `latin_hypercube`
+*   `parallelism.max_parallel_trials`: how many trials may run at once
+*   `convergence`: when to stop early because results have stopped improving
+*   `budgets`: hard limits on trials, spend and wall-clock time
 
 Example:
 
@@ -528,7 +528,7 @@ tvl-config-validate module.tvl.yml config.yml
 tvl-measure-validate module.tvl.yml config.yml measurements.yml
 ```
 
-`tvl-compose` takes **one** overlay file, which names its base via `_tvl_overlay.extends`.
+`tvl-compose` takes **one** overlay file, which names its base via `_tvl_overlay.extends`. The overlay's top-level `overrides` mapping holds the module fields to change, written in the same shape as the module; `tvl-compose` merges it into the base.
 
 #### Where `extends` may point
 
@@ -592,7 +592,7 @@ one of four values, `band.test` must be `TOST`), but no rule checks whether an o
 is stricter than the inherited one; that would need a policy decision about what "tighter"
 means for each field.
 
-Note that `overrides` **replaces** a list rather than merging into it (`tvars` is the one
+Note that a list inside `overrides` **replaces** the base list rather than merging into it (`tvars` is the one
 exception, merged by name); objects are merged key by key, and a list the overlay does not
 mention is inherited unchanged. When an overlay replaces a list, every inherited clause you
 intend to keep must be restated in it, unless a strictly tighter bound replaces it (below) —
@@ -774,7 +774,7 @@ Common keys: `name` (required, `ident`), `kind` (required), `unit` (required). T
 | `rate_bound` | `trace` or `invocation` | `violation` (required, any predicate), `max_rate` (required, `prob_open`), `among` (optional predicate) | at most `max_rate` of the units in scope may violate |
 | `zero_tolerance` | `trace` or `invocation` | `violation` (required, an *exact* predicate), `among` (optional predicate) | no unit in scope may violate |
 | `recovery_time` | `episode` | `of` (required: a runtime monitor that has an episode), `within_hours` (required) | after a breach the requirement must be met again within `within_hours` of window time |
-| `evidence_liveness` | `window` | `of` (required: a runtime window monitor, primary or burn), `max_stale_windows` (required) | the monitor must keep producing usable evidence |
+| `evidence_liveness` | `window` | `of` (required: a runtime window monitor, primary or burn; see the monitor roles under [`monitors`](#monitors)), `max_stale_windows` (required) | the monitor must keep producing usable evidence |
 
 Keys that belong to another kind are `runtime_invalid_profile`. `among` is not allowed under `profile: backend_v1`.
 
@@ -850,7 +850,7 @@ boolean).
 | `window` | object | per role | `{ tumbling_hours, grace_minutes }` and nothing else |
 | `decision` | object | yes | see below |
 | `episode` | object | per role | `{ closure_windows, closure_max_age_hours }` |
-| `limits` | object | per T13 | `{ max_active_obligations, max_tracked_correlations }`, integers >= 1 |
+| `limits` | object | for a `customer_side` or `evaluation_set` monitor whose violation is `precedence`, `bounded_response` or `protocol` (RFC 0003 §4.4, rule T13) | `{ max_active_obligations, max_tracked_correlations }`, integers >= 1 |
 | `single_producer` | boolean | no | default `false`; only with an exact-pattern violation |
 
 **`evidence`**
@@ -1042,10 +1042,12 @@ An **attempt** is one firing of an `optimize` rule together with the deploy it m
 formal semantics Definitions 12.23 and 13.1–13.2. The lifecycle is:
 
 1. The attempt opens when optimize fires, even while approval is still pending.
-2. The optimization runs and records an optimize outcome.
-3. If it produced a promoted candidate and the rule has `deploy: if_promoted`, the deploy runs and
-   records a deploy outcome. That deploy outcome is the attempt's last applicable outcome and closes it.
-   Otherwise the optimize outcome is the last applicable outcome and closes it.
+2. The optimization runs. A failed run records `optimize_failed` and a run with no promoted candidate
+   records `optimize_no_candidate`; a run that produced a promoted candidate records no failure outcome.
+3. If it produced a promoted candidate and the rule has `deploy: if_promoted`, the deploy runs. A failed
+   deploy records `deploy_refused` or `deploy_failed`; a successful one records no failure outcome. Either
+   way the deploy closes the attempt. Otherwise the attempt closes when the optimization finishes: on its
+   failure outcome, or on success for a promoted candidate under `deploy: never`.
 4. The attempt also closes, without an outcome, when the originating scope closes or the response
    revision changes before a pending effect starts, or when approval for the next effect is declined
    or expires before that effect starts.
@@ -1057,7 +1059,9 @@ an effect starts still allows that effect's outcome. Promote takes precedence ov
 candidate; without any Promote, invalid evidence gives `optimize_failed`, not NoDecision.
 A deploy failure is terminal only after the evaluator profile's finite retry bound is exhausted.
 
-Guards use strong Kleene logic (TRUE, FALSE, UNDECIDED). Deliver unless `only_while` is FALSE or
+Guards use strong Kleene logic (TRUE, FALSE, UNDECIDED): an AND is FALSE if any part is FALSE, an OR is
+TRUE if any part is TRUE, and other mixed cases are UNDECIDED (formal semantics Definition 13.8).
+`only_while` guards are combined with AND and `unless` guards with OR. Deliver unless `only_while` is FALSE or
 `unless` is TRUE; UNDECIDED never suppresses. Evaluate once per occurrence after all occurrences
 fired by that evaluation, so a newly opened attempt is visible. Each repeat rechecks; a suppressed
 occurrence is not delivered later when its guard changes. Use `episode_continued` or repeats to
@@ -1266,7 +1270,7 @@ verified source honesty.
 Aggregate identity includes kind, unit, canonical membership, operator, metric, source digest
 and comparator direction, excluding bound. Tightening decreases `lte` or increases `gte`;
 meet takes minimum or maximum respectively. Other identity changes are incompatible replacements.
-Source differences cannot share a monitor floor; schedule compatibility still applies.
+Source differences cannot share a monitor floor (the minimum monitoring a pack imposes on modules, see [Module and pack placement](#module-and-pack-placement)); schedule compatibility still applies.
 Persistence presence and both coordinates are immutable under overlay/meet. Packs rewrite
 `trigger.monitor` canonically; persistence creates no new monitor or episode lifecycle.
 

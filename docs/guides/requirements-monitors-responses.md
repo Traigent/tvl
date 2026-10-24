@@ -2,8 +2,9 @@
 
 !!! note "TVL 1.3"
     This guide describes TVL 1.3, accepted on 2026-10-21. Every marked YAML snippet below is checked by
-    `tests/test_runtime_doc_snippets.py`, which runs `tvl-validate` and `tvl-lint` on it (overlay snippets are
-    composed with `tvl-compose` first).
+    `tests/test_runtime_doc_snippets.py`, which runs `tvl-validate` and `tvl-lint` on it (overlay snippets, which
+    change parts of a base module as described in [section 9](#tightening-a-module-with-an-overlay), are composed
+    with `tvl-compose` first).
 
 **TVL Reactive Contracts** names the runtime layer: requirements, monitors, responses, the promotion gate and approvals. Its tagline is **“monitor requirements, govern adaptation.”** This vocabulary combines event-condition-action (ECA) rules from active databases, runtime verification, the MAPE-K monitor-analyze-plan-execute loop over shared knowledge (Kephart & Chess, 2003), canary promotion and statistical process control.
 
@@ -47,7 +48,7 @@ monitor can emit. Two requirement kinds (`recovery_time`, `evidence_liveness`) a
 monitor*: they point at a monitor with `of`.
 
 Requirement, monitor and response names are plain identifiers (`[A-Za-z_][A-Za-z0-9_]*`, no dots). They live
-in their own three namespaces, and a runtime name equal to a tvar, cvar, policy or composite name is rejected
+in their own three namespaces, and a runtime name equal to a tvar (tuned variable), cvar (calibrated variable), policy or composite name is rejected
 (`runtime_name_collision`).
 
 !!! pitfall "Write the version as a string"
@@ -364,7 +365,7 @@ A requirement's `violation` says what counts as a bad unit. There are seven pred
 A **unit** is the thing you count. A `trace` is the end-to-end handling of one request, including all model calls,
 tool calls and handoffs in contributing components. An `invocation` is one execution of the monitored agent itself;
 a trace can contain several invocations. An individual tool or model call is an event within a unit, not a unit by itself
-(RFC §6.2).
+([RFC 0003 §6.2](https://github.com/Traigent/tvl/blob/main/formalization/rfc-0003-runtime-requirements-monitors-responses.md#62-units-windows-attribution-and-populations)).
 
 Use `rate_bound` when a few bad units are acceptable ("at most 1% of invocations"). Use `zero_tolerance` when
 one is too many. `zero_tolerance` accepts only the five patterns (not a metric and not a checker), because a
@@ -524,7 +525,7 @@ entries (`runtime_protocol_nondeterministic`).
     Both `tvl-lint` and `tvl-validate` explain that state identifiers must be strings and recommend quoting YAML yes/no.
     Pick state names like `idle` or `done`, or quote them. Run `tvl-validate` for the full schema check.
 
-### Rates over events
+### Rates of units that contain an event
 
 `rate_bound` also takes an event pattern, which turns "never" into "rarely":
 
@@ -612,8 +613,8 @@ so each window gets one hundred-and-twentieth of the budget. More windows per ho
 make `BREACHED` slightly harder to reach in each window.
 
 !!! example "Where the lines fall"
-    For `max_rate: 0.05`, `confidence: 0.95`, `false_alarm_budget: 0.05`, `horizon_days: 30`, 6-hour windows and
-    no unresolved or unplaceable units and timely admissible evidence. Each row assumes `min_samples` is at most
+    The table assumes `max_rate: 0.05`, `confidence: 0.95`, `false_alarm_budget: 0.05`, `horizon_days: 30`, 6-hour
+    windows, no unresolved or unplaceable units, and timely admissible evidence. Each row assumes `min_samples` is at most
     that row's unit count; below `min_samples` the result is `UNKNOWN(insufficient)` instead:
 
     | Units in the window | `BREACHED` from this many bad units | `MET` up to this many bad units | In between |
@@ -629,7 +630,7 @@ make `BREACHED` slightly harder to reach in each window.
 
 ### How to choose
 
-1. **`max_rate`: the promise.** Take it from the business need ("at most 5% slower than 2 seconds"). The smaller it
+1. **`max_rate`: the promise.** Take it from the business need ("at most 5% of traces take longer than 2 seconds"). The smaller it
    is, the more traffic you need to *prove* it.
 2. **`confidence`: leave it at 0.95** unless you have a reason. 0.99 needs about 50% more units to reach `MET`; 0.90 needs
    about a quarter fewer.
@@ -863,7 +864,7 @@ Events: `stale` when the monitor becomes `STALE`, `live_again` when it is `LIVE`
 | Monitor role | Events a response rule can trigger on |
 |---|---|
 | primary `rate_bound` or `zero_tolerance` | `episode_opened`, `episode_continued`, `episode_open_for`, `episode_resolved`, `episode_withdrawn` |
-| primary, `customer_side` | additionally `unit_violation` (a unit in the population established as violating a pattern fixed by a prefix) |
+| primary, `customer_side` | additionally `unit_violation` (a unit in the population established as violating a pattern fixed by a prefix: the events seen so far already violate it, and no later event can undo that) |
 | burn | `burn_breached` |
 | `recovery_time` obligation | `recovery_overdue`, `recovery_cancelled`, `recovery_recovered` |
 | `evidence_liveness` obligation | `stale`, `live_again` |
@@ -1234,7 +1235,8 @@ That is the whole map for the module in section 2. Two details that cost first-t
 * the default environment `production` needs an entry even though the module never writes it;
 * TVL never mints tokens for you. Any missing entry fails the whole compile with `runtime_unresolved_alias`, identifying the namespace
   and source field path without echoing the customer-chosen name.
-  Real references should be random, or a keyed commitment under a key you hold, never a plain hash of the name.
+  Real references should be random, or a keyed commitment under a key you hold (a value computed from the name with a secret
+  key, such as an HMAC, so nobody without the key can recover or recompute it), never a plain hash of the name.
 
 ```bash
 tvl-compile-runtime support-latency.tvl.yml --token-map tokens.json --out-dir out/
@@ -1329,7 +1331,8 @@ verdicts with usable evidence on a primary monitor (hours ≥ its tumbling durat
 
 Notifications can use `only_while: [{monitor: errors, state: episode_open}]` or
 `unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]`.
-Only a known FALSE conjunction or known TRUE inhibition suppresses: UNDECIDED still delivers.
+`only_while` guards combine with AND and `unless` guards with OR; a guard is UNDECIDED when its state cannot be
+established. Only a known FALSE `only_while` conjunction or a known TRUE `unless` disjunction suppresses: UNDECIDED still delivers.
 Use `episode_continued` or repeats to recheck; a suppressed occurrence is not replayed later.
 Mutual/self monitor inhibition is rejected. Attempt guards do not add inhibition graph edges.
 Packs may use their own monitor guards, but no outcome triggers or attempt guards.

@@ -16,7 +16,7 @@ Those requirements usually get translated into scattered prompt edits, hidden mo
 
 -   :material-tune-variant: **Specify the agent design space**
 
-    Declare allowed models, prompts, routing policies, retrieval parameters, tool choices, memory, and orchestration as typed TVARs.
+    Declare allowed models, prompts, routing policies, retrieval parameters, tool choices, memory, and orchestration as typed TVARs (tuned variables: each declares one choice with a type and a domain of allowed values).
 
 -   :material-clipboard-check: **State required properties**
 
@@ -41,7 +41,7 @@ TVL is the contract boundary for governed adaptation in AI agents. A TVL module 
 *   **Operational assumptions**: environment snapshots with pinned bindings and numeric context for operational checks
 *   **Desired properties**: maximize/minimize objectives and acceptable target bands
 *   **Metric contract**: optional `metric_ref` pointers that tell the evaluator which metric definition computes each objective
-*   **Acceptance governance**: `epsilon_pareto`, `min_effect`, `adjust`, and `chance_constraints`
+*   **Acceptance governance**: the `epsilon_pareto` dominance rule (a candidate must be no worse on any objective, within a tolerance, and better on at least one by more than it), `min_effect` (that tolerance for each objective), `adjust` (the correction for testing several objectives at once), and `chance_constraints` (limits on the rate of an undesirable event, checked at a stated confidence); see [Agent Evaluation and Promotion Evidence](guides/statistical-validation-guide.md)
 The public language contract defines what these requirements mean. Search algorithms, candidate scheduling, sample allocation, and internal solver representations remain implementation choices.
 
 !!! note "TVL Reactive Contracts"
@@ -52,7 +52,7 @@ The public language contract defines what these requirements mean. Search algori
 
 ## A Valid TVL Example
 
-The example below is an abridged copy of the canonical `rag-support-bot.tvl.yml` module shipped in `spec/examples`; the shipped file also has an `exploration` block (strategy, convergence and budgets):
+The example below is an abridged copy of the canonical `rag-support-bot.tvl.yml` module shipped in `spec/examples`; the shipped file also has an `exploration` block (strategy, convergence and budgets). It declares four tuned variables; a structural rule that a zero-shot run uses no retrieval (`retriever.k = 0`); two environment checks on gateway latency and input price; quality and latency objectives; and a promotion policy that needs a meaningful improvement and a bounded rate of latency-limit breaches:
 
 ```yaml title="rag-support-bot.tvl.yml"
 tvl:
@@ -119,8 +119,8 @@ promotion_policy:
 TVL also supports:
 
 *   **Callable domains** such as `callable[RerankerProto]` with registry-backed lookup
-*   **Banded objectives** using `TOST` for targets like acceptable response-length ranges
-*   **Multiple-testing adjustment** with `none`, `bonferroni`, `holm`, or `BH`
+*   **Banded objectives** using `TOST` (two one-sided tests, which check that a metric stays inside a target band) for targets like acceptable response-length ranges
+*   **Multiple-testing adjustment** with `none`, `bonferroni`, `holm`, or `BH` (Benjamini–Hochberg)
 *   **Overlay composition** and separate validation of config/measurement artifacts
 
 When present, `metric_ref` is a stable declarative ID such as `metrics.latency_p95_ms.v1`. The evaluation harness resolves that ID to the concrete metric implementation.

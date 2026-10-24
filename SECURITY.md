@@ -4,7 +4,7 @@
 
 This policy covers everything in this repository:
 
-- the TVL specification, JSON Schemas and grammar;
+- the TVL (Tuned Variables Language) specification, JSON Schemas and grammar;
 - the Python tools and SDK (`tvl_tools/`, `python/`);
 - the VS Code extension (`vscode-tvl/`) and shared editor code;
 - the website source (`website/`), published at <https://tvl-lang.org>.

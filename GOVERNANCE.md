@@ -1,11 +1,11 @@
 # Governance
 
-TVL is a maintainer-led open-source project. Traigent Ltd. stewards it: Traigent maintainers make the decisions described here. There is no foundation, steering committee or voting body.
+TVL (the Tuned Variables Language, see the [formal semantics](formalization/tvl-formal-semantics.md)) is a maintainer-led open-source project. Traigent Ltd. stewards it: Traigent maintainers make the decisions described here. There is no foundation, steering committee or voting body.
 
 ## Roles
 
 - **Contributors** open issues and pull requests. Anyone may contribute, under the [Code of Conduct](CODE_OF_CONDUCT.md) and the sign-off (DCO) described in [CONTRIBUTING.md](CONTRIBUTING.md).
-- **Maintainers** review and merge pull requests, run the RFC process and cut releases. They are listed in [MAINTAINERS.md](MAINTAINERS.md).
+- **Maintainers** review and merge pull requests, run the [RFC process](formalization/README.md) (the written proposal process for language changes) and cut releases. They are listed in [MAINTAINERS.md](MAINTAINERS.md).
 
 ## How decisions are made
 

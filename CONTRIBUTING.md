@@ -1,6 +1,6 @@
 # Contributing to TVL
 
-Thank you for your interest in improving TVL. This repository contains the normative specification, the reference tools and Python SDK, examples, the formal semantics and proofs, the VS Code extension, and the website. By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Thank you for your interest in improving TVL, the Tuned Variables Language (see the [formal semantics](formalization/tvl-formal-semantics.md)). This repository contains the normative specification, the reference tools and Python SDK, examples, the formal semantics and proofs, the VS Code extension, and the website. By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
@@ -29,7 +29,7 @@ The repository also contains a `uv.lock` file. If you use [uv](https://docs.astr
 
 For website changes, also install [Node.js](https://nodejs.org/en/download) 22 and [pnpm](https://pnpm.io/installation) 10, matching CI. For VS Code extension changes, install Node.js 22, which includes npm.
 
-The command-line tools are installed with the package: `tvl-parse`, `tvl-lint`, `tvl-validate`, `tvl-config-validate`, `tvl-measure-validate`, `tvl-ci-gate`, `tvl-check-structural`, `tvl-check-operational`, `tvl-compose`, `tvl-compile-runtime` and `tvl-microsim-bridge`. Return codes: `0` on success (for `tvl-ci-gate`, a `Promote` decision); `5` when `tvl-config-validate` fails; `2` for every other validation, lint, structural UNSAT, operational, composition, compilation or gate failure.
+The command-line tools are installed with the package: `tvl-parse`, `tvl-lint`, `tvl-validate`, `tvl-config-validate`, `tvl-measure-validate`, `tvl-ci-gate`, `tvl-check-structural`, `tvl-check-operational`, `tvl-compose`, `tvl-compile-runtime` and `tvl-microsim-bridge`. Return codes: `0` on success (for `tvl-ci-gate`, a `Promote` decision); `5` when `tvl-config-validate` fails; `2` for every other validation, lint, structural UNSAT (no allowed configuration satisfies the structural constraints), operational, composition, compilation or gate failure.
 
 ## Running the checks
 

@@ -1,6 +1,6 @@
 # Getting Started with TVL
 
-This guide walks through a small but valid TVL module and the core CLI checks you should run before using a spec in optimization or CI.
+This guide walks through a small but valid TVL module and the core CLI (command-line interface) checks you should run before using a spec in optimization or CI (continuous integration).
 
 ## Install the CLI
 
@@ -114,7 +114,7 @@ What each step does:
 
 ## Common first mistakes
 
-*   Writing CEL-like expressions such as `params.model == "gpt-4o"` instead of TVL formulas like `model = "gpt-4o"`.
+*   Writing expressions in the style of CEL (Common Expression Language), such as `params.model == "gpt-4o"`, instead of TVL formulas like `model = "gpt-4o"`: use bare variable names and a single `=` for equality.
 *   Using derived constraints for metric outputs. In TVL, derived constraints are over `env.context.*` symbols.
 *   Treating `metric_ref` as executable code. It should be a stable metric ID such as `metrics.quality_score.v1`, resolved by your evaluator.
 *   Forgetting `promotion_policy.min_effect` entries for standard objectives.

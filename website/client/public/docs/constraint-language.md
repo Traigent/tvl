@@ -123,6 +123,8 @@ All constraints are type-checked against the declared TVARs:
 | `tuple[...]` | `=`, `!=`, `in` | tuples from domain |
 | `callable[P]` | `=`, `!=`, `in` | identifiers from registry |
 
+In `callable[P]`, `P` names a protocol (an interface the implementation must provide, such as `RerankerProto`); the values are identifiers of registered implementations, usually listed by a `registry` domain.
+
 **Important**: Float equality (`=`) with a numeric literal generates a warning (`float_equality`) because floating-point comparison may be unstable. Consider using range constraints instead.
 
 **Note**: A `bool` TVAR is never equal to a number: `use_cot = 1` is a type error (`constraint_type_mismatch` in `tvl-validate`, `structural_ill_typed_atom` in `tvl-check-structural`), not the same as `use_cot = true`. Numeric literals are compared exactly, as written: an `int` TVAR compared with a fractional literal such as `1.5` is reported by `tvl-validate` as `constraint_type_mismatch`, and if the structural checker runs on it anyway it decides the atom exactly (`n > 1.5` holds for `n >= 2`).
@@ -282,7 +284,7 @@ tvl-check-operational module.tvl.yml --json
 
 2. **Keep constraints simple**: Complex nested expressions are harder to debug and may slow SAT solving
 
-3. **Separate concerns**: Use structural constraints for TVAR relationships, operational preconditions (`constraints.derived`) for numeric `env.context.*` feasibility checks, and chance constraints for measured rollout gates
+3. **Separate concerns**: Use structural constraints for TVAR relationships, operational preconditions (`constraints.derived`) for numeric `env.context.*` feasibility checks, and chance constraints (limits on the measured rate of an undesirable event, checked at a stated confidence) for measured rollout gates
 
 4. **Test constraints**: Write unit tests for your constraints using the test harness pattern from [`tvl_book/examples/ch3_constraint_tests.py`](https://github.com/Traigent/tvl/blob/main/tvl_book/examples/ch3_constraint_tests.py)
 
@@ -304,6 +306,8 @@ See [error-codes.md](./error-codes.md) for the linter's constraint-related codes
 - `float_equality` (warning): Float equality comparison
 
 ## Grammar (EBNF)
+
+The grammar below is written in EBNF (Extended Backus–Naur Form): each rule `name = ... ;` defines a construct, `,` joins parts in sequence, `|` separates alternatives, `[ ... ]` marks an optional part, `{ ... }` a part repeated zero or more times, and `(* ... *)` a comment.
 
 ```ebnf
 formula       = implication ;
