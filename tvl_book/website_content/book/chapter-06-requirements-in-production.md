@@ -9,8 +9,11 @@ how sure we need to be. A **response** says what happens when a monitor reports 
 they are well formed; the platform that runs your agent does the watching and the acting. The release gate of `tvl-ci-gate`
 also evaluates promotion monitors from fully resolved counts (Story 3).
 
-!!! warning "TVL 1.3 is a draft"
-    Everything in this chapter was checked with the reference tools in this repository. Names and limits can still change before release.
+!!! info "Which TVL version this chapter describes"
+    This chapter uses the runtime blocks introduced in TVL 1.3 (accepted 2026-10-21). TVL 1.4 and TVL 1.5, the latest
+    accepted version, add reactive outcomes, notification guards, breach persistence and census aggregates, which this
+    chapter does not cover. The 1.3 constructs used here remain valid: the snippets are checked with the TVL 1.5
+    reference tools by `tests/test_runtime_doc_snippets.py`.
 
 ```mermaid
 flowchart LR
@@ -122,7 +125,7 @@ model and sampling assumptions hold.
 | Sunday 00:00 to 06:00 | 40 answers, 3 slow | `UNKNOWN(insufficient)`: fewer than `min_samples` (200) |
 | Monday 06:00 to 12:00 | 3,000 answers, 90 slow (3%) | `MET`: comfortably under 5% |
 | Monday 12:00 to 18:00 | 3,000 answers, 160 slow (5.3%) | `UNKNOWN(inconclusive)`: over 5%, but not enough to be sure |
-| Tuesday 06:00 to 12:00 | 3,000 answers, 300 slow (10%) | `BREACHED`: 192 slow answers or more would already have been |
+| Tuesday 06:00 to 12:00 | 3,000 answers, 300 slow (10%) | `BREACHED`: 192 or more slow answers in this window would already be enough |
 
 The first row is the one to remember: **a quiet window is never "fine".** With too little traffic the honest answer is "unknown", and the
 `insufficient` reason says exactly why. The thresholds depend only on the numbers in the monitor. For 5%, 95% confidence, 6-hour windows and a
@@ -156,7 +159,8 @@ promise once overdue stays overdue.
 ### Who watches the watcher
 
 The third requirement, `latency_evidence_flows`, says: if the last five windows all produced no usable evidence, report `STALE`. Without it, a
-broken pipeline looks identical to a perfect week. The validator warns when it is missing (`runtime_liveness_missing`), and because `tvl-validate`
+broken pipeline only produces `UNKNOWN` windows: they never count as `MET`, but nothing in the module reports that the
+evidence has stopped. The validator warns when it is missing (`runtime_liveness_missing`), and because `tvl-validate`
 exits 2 on any issue, the warning stops your CI. That is deliberate.
 
 ## Story 2 · "Never charge without an authorization"
@@ -340,7 +344,8 @@ also needs `complete: true`; without it that monitor is `UNKNOWN(incomplete)`. A
 or the legacy gate still wins the combined decision.
 
 The third row is the useful one. 8 bad answers in 100 is not good enough to promote and not bad enough to reject, so the monitor says `NoDecision`
-instead of guessing. A 1.2 chance constraint on the same counts would have rejected, because it passes only when its confidence bound is under the limit.
+instead of guessing. A chance constraint (a `promotion_policy.chance_constraints` entry, the rate check that predates TVL 1.3
+monitors; see [formal semantics §9](../../../formalization/tvl-formal-semantics.md)) on the same counts would have rejected, because it passes only when its confidence bound is under the limit.
 Promotion monitors are opt-in, so a module without them keeps the gate it had.
 
 !!! info "Integration Hint"

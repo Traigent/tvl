@@ -6,11 +6,12 @@ if you want to run them without API keys.
 
 ## Micro Lab · Orientation RAG Circuit
 
-- **Concepts reinforced:** Chapter 2 (configuration anatomy), Chapter 3 (constraint guards), Chapter 5 (promotion proofs).
-- **Entry point:** [`sims/orientation-rag-circuit/index.md`](../sims/orientation-rag-circuit/index.md)
+- **Concepts reinforced:** Chapter 2 (configuration anatomy), Chapter 3 (constraint guards), Chapter 5 (promotion evidence).
+- **Entry point:** [`microsims/orientation-rag-circuit/index.md`](../microsims/orientation-rag-circuit/index.md)
 - **How to explore:** Use the preset buttons to replay incidents, then adjust sliders to recover all constraints.
 - **What to inspect:** Latency/cost/quality gauges, constraint badges, and the YAML snapshot that mirrors `params.yaml`.
-- **Optional automation:** Regenerate presets with `python -m tvl_tools.microsim_bridge path/to/spec.tvl.yml`.
+- **Optional automation:** Regenerate presets with `tvl-microsim-bridge path/to/spec.yml`. In TVL 1.5 the bridge reads
+  a legacy `configuration_space` block, not `tvars`, so a current TVL module yields empty presets.
 
 ## Lab 1 · Hello World RAG
 
@@ -39,7 +40,7 @@ if you want to run them without API keys.
 
 ## Lab 3 · Safety Guardrails
 
-- **Concepts reinforced:** Chapter 3 (CEL rules), Chapter 4 (environment overlays for high-risk paths).
+- **Concepts reinforced:** Chapter 3 (structural constraints), Chapter 4 (environment overlays for high-risk paths).
 - **Entry point:** `examples/core/safety-guardrails/run.py`
 - **Command:**
   ```bash
@@ -52,7 +53,8 @@ if you want to run them without API keys.
 
 ## Lab 4 · Structured JSON Extraction
 
-- **Concepts reinforced:** Chapter 3 (schema validation) and Chapter 5 (operational checks on metrics).
+- **Concepts reinforced:** Chapter 3 (structural constraints on configuration variables) and Chapter 5
+  (validation tooling, including JSON Schema checks of the spec).
 - **Entry point:** `examples/core/structured-output-json/run.py`
 - **Command:**
   ```bash
@@ -60,13 +62,15 @@ if you want to run them without API keys.
   TRAIGENT_MOCK_MODE=true python examples/core/structured-output-json/run.py
   ```
 - **What to inspect:** The custom `json_score` metric in the aggregated dataframe, the configuration space
-  for `schema_rigidity`, and how metadata captures response-time statistics. Compare results to the CEL rules
-  in Chapter 3 that enforce structured outputs.
+  for `schema_rigidity`, and how metadata captures response-time statistics. Note the difference from Chapter 3:
+  TVL structural constraints restrict configuration variables such as `schema_rigidity`; checking that an output
+  is valid JSON is an evaluation metric (`json_score`), not a TVL constraint.
 
 ### Extension Ideas
 
 - Swap in real API keys (remove `TRAIGENT_MOCK_MODE`) to benchmark live services.
 - Modify the configuration spaces and rerun; compare manifests and promotion decisions.
-- Pipe the results into `tvl_tools.tvl_measure_validate` to double-check metric definitions.
+- Export a configuration file and a measurement bundle, then check them against the module with
+  `tvl-measure-validate module.tvl.yml config.yml measurements.yml`.
 - Capture screenshots of interesting runs (console output, Streamlit charts) and drop them into
   `tvl_book/figures/` for inclusion in case studies or the Playground page.

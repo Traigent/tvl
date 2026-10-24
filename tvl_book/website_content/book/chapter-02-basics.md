@@ -13,16 +13,17 @@ The table below maps each TVL section to its responsibilities.
 | `tvl` | Module namespace identifier |
 | `environment` | Snapshot ID plus optional `bindings` and `context` anchoring the spec |
 | `evaluation_set` | Dataset URI and optional seed for reproducibility |
-| `tvars` | Tuned variables with explicit types (`bool`, `int`, `float`, `enum[str]`) and domains |
+| `tvars` | Tuned variables with explicit types (for example `bool`, `int`, `float`, `enum[str]`; full list below) and domains |
 | `constraints` | Structural rules and operational preconditions |
 | `objectives` | Metrics to maximize/minimize, including banded targets |
 | `promotion_policy` | ε-Pareto dominance settings, α-level, min effects, chance constraints |
-| `exploration` | Search strategy, budgets, and convergence criteria |
+| `exploration` | Deprecated. Legacy, non-semantic search hints kept for compatibility; put search strategy and budgets in a separate run plan |
 
 ## Minimal Working Spec
 
-Here is the smallest useful TVL module. Read it top to bottom and notice how every field supports the
-optimizer.
+Here is a small introductory TVL module. Read it top to bottom and notice what each field declares. Some fields
+are optional (`bindings`, `seed`); the required top-level sections are `tvl`, `environment`, `evaluation_set`,
+`tvars`, `objectives`, and `promotion_policy`.
 
 ```yaml
 # Minimal TVL Spec - Chapter 2
@@ -75,13 +76,6 @@ promotion_policy:
   min_effect:
     answer_accuracy: 0.01
     latency_p95_ms: 50
-
-exploration:
-  strategy:
-    type: grid
-  budgets:
-    max_trials: 24
-    max_wallclock_s: 900
 ```
 
 !!! tip "Checklist Before You Commit"
@@ -188,9 +182,10 @@ TVL enforces explicit typing on all tuned variables:
 |------|-------------|-----------------|
 | `bool` | Boolean flag | `[true, false]` |
 | `int` | Integer value | `range: [1, 10]` or `set: [1, 2, 4, 8]` |
-| `float` | Floating-point | `range: [0.0, 1.0]` with optional `resolution` |
+| `float` | Floating-point | `range: [0.0, 1.0]` with a required `resolution` |
 | `enum[str]` | Finite set of strings | `["gpt-4o", "claude-3"]` |
 | `enum[int]` | Finite set of integers | `[100, 500, 1000]` |
+| `enum[float]` | Finite set of floats | `[0.1, 0.5, 0.9]` |
 | `tuple[...]` | Product type | Cartesian product of component domains |
 | `callable[Proto]` | Protocol reference | Registry-backed function lookup |
 
@@ -203,14 +198,18 @@ TVL enforces explicit typing on all tuned variables:
 
 ## Analog Circuit Lab · Explore the Knobs
 
-Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above;
-latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.
+Try the Orientation RAG micro simulation to get a feel for tuning trade-offs. The lab is a separate toy model with
+its own knobs (`retriever_top_k`, `rerank_weight`, `response_tokens`); they are not the variables declared in the spec
+above. Latency, cost, and quality update as you move the sliders, and the warnings illustrate the kind of rules that
+Chapter 3 writes as constraints.
 
-<iframe src="../../sims/orientation-rag-circuit/main.html" height="640px" scrolling="no" style="width: 100%; border: none;"></iframe>
+<iframe src="../microsims/orientation-rag-circuit/main.html" height="640px" scrolling="no" style="width: 100%; border: none;"></iframe>
 
-[Open the lab in a new tab](../sims/orientation-rag-circuit/index.md){ .md-button .md-button--primary }
+[Open the lab in a new tab](../microsims/orientation-rag-circuit/index.md){ .md-button .md-button--primary }
 
 **Suggested Prompts**
+
+These prompts use the lab's own knobs, not the spec above:
 
 - Start from the **Baseline** preset, bump `retriever_top_k` to 56, and observe the latency gauge. When does the red
   guardrail trigger?

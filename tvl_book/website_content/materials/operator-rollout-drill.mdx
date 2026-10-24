@@ -26,7 +26,8 @@ Production latency spikes after a provider-side model change. A candidate hotfix
 Incident packet:
 
 - provider-side change happened 20 minutes ago
-- FAQ latency moved from p95 3.8 seconds to p95 7.2 seconds
+- latency of the FAQ (frequently asked questions) flow moved from 3.8 to 7.2 seconds at p95 (the 95th percentile:
+  95% of answers are faster)
 - the production budget and rollback manifest still exist
 - a hotfix overlay was prepared under pressure and may or may not narrow the surface safely
 
@@ -52,6 +53,9 @@ constraints:
 Candidate hotfix overlay:
 
 ```yaml
+_tvl_overlay:
+  extends: base-spec.tvl.yml
+
 overrides:
   tvars:
     - name: model
@@ -97,7 +101,7 @@ change rather than with a spec edit. The overlay may still be unsafe, but the fi
 Run the operator checks:
 
 ```bash
-tvl-compose base-spec.tvl.yml hotfix.overlay.yml
+tvl-compose hotfix.overlay.yml -o composed-spec.tvl.yml   # the base comes from _tvl_overlay.extends
 tvl-validate composed-spec.tvl.yml
 tvl-check-structural composed-spec.tvl.yml --json
 ```
@@ -106,6 +110,8 @@ What to notice:
 
 - narrowing the model domain is a plausible hotfix move
 - widening `max_tokens` to `1024` is not a safe narrowing move
+- `tvl-compose` does not catch it: in TVL 1.5 its narrowing checks cover added values in list domains and widened
+  `range` endpoints, not values added to a `set` mapping, so this overlay composes without an error. Read the diff.
 - a hotfix overlay that silently widens exposure should not be promoted under pressure
 
 ### Step 3. Check the Audit Trail (10 min)
@@ -138,6 +144,8 @@ Strong debrief answers should distinguish three things clearly:
 - what failed in the environment
 - what the overlay changed
 - what artifact made the final decision auditable
+
+Then discuss:
 
 - What signal should have prevented this surprise earlier?
 - Which artifact saved the most time during the drill?

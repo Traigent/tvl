@@ -53,7 +53,9 @@ Facilitator action:
 
 Learner action:
 
-- predict whether the mistake is structural, operational, or outside TVL
+- predict whether the mistake is structural (a rule over the tuned variables, under `constraints.structural`),
+  operational (a precondition on the declared environment, under `constraints.derived`), or outside TVL
+  (see [Chapter 3](../book/chapter-03-constraints.md))
 
 Success signal:
 
@@ -64,7 +66,8 @@ Success signal:
 Facilitator action:
 
 - split the room into groups
-- give each group one constraint or overlay scenario
+- give each group one constraint or overlay scenario (an overlay is a small file of overrides that `tvl-compose`
+  applies to a base module; see [Chapter 4](../book/chapter-04-patterns.md) for the composition rules)
 
 Learner action:
 

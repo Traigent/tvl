@@ -28,8 +28,9 @@ pip install -e .
   ```
 - Note how adaptive variables (model, temperature, retrieval depth) map directly to Chapter 2’s configuration space.
 
-### 2. Zero-Code-Change Integration
-- Inspect the decorator pattern in the walkthrough and compare it with your existing code.
+### 2. Decorator Integration
+- Inspect the decorator pattern in the walkthrough: you wrap an existing function instead of rewriting it.
+  Compare it with your existing code.
 - Create a sample evaluation dataset (e.g., `questions.jsonl`) and run the optimization snippet provided.
 
 ### 3. Seamless vs Parameter Modes
@@ -38,7 +39,8 @@ pip install -e .
 
 ### 4. Multi-Objective Runs
 - Reuse the walkthrough’s multi-objective example or jump to Lab 2 for the full multi-objective tradeoff script.
-- Compare results with Triagent’s output manifests described in Chapter 5.
+- Compare results with the manifests described in Chapter 5 (an integration such as Traigent, whose optimizer
+  TVO reads TVL, can emit them; see [Chapter 5](chapter-05-integration.md)).
 
 ### 5. Privacy Modes and Execution
 - Toggle `execution_mode="edge_analytics"` to experience local-only runs.

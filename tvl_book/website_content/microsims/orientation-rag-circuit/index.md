@@ -10,33 +10,48 @@ hide:
 [Run the Orientation RAG MicroSim](./main.html){ .md-button .md-button--primary }
 [Download the Presets JSON](./microsim_presets.json){ .md-button }
 
-This lab reimagines a TVL spec as an analog circuit. Each slider changes a “component” that maps directly to a
-governed tuning variable:
+This lab reimagines a TVL spec as an analog circuit. It is a toy model: each slider is a knob of the simulation, in
+the spirit of a tuned variable, not a variable read from a TVL module.
 
-- **Retriever Top K** → intake resistor; higher values enrich context but add load.
-- **Rerank Weight** → amplifier gate; boosts answer quality at a cost.
-- **Response Tokens** → output capacitor; longer responses draw more energy.
+- **Retriever Top K** → intake resistor; higher values enrich context but add latency and cost.
+- **Rerank Weight** → amplifier gate; raises answer quality and lowers simulated latency. It has no cost term in
+  this model.
+- **Response Tokens** → output capacitor; longer responses add latency and cost.
 
-The circuit read-outs mirror the objectives of the example TVL module:
+The read-outs come from fixed toy formulas in `app.js` (`k` = Top K, `tokens` = Response Tokens, `weight` = Rerank
+Weight):
 
-| Meter | TVL Metric | Formula |
-|-------|------------|---------|
-| Latency Gauge | `latency` (minimize) | `base + k*3 + tokens*0.5 - weight*40` |
-| Cost Meter | `cost_usd` (minimize) | `0.0002*k + 0.0005*tokens` |
-| Quality Score | `faithfulness` (maximize) | `base + weight*45 - penalty(latency)` |
+| Meter | Formula |
+|-------|---------|
+| Latency Gauge (ms) | `480 + 3*k + 0.45*tokens - 50*weight` |
+| Cost Meter (USD) | `0.00018*k + 0.00052*tokens + 0.005` |
+| Quality Score | `70 + 45*weight + 12*k/64 - penalty(latency)`, clamped to 20–99 |
 
-Constraints light up when violated:
+Warnings light up when violated:
 
-- `latency <= 800 ms`
-- `cost_usd <= 0.12`
+- latency `<= 800 ms`
+- cost `<= $0.12`
 - `rerank_weight >= 0.3` whenever `retriever_top_k >= 40`
 
-Use the preset buttons to replay three scenarios:
+Only the last one has the shape of a TVL structural constraint (a rule over knobs). The first two limit simulated
+outcomes; in a TVL module such limits belong in objectives or chance constraints.
 
-1. **Baseline** – The starting configuration.
-2. **Latency Spike** – A latency increase that pushes the circuit toward a constraint violation.
-3. **Budget Shift** – A change of cost budget that shifts the trade-off between objectives.
+Use the preset buttons to replay three scenarios. The built-in presets in `app.js` are:
 
-The `microsim_presets.json` file matches the format emitted by
-`python -m tvl_tools.microsim_bridge`. Drop updated specs in your repo, run the bridge,
-and the page reloads with fresh scenarios.
+1. **Baseline** – the starting slider positions.
+2. **Latency Spike** – Top K 48, Rerank Weight 0.35, Response Tokens 384: latency pressure rises.
+3. **Budget Shift** – Top K 24, Rerank Weight 0.55, Response Tokens 512: richer answers, as if the budget had
+   relaxed. The cost limit itself stays at $0.12.
+
+!!! warning "Known issue"
+    When the page loads the bundled `microsim_presets.json`, its presets replace the built-in ones. That file
+    currently sets only `max_tokens: 512`, which the page does not map to a slider, so the preset buttons then
+    leave the sliders unchanged.
+
+To regenerate `microsim_presets.json`, run `tvl-microsim-bridge path/to/spec.yml` (add `-o` to choose another output
+file; by default it overwrites this lab's presets file, and `--dry-run` prints instead), then refresh the page. The
+page binds only the keys `retriever_top_k`, `rerank_weight`, and `response_tokens` to sliders.
+
+!!! warning "Known gap in TVL 1.5"
+    The bridge reads a legacy `configuration_space` block, not `tvars`. On a current TVL module it emits empty
+    defaults, sliders, and presets.

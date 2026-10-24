@@ -1,6 +1,6 @@
 # TVL Intelligent Textbook
 
-Welcome to the **Tuned Variable Language (TVL)** interactive guide. This learning path adapts the core TVL
+Welcome to the **Tuned Variables Language (TVL)** interactive guide. This learning path adapts the core TVL
 book from Traigent Labs to the interactive framework provided by the Intelligent Textbooks project. You can
 read chapters sequentially, explore examples in your editor, or remix the content into your own courseware.
 
@@ -11,9 +11,10 @@ read chapters sequentially, explore examples in your editor, or remix the conten
 
 ## Why TVL Matters
 
-LLM applications operate in environments where models, latencies, and costs shift daily. TVL turns brittle
-configuration files into governed, type-safe specifications that TVO (Traigent's optimizer) can explore
-while respecting safety constraints. This textbook guides software engineering students through that mindset
+Large language model (LLM) applications operate in environments where models, latencies, and costs shift daily.
+TVL turns brittle configuration files into governed, type-safe specifications. An optimizer such as TVO (the TVL
+Optimizer in the Traigent platform) searches the declared space, and the TVL promotion gate refuses candidates that
+break the declared constraints. This textbook guides software engineering students through that mindset
 shift—from hard-coded parameters to adaptive, auditable configuration for agents, services, and other LLM-backed workflows.
 
 ```mermaid
@@ -33,10 +34,10 @@ flowchart LR
 |---------|-------|---------------|
 | [Motivation](chapter-01-motivation.md) | Why prone-to-drift pipelines need TVL | Baseline campus RAG spec |
 | [Language Basics](chapter-02-basics.md) | Anatomy of a TVL spec | Quickstart YAML + Python inspector |
-| [Constraints & Units](chapter-03-constraints.md) | Declarative safety rails with CEL | Constraint lab spec + pytest |
+| [Constraints & Units](chapter-03-constraints.md) | Declarative constraints in typed DNF, checked with SAT/SMT tools | Constraint lab spec + pytest |
 | [Patterns](chapter-04-patterns.md) | Inheritance, overlays, and hotfixes | Environment tree + overlay YAML |
-| [Integration](chapter-05-integration.md) | TVL with Triagent (TVO) and DVL | Deployment manifest + CI script |
-| [Requirements in Production](chapter-06-requirements-in-production.md) | TVL 1.3 (draft): requirements, monitors and responses after release | Campus latency module, organisation floor pack |
+| [Integration](chapter-05-integration.md) | TVL with external tools: TVO (Traigent's optimizer) and DVL | Deployment manifest + CI script |
+| [Requirements in Production](chapter-06-requirements-in-production.md) | TVL 1.3 (accepted; still valid in TVL 1.5): requirements, monitors and responses after release | Campus latency module, organisation floor pack |
 | [Resources](resources.md) | Commands, references, and next steps | Tooling cheat sheet |
 | [Hands-on Labs](labs.md) | Run Traigent examples aligned with the chapters | Hello World, Tradeoffs, Guardrails |
 | [Guided Walkthrough](walkthrough.md) | Step-by-step SDK tour | `walkthrough.sh` script |
@@ -52,7 +53,8 @@ You can open these files in your IDE and run the scripts locally while following
 
 ## Tooling Overview
 
-All validation and linting runs through the `tvl` CLI, which is built from modular plug-ins. Scan the
-[Resources](resources.md) page for a command cheat sheet, then wire the modules (`tvl_parse`, `tvl_validate`,
-`tvl_check_structural`, and friends) into your local scripts or CI pipeline. Triagent consumes the same
-reports before promoting a configuration, so mastering the tooling keeps surprises out of production.
+Validation and linting run through separate commands: `tvl-parse`, `tvl-lint`, `tvl-validate`,
+`tvl-check-structural`, `tvl-ci-gate`, and friends (there is no single `tvl` command). Scan the
+[Resources](resources.md) page for a command cheat sheet, then wire these commands, or their Python modules
+(`tvl_tools.tvl_validate` and so on), into your local scripts or CI pipeline. An integration such as Traigent can
+consume the same reports before promoting a configuration.

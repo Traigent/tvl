@@ -32,13 +32,13 @@ next.
 ## Why This Workshop Matters
 
 Teams often argue about patterns by vibe, novelty, or whoever has the strongest opinion in the room. This workshop
-forces the discussion back onto one shared decision plane: governed TVARs, concrete failure modes, and evidence worth
-paying for.
+forces the discussion back onto one shared set of comparison criteria: the TVARs (tuned variables, the knobs a TVL
+module declares under `tvars`) each pattern would expose, concrete failure modes, and evidence worth paying for.
 
 ## Workshop Output
 
 - One comparison table covering at least three candidate patterns.
-- A ranked shortlist of which scaffolds deserve budget on the next study plane.
+- A ranked shortlist of which scaffolds deserve budget in the next experiment.
 - A failure-mode note describing what would make the leading choice non-deployable.
 
 ## Before You Start
@@ -46,7 +46,7 @@ paying for.
 Pre-work:
 
 - skim the relevant pattern pages before the meeting if possible
-- keep one shared decision plane for the whole workshop
+- compare every pattern against the same goals and evaluation criteria for the whole workshop
 
 Suggested group size:
 
@@ -89,8 +89,8 @@ Examples:
 
 ### Checkpoint
 
-If two patterns are being compared on different goals, the workshop is drifting. Put them back on one shared decision
-plane before ranking them.
+If two patterns are being compared on different goals, the workshop is drifting. Compare them against the same goals
+and evaluation criteria before ranking them.
 
 ## Step 3: Rank The Next Experiment
 
@@ -114,7 +114,8 @@ If the discussion becomes abstract, force the group back to TVL language:
 
 - Which TVARs are we actually exposing?
 - Which structural rules would we need?
-- Which operational preconditions would block the study?
+- Which operational preconditions would block the study? (Conditions on the declared environment, such as provider
+  price or baseline latency, written under `constraints.derived`; structural rules constrain the TVARs instead.)
 - Which promotion evidence would justify rollout?
 
 ## Worked Example
