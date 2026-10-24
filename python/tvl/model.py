@@ -686,6 +686,12 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
         precision: int = 1000 if kind == "float" else 1
         origin: Optional[Fraction] = None
         step: Optional[Fraction] = None
+        if isinstance(spec, list) and spec and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in spec
+        ):
+            # A bare list of numbers (schema EnumVals) is a finite set of values,
+            # exactly like {set: [...]}.
+            return Domain(path=name, kind="enum", values=sorted(spec))
         if isinstance(spec, dict):
             if "range" in spec:
                 range_vals = spec.get("range", [])

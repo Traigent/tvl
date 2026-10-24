@@ -845,6 +845,10 @@ def _test_banded_objective(
     band_lower, band_upper = bounds
 
     mean, std, n = _band_candidate_stats(cand_data)
+    # Fail closed on malformed statistics: NaN/inf mean, non-integer or negative
+    # n, or (below) a NaN/negative/infinite std never become evidence.
+    if not _is_real(mean) or not math.isfinite(mean) or not _is_count(n):
+        return BandedResult(name=spec.name, verdict="inconclusive")
     if n < 2:
         # Formal semantics §9.5: a point estimate outside the declared band is
         # rejected; an on-target result without the evidence TOST needs is
@@ -858,6 +862,9 @@ def _test_banded_objective(
                 band_upper=band_upper,
                 verdict="out_of_band",
             )
+        return BandedResult(name=spec.name, verdict="inconclusive")
+
+    if not _is_real(std) or not math.isfinite(std) or std < 0:
         return BandedResult(name=spec.name, verdict="inconclusive")
 
     se = std / math.sqrt(n)
@@ -900,9 +907,22 @@ def _t_statistic(numerator: float, se: float) -> float:
     """``numerator / se``, taking its limit ±∞ (or 0 for a zero numerator) when se = 0."""
     if se > 0:
         return numerator / se
+    if se != 0:
+        raise ValueError("standard error must be a non-negative number")
     if numerator == 0:
         return 0.0
     return math.copysign(math.inf, numerator)
+
+
+def _is_real(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _is_count(n: Any) -> bool:
+    """A non-negative integer count (integral floats such as 10.0 are accepted)."""
+    if not _is_real(n) or not math.isfinite(n):
+        return False
+    return n >= 0 and n == int(n)
 
 
 def _band_target_bounds(target: Any) -> Optional[Tuple[Any, Any]]:
@@ -924,8 +944,9 @@ def _band_candidate_stats(cand_data: Dict[str, Any]) -> Tuple[Any, Any, Any]:
         mean = sum(samples) / n
         var = sum((x - mean) ** 2 for x in samples) / (n - 1)
         return mean, math.sqrt(var), n
-    if samples is not None and len(samples) == 1 and cand_data.get("n") is None:
-        # A lone sample is the point estimate when no aggregated stats are given.
+    if samples is not None and len(samples) == 1 and cand_data.get("mean") is None:
+        # A lone sample is the point estimate unless a full aggregated mean/std/n
+        # set is supplied; a stray n alone never fabricates mean=0.
         return samples[0], 0.0, 1
     return cand_data.get("mean", 0.0), cand_data.get("std", 0.0), cand_data.get("n", 0)
 
