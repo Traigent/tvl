@@ -216,14 +216,14 @@ Both coordinates of `persist`, and its presence, are immutable under overlay/mee
 tightening order. Packs rewrite `trigger.monitor` to its canonical monitor as before (`R3:1460–1461`).
 Persistence adds no monitor identity, floor requirement or episode lifecycle.
 
-New projected constructs select proposed `tvl-runtime-contract/3` and `tvl-runtime-local/3`, version
+New projected constructs select `tvl-runtime-contract/3` and `tvl-runtime-local/3`, version
 `"1.5"`. A version declaration alone does not select `/3`; without a 1.5 construct keep the existing
 construct-based `/1` or `/2` selection (`R4:264–283`). Refuse `/3` without a 1.5 construct. Freeze the old
 schemas; refuse unknown format tags rather than dropping fields. Count reports remain `/1`.
 
-Aggregate reports use proposed `tvl-runtime-report/2`, a closed record with exactly these fields:
+Aggregate reports use `tvl-runtime-report/2`, a closed record with exactly these fields:
 
-| Field | Proposed content |
+| Field | Content |
 |---|---|
 | `format` | `tvl-runtime-report/2` |
 | `contract_digest`, `monitor_ref`, `monitor_revision` | existing binding types (`R3:1723–1725`) |

@@ -73,11 +73,12 @@ The formal semantics and soundness proofs in this document apply to the **core T
 2. **Warnings**: Conformant validators SHOULD emit warnings when excluded constructs are used:
    - `W6001: unverifiable_registry_domain` — "Module uses registry domain; formal soundness guarantees do not apply"
    - `W6002: unverifiable_callable_type` — "Module uses callable type; type safety is not formally verified"
-   - cvars/policies/composites (RFC 0001/0002) have **no lint warning implemented yet** (tracked as
-     follow-up work): `lint_module`'s existing conservative-extension guarantee
-     (`tests/model_checking/test_legacy_corpus.py`) locks identical diagnostics whether or not a
-     legacy module has `cvars`/`policies` injected, so adding a warning here needs that guarantee
-     re-scoped first — see the coverage note below instead for the disclosure in the meantime.
+   - `outside_proved_subset` (severity `info`) — "Module uses <construct>, which is outside the
+     machine-proved (Lean) subset". `lint_module` emits it once per declared family among
+     `cvars`, `policies` and `composites` (RFC 0001/0002); an absent or empty block emits nothing.
+     Info diagnostics are reported but never decide `ok` or the exit status of the CLI tools
+     (`blocking_issues` excludes them). Callable domains stay with `W6002`. See the coverage note
+     below.
 
 3. **Workaround**: For formal guarantees, resolve registry domains to explicit enum domains before validation, replace callable types with enum types listing known implementations, and restrict the module to the pre-RFC-0001/0002 subset (no `cvars`, `policies`, or `composites` blocks).
 
@@ -1506,7 +1507,20 @@ For a TVL implementation to be **conformant**, it must satisfy:
 1. Check structural constraint satisfiability (Theorem 7.2)
 2. Report `unsatisfiable_constraints` if `Feasible(M) = ∅`
 3. Evaluate derived constraints against environment (Phase 1 of Theorem 7.4)
-4. Report `derived_env_undefined` if environment lookup fails
+4. Report a failed derived constraint with the diagnostic for its cause. All are errors. The
+   reference implementation emits these codes, from the lint (`lint_module`) and from the
+   operational check (`check_operational`, `tvl-check-operational`):
+
+   | Cause | Code | Emitted by |
+   |-------|------|------------|
+   | Non-linear operator (`/`, `^`) | `non_linear_derived` | lint |
+   | References a TVAR (Definition 4.4) | `derived_references_tvar` | lint |
+   | References `env.bindings.*` | `derived_references_bindings` | lint, operational check |
+   | References a symbol outside `env.context.*` | `derived_invalid_symbol_reference` | lint, operational check |
+   | Not of the form `LinExpr OP Number` with `OP` ∈ {`<=`, `>=`, `<`, `>`, `=`} | `unsupported_derived_expression` | operational check |
+   | Environment lookup fails (symbol not in `dom(E_τ)`) | `unknown_derived_symbol` | operational check |
+   | Environment value is not numeric | `non_numeric_derived_symbol` | operational check |
+   | `F^op(E_τ, Φ^der) = false` for this atom | `derived_constraint_violation` | operational check |
 
 ### 10.4 Structural Decision Procedure Requirements
 
@@ -1606,8 +1620,8 @@ Surface syntax, syntax-level closed enums and lexical constraints are normative 
 
 | Requirement | Evidence source | Phase | Decision method |
 |---|---|---|---|
-| `rate_bound` | `backend_trace_metadata` with `backend_v1`; `customer_side`; `evaluation_set` | runtime, or promotion with `evaluation_set` | rational `_v2`, or float `_v1` only with `backend_v1` |
-| `zero_tolerance` | `customer_side`; `evaluation_set` | runtime, or promotion with `evaluation_set` | `exact_count_v1` |
+| `rate_bound` | runtime: `backend_trace_metadata` with `backend_v1`, or `customer_side`; promotion: `evaluation_set` | runtime or promotion; promotion iff the source is `evaluation_set` | rational `_v2`, or float `_v1` only with `backend_v1` |
+| `zero_tolerance` | runtime: `customer_side`; promotion: `evaluation_set` | runtime or promotion; promotion iff the source is `evaluation_set` | `exact_count_v1` |
 | `recovery_time` | `episodes` | runtime | `exact_count_v1` |
 | `evidence_liveness` | `windows` | runtime | `exact_count_v1` |
 
@@ -2442,8 +2456,14 @@ embedding are specification obligations here, not claims of checked runtime impl
 | `Feasible(M) = ∅` | `unsatisfiable_constraints` |
 | Non-linear term in structural | `non_linear_structural` |
 | TVAR in derived constraint | `derived_references_tvar` |
+| Non-linear term in derived | `non_linear_derived` |
+| Derived constraint references `env.bindings.*` | `derived_references_bindings` |
+| Derived constraint references a symbol outside `env.context.*` | `derived_invalid_symbol_reference` |
+| Derived constraint not of the form `LinExpr OP Number` | `unsupported_derived_expression` |
 | Float domain not precision-aligned | `inadequate_precision` |
-| Environment lookup fails | `derived_env_undefined` |
+| Environment lookup fails | `unknown_derived_symbol` |
+| Environment value used in derived constraint not numeric | `non_numeric_derived_symbol` |
+| `F^op(E_τ, Φ^der) = false` | `derived_constraint_violation` |
 | Range domain ill-formed (r ≤ 0 or a > b) | `invalid_range_domain` |
 
 ### B.2 Promotion Gate Errors
