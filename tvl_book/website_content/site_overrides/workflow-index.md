@@ -1,5 +1,8 @@
 # Book Generation Workflow
 
+> **Archived page.** Written for a retired MkDocs build of the TVL site, not published on tvl-lang.org. The workflow
+> step pages and the embedded `book-gen-workflow` simulation are not in this repository, so the steps are not links.
+
 <iframe src="../sims/book-gen-workflow/main.html" height="610px" scrolling="no"
   style="overflow: hidden;"></iframe>
 
@@ -7,12 +10,14 @@ This section is an overview of some of the workflows we use to generate intellig
 
 ## Steps
 
-### [Course Description](course-description.md)
+### Course Description
 
-### [Bloom Taxonomy](./bloom-taxonomy.md)
+### Bloom Taxonomy
 
-### [Concept Enumeration](concept-enumeration.md)
+### Concept Enumeration
 
-### [Concept Dependency](./concept-dependency.md)
+List the concepts the course must cover, one per line, before ordering them by dependency.
 
-### [Learning Graph](./learning-graph.md)
+### Concept Dependency
+
+### Learning Graph

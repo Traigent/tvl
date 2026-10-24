@@ -1,18 +1,22 @@
 # Book Formatting Tests
 
+> **Archived page.** Index of formatting test pages from a retired MkDocs build of the TVL site. Those test pages are
+> not in this repository, so the entries below are not links.
+
 ## Markdown Test
 
-[Markdown Test](markdown-test.md)
+Markdown Test
 
 ## Code Highlight Test
 
-[Code Highlight Test](code-highlight-test.md)
+Code Highlight Test
 
 ## Equation Test
-[Equations Test](equations-test.md)
+
+Equations Test
 
 ## Social Media Preview Card Test
 
-* [Social Media Preview](social-test.md)
+* Social Media Preview
 
-* [Social Media Override Preview](social-test-2.md)
+* Social Media Override Preview
