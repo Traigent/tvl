@@ -14,12 +14,20 @@ from .model import (
     Domain,
     ExactFormatLimitError,
     ExactLiteralLimitError,
+    ExactNumber,
     bounded_fraction,
     exact_to_str,
     extract_domains,
     _exact,
 )
-from .structural_parser import DNF, Literal, StructuralParseError, clause_to_string, parse_expression
+from .structural_parser import (
+    DNF,
+    MAX_DNF_CLAUSES,
+    Literal,
+    StructuralParseError,
+    clause_to_string,
+    parse_expression,
+)
 
 
 @dataclass
@@ -95,6 +103,7 @@ ILL_TYPED_CODE = "structural_ill_typed_atom"
 NON_FINITE_CODE = "structural_non_finite_domain"
 UNRESOLVED_DOMAIN_CODE = "structural_unresolved_domain"
 PAIR_TABLE_TOO_LARGE_CODE = "structural_pair_table_too_large"
+EXPANSION_TOO_LARGE_CODE = "structural_expansion_too_large"
 
 _ORDERING_OPS = {"<", "<=", ">", ">="}
 # Largest allowed-assignment table one TVAR-vs-TVAR equality atom may build. Domains are
@@ -113,6 +122,22 @@ class _PairTableTooLarge(Exception):
     def __init__(self, left: str, right: str, rows: int) -> None:
         super().__init__(left, right, rows)
         self.left, self.right, self.rows = left, right, rows
+
+
+class _ExpansionTooLarge(StructuralParseError):
+    """Membership / negated-interval expansion of one expression exceeds ``MAX_DNF_CLAUSES``.
+
+    A :class:`StructuralParseError` for direct :func:`build_structural_model` callers (the
+    parser's own DNF limit raises one too); :func:`check_structural` reports it undecided.
+    """
+
+    def __init__(self, clauses: int) -> None:
+        super().__init__(
+            f"structural expression expands to at least {clauses} clauses, above the limit "
+            f"of {MAX_DNF_CLAUSES}"
+        )
+        self.clauses = clauses
+        self.path: List[Any] = ["constraints", "structural"]
 
 
 def _undecided(code: str, message: str) -> "UndecidedStructuralResult":
@@ -156,12 +181,25 @@ def _num(v: Any) -> Any:
     return _exact(v)
 
 
-def _sat_result(expressions: List["Expression"], exact: Dict[str, Any]) -> "StructuralResult":
-    """Report SAT only after re-verifying the exact witness against every expression.
+def _sat_result(
+    expressions: List["Expression"], exact: Dict[str, Any], domains: Optional[Dict[str, Domain]] = None
+) -> "StructuralResult":
+    """Report SAT only after re-verifying the exact witness against every expression AND domain.
 
-    ``exact`` holds float values as ``Fraction``. The public ``assignment`` carries plain
-    floats (compatibility); ``exact_assignment`` carries the exact values as strings.
+    ``exact`` holds float values as ``Fraction``. With ``domains``, every witness value must be
+    an exact member of its declared domain (grid point within the exact bounds, enum member by
+    :func:`_atom_key`); the expressions alone do not prove the witness admissible. The public
+    ``assignment`` carries plain binary64 numbers (compatibility); ``exact_assignment`` carries
+    every numeric leaf, tuple components included, as an exact decimal / ``"p/q"`` string.
     """
+    if domains is not None:
+        outside = [name for name, v in exact.items() if name in domains and not _domain_member(domains[name], v)]
+        if outside:
+            return _undecided(
+                WITNESS_UNVERIFIED_CODE,
+                "Structural satisfiability could not be decided: the solver's witness for "
+                f"'{outside[0]}' is not an exact member of its declared domain.",
+            )
     if not all(_evaluate_expression(expr, exact) for expr in expressions):
         return _undecided(
             WITNESS_UNVERIFIED_CODE,
@@ -169,11 +207,8 @@ def _sat_result(expressions: List["Expression"], exact: Dict[str, Any]) -> "Stru
             "satisfy the constraints under exact evaluation.",
         )
     try:
-        assignment = {name: float(v) if isinstance(v, Fraction) else v for name, v in exact.items()}
-        exact_assignment = {
-            name: exact_to_str(_num(v)) if _is_plain_number(v) and isinstance(_num(v), Fraction) else v
-            for name, v in exact.items()
-        }
+        assignment = {name: _public_value(v) for name, v in exact.items()}
+        exact_assignment = {name: _exact_value(v) for name, v in exact.items()}
     except (ExactFormatLimitError, OverflowError):
         # Fail closed: a witness that cannot be printed exactly (and within bounds) is not
         # reported as SAT; a lossy or truncated value would break the exact-witness contract.
@@ -185,10 +220,61 @@ def _sat_result(expressions: List["Expression"], exact: Dict[str, Any]) -> "Stru
     return StructuralResult(ok=True, assignment=assignment, unsat_core=None, exact_assignment=exact_assignment)
 
 
+def _public_value(v: Any) -> Any:
+    """Compatibility witness value: numeric leaves as plain ``float``/``int`` (recursively)."""
+    if isinstance(v, tuple):
+        return tuple(_public_value(x) for x in v)
+    if isinstance(v, list):
+        return [_public_value(x) for x in v]
+    if isinstance(v, bool) or not isinstance(v, (int, float, Fraction)):
+        return v
+    if isinstance(v, int):
+        return int(v)
+    return float(v)  # Fraction / float subclass -> plain binary64 (lossy by contract)
+
+
+def _exact_value(v: Any) -> Any:
+    """Exact witness value: every finite numeric leaf (tuple/list components too) as exact text."""
+    if isinstance(v, tuple):
+        return tuple(_exact_value(x) for x in v)
+    if isinstance(v, list):
+        return [_exact_value(x) for x in v]
+    if _is_plain_number(v):
+        key = _num(v)
+        return exact_to_str(key) if isinstance(key, Fraction) else v
+    return v
+
+
+def _domain_member(domain: Domain, value: Any) -> bool:
+    """True iff ``value`` is EXACTLY a member of ``domain`` (Definition 3.6)."""
+    if domain.kind == "bool":
+        return isinstance(value, bool)
+    if domain.kind == "enum":
+        key = _atom_key(value)
+        return any(_atom_key(member) == key for member in domain.values or [])
+    if domain.kind not in _NUMERIC_KINDS or not _is_plain_number(value):
+        return False
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    if domain.kind == "int":
+        if not (isinstance(value, int) or _exact(value).denominator == 1):
+            return False
+        index = int(_exact(value))
+    else:
+        grid_index = domain.grid_index(value)
+        if grid_index.denominator != 1:
+            return False
+        index = int(grid_index)
+    lower, upper = domain.index_lower(), domain.index_upper()
+    return (lower is None or index >= lower) and (upper is None or index <= upper)
+
+
 def _index_bounds(domain: Domain) -> Tuple[int, int]:
-    lower = int(domain._encode_bound_lower(domain.minimum)) if domain.minimum is not None else -cp_model.INT32_MAX
-    upper = int(domain._encode_bound_upper(domain.maximum)) if domain.maximum is not None else cp_model.INT32_MAX
-    return lower, upper
+    lower, upper = domain.index_lower(), domain.index_upper()
+    return (
+        int(lower) if lower is not None else -cp_model.INT32_MAX,
+        int(upper) if upper is not None else cp_model.INT32_MAX,
+    )
 
 
 UNDECIDED_WITHOUT_SOLVER_CODE = "structural_undecided_without_solver"
@@ -257,7 +343,11 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
             expression_text = expr_expr
 
         dnf = parse_expression(expression_text)
-        expanded = _expand_dnf(dnf, tvar_names)
+        try:
+            expanded = _expand_dnf(dnf, tvar_names)
+        except _ExpansionTooLarge as exc:
+            exc.path = ["constraints", "structural", idx]
+            raise
         clause_strings = [clause_to_string(clause) for clause in dnf.clauses]
         expressions.append(
             Expression(
@@ -291,6 +381,16 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
         _encode_expression_assumptions(model, var_map, domains, structural.expressions)
     except _EncodingOverflow as exc:
         return _overflow_result(exc.variable)
+    except _ExpansionTooLarge as exc:
+        result = _undecided(
+            EXPANSION_TOO_LARGE_CODE,
+            f"Structural satisfiability could not be decided: the expression at "
+            f"{'.'.join(str(p) for p in exc.path)} expands to at least {exc.clauses} clauses "
+            f"(membership 'in' sets and negated intervals multiply), above the limit of "
+            f"{MAX_DNF_CLAUSES} (the parser's DNF clause limit). Split or simplify the constraint.",
+        )
+        result.issues[0]["path"] = list(exc.path)
+        return result
     except _PairTableTooLarge as exc:
         return _undecided(
             PAIR_TABLE_TOO_LARGE_CODE,
@@ -309,7 +409,7 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
             name: domains[name].decode_exact(int(solver.Value(var)))
             for name, var in var_map.items()
         }
-        return _sat_result(structural.expressions, exact)
+        return _sat_result(structural.expressions, exact, domains)
 
     # Only INFEASIBLE proves UNSAT; MODEL_INVALID, UNKNOWN, ... are inconclusive.
     if status != cp_model.INFEASIBLE:
@@ -700,12 +800,13 @@ _NOT_A_NUMBER = object()
 
 
 def _parse_tuple_number(stripped: str) -> Any:
-    """``float``/``int`` for a numeric element, else the ``_NOT_A_NUMBER`` sentinel.
+    """``int``/``float``/:class:`ExactNumber` for a numeric element, else ``_NOT_A_NUMBER``.
 
     A float component keeps its exact source value, as scalar literals do: the rational is
-    read from the literal TEXT by :func:`bounded_fraction` (never from binary64) and carried
-    on the returned float, so :func:`_atom_key` compares ``0.100000000000000001`` exactly
-    against a domain member with the same lexeme instead of against binary64 ``0.1``.
+    read from the literal TEXT by :func:`bounded_fraction` (never from binary64). When the
+    float denotes it exactly the float is returned; otherwise an :class:`ExactNumber` (a
+    ``Fraction``, not a ``float``), so :func:`_atom_key` compares ``0.100000000000000001``
+    exactly against a domain member with the same lexeme instead of against binary64 ``0.1``.
     """
     try:
         if "." in stripped or "e" in stripped.lower():
@@ -724,24 +825,9 @@ def _parse_tuple_number(stripped: str) -> Any:
         return number
     if Fraction(repr(number)) == exact:
         return number
-    return _ExactFloat(number, stripped)
-
-
-class _ExactFloat(float):
-    """A float literal component whose source decimal binary64 cannot hold exactly.
-
-    ``model._exact`` reads ``_raw_lexeme`` (the same protocol as the YAML loader's floats).
-    """
-
-    __slots__ = ("_raw_lexeme",)
-
-    def __new__(cls, value: float, raw_lexeme: str) -> "_ExactFloat":
-        obj = super().__new__(cls, value)
-        obj._raw_lexeme = raw_lexeme
-        return obj
-
-    def __repr__(self) -> str:
-        return self._raw_lexeme
+    # Not a float at all: an exact rational (a Fraction), so it can never hash or compare as
+    # its binary64 neighbour, in sets (fallback candidates) or anywhere else.
+    return ExactNumber(exact)
 
 
 def _unescape_string(s: str) -> str:
@@ -758,7 +844,41 @@ def _unescape_string(s: str) -> str:
     return "".join(result)
 
 
+def _literal_fanout(literal: Literal) -> int:
+    """How many expanded clauses one literal turns each partial clause into (see _integrate_*)."""
+    if literal.kind == "membership":
+        if literal.negated:
+            return 1
+        return min(len(literal.values), len(literal.value_types))
+    if literal.kind == "interval":
+        return 2 if literal.negated else 1
+    if literal.kind == "comparison":
+        return 1
+    return 0
+
+
+def _clause_expansion_size(clause: List[Literal]) -> int:
+    """Expanded clause count of one DNF clause, counted multiplicatively; stops past the limit."""
+    size = 1
+    for literal in clause:
+        size *= _literal_fanout(literal)
+        if size == 0 or size > MAX_DNF_CLAUSES:
+            return size
+    return size
+
+
 def _expand_dnf(dnf: DNF, tvar_names: set[str]) -> List[List[Condition]]:
+    """Expand membership / interval literals into conditions, within ``MAX_DNF_CLAUSES``.
+
+    The parser bounds the DNF it builds, but ``x in {a, b}`` and ``not (lo <= x <= hi)`` each
+    expand into several clauses HERE; the total is counted arithmetically BEFORE anything is
+    materialised and refused with :class:`_ExpansionTooLarge` above the parser's limit.
+    """
+    total = 0
+    for clause in dnf.clauses:
+        total += _clause_expansion_size(clause)
+        if total > MAX_DNF_CLAUSES:
+            raise _ExpansionTooLarge(total)
     expanded: List[List[Condition]] = []
     for clause in dnf.clauses:
         clause_variants: List[List[Condition]] = [[]]
@@ -1141,7 +1261,8 @@ def _encode_enum_ordering(
         ">=": lambda a: _num(a) >= value,
     }[op]
     allowed = [i for i, v in enumerate(values) if test(v)]
-    others = [i for i in range(len(values)) if i not in set(allowed)]
+    allowed_set = set(allowed)  # built once: a per-index set(allowed) was quadratic
+    others = [i for i in range(len(values)) if i not in allowed_set]
     if allowed:
         model.AddLinearExpressionInDomain(var, cp_model.Domain.FromValues(allowed)).OnlyEnforceIf(bool_var)
     else:
@@ -1191,7 +1312,7 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
 
     solution = _search_assignment(order, candidates, expressions, assignment, 0)
     if solution is not None:
-        return _sat_result(expressions, solution)
+        return _sat_result(expressions, solution, domains)
 
     # No witness found. A sampled search only proves UNSAT when every domain was
     # enumerated completely; otherwise fail closed with an explicit undecided result.
@@ -1228,7 +1349,7 @@ def _candidates_are_exhaustive(
         if domain.kind == "int" and domain.minimum is not None and domain.maximum is not None:
             # Arithmetic check (never materialise the range): the candidates are distinct,
             # lie in [min, max] (filtered by contains), so they cover it iff the counts match.
-            size = int(domain.maximum) - int(domain.minimum) + 1
+            size = int(domain.index_upper()) - int(domain.index_lower()) + 1
             if size >= 0 and len(set(cand)) == size:
                 continue
         if domain.kind == "float" and full_grids and name in full_grids:
@@ -1255,7 +1376,7 @@ def _widen_to_full_grids(domains: Dict[str, Domain], candidates: Dict[str, List[
         count = domain.grid_count() if domain is not None else None
         if domain is None or count is None or count > _MAX_FULL_GRID:
             continue
-        lo = int(domain._encode_bound_lower(domain.minimum))
+        lo = int(domain.index_lower())
         grids[name] = [domain.decode_exact(i) for i in range(lo, lo + count)]
     if not grids:
         return set()
@@ -1276,10 +1397,12 @@ def _seed_values(domain: Domain) -> set:
     elif domain.kind == "enum":
         base.update(domain.values or [])
     elif domain.kind in _NUMERIC_KINDS:
-        if domain.minimum is not None:
-            base.add(domain.minimum)
-        if domain.maximum is not None:
-            base.add(domain.maximum)
+        # Exact endpoints when known (the binary64 rounding may lie outside the grid).
+        for exact, approx in ((domain.exact_minimum, domain.minimum), (domain.exact_maximum, domain.maximum)):
+            if exact is not None:
+                base.add(exact)
+            elif approx is not None:
+                base.add(approx)
     return base
 
 
@@ -1312,10 +1435,11 @@ def _candidate_list(domain: Domain, val_set: set) -> List[Any]:
 
 
 def _int_candidates(domain: Domain, val_set: set) -> List[Any]:
-    valid = sorted(int(v) for v in val_set if isinstance(v, (int, float)))
-    if domain.minimum is not None and domain.maximum is not None:
-        if domain.maximum - domain.minimum <= 10:
-            valid = list(range(int(domain.minimum), int(domain.maximum) + 1))
+    valid = sorted(int(v) for v in val_set if isinstance(v, (int, float, Fraction)))
+    lower, upper = domain.index_lower(), domain.index_upper()
+    if lower is not None and upper is not None:
+        if upper - lower <= 10:
+            valid = list(range(lower, upper + 1))
     if not valid:
         valid = _fallback_candidates(domain, int)
     return sorted({v for v in valid if domain.contains(v)})
@@ -1326,8 +1450,8 @@ def _float_candidates(domain: Domain, val_set: set) -> List[Any]:
     valid = [v for v in val_set if _is_plain_number(v)]
     if not valid:
         valid = _fallback_candidates(domain, float)
-    lower = domain._encode_bound_lower(domain.minimum)
-    upper = domain._encode_bound_upper(domain.maximum)
+    lower = domain.index_lower()
+    upper = domain.index_upper()
     indices = set()
     for v in valid:
         idx = domain.grid_index(v)  # exact rational index, on both grid forms

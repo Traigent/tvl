@@ -103,6 +103,78 @@ def exact_to_str(value: Fraction) -> str:
     return f"{sign}{whole}.{frac}" if frac else f"{sign}{whole}"
 
 
+class ExactNumber(Fraction):
+    """An exact rational that binary64 cannot hold, printed as its exact decimal.
+
+    Used for numeric values the checker builds or parses itself (tuple-range grid points,
+    tuple literal components) where a ``float`` would round. It is a ``Fraction``, never a
+    ``float``: equality, hashing and arithmetic are exact, so it cannot collapse onto a
+    binary64 neighbour in a set or dict, and ``json`` refuses it rather than silently
+    emitting a rounded number. ``repr``/``str`` give the exact decimal (or ``p/q``).
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        try:
+            return exact_to_str(self)
+        except ExactFormatLimitError:
+            return f"{self.numerator}/{self.denominator}"
+
+    __str__ = __repr__
+
+
+def exact_or_float(value: Fraction) -> Any:
+    """``float(value)`` when that float denotes ``value`` exactly (via :func:`_exact`), else
+    an :class:`ExactNumber`.
+
+    Keeps ordinary grid points (``0.1``, ``0.3``) plain floats, as before, so they still match
+    user-supplied binary64 values, while a point binary64 cannot hold stays exact.
+    """
+    try:
+        as_float = float(value)
+    except OverflowError:
+        return ExactNumber(value)
+    if math.isfinite(as_float) and Fraction(repr(as_float)) == value:
+        return as_float
+    return ExactNumber(value)
+
+
+def exact_number_or_none(value: Any) -> Optional[Fraction]:
+    """Exact rational of a declaration number (int, float, Fraction or numeric text), else None.
+
+    Floats with a retained YAML lexeme use that lexeme (bounded); text goes through
+    :func:`bounded_fraction`. Raises :class:`ExactLiteralLimitError` for out-of-bounds literals.
+    Bools, non-finite floats and non-numeric values give None.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, (int, float, Fraction)):
+        return _exact(value)
+    if isinstance(value, str):
+        try:
+            return bounded_fraction(value.strip())
+        except ExactLiteralLimitError:
+            raise
+        except (ValueError, ZeroDivisionError):
+            return None
+    return None
+
+
+def _positive_step(resolution: Any) -> Optional[Fraction]:
+    """Exact value of a numeric ``resolution`` when it is strictly positive, else None.
+
+    Positivity is decided on the exact rational, never on binary64: ``1e-400`` underflows to
+    ``0.0`` as a float but its retained lexeme is positive.
+    """
+    if isinstance(resolution, str):
+        return None
+    exact = exact_number_or_none(resolution)
+    return exact if exact is not None and exact > 0 else None
+
+
 @dataclass
 class Domain:
     path: str
@@ -120,6 +192,11 @@ class Domain:
     # registry interpretation is undefined). Its ``values`` are placeholders; this flag,
     # never a string prefix, is what marks them.
     unresolved: bool = False
+    # Exact range endpoints (from the source lexeme, see :func:`exact_number_or_none`). When
+    # set they, not the binary64 ``minimum``/``maximum``, bound the grid: a declared
+    # ``[0.100000000000000001, 0.100000000000000001]`` is the singleton of that exact value.
+    exact_minimum: Optional[Fraction] = None
+    exact_maximum: Optional[Fraction] = None
 
     @property
     def grid_origin(self) -> Fraction:
@@ -137,9 +214,29 @@ class Domain:
         """Number of grid points for a bounded float domain, else None."""
         if self.kind != "float" or self.minimum is None or self.maximum is None:
             return None
-        hi = self._encode_bound_upper(self.maximum)
-        lo = self._encode_bound_lower(self.minimum)
+        hi = self.index_upper()
+        lo = self.index_lower()
         return max(0, int(hi) - int(lo) + 1)
+
+    def index_lower(self) -> Optional[int]:
+        """Smallest encoded value (grid index for floats, the integer for ints), exactly."""
+        if self.minimum is None and self.exact_minimum is None:
+            return None
+        if self.exact_minimum is not None and self.kind in {"int", "float"}:
+            if self.kind == "float":
+                return int(math.ceil(self.grid_index(self.exact_minimum)))
+            return int(math.ceil(self.exact_minimum))
+        return self._encode_bound_lower(self.minimum)
+
+    def index_upper(self) -> Optional[int]:
+        """Largest encoded value (grid index for floats, the integer for ints), exactly."""
+        if self.maximum is None and self.exact_maximum is None:
+            return None
+        if self.exact_maximum is not None and self.kind in {"int", "float"}:
+            if self.kind == "float":
+                return int(math.floor(self.grid_index(self.exact_maximum)))
+            return int(math.floor(self.exact_maximum))
+        return self._encode_bound_upper(self.maximum)
 
     @property
     def resolution(self) -> int:
@@ -229,12 +326,8 @@ class Domain:
         if self.kind == "bool":
             return encoded in (0, 1)
 
-        lower = (
-            self._encode_bound_lower(self.minimum) if self.minimum is not None else None
-        )
-        upper = (
-            self._encode_bound_upper(self.maximum) if self.maximum is not None else None
-        )
+        lower = self.index_lower()
+        upper = self.index_upper()
         if lower is not None and encoded < lower:
             return False
         if upper is not None and encoded > upper:
@@ -377,30 +470,68 @@ def _walk_legacy(
 _MAX_TUPLE_PRODUCT = 10_000  # guard against combinatorial explosion
 
 
-def _resolve_range_values(name: str, idx: int, comp: dict) -> List[Any]:
-    """Resolve a range spec into an explicit list of values."""
-    r = comp["range"]
+def _product_limit_error(name: str, size: int) -> ValueError:
+    return ValueError(
+        f"{name}: tuple product size {size} exceeds limit "
+        f"{_MAX_TUPLE_PRODUCT}; consider reducing component domains"
+    )
+
+
+def _range_grid(comp: dict) -> Optional[tuple]:
+    """``(kind, lo, step, count)`` of a tuple-component range, computed exactly; None if malformed.
+
+    ``kind`` is ``"float"`` (Definition 3.6 grid ``lo + i * step``, ``0 <= i <= floor((hi - lo)
+    / step)``, all exact rationals) or ``"int"`` (``lo..hi``). Pure arithmetic: never allocates
+    the values, so the cardinality can be checked before anything is built.
+    """
+    r = comp.get("range")
     if not (isinstance(r, list) and len(r) == 2):
-        return []
+        return None
     lo_raw, hi_raw = r[0], r[1]
     resolution = comp.get("resolution")
     is_float_range = isinstance(lo_raw, float) or isinstance(hi_raw, float)
-    has_resolution = (
-        resolution is not None
-        and isinstance(resolution, (int, float))
-        and not isinstance(resolution, bool)
-        and float(resolution) > 0
-    )
-    if has_resolution or is_float_range:
-        lo_f, hi_f = float(lo_raw), float(hi_raw)
+    step = _positive_step(resolution)
+    if step is not None or is_float_range:
+        lo, hi = exact_number_or_none(lo_raw), exact_number_or_none(hi_raw)
+        if lo is None or hi is None:
+            # Non-numeric / non-finite endpoints: keep the legacy float() conversion error.
+            lo, hi = _exact(float(lo_raw)), _exact(float(hi_raw))
         # Semantics §2.4: float-range resolution is optional, default 0.001.
-        step = float(resolution) if has_resolution else 0.001
-        # Definition 3.6: floor((b - a) / r) steps; the tolerance keeps
-        # (1.0 - 0.0) / 0.1 = 9.999999... at 10 steps.
-        n_steps = int(math.floor((hi_f - lo_f) / step + 1e-9))
-        return [round(lo_f + i * step, 12) for i in range(max(n_steps, 0) + 1)]
-    lo, hi = int(lo_raw), int(hi_raw)
-    return list(range(lo, hi + 1))
+        step = step if step is not None else Fraction(1, 1000)
+        n_steps = math.floor((hi - lo) / step)
+        return ("float", lo, step, max(n_steps, 0) + 1)
+    lo_i, hi_i = int(lo_raw), int(hi_raw)
+    return ("int", lo_i, 1, max(hi_i - lo_i + 1, 0))
+
+
+def _resolve_range_values(name: str, idx: int, comp: dict) -> List[Any]:
+    """Resolve a range spec into an explicit list of values.
+
+    Grid points are exact (no binary64 rounding): a point is a plain ``float`` when that float
+    denotes it exactly, else an :class:`ExactNumber`. The cardinality is checked against the
+    tuple product limit BEFORE any value is allocated.
+    """
+    grid = _range_grid(comp)
+    if grid is None:
+        return []
+    kind, lo, step, count = grid
+    if count > _MAX_TUPLE_PRODUCT:
+        raise _product_limit_error(name, count)
+    if kind == "float":
+        return [exact_or_float(lo + i * step) for i in range(count)]
+    return list(range(lo, lo + count))
+
+
+def _range_component_count(comp: Any) -> Optional[int]:
+    """Number of values a range component resolves to (without building them), else None.
+
+    None when ``comp`` is not resolved through its ``range`` key (mirrors the precedence of
+    :func:`_resolve_component_values`).
+    """
+    if not isinstance(comp, dict) or "values" in comp or "set" in comp or "range" not in comp:
+        return None
+    grid = _range_grid(comp)
+    return None if grid is None else grid[3]
 
 
 def _resolve_component_values(name: str, idx: int, comp: Any) -> List[Any]:
@@ -448,7 +579,7 @@ def _has_registry_component(components: Any) -> bool:
         for idx, comp in enumerate(specs):
             if not isinstance(comp, dict) or "values" in comp or "set" in comp:
                 continue
-            if "range" in comp and _resolve_range_values("", idx, comp):
+            if "range" in comp and _range_component_count(comp):
                 continue
             if "components" in comp:
                 stack.append(comp["components"])
@@ -471,20 +602,19 @@ def _enumerate_tuple_product(name: str, components: Any) -> List[Any]:
     import itertools
 
     axis_values: List[List[Any]] = []
+    product_size = 1
     for idx, comp in enumerate(components):
+        # A range axis is counted arithmetically and refused BEFORE its values are built.
+        count = _range_component_count(comp)
+        if count and product_size * count > _MAX_TUPLE_PRODUCT:
+            raise _product_limit_error(name, product_size * count)
         vals = _resolve_component_values(name, idx, comp)
         if not vals:
             raise ValueError(f"{name}: tuple component {idx} has empty domain")
         axis_values.append(vals)
-
-    product_size = 1
-    for av in axis_values:
-        product_size *= len(av)
+        product_size *= len(vals)
         if product_size > _MAX_TUPLE_PRODUCT:
-            raise ValueError(
-                f"{name}: tuple product size {product_size} exceeds limit "
-                f"{_MAX_TUPLE_PRODUCT}; consider reducing component domains"
-            )
+            raise _product_limit_error(name, product_size)
 
     return list(itertools.product(*axis_values))
 
@@ -521,7 +651,9 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
     if kind in {"int", "float"}:
         minimum: Optional[float] = None
         maximum: Optional[float] = None
-        precision = 1000 if kind == "float" else 1
+        exact_minimum: Optional[Fraction] = None
+        exact_maximum: Optional[Fraction] = None
+        precision: int = 1000 if kind == "float" else 1
         origin: Optional[Fraction] = None
         step: Optional[Fraction] = None
         if isinstance(spec, dict):
@@ -530,15 +662,19 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                 if isinstance(range_vals, list) and len(range_vals) == 2:
                     minimum = float(range_vals[0])
                     maximum = float(range_vals[1])
+                    # The grid is bounded by the EXACT endpoints (source lexeme), never by
+                    # their binary64 roundings above.
+                    exact_minimum = exact_number_or_none(range_vals[0])
+                    exact_maximum = exact_number_or_none(range_vals[1])
                 if kind == "float":
-                    resolution = spec.get("resolution")
-                    if isinstance(resolution, (int, float)) and not isinstance(resolution, bool) and resolution > 0:
-                        step = _exact(resolution)
-                    else:
+                    # Positivity is decided exactly (an underflowed 1e-400 is positive).
+                    step = _positive_step(spec.get("resolution"))
+                    if step is None:
                         step = Fraction(1, 1000)  # semantics §2.4 default resolution
-                    precision = max(1, int(round(1 / float(step))))
+                    # Exact reciprocal: never a binary64 1/step (which overflows to inf).
+                    precision = max(1, round(1 / step))
                     if minimum is not None:
-                        origin = _exact(range_vals[0])
+                        origin = exact_minimum if exact_minimum is not None else _exact(minimum)
                     else:
                         origin = Fraction(0)
             elif "set" in spec:
@@ -551,7 +687,7 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                 return Domain(path=name, kind="enum", values=[], unresolved=True)
         return Domain(
             path=name, kind=kind, minimum=minimum, maximum=maximum, precision=precision,
-            origin=origin, step=step,
+            origin=origin, step=step, exact_minimum=exact_minimum, exact_maximum=exact_maximum,
         )
 
     raise ValueError(f"{name}: unsupported TVAR type '{dtype}'")

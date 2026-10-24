@@ -484,8 +484,9 @@ def _create_int_variable(model: cp_model.CpModel, domain: Domain, name: str) -> 
 
 
 def _create_float_variable(model: cp_model.CpModel, domain: Domain, name: str) -> cp_model.IntVar:
-    lb = domain._encode_bound_lower(domain.minimum) if domain.minimum is not None else -1_000_000
-    ub = domain._encode_bound_upper(domain.maximum) if domain.maximum is not None else 1_000_000
+    lower, upper = domain.index_lower(), domain.index_upper()  # exact endpoints when known
+    lb = lower if lower is not None else -1_000_000
+    ub = upper if upper is not None else 1_000_000
     return model.NewIntVar(lb, ub, name)
 
 
