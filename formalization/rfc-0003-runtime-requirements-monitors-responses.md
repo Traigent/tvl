@@ -33,8 +33,8 @@ expressible, checkable and acted upon:
    agent's events, and some need the customer's content, which never leaves the customer side (§8).
 3. **A recovery time.** "After a breach, the requirement is met again within T hours."
 
-Each requirement needs a **sampling rate, a window and alert conditions**, and a reaction ladder **log, warn, repair,
-shut down**. In this RFC: log is the implicit `record`; warn is `notify`; repair is `open_next_step`, `optimize`,
+Each requirement needs, where its kind uses them (§4.5), a **sampling rate, a window and alert conditions**, and a
+reaction ladder **log, warn, repair, shut down**. In this RFC: log is the implicit `record`; warn is `notify`; repair is `open_next_step`, `optimize`,
 `rollback`, `throttle`, `degrade`; shut down is `suspend` (§7.2).
 
 **Why three blocks (D1).** A *requirement* states what must hold of a unit of behaviour. A *monitor* states which
@@ -257,7 +257,8 @@ key or enum value of this grammar is a YAML 1.1 boolean.
 
 Numbers denote the **exact rational value of their decimal literal**. A loader that yields binary floating point
 recovers the literal as the shortest decimal that round-trips to the same double. A literal is accepted only if it
-equals that decimal, which holds for every literal with at most 15 significant digits; any other literal is rejected
+equals that decimal, which holds for every literal with at most 15 significant digits whose magnitude is zero or in the
+normal binary64 range (about 2.2·10⁻³⁰⁸ to 1.8·10³⁰⁸); any other literal is rejected
 (`runtime_invalid_profile`), because its exact value cannot be recovered. Compiled artefacts carry decimal parameters as
 minimal decimal strings and integer parameters as JSON integers (§11.4).
 
@@ -333,7 +334,8 @@ catalogue or customer:
   `unres` (§6.4).
 - **Inputs and placement.** A checker reads the unit's content as it is available customer-side (its inputs, outputs and
   events) and runs customer-side, with the customer's own model and key where it uses a model. Unit content never
-  crosses to the hosted side; only counts, labels as indices and commitments do (§8.2). Checkers never read content
+  crosses to the hosted side; only counts, labels (as indices for customer checkers; catalogue labels as is) and
+  commitments do (§8.2). Checkers never read content
   from observability data.
 - **Determinism and versioning.** A checker is deterministic under its declared contract: for the same unit content and
   the same checker id and version, the same answer. Its labels and their meanings are fixed by its id; changing a label
@@ -462,8 +464,8 @@ column except `method` becomes D with the profile's default (§4.2, §10.1); `wi
 | `limits` | per T13 | per T13 | per T13 | per T13 | F |
 | `single_producer` | D false (exact_pred only) | D false | D false | D false | F |
 
-Apart from the `backend_v1` defaults (§10.1) and the promotion and zero-tolerance defaults above, no statistical field
-has a default: an author who omits one gets `runtime_invalid_profile`, not a silent value.
+Apart from the `backend_v1` defaults (§10.1), the `decision.model` default and the promotion and zero-tolerance
+defaults above, no statistical field has a default: an author who omits one gets `runtime_invalid_profile`, not a silent value.
 
 ### 4.6 Defaults
 
@@ -471,7 +473,8 @@ Defaults are exactly those of §4.2 and §4.5, plus `severity: critical` for a `
 and `deploy: never` for an `optimize` rule whose `deploy` is absent (§7.6).
 Severity is ordered `info < warning < critical`; normalization fills this default before comparison or composition.
 Non-`notify` rules have no severity coordinate. The compiled contract carries every value explicitly, defaults
-included, so the contract digest never depends on a tool's default table.
+included, so the contract digest never depends on a tool's default table. The one omission with a meaning is census sampling: an omitted `sampling` on `customer_side` (T6) stays omitted in the
+compiled contract and still means census.
 
 ### 4.7 Events per monitor role
 
@@ -591,13 +594,14 @@ shape-versus-registry layering of RFC 0001 and RFC 0002 (`T:spec/grammar/tvl.sch
 | `runtime_tool_not_code_identifier` | E | a selector `tool` that is not a `code_ident` | `lints/tool-identifier-lexical.yml` |
 
 Each `runtime_*_out_of_range` code names exactly one field; there is no shared code for two fields. A value of the wrong
-JSON type (a string where an integer is required) is a `schema_error`, not an out-of-range code.
+JSON type (a string where an integer is required) fails the schema, so `tvl-validate` reports `schema_error` and not an
+out-of-range code; `tvl-lint`, which runs no schema (§5.1), reports the field's out-of-range code.
 
 ### 5.5 Statistics and power
 
 | Code | Sev. | Trigger | Case |
 |---|---|---|---|
-| `runtime_met_unreachable_at_min_samples` | E; W under `backend_v1` | a primary `rate_bound` runtime monitor whose met test fails at N = `min_samples` even with k = u = 0: rational: (1 − θ)^N > 1 − c; float: `beta.ppf(c, 1, N) > θ`. Episodes could never close using windows of exactly that size; windows with more units can still reach MET. Example: θ 0.01, c 0.95 needs N ≥ 299, since 0.99²⁹⁹ ≈ 0.0495 ≤ 0.05 < 0.99²⁹⁸ ≈ 0.0500 | E: `lints/met-unreachable-298.yml`; boundary `lints/met-reachable-299.yml` (absent); W under `backend_v1`: `lints/backend-met-unreachable-warning.yml` |
+| `runtime_met_unreachable_at_min_samples` | E; W under `backend_v1` | a primary `rate_bound` runtime monitor whose met test fails at N = `min_samples` even with k = u = 0: rational: (1 − θ)^N > 1 − c; float: `beta.ppf(c, 1, N) > θ`. Episodes could never close using windows of exactly that size; windows with more units can still reach MET. Example: θ 0.01, c 0.95 needs N ≥ 299, since 0.99²⁹⁹ ≈ 0.0495 ≤ 0.05 < 0.99²⁹⁸ ≈ 0.0500 | E: `lints/met-unreachable-298.yml`; boundary `lints/met-reachable-299.yml` (code absent); W under `backend_v1`: `lints/backend-met-unreachable-warning.yml` |
 | `runtime_breach_unreachable_at_min_samples` | W | a primary `rate_bound` runtime monitor that cannot breach at N = `min_samples` even with k = N: rational: θ^N ≥ α_w; float: the hosted latency profile's computation finds no breaching k | `lints/primary-breach-unreachable-warning.yml` |
 | `chance_constraint_shadowed` | W | a promotion monitor and a `promotion_policy.chance_constraints` entry with the same name as the monitor or its requirement: the chance constraint's Reject still wins the gate join (§6.11) | `promotion/chance-constraint-shadow-warning.yml` |
 | `runtime_liveness_missing` | W | a primary monitor that no `evidence_liveness` requirement covers | `lints/primary-liveness-missing-warning.yml` |
@@ -614,7 +618,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `evaluation_schedule_mismatch` | E | a pack floor and a module monitor of one effective key, an overlay and its base monitor, or two meet inputs differ in W, g, H or α_FA (the hosted latency profile's rule and code) | `composition/budget-change.yml`, `composition/grace-change.yml`, `composition/window-change.yml` |
 | `requirement_weaker_than_floor` | E | a module monitor (the candidate) is weaker than the pack floor of its effective key on a composed field, or a module obligation bound is weaker than the floor's (the hosted latency profile's rule and code) | `composition/agent-cannot-weaken-pack-floor.yml` |
 | `runtime_duplicate_key` | E | two monitors of one composed document with the same effective key (§9.4), including two `backend_v1` monitors with the same (kind, threshold, environment, `applies_to`), mirroring the hosted profile's unique requirement heads; two monitors of one `recovery_time` or `evidence_liveness` requirement | `lints/effective-key-duplicate.yml` |
-| `recovery_deadline_impossible` | E | `within_hours < K_close · W`, with K_close = max(K of the `of` monitor, K of any composed floor or meet input) (§6.13) | `lints/impossible-recovery-deadline.yml`, `composition/meet-recovery-deadline-impossible.yml`; boundary `lints/recovery-deadline-equality-feasible.yml` (absent) |
+| `recovery_deadline_impossible` | E | `within_hours < K_close · W`, with K_close = max(K of the `of` monitor, K of any composed floor or meet input) (§6.13) | `lints/impossible-recovery-deadline.yml`, `composition/meet-recovery-deadline-impossible.yml`; boundary `lints/recovery-deadline-equality-feasible.yml` (code absent) |
 | `tenant_floor_outside_pack` | E | an authored module monitor declares `applies_to: tenant_floor` (a composed module is linted with its floor provenance instead, §9.4) | `composition/composed-module-without-provenance-fails.yml`, `lints/tenant-floor-outside-pack.yml` |
 | `runtime_incompatible_replacement` | E | an overlay, a pack composition or a meet changes an immutable identity field of §9.1 | `composition/method-change.yml`, `composition/population-change.yml`, `composition/predicate-change.yml` |
 | `runtime_overlay_weakens` | E | an overlay drops a base requirement, monitor, response or rule; loosens a number against its tightening order; or weakens a rule (§9.3, including `deploy`: `never` → `if_promoted`), including a module response that weakens a same-named pack response | `composition/change-target.yml`, `composition/drop-required-rule.yml`, `composition/flip-on-check-error.yml`, `composition/pack-severity-cannot-decrease.yml`, `composition/severity-absent-base-cannot-lower.yml`, `composition/severity-cannot-decrease.yml`, `composition/weaken-approval.yml`, `composition/widen-repeat-bound.yml`, `composition/deploy-cannot-widen.yml`, `composition/deploy-omitted-base-cannot-widen.yml` |
@@ -639,7 +643,7 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `response_guard_not_enforceable` | E | `block_action`/`halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker; §6.5), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | `lints/guard-metric-not-enforceable.yml` |
 | `response_on_check_error_missing` | E | `block_action`/`halt_unit` without `on_check_error` | `lints/local-guard-error-policy-required.yml` |
 | `response_rule_repeat_unbounded` | E | an action other than `notify` with `repeat_after_hours` and no `max_repeats` | `lints/repeat-must-be-bounded.yml` |
-| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16), checked on the authored pack also by `tvl-compose` before reference rewriting; `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/deploy-promotion-monitor-on-other-requirement.yml`, `lints/pack-cannot-declare-deploy.yml`, `composition/pack-deploy-cannot-borrow-module-gate.yml`, `composition/pack-deploy-rejected-in-meet.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (absent) |
+| `response_deploy_without_promotion_monitor` | E | an `optimize` rule with `deploy: if_promoted` whose trigger monitor's requirement has no promotion monitor in the same document, including every such rule in a `tvl_pack`, which has no promotion monitors (T16), checked on the authored pack also by `tvl-compose` before reference rewriting; `tvl-compile-runtime` checks it again after composition (§7.6) | `lints/deploy-needs-promotion-monitor.yml`, `lints/deploy-promotion-monitor-on-other-requirement.yml`, `lints/pack-cannot-declare-deploy.yml`, `composition/pack-deploy-cannot-borrow-module-gate.yml`, `composition/pack-deploy-rejected-in-meet.yml`; boundaries `lints/deploy-if-promoted-with-promotion-monitor.yml`, `lints/deploy-never-needs-no-promotion-monitor.yml` (code absent) |
 
 ### 5.9 Measurement readiness
 
@@ -654,7 +658,8 @@ The power lints do not apply to promotion monitors, whose default `min_samples` 
 | `runtime_report_conservation` | E | an evaluator rejects a window report that violates the count identities of §6.7 (`k ≤ n`, `reported = n + u_reported + pl + excluded`, `selected = reported + dropped`, `tail_sampled ≤ reported`) or that does not bind to a registered contract, monitor, revision and aligned window; the full list of binding checks belongs to the evaluator profile (§3.5) | evaluator only (§3.5); report shape: `report_schema/` (4 cases, `schema_error`) |
 | `schema_error` | E | an existing TVL code (`T:tvl_tools/tvl_validate/cli.py:21-35`), reused: a document fails its JSON Schema (§5.1, §11.4) | `compatibility/old-reader-rejects-requirements.yml` and its two siblings, `compatibility/rule-on-key-unquoted.yml` and its three siblings, `report_schema/` (4 cases) |
 
-Every tool or endpoint that reports these codes returns the code alone, without echoing any input.
+Every tool or endpoint that reports these codes returns a closed diagnostic — the code with its severity, field path and
+fixed message (§11.5), plus the closed `construct` field for `unsupported_construct` (§11.2) — without echoing any input.
 
 ## 6. Meaning (normative summary)
 
@@ -681,7 +686,8 @@ their own typing context. Γ, the structural formula F^str, the SMT encoding and
 
 ### 6.2 Units, windows, attribution and populations
 
-**Units.** A unit is what a requirement counts; `unit_kind` declares which (formal semantics Definition 12.3):
+**Units.** A unit is what a requirement counts; the requirement's `unit` field (a `unit_kind`) declares which (formal semantics
+Definition 12.3):
 
 - **`trace`**: one end-to-end handling of one request by the agent's deployment, recorded as one trace: from receipt of
   the request to the final response, including every model call, tool call and handoff made for it, in every component
@@ -700,7 +706,7 @@ changes a recorded verdict.
 **Attribution and placement.** A unit is **attributed** by `agent_key_exact_v1`: to the one active agent whose agent key
 equals the unit's agent key in the monitor's deployment scope. Unmatched units, units of an archived agent, and units
 whose key matches more than one active agent are **unattributed**: counted only as `unattributed`, never in n, k, u or
-pl, never guessed. An attributed unit in the monitor's environment belongs to the window that contains its start time.
+pl (the window counts of §6.7), never guessed. An attributed unit in the monitor's environment belongs to the window that contains its start time.
 An attributed unit whose start time is unknown cannot be placed by start time: it is **unplaceable** (pl). A unit
 outside the window's placement is `outside_window` for that window.
 
@@ -946,8 +952,10 @@ missing or invalid outcome cannot pass (`missing_monitor_counts`, §5.9).
 
 **The release gate.** `tvl-ci-gate` and `tvl-measure-validate` evaluate promotion monitors with TVL's one built-in
 evaluator, which decides only from complete counts using the standard exact binomial tests (formal semantics
-Definition 12.16). For a valid outcome `{n, k, u, pl, complete}` — natural numbers with k ≤ n; anything else is the
-readiness issue `missing_monitor_counts`, which stops `tvl-ci-gate` with exit 2 — the first matching row decides:
+Definition 12.16). For a valid outcome `{n, k, u, pl, complete}` — natural numbers n, k, u, pl with k ≤ n, where u and pl default to 0,
+and an optional boolean `complete` (§11.4.2); an absent outcome or k > n is the readiness issue `missing_monitor_counts`,
+which stops `tvl-ci-gate` with exit 2, and a value of the wrong type fails the measurement schema — the first matching
+row decides:
 
 | Order | Condition | Verdict | Gate |
 |---|---|---|---|
@@ -1141,8 +1149,9 @@ uncertified snapshot is never a target. `last_certified` resolves at the time of
 latest certification time for this agent; if that target is ineligible, the effect is held and a notification is
 raised — no other fingerprint is substituted.
 
-**Escalation events for `suspend`** are `episode_continued`, `episode_open_for` and `recovery_overdue`: each implies
-an open episode whose opening window was BREACHED and that has persisted. `episode_opened` alone is not an escalation;
+**Escalation events for `suspend`** are `episode_continued`, `episode_open_for` and `recovery_overdue`: each shows that
+an episode whose opening window was BREACHED has persisted (`recovery_overdue`: past its recovery deadline). The
+episode must still be open at the time of the effect (§7.4); `recovery_overdue` alone does not show that it is. `episode_opened` alone is not an escalation;
 burn, liveness and unit events have no episode scope.
 
 **Parameters.** `rollback` requires `target`; `suspend` requires `fallback` from {`static_unavailable`,
@@ -1326,7 +1335,7 @@ customer side's; no tool mints a token in place of a missing mapping.
 |---|---|
 | requirement, monitor, response and rule names; protocol state names; `tvl.module` and `pack.module`; selector `ref` names | opaque references (`ref`, §4.2.1) from the token map, namespaces `requirement`, `monitor`, `response`, `rule`, `state`, `module`, `selector_ref` |
 | suspend `fallback` | closed enum {`static_unavailable`, `route_to_human`} |
-| degrade `fallback`, rollback `target` | a certified configuration fingerprint or `last_certified` |
+| degrade `fallback`, rollback `target` | a certified configuration fingerprint; a rollback `target` may also be `last_certified` |
 | customer checker labels (`label_in`, `among`) | zero-based indices into the checker's registry label list; catalogue checkers keep their catalogue labels |
 | customer checker id | `customer:<keyed commitment>` (namespace `checker`); catalogue checker ids as is |
 | environment label | an opaque environment reference (namespace `environment`); the hosted platform resolves it to its stored label in its own authorized store |
@@ -1337,8 +1346,8 @@ customer side's; no tool mints a token in place of a missing mapping.
 | SDK unit ids | never individually; only inside the report's `units_commitment` |
 
 Serialization rejects any unresolved alias (`runtime_unresolved_alias`) and fails closed if the token map is
-unavailable. Errors are closed codes without echoing inputs. Every row has a projection canary (§13,
-`projection/`). Observability carries no privacy guarantee. Only metadata monitors read observability data, and no
+unavailable. Errors are closed codes without echoing inputs. Every row except SDK unit ids has a projection canary (§13,
+`projection/`); unit ids never occur in the contract, and the report's closed shape is checked by `report_schema/`. Observability carries no privacy guarantee. Only metadata monitors read observability data, and no
 content check is fed from it.
 
 ### 8.3 The window report
@@ -1372,7 +1381,8 @@ every counted unit. Behavioural claims are relative to their checker.
 ### 9.1 `tvl_compose` over runtime blocks (overlays)
 
 `tvl_compose` today replaces every list other than `tvars` wholesale (`T:tvl_tools/tvl_compose/cli.py:48-65`). For
-the three runtime blocks that rule is kept for the result and followed by a comparison against the base:
+the three runtime blocks that merge is only the first step: the result is then compared against the base and rebuilt
+in the order below:
 
 - **Lists are complete.** If the overlay omits a runtime block key, the base block is kept unchanged. If the overlay
   has the block, every base declaration must appear in it by name, and within every response that appears, every base
@@ -1488,7 +1498,8 @@ construct, and parsing a pack activates nothing.
 
 After every composition the composed document passes closure reachability (`closure_unreachable`) and deadline
 feasibility (`recovery_deadline_impossible` with the composed K_close). Raw composition is a meet (the greatest lower
-bound under §9.2); validated composition succeeds iff the meet is reachable (formal semantics Theorem 12.8, §14).
+bound under §9.2); validated composition of compatible inputs succeeds iff the meet is well formed (`WF_rt`) and reachable (formal
+semantics Theorem 12.8, §14).
 Whether a platform can evaluate or execute the composed declarations is decided at registration (§12), not by
 composition.
 
@@ -1543,9 +1554,12 @@ not author-controlled fields.
 ### 10.3 Round trip
 
 `to_backend_profile(R, M)` maps a `backend_v1` requirement and monitor to the 13-key backend profile (with the plaintext
-environment, locally) plus the scope; the hosted contract carries the same profile with the environment tokenized
+environment, locally) plus the evaluation metadata {method, model, sampling}; the scope (`applies_to`) is carried beside
+them, added by the projection to each BackendProfileEntry (§11.4.1); the hosted contract carries the same profile with the environment tokenized
 (§11.4.1). `from_backend_revision(rev)` maps a hosted profile revision to a requirement and monitor with
-`profile: backend_v1`. Names are supplied by the caller and are not part of the round trip. The properties are
+`profile: backend_v1`; the scope is passed to it as `applies_to` (default `agent`). Names are supplied by the caller and
+are not part of the round trip. In the properties below, `to_backend_profile` stands for its profile together with the
+scope, and `from_backend_revision` receives both:
 
 ```
 from_backend_revision(to_backend_profile(R, M)) = normalize(R, M)      (defaults filled in)
@@ -1557,14 +1571,16 @@ decimal that round-trips. That is exact for every literal accepted by §4.2, and
 to such a literal by construction. Round-trip equality covers normalised fields and identities, not YAML bytes, and
 preserves the evaluation metadata {method, model, sampling} separately (`latency_roundtrip/latency-defaults.yml`,
 `latency_roundtrip/latency-boundary-domain.yml`). Importing a module does not create a hosted requirement; registering
-its compiled contract does (§12). The Lean statement is `backend_profile_roundtrip` (§14).
+its compiled contract does (§12). The Lean statement is `backend_profile_roundtrip` (§14), BY-CONSTRUCTION under supplied bijective codecs: it does
+not prove that the IEEE-754 codec above, or a deployed adapter, is such a codec.
 
 ### 10.4 Float `_v1` versus exact `_v2`
 
 The two methods compute the same inequalities in different arithmetic, so they can disagree at near-ties: a window can be
 BREACHED under `_v1` and UNKNOWN(inconclusive) under `_v2`, or the reverse, on the same counts. This is a float/exact
 disagreement, not a defect of either method: each computes exactly what it states. No agreement is claimed on any grid,
-and no theorem in this RFC is about `_v1` (§14). Moving a monitor from `_v1` to `_v2` is a deliberate
+and no theorem in this RFC is about the verdicts of `_v1` (§14; `backend_profile_roundtrip` covers only its stored
+name). Moving a monitor from `_v1` to `_v2` is a deliberate
 numerical-semantics migration, not a fix.
 
 ## 11. Versioning, readers and toolchain
@@ -1586,7 +1602,8 @@ presence-based `_uses_13_constructs` (any of the three keys present, even empty)
 
 ### 11.2 Readers, dispatch and `unsupported_construct`
 
-An old reader rejects a 1.3 module because the root schema is closed. Every 1.3 entrypoint either implements a 1.3
+An old reader rejects a module with runtime blocks because the root schema is closed; the version label alone does not
+make it reject one. Every 1.3 entrypoint either implements a 1.3
 construct it meets or refuses with `unsupported_construct`; none ignores or strips one.
 
 **Dispatch.** `tvl-validate` and `tvl-lint` treat a root mapping that has the key `pack` and not the key `tvl` as a
@@ -1597,7 +1614,7 @@ runs the version check and the runtime lints only; it never runs `_lint_objectiv
 
 **Refusal.** A refusing entrypoint uses its existing failure path and exit code and adds two closed fields to its
 failure output: `"code": "unsupported_construct"` and `"construct"` ∈ {`requirements`, `monitors`, `responses`,
-`tvl_pack`, `monitor_outcomes`, `runtime_report`} (the first construct met, in that order). In text mode it prints
+`tvl_pack`, `monitor_outcomes`, `runtime_report`} (for a `tvl_pack` document, `tvl_pack`; otherwise the first construct met, in that order). In text mode it prints
 `unsupported_construct: <construct>` on stderr.
 
 | Entrypoint (`T:pyproject.toml:38-47`) | Module with runtime blocks | `tvl_pack` | Other 1.3 input | Exit |
@@ -1650,7 +1667,9 @@ TVL ships no tool that evaluates runtime evidence or executes responses; that wo
 
 ### 11.4 Document schemas
 
-All documents below are closed JSON objects: every object has `additionalProperties: false`, every listed property is
+All documents below are closed JSON objects: every record has `additionalProperties: false` (a map keyed by names,
+such as `monitor_outcomes`, constrains its values instead, and the pre-1.3 records of `tvl-measurement.schema.json` and
+`tvl.schema.json` keep their existing openness), every listed property is
 required unless marked optional, `null` is allowed only where the table says so, booleans are not integers, and arrays
 keep their order unless stated. Types are those of §4.2.1 (`ref`, `fingerprint` (`fp`), decimal string (`dec`),
 `time_ms`); `nat` is an integer ≥ 0 and `pos` an integer ≥ 1. **Canonical JSON** — used for every digest — is the UTF-8
@@ -1677,7 +1696,8 @@ The only document that crosses to the hosted side at registration. Its digest is
 normalized source declaration — every default of §4.6 filled in, so `applies_to`, `attribution`, `resolution`,
 `model` and the like are always present; an optional key with neither a value nor a default is omitted, never `null` —
 with each leaf in its hosted form of §8.2: names and references as `ref`, decimal parameters as `dec`, integers as JSON
-integers, labels of customer checkers as `nat` indices, the environment as `ref`, everything else as its closed enum. Every
+integers, labels of customer checkers as `nat` indices, the environment as `ref`, selector tool names as validated `code_ident`s
+and catalogue checker ids and labels as is (§8.2), everything else as its closed enum. Every
 `optimize` rule carries `deploy`, and no other rule does (`tvl-runtime-contract.schema.json`, `tvl-runtime-local.schema.json`).
 Hence a projection pointer `P` into the normalized declarations denotes `/declarations` + `P` in the contract
 (Appendix A).
@@ -1828,7 +1848,8 @@ names and name references.
 ### 11.5 CLI contracts of the new and extended tools
 
 Both tools accept `--format text|json` (default `text`; `cli_utils.add_common_args`), print one result object in JSON
-mode, and report issues in the existing issue shape `{code, message, path, severity}`. Exit 0 means success; exit 2
+mode, and report issues in the existing issue shape `{code, message, path, severity}`; an unreadable input is reported in
+the existing error shape `{ok: false, file, error}` (`cli_utils.handle_error`). Exit 0 means success; exit 2
 means failure; no other exit code is used by these two tools.
 
 **`tvl-compile-runtime`**
@@ -1876,7 +1897,8 @@ tvl-compose FILE [--pack PACK.yml]... [--meet OTHER.yml] [-o OUT] [--validate] [
 - Order: resolve the overlay chain (§9.1–§9.3), then compose each `--pack` in command-line order with the module as the
   candidate (§9.4), then, with `--meet`, take the raw meet with `OTHER` (a module or pack) without a candidate
   (§9.4, "Meet without a candidate"), then the checks of §9.5. `--pack` and `--meet` cannot be combined.
-- Output: the composed module as today; in JSON mode the result also has `floor_provenance`:
+- Output: the composed module as today; in JSON mode, when `--pack` is given or the composition carries floor
+  provenance, the result also has `floor_provenance`:
   `[{monitor, pack_module, pack_monitor, pack_digest, match: "merged" | "floor_only"}]` (§9.4 step 7).
 - `--no-validate` disables only the legacy narrowing check (§9.1). `--validate` runs the schema and the lints on the
   composed module with its floor provenance, under `tvl-validate`'s exit rule (warnings included).
@@ -1920,11 +1942,11 @@ family. Unknown case kinds and expected assertion keys fail closed.
 | Family | Cases | What passing shows |
 |---|---|---|
 | `compatibility/` | 30 | old readers reject runtime blocks; every refusal of §11.2; pack dispatch; version rules (`runtime_version_required`, `declared_version_below_constructs`); a rule or transition keyed `on` is a `schema_error`; legacy erasure is unchanged |
-| `lints/` | 69 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
+| `lints/` | 70 | every static diagnostic of §5.3–§5.8 that a lint emits, with its boundary cases (for example `met-unreachable-298.yml` and `met-reachable-299.yml`) |
 | `composition/` | 35 | overlays that change a predicate, population, method or schedule, drop a rule, flip `on_check_error`, weaken an approval, widen repeats or change a target; widen or tighten `deploy`, its meet, and its compilation; severity order and meet; pack floor tightening; module weaker than floor; floor-only carriage and reference rewriting; unreachable meets; post-composition deadline feasibility |
 | `projection/` | 15 | a canary per projection row of §8.2, unresolved alias, unavailable token map, unlisted-field refusal, closed errors without echo |
 | `latency_roundtrip/` | 2 | the `backend_v1` codec round trip of §10.3 |
-| `promotion/` | 10 | `monitor_outcomes` normalization and readiness, `missing_monitor_counts`, `chance_constraint_shadowed`, and the gate join over supplied verdicts (§6.11) |
+| `promotion/` | 13 | `monitor_outcomes` normalization and readiness, `missing_monitor_counts`, `chance_constraint_shadowed`, and the gate join over supplied verdicts (§6.11) |
 | `report_schema/` | 4 | the closed shape of `tvl-runtime-report/1` (§11.4.3) |
 
 The release gate's verdicts (§6.11) are covered by the public test suite as well as by the `promotion/` cases. The
@@ -2045,8 +2067,9 @@ Checks:
 - deadline: 48 h ≥ K_close · W = 2 · 6 h = 12 h;
 - closure reachability: `latency_2s_prod` 24 · 60 = 1440 ≥ 2 · 6 · 60 + 30 + 60 = 810; `refuses_disallowed_prod`
   72 · 60 = 4320 ≥ 2 · 24 · 60 + 120 + 60 = 3060;
-- refusal MET is reachable at `min_samples` 300 for θ 0.01, c 0.95 (needs N ≥ 299). At 10 % sampling that is at least
-  3000 eligible invocations per 24 h window; with fewer the window is UNKNOWN(insufficient);
+- refusal MET is reachable at `min_samples` 300 for θ 0.01, c 0.95 (needs N ≥ 299). At 10 % sampling that takes about
+  3000 eligible invocations per 24 h window on average; a window whose counted sample falls short of `min_samples` is
+  UNKNOWN(insufficient);
 - `runtime_liveness_missing` (W) fires for `latency_2s_prod` and `refuses_disallowed_prod`: the example has no
   `evidence_liveness` requirement (§15.2 shows one in a pack). `tvl-validate` therefore exits 2 on this module (its
   unchanged rule: any issue, warnings included), while `tvl-compile-runtime` compiles it (warnings allowed, §11.5);
@@ -2272,3 +2295,26 @@ reason; in each case this RFC's choice stands.
 | A12 | `runtime_met_unreachable_at_min_samples` always an error | an error, and a warning under `backend_v1` | valid hosted profiles must lift to valid modules (§5.5) |
 | A13 | `applies_to` optional on pack monitors | a pack monitor declares `applies_to: tenant_floor` explicitly | T16 |
 | A14 | compose operations `overlay` and `meet` | `tvl-compose --pack` and `tvl-compose --meet` | §11.5 |
+
+## Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-10-21 (TVL 1.3.0), with errors in that text
+corrected in place; this section lists clarifications, and where the language as now specified, or its reference
+tools, differ from it.
+
+- **§4.3 phase and source (clarification).** The Phase column reads "runtime; promotion only with `evaluation_set`",
+  which leaves open whether `evaluation_set` may also be a runtime source. It may not: as §3.2 states and the reference
+  lint enforces, a monitor has `phase: promotion` iff its source is `evaluation_set`, for both `rate_bound` and
+  `zero_tolerance`; any other combination is `runtime_invalid_profile`. See formal semantics §12.1 (the table after
+  Definition 12.2, "promotion iff the source is `evaluation_set`") and `python/tvl/lints.py` (`_lint_monitors`).
+- **`info` issues do not fail validation.** §11.2 and §15.1 give `tvl-validate` and `tvl-lint` exit 2 on any issue,
+  and §11.5 applies that rule to `tvl-compose --validate`. Since the info-severity diagnostic `outside_proved_subset`
+  was added, these tools exit 0 when every issue has severity `info`; a warning or an error still gives exit 2. See
+  `docs/reference/error-codes.md` ("Exit codes of the 1.3 tools") and `tvl_tools/cli_utils.py` (`blocking_issues`).
+- **Conformance families have grown.** The counts in §13 (and the 15 refusal cases of §5.2) are those at acceptance.
+  RFC 0004 (TVL 1.4) and RFC 0005 (TVL 1.5) add cases to these families and add the families `semantic_traces/`,
+  `persistence/`, `aggregate/` and `aggregate_report/`. The current inventory is `conformance/cases/runtime/`.
+- **§16.3 is a record of review.** §16.3 was written for review, and its heading and lead sentence ("needs
+  confirmation at review") are kept as recorded. The RFC was accepted on 2026-10-21 with those readings as written, so
+  they are the TVL 1.3 readings. Where an item names a possible later change (items 2, 18 and 20), that change needs a
+  new RFC.
