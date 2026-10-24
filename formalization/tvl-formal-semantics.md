@@ -1,16 +1,16 @@
 # TVL Formal Semantics
 
-**Version 1.0 — Formal Foundations**
+**Formal foundations — revised for TVL 1.5**
 
 **Authors**: Traigent Research
-**Date**: January 2026
-**Status**: Draft semantic reference. Sections 2–6 and 9 define the intended core semantics; Sections 7–8 are informative formal foundations and a reference encoding; Section 10 states conformance requirements.
+**Date**: January 2026; last extended October 2026
+**Status**: Draft semantic reference. Sections 2–6 and 9 define the intended core semantics; Sections 7–8 are informative formal foundations and a reference encoding; Section 10 states conformance requirements; Sections 12–14 define the runtime extensions of TVL 1.3, 1.4 and 1.5.
 
 ---
 
 ## Abstract
 
-This document defines the mathematical meaning of the Tuned Variables Language (TVL), a requirements specification language for AI agents. A TVL module describes an admissible agent design space, the desired properties of candidates in that space, and the evidence conditions for acceptance or promotion. We define the abstract syntax, semantic domains, type system, denotational semantics, feasibility predicates, and promotion relation. The document also gives an informative SMT encoding and explicitly bounds the claims supported by the current formalization.
+This document defines the mathematical meaning of the Tuned Variables Language (TVL), a requirements specification language for AI agents. A TVL module describes an admissible agent design space, the desired properties of candidates in that space, and the evidence conditions for acceptance or promotion. We define the abstract syntax, semantic domains, type system, denotational semantics, feasibility predicates, and promotion relation. The document also gives an informative SMT (satisfiability modulo theories) encoding and explicitly bounds the claims supported by the current formalization.
 
 ---
 
@@ -26,6 +26,8 @@ TVL is a **domain-specific requirements language** for AI agents. Unlike a progr
 | Execution model | Operational | Declarative (validated/checked) |
 | Expressiveness | Typically Turing-complete | Intentionally restricted |
 | Key property | Termination | Decidability |
+
+A Turing-complete language can express any computation, so some questions about its programs, such as whether they terminate, have no general algorithm. A question is decidable when an algorithm always halts with the correct yes or no answer; TVL is restricted so that its validation questions are decidable.
 
 ### 1.2 Formal Requirements
 
@@ -51,8 +53,10 @@ For TVL to serve as a trustworthy specification language, we must establish:
 - **§10**: Conformance Requirements — behavior required of implementations
 - **§11**: Future Work — proposed extensions, not current requirements
 - **§12**: Runtime Semantics (TVL 1.3) — requirements, monitors, obligations, and governed responses
+- **§13**: Reactive Outcomes and Notification Guards (TVL 1.4) — run outcomes and guarded notifications
+- **§14**: Breach Persistence and Census Aggregates (TVL 1.5) — persistence conditions and exact aggregate verdicts
 
-Sections 2–6 and 9 specify **what** core TVL constructs mean; §12 specifies the optional TVL 1.3 runtime extension. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
+Sections 2–6 and 9 specify **what** core TVL constructs mean; §§12–14 specify the optional TVL 1.3–1.5 runtime extensions. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
 
 ### 1.4 Scope of Formal Guarantees
 
@@ -63,8 +67,8 @@ The formal semantics and soundness proofs in this document apply to the **core T
 | Registry domains (`domain: { registry: ... }`) | External state interaction | Future work |
 | Filter expressions in registry refs | Filter language not formalized | Future work |
 | Callable types (`type: callable[Protocol]`) | Protocol typing not defined | Future work |
-| `cvars`/`policies` (RFC 0001, landed 2026-06-05) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
-| `composites` (RFC 0002, landed 2026-06-06) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
+| `cvars`/`policies` ([RFC 0001](rfc-0001-knob-bindings-cvars-policies.md), landed 2026-06-05: calibrated variables and named operational policies) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
+| `composites` ([RFC 0002](rfc-0002-composite-knobs.md), landed 2026-06-06: composite knobs) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
 
 **Implications**:
 
@@ -84,13 +88,13 @@ The formal semantics and soundness proofs in this document apply to the **core T
 
 **Rationale**: Registry domains require interaction with external state (registries), which introduces semantic complexity beyond the scope of this static specification. Callable types require a protocol typing system that would significantly expand the formalization. These features are valuable for practical use but are excluded from the formally verified core to keep the proofs tractable.
 
-**cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the Lean proof tree (`proofs/`) simply predates RFC 0001 and RFC 0002 and has never been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/*.lean` mentions `composite`, `cvar`, or `policy`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
+**cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the core Lean proof tree (`proofs/`) predates RFC 0001 and RFC 0002 and has not been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/` models `composites`, `cvars`, or `policies`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
 
 **Runtime extension scope (TVL 1.3, accepted 2026-10-21)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
 
 ### 1.5 Field Categorization and Semantic Layers
 
-TVL module fields fall into three categories based on their role in the formal semantics:
+The core TVL module fields fall into three categories based on their role in the formal semantics. TVL 1.1 adds a fourth category, governed-but-not-searched declarations (§1.5.5); the runtime blocks of TVL 1.3–1.5 have their own typing context (§12).
 
 #### 1.5.1 Semantic Fields (Under Formal Semantics)
 
@@ -104,9 +108,8 @@ These fields have precise mathematical meaning and are subject to the theorems i
 | **Static Validity** | `constraints.structural` | Formula φ in F^str(c, Φ^str) |
 | **Static Validity** | `constraints.derived` | Environment-scoped operational preconditions evaluated on E_τ |
 | **Promotion** | `objectives[].name` | Component index in objective vector y |
-| **Operational Metadata** | `objectives[].metric_ref` | Declarative identifier for the evaluator metric contract |
 | **Promotion** | `objectives[].direction` | Direction sign σ(·) |
-| **Promotion** | `objectives[].band` | TOST equivalence band [L, U] |
+| **Promotion** | `objectives[].band` | TOST (two one-sided tests) equivalence band [L, U] |
 | **Promotion** | `promotion_policy.dominance` | Dominance relation ≻_ε |
 | **Promotion** | `promotion_policy.min_effect` | Epsilon map ε : Objective → ℝ⁺ |
 | **Promotion** | `promotion_policy.alpha` | Significance level α |
@@ -125,10 +128,11 @@ These fields control tooling behavior but do not affect the mathematical meaning
 | `exploration.convergence` | Early stopping heuristics |
 | `exploration.initial_sampling` | Search initialization |
 | `promotion_policy.tie_breakers` | Deterministic ordering for equal configs |
+| `objectives[].metric_ref` | Declarative identifier for the evaluator metric contract |
 
-#### 1.5.3 Metadata Fields (Informational Only)
+#### 1.5.3 Metadata Fields (No Static Semantic Content)
 
-These fields are for identification and reproducibility, with no semantic content:
+These fields are for identification and reproducibility. They carry no meaning in the static core semantics (§§2–9). `evaluation_set` binds evidence to a named population: promotion monitors evaluate the candidate on that evaluation set (§12.7, Definition 12.15).
 
 | Field | Purpose |
 |-------|---------|
@@ -137,7 +141,6 @@ These fields are for identification and reproducibility, with no semantic conten
 | `tvl_version` | Language version for compatibility |
 | `environment.snapshot_id` | Timestamp labeling E_τ |
 | `environment.bindings` | Implementation-defined deployment identifiers |
-| `environment.components` | Deprecated alias for `environment.bindings` |
 | `evaluation_set.dataset` | Evidence-binding identifier for the evaluated task set |
 | `evaluation_set.seed` | Evidence-binding seed for repeatable evaluation |
 
@@ -153,7 +156,7 @@ Determines which configurations are *structurally valid* before any evaluation:
 Valid(c, M) ⟺ c ∈ Config(Δ, E_τ) ∧ F^str(c, Φ^str) ∧ F^op(E_τ, Φ^der)
 ```
 
-- **Structural constraints** (`constraints.structural`): Boolean formulas over TVARs
+- **Structural constraints** (`constraints.structural`): Boolean formulas over TVARs (tuned variables, declared in `tvars`, §2.5)
 - **Operational preconditions** (`constraints.derived`): Linear predicates over environment
 
 These are checked *statically* — no evaluation of the configuration is required.
@@ -246,7 +249,8 @@ We use the following notational conventions:
 ### 2.2 Identifiers and Literals
 
 ```
-Ident    ::= [a-zA-Z_][a-zA-Z0-9_.]*     (* Identifiers *)
+Ident    ::= Seg ('.' Seg)*              (* Identifiers: nonempty dot-separated segments *)
+Seg      ::= [A-Za-z_][A-Za-z0-9_]*       (* RFC 0001 §3.7(2); matches spec/grammar *)
 IntLit   ::= ℤ                           (* Integer literals *)
 FloatLit ::= ℚ                           (* Rational literals, representing floats *)
 StrLit   ::= String                      (* String literals *)
@@ -431,7 +435,8 @@ PromotionPolicy ::= {
 ```
 Environment ::= {
   snapshot_id: Timestamp,
-  components?: Ident → Value
+  bindings?: Ident → Value,              (* Opaque deployment references *)
+  context?: Ident → Number               (* Numeric facts for derived constraints *)
 }
 
 EvaluationSet ::= {
@@ -570,7 +575,7 @@ This is the **theoretical** objective vector used for defining dominance relatio
 σ(minimize) = -1
 ```
 
-Normalized comparison: objective `i` improves when `σ(oᵢ.direction) · y[i]` increases.
+Normalized comparison: a standard (non-banded, Definition 3.11) objective `i` improves when `σ(oᵢ.direction) · y[i]` increases.
 
 **Definition 3.11 (Banded Objective Predicate)**.
 An objective `o` is **banded** iff `o.band ≠ ⊥` (i.e., it has a defined band specification). We write:
@@ -590,9 +595,9 @@ TVL uses a simple type system to ensure constraints are well-formed.
 ### 4.1 Typing Context
 
 **Definition 4.1 (Typing Context)**.
-A typing context `Γ` maps TVAR names to their declared types:
+A typing context `Γ` maps TVAR names to their declared types. It is a partial map, defined exactly on the declared names; `Γ(x)` is undefined for an undeclared `x`:
 ```
-Γ : Ident → Type
+Γ : Ident ⇀ Type
 ```
 
 Given declaration context `Δ`, we derive `Γ` by: `Γ(t.name) = t.type` for each `t ∈ Δ`.
@@ -936,7 +941,7 @@ For any well-formed structural constraint set `Φ^str` over finite domains, dete
 5. It is NP-hard (reduction from SAT via boolean TVARs)
 6. Therefore, satisfiability is NP-complete
 
-For practical implementation, TVL constraints compile to QF_LIA (quantifier-free linear integer arithmetic) which is handled efficiently by modern SMT solvers (§8). □
+For practical implementation, TVL constraints compile to QF_LIA (quantifier-free linear integer arithmetic) which modern SMT solvers decide (§8). Solver running time depends on the workload; this document gives no performance bound. □
 
 **Theorem 7.3 (Derived Constraint Decidability)**.
 For well-formed derived constraints `Φ^der` under well-formed environment `E_τ`, evaluation is decidable in polynomial time.
@@ -1021,8 +1026,10 @@ encode_type(callable[P]) = ⊥          (* Outside verified subset; see §1.4 *)
 ```
 encode(t = (v₁,...,vₙ)) = (and (= t_1 (encode_value v₁)) ... (= t_n (encode_value vₙ)))
 encode(t ∈ S)           = (or (encode(t = s)) for each s ∈ S)
-encode(t = u)           = (and (= t_1 u_1) ... (= t_n u_n))  (* TVAR equality *)
+encode(t = u)           = (and (eqᵢ t_1 u_1) ... (eqᵢ t_n u_n))  (* TVAR equality *)
 ```
+
+For a component that is not index-encoded, `eqᵢ` is `=`. Enum components are encoded by indexes local to their own domains, so equal indexes need not mean equal values. Unless both components use the same domain and indexing, encode `(eqᵢ t_i u_i)` as `(or (and (= t_i idx_{D}(v)) (= u_i idx_{D'}(v))) for each v ∈ D ∩ D')`, which is false when `D ∩ D' = ∅`.
 
 ### 8.3 TVAR Encoding
 
@@ -1125,7 +1132,7 @@ A float domain D is **precision-aligned** to precision factor P iff:
 - Domain `{ range: [0.0001, 0.001], resolution: 0.0001 }` with P=1000 is **NOT aligned** because 0.0001 × 1000 = 0.1 ∉ ℤ
 
 **Lemma 8.2 (Precision Adequacy)**.
-For a precision-aligned domain D with precision P, the scaling function is bijective on D:
+For a precision-aligned domain D with precision P, the scaling function is injective on D (so it is a bijection from D onto scale(D)):
 
 ```
 ∀v₁, v₂ ∈ D: scale(v₁) = scale(v₂) ⟹ v₁ = v₂
@@ -1178,10 +1185,10 @@ Where:
 2. Encoding uses index-variable encoding for range domains (§8.3)
 3. Encoding uses direction-aware rounding for comparison thresholds (§8.4)
 
-For all configurations `c ∈ Config(Δ, E_τ)` and structural formulas `φ`:
+For every SMT model `m` that assigns each declared SMT variable a value of its sort, and every structural formula `φ`, where `encode(Δ, φ, P, idx)` contains the domain assertions of §8.3 as well as the encoded formula (§8.1):
 
 ```
-m ⊨ encode(Δ, φ, P, idx) ⟺ ⟦φ⟧(decode(m, Δ, P, idx)) = true
+m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
 ```
 
 *Proof*:
@@ -1190,7 +1197,7 @@ m ⊨ encode(Δ, φ, P, idx) ⟺ ⟦φ⟧(decode(m, Δ, P, idx)) = true
 
 Construct SMT model `m` from configuration `c` via `encode_value`. We show `m ⊨ encode(φ)`.
 
-1. **Domain constraints**: By construction, `encode_value(c(t)) ∈ {0,...,N}` for index variables, so domain assertions hold.
+1. **Domain constraints**: For an enum TVAR set `m(t) = idx_D(c(t))`. For a range TVAR set the index variable `m(t_idx) = (c(t) − a)/r`, not `encode_value(c(t))`; since `c(t) ∈ D`, this is an integer in `{0,...,N}`, and the defined `t` then equals `encode_value(c(t))`. So the domain assertions hold.
 
 2. **Atoms**:
    - Equality: `c(x) = v` ⟺ `idx(c(x)) = idx(v)` ⟺ `m(x) = encode_value(v)` ✓
@@ -1201,9 +1208,9 @@ Construct SMT model `m` from configuration `c` via `encode_value`. We show `m �
 
 **Decoding direction** (`m ⊨ encode(φ) ⟹ ⟦φ⟧(decode(m)) = true`):
 
-Given `m ⊨ encode(φ)`, let `c = decode(m)`.
+Given `m ⊨ encode(Δ, φ, P, idx)`, including its domain assertions, let `c = decode(m)`.
 
-1. **Well-formedness**: Index-variable encoding ensures `m(t_idx) ∈ {0,...,N}`, so `decode(m)(t) ∈ D`. Thus `c ∈ Config(Δ, E_τ)`.
+1. **Well-formedness**: The domain assertions with index-variable encoding ensure `m(t_idx) ∈ {0,...,N}`, so `decode(m)(t) ∈ D`. Thus `c ∈ Config(Δ, E_τ)`.
 
 2. **Atoms**: By Lemma 8.1, comparison encodings preserve truth under decode.
 
@@ -1218,9 +1225,9 @@ Under the preconditions of Theorem 8.1:
 ### 8.9 Encoding Completeness
 
 **Theorem 8.2 (Encoding Completeness)**.
-If `⟦φ⟧(c) = true` for some `c ∈ Config(Δ, E_τ)`, then `encode(φ)` is satisfiable.
+Under the preconditions of Theorem 8.1 (precision alignment, index-variable range encoding, direction-aware threshold rounding): if `⟦φ⟧(c) = true` for some `c ∈ Config(Δ, E_τ)`, then `encode(Δ, φ, P, idx)` is satisfiable.
 
-*Proof*: Construct SMT model from `c` via `encode_value`. By soundness (Theorem 8.1), this model satisfies `encode(φ)`. □
+*Proof*: The preconditions hold by assumption. Construct an SMT model from `c` as in the encoding direction of Theorem 8.1. By that theorem, this model satisfies `encode(Δ, φ, P, idx)`. □
 
 ---
 
@@ -1292,9 +1299,10 @@ For each standard objective `i` (non-banded), using normalized difference `δ_i`
 
 Promotion requires:
 - All non-inferiority tests pass (p < α for each standard objective)
-- At least one superiority test passes (improvement > ε with p < α)
+- At least one superiority test passes (improvement > ε with p < α after the configured `adjust` method, Proposition 9.1)
+- No inferiority test rejects its null after adjustment, and the candidate is valid and acceptable (decision logic in §9.7)
 
-### 9.5 Banded Objectives (TOST)
+### 9.5 Banded Objectives (TOST: Two One-Sided Tests)
 
 **Definition 9.6 (TOST Equivalence)**.
 For banded objective with target `[L, U]` and significance `α`:
@@ -1394,11 +1402,11 @@ Where `BandedObjectives(M)` is defined in Definition 3.11.
    ChanceFail(c_cand) ∨ BandHardFail(c_cand) ⟹ Decision = Reject
    ```
 
-   An on-target band whose TOST is inconclusive produces `NoDecision`; it is neither acceptable enough to promote nor a demonstrated hard failure.
+   When no rejection condition applies first (another failed chance constraint, a hard band failure, or a demonstrated regression; see §9.7), an on-target band whose TOST is inconclusive produces `NoDecision`; it is neither acceptable enough to promote nor a demonstrated hard failure.
 
-3. **Separate error budgets**: Chance constraint confidence `γ` is distinct from promotion policy `α`. This allows different risk tolerances for behavioral guarantees vs. objective comparison.
+3. **Separate error budgets**: Chance constraint confidence `γ` is distinct from promotion policy `α`. This allows different risk tolerances for behavioral requirements vs. objective comparison.
 
-   **Note on risk tolerance**: A module MAY specify different values (e.g., `γ = 0.99` for safety-critical chance constraints, `α = 0.10` for exploratory objective comparison). This is permitted and meaningful: high confidence on behavioral guarantees with more lenient significance on dominance testing. The error budgets are independent; there is no required relationship between `γ` and `α`.
+   **Note on risk tolerance**: A module MAY specify different values (e.g., `γ = 0.99` for safety-critical chance constraints, `α = 0.10` for exploratory objective comparison). This is permitted and meaningful: high confidence on behavioral requirements with more lenient significance on dominance testing. The error budgets are independent; there is no required relationship between `γ` and `α`.
 
 **Lemma 9.1 (Acceptability Independence)**.
 Behavioral acceptability is independent of the incumbent:
@@ -1470,7 +1478,7 @@ Where weak dominance `c ≽_ε c'` means: `∀i: σ(O[i].direction) · (y[i] - y
 **Warning: Strict dominance does NOT compose.**
 If `c₁ ≻_ε c₂` (c₁ strictly better on *some* objective) and `c₂ ≻_ε c₃` (c₂ strictly better on *some* objective), we cannot conclude `c₁ ≻_{2ε} c₃`.
 
-*Counterexample*: Consider two objectives with `direction = maximize` for both, with `ε > 0` and any `δ > 0`. Let:
+*Counterexample*: Consider two objectives with `direction = maximize` for both, with `ε > 0` and any `δ` with `0 < δ ≤ 2ε`. Let:
 
 - y₁ = (0, 0)
 - y₂ = (-ε - δ, ε)
@@ -1501,7 +1509,7 @@ For a TVL implementation to be **conformant**, it must satisfy:
 ### 10.2 Type Checker Requirements
 
 1. Implement all typing rules from §4 (including `elem()` for enum comparisons)
-2. Report `constraint_type_mismatch` for ill-typed formulas
+2. Report `constraint_type_mismatch` when a comparand's type does not match the TVAR, and `constraint_operator_type_mismatch` when the operator is not allowed for the TVAR's type
 3. Report `undeclared_tvar` for undefined references
 
 ### 10.3 Constraint Validator Requirements
@@ -1690,7 +1698,7 @@ A legal precedence assignment maps each matching `b` to a matching `a` of the sa
 
 A legal bounded-response assignment is an injective map from matching `a` events to matching `b` events of the same key, with `before_h(a,b)` and `0 ≤ t_b − t_a ≤ Δ`. A response exactly at the deadline counts. One response cannot discharge two obligations. Both predicates ask whether some assignment exists; neither depends on a particular matching order.
 
-For a DFA `(Q,Σ,δ,q₀,F,R)`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
+For a DFA (deterministic finite automaton) `(Q,Σ,δ,q₀,F,R)`, with states `Q`, alphabet `Σ` of declared event selectors, transition function `δ`, start state `q₀`, accepting states `F` and rejecting states `R`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
 
 The population expression `among` is interpreted as a membership test `A_q(h)`. In 1.3 `among` is always a checker predicate (RFC 0003 §16.3 question 20; a metric or exact predicate there is `runtime_among_not_checker`): for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
 
@@ -1768,7 +1776,7 @@ Empty upper tails are zero and lower tails at or above `N` are one. Endpoints us
 
 `UNKNOWN(r)` promises neither, with a closed reason `r`. The rate claims assume sound classifications, outcome-independent selection, and that each window's violation count is stochastically dominated by `Bin(N,θ)` when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`); IID Bernoulli units are a sufficient special case. `sampling: unverified` does not satisfy the selection assumption by its name. Units the evaluator could not classify never strengthen a verdict: the promises hold whatever their complete histories turn out to be.
 
-Each window reason names why a window carries no verdict:
+Each window reason names why a window's verdict is `UNKNOWN`, that is, why neither `MET` nor `BREACHED` is established:
 
 | Reason | Meaning |
 |---|---|
@@ -2207,8 +2215,10 @@ See RFC 0004 §3 and its closed format decision in §7.2.
 
 ## 14. Breach Persistence and Census Aggregates (TVL 1.5)
 
-This section specifies the recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md), accepted on 2026-10-23 as TVL 1.5.0. These definitions do not establish parser support, runtime execution,
-conformance or mechanically checked properties. Sections 12–13 retain their existing meanings.
+This section specifies the recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md), accepted on 2026-10-23 as TVL 1.5.0. These definitions do not establish parser support, runtime execution or
+conformance. Lean statements for the persistence completion results and exact mean comparison are in
+`proofs/TVL/Runtime/Persistence.lean`, with scope and build status in `proofs/PROOF_SUMMARY.md`; the other
+properties below are not mechanized. Sections 12–13 retain their existing meanings.
 
 ### 14.1 Persistence history and completion sets
 
@@ -2238,7 +2248,7 @@ leaving decided slots fixed. For h in Comp(H), let b(h) count its BREACHED slots
 
 If B and U count the BREACHED and UNKNOWN slots, the minimum and maximum completion counts
 are B and B+U. Thus the equivalent decision is BREACHED when B ≥ k, MET when B+U < k,
-and UNKNOWN otherwise. For k=2,n=3: BBU is BREACHED, MMU is MET and BMU is UNKNOWN.
+and UNKNOWN otherwise. For k=2,n=3, writing each history as its successive slot verdicts (B = BREACHED, M = MET, U = UNKNOWN): BBU is BREACHED, MMU is MET and BMU is UNKNOWN.
 The labels concern the historical condition, not current source satisfaction. Refining UNKNOWN
 slots shrinks Comp(H): either decided result remains that result under every refinement;
 UNKNOWN may become decided. This is information monotonicity, not an order on quality.
@@ -2471,7 +2481,9 @@ embedding are specification obligations here, not claims of checked runtime impl
 
 ### B.2 Promotion Gate Errors
 
-| Formal Property Violated | Error Code |
+Apart from `zero_trials`, the names in this table label formal conditions; they are not diagnostic codes emitted by the reference implementation. The reference gate (`python/tvl/promotion.py`) reports these outcomes as the decisions `Reject` or `NoDecision` with a reason, and `zero_trials` as the decision `Error`. The measurement check (`python/tvl/measurement.py`) reports chance and band failures as `chance_violation` and `band_violation`.
+
+| Formal Property Violated | Condition Name |
 |-------------------------|------------|
 | `¬ChancePass(χ, k, n)` | `chance_constraint_failed` |
 | `BandHardFail(b, μ̂)` | `band_objective_failed` |

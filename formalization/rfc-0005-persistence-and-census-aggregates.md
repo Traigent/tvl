@@ -30,7 +30,7 @@ It adds no response action. The response policy and its approval rules remain th
 
 ## 2. Design
 
-### 2.1 Proposed grammar and version
+### 2.1 Grammar and version
 
 Productions not shown retain RFC 0003/0004 meanings. `rec` is closed; `number` follows `R3:258–262`.
 
@@ -266,16 +266,16 @@ These are projection rules, not additional report fields:
 | Authored `persist` integers | JSON integers in the contract allowlist |
 | Persistence result, slot identities and constituent UNKNOWN reasons | none; customer-side only |
 
-A summary can itself be sensitive: this proposal makes no anonymization or observability privacy claim.
+A summary can itself be sensitive: this RFC makes no anonymization or observability privacy claim.
 Customer attestations are not independently verified population or source correctness.
 
 ### 2.6 Schemas and diagnostics
 
-Proposed authored schemas extend `RequirementDecl` with `aggregate`/`bound`, and `RuleDecl` with `persist`;
+The authored schemas extend `RequirementDecl` with `aggregate`/`bound`, and `RuleDecl` with `persist`;
 extend the kind/method registries. Follow the existing flat union of variant keys (`J:851–866`) and the
 shape-versus-lint split (`R3:520–531`): schemas check closed keys, primitive types and common required keys;
 lints check enums, variant presence/absence, domains and references. Every nested record is closed.
-Exactly one bound key is a variant rule. The following codes are proposed or explicitly reused:
+Exactly one bound key is a variant rule. The following codes are new or explicitly reused:
 
 | Code | Severity | Condition |
 |---|---|---|
@@ -297,7 +297,8 @@ for undecided persistence (`S:1741,1745`). Extend `incomplete` beyond zero toler
 incomplete aggregate, including invalid raw contributions. Add only `persistence_history_gap` for a
 placeholder slot, `aggregate_pending` before due and `aggregate_precision_limit` for arithmetic limits;
 the existing reasons have no equivalent for these conditions. Malformed exchanged summaries are refused.
-Codes echo no input. Complete schemas, compilation, registration and verifiers remain acceptance work.
+Codes echo no input. Schemas, lints, compilation and reference conformance relations exist; source profiles,
+registration verifiers and an evaluator are not established (§7, question 3).
 
 ## 3. Compatibility
 
@@ -333,17 +334,20 @@ Return MET iff the declared comparison holds, BREACHED otherwise. UNKNOWN precon
 precedence. This is a deterministic statement about recorded observed values, not a hypothesis test,
 expected future quality, a new false-alarm allocation or proof that an attested source reported honestly.
 
-Proposed formal semantics §14 and Lean work must state: completion soundness; notification-subset and
+Formal semantics §14 and the Lean work must state: completion soundness; notification-subset and
 no-new-look properties under those hypotheses; exact aggregate comparison equivalence; and conservative
-1.4 embedding preserving TVAR, structural, promotion and runtime denotations. These are proof obligations,
-not claims of mechanization, passing conformance, controller execution or production enablement.
+1.4 embedding preserving TVAR, structural, promotion and runtime denotations. Lean statements for completion
+soundness and exact mean comparison are in `proofs/TVL/Runtime/Persistence.lean`, with scope and build status in
+`proofs/PROOF_SUMMARY.md`; the other properties remain proof obligations. None of this claims passing
+conformance, controller execution or production enablement.
 
 ## 5. Conformance
 
-The following are proposed case names only. Expected outcomes are normative if this RFC is accepted.
-Semantic cases record histories and expected decisions; they do not imply an evaluator exists.
+The following case names and expected outcomes are normative; the case files are under
+`conformance/cases/runtime/`. Semantic cases record histories and expected decisions; they do not imply an
+evaluator exists.
 
-| Proposed case name(s) | Expected diagnostic or semantic outcome |
+| Case name(s) | Expected diagnostic or semantic outcome |
 |---|---|
 | `persist-k1-n1-valid.yml`; `persist-consecutive-valid.yml` | accepted; identity at breach events; k=n requires n breaches |
 | `persist-bbu.yml`; `persist-mmu.yml`; `persist-bmu.yml` | k=2,n=3: BREACHED; MET; UNKNOWN(inconclusive) |
@@ -400,7 +404,8 @@ This RFC borrows those ideas, not their syntax, algorithms, sliding windows or c
 3. Which concrete local source profiles and registration verifiers will support these contracts? Their
    implementation and complete document schemas must be reviewed before enablement; none is established here.
 
-Out of scope: maintenance/external events (await a closed event catalogue in a later RFC); sliding windows and SRE
+Out of scope: maintenance/external events (await a closed event catalogue in a later RFC); sliding windows and site reliability engineering (SRE)
 multi-burn alerts (1.6, with full statistical-look accounting); baseline-relative regression; headroom
-proposals; shield synthesis; change-point detection; any general LTL/STL language; learned anomaly alerts;
+proposals; synthesis of action-blocking monitors from temporal specifications; change-point detection; any
+general linear or signal temporal logic (LTL/STL) language; learned anomaly alerts;
 auto-tightening. None is implied by the two additions above.
