@@ -1068,3 +1068,49 @@ differ from it.
   (R9) is a resolution-time rejection, so its validator fixture is statically
   clean and the rejection is checked by the resolver model-checking suite
   (`tests/test_composites.py`, comment above `EXPECTED`; `tests/model_checking`).
+- **Formulas for three §3.10 measures (2026-10-24).** §3.10 names `vote_margin`,
+  `vote_agreement` and `gate_margin_pass_rate` but does not define them. The per-item
+  definitions below are taken from the reference runtime (Traigent Python SDK,
+  `traigent/knobs/cascade.py` `vote_over`; `traigent/knobs/runtime.py`
+  `_ensemble_measures`, `_cascade_measures`); the TypeScript SDK has no composite runtime.
+  Only the rate of `gate_margin_pass_rate` over a set of items is defined here. A vote is
+  a list of `n ≥ 0` votes, each an equivalence key or an abstention (a null key); `c(v)`
+  is the number of votes for key `v` and `a` the number of abstentions, so
+  `Σ_v c(v) = n − a`.
+  - `vote_margin = max_v c(v) / n` when at least one vote is not an abstention, else `0`.
+    Range `[0, 1]`. It is the winning key's share of all votes, abstentions included in the
+    denominator, not the gap between winner and runner-up. A tie does not change it. It is
+    the `margin` of RFC 0001 §3.8 (an empty or abstain-only vote gives `0`).
+  - `vote_agreement = (n − a) / n` when at least one vote is not an abstention, else `0`.
+    Range `[0, 1]`. Despite the name, it is the share of votes that are not abstentions,
+    not the share that agree with the winner. Always `vote_margin ≤ vote_agreement`.
+  - Which votes count (`n`): a cascade stage arm votes over its `k_i` samples; a sampling
+    ensemble over a stage votes over its `k` samples; a sampling ensemble over a nested
+    composite casts one vote per draw (the draw's output as key), and a draw whose result
+    is `no_accept` is left out of `n`; a committee casts one vote per arm that produced an
+    output. In a committee, a stage arm's vote is its comparator (identity by default)
+    applied to its majority winner over its own samples, so distinct outputs with one key
+    count as agreeing votes; a nested-composite arm's vote is the output that composite
+    selected. Committee arms with `no_accept` or no samples are left out of `n`. A `judge_max` ensemble takes no vote
+    and reports `0` for both, and an ensemble whose candidates were all excluded by
+    `no_accept` also reports `0` for both. These zeros are telemetry only; they are not an
+    acceptance statistic (an `accept` over `judge_max` has no vote to read). An `error`
+    result reports no measures.
+  - `gate_margin_pass_rate` applies to `placement: post` cascades only (a `pre` cascade
+    reports `gate_signal_adequate` instead). It is reported per item as a map from gate
+    index `i` (`0 ≤ i ≤ m − 2`) to `0` or `1`. Let `j` be the index of the last arm that
+    ran: the selected arm for an `output` result, and `m − 1` for a `no_accept` result.
+    The entry is `0` for each `i < j` (arm `i` did not stop the cascade: `margin < θ_i`,
+    or arm `i` returned `no_accept`), and `1` for `i = j` when the result is `output` and
+    `j < m − 1` (`margin ≥ θ_j`, so the cascade stopped there). Gates after `j` have no
+    entry, and an `error` result reports no map. Over a set of items, the rate for gate
+    `i` is the mean of the entries reported for it, skipping items with no entry, so it
+    lies in `[0, 1]` and is not reported when no item reports an entry for gate `i`. The
+    reference runtime omits the map for one kind of `no_accept`: a cascade whose last arm
+    is a nested composite returning `no_accept`, on the path without gated nested arms.
+    Such items therefore drop out of the rate.
+  - All three are §3.10 telemetry, i.e. informative measures that change no validity,
+    selection or certificate result. Separately, `margin_below` (`margin < θ`) and
+    `stat_at_least` (`stat ≥ θ`) read `vote_margin` and `vote_agreement` as their inputs
+    (§3.2, item 11). This entry gives those quantities a formula and changes nothing about
+    how they are used.
