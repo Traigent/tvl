@@ -43,11 +43,17 @@ def _codes(result) -> list:
     return [issue["code"] for issue in (getattr(result, "issues", None) or [])]
 
 
-def _bounded_child(code: str, *, seconds: int = 30, memory_bytes: int = 2 << 30) -> subprocess.CompletedProcess:
-    """Run ``code`` in a child interpreter capped at ``seconds`` wall time and ``memory_bytes``."""
+def _bounded_child(code: str, *, seconds: int = 30, memory_bytes: int | None = 2 << 30) -> subprocess.CompletedProcess:
+    """Run ``code`` in a child interpreter capped at ``seconds`` wall time and, if given, ``memory_bytes`` of address space.
+
+    ``memory_bytes=None`` applies only the wall-time bound. RLIMIT_AS is unsuitable for code that
+    imports OR-Tools (CP-SAT): its worker threads reserve address space at start-up and fail with
+    ``std::system_error`` under a tight cap, so tests that load that module pass ``None``.
+    """
 
     def limit() -> None:  # pragma: no cover - runs in the child
-        resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+        if memory_bytes is not None:
+            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
     return subprocess.run(
         [sys.executable, "-c", code],
@@ -208,7 +214,7 @@ def test_cyclic_alias_scans_terminate(entry):
             print("DONE")
         """
     )
-    proc = _bounded_child(code, seconds=20, memory_bytes=1 << 30)
+    proc = _bounded_child(code, seconds=20, memory_bytes=None)
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "DONE" in proc.stdout
 
@@ -228,7 +234,7 @@ def test_cyclic_alias_with_non_finite_value_is_still_found():
         print("DONE")
         """
     )
-    proc = _bounded_child(code, seconds=20, memory_bytes=1 << 30)
+    proc = _bounded_child(code, seconds=20, memory_bytes=None)
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "DONE" in proc.stdout
 
