@@ -37,8 +37,8 @@ with exactly one typed binding — **Tuned | Fixed | Calibrated** — and extend
 The bilevel-programming literature gives this the standard reading: tuned variables
 are **outer variables**, calibrated variables are **inner variables**, and the
 calibrator is the (memoized) **response function** (Franceschi et al., ICML 2018).
-No mainstream HPO framework models inner variables natively; TVL 1.1 makes them a
-first-class governed construct.
+We know of no mainstream HPO framework that models inner variables natively (the
+tools surveyed are listed in §8); TVL 1.1 makes them a first-class governed construct.
 
 ## 2. Scope freeze (Phase 0)
 
@@ -96,8 +96,10 @@ of `N_F` from the declared names is checked **at resolution time**: a runtime fi
 assignment whose domain intersects `N_T ∪ N_C` is rejection **R3**
 (`duplicate_provider`, §3.4).
 
-**`Range.default` is unchanged**: a TVAR's `default` remains a *default candidate
-value* within its searched domain. It is NOT a Fixed binding.
+**A range default is not a Fixed binding.** TVL module syntax has no `default`
+field on a TVAR or on a `Range` (`spec/grammar/tvl.schema.json`, `$defs/TVarDecl` and
+`$defs/Range`). Where an SDK's own range API accepts a default value, that value is a
+*default candidate value* within the searched domain. It is NOT a Fixed binding.
 
 ### 3.2 TVAR projection (optimizer visibility)
 
@@ -149,8 +151,9 @@ forward-compatibility guard for the deferred CVAR→CVAR extension, and the Phas
 model checker proves *unreachability* of R1 in v1 rather than exhibiting it.
 
 **Dependencies are a freshness/validity relation, not search-space constraints**:
-`depends_on` never generates SAT clauses and never restricts `Σ`. Its only semantic
-effect is through the freshness context (§3.5).
+`depends_on` never generates SAT clauses and never restricts `Σ`. Its semantic
+effects are two: it fixes the tuned-parent values `t|π(n)` passed to the calibrator
+(§3.4), and it fixes the `t|π` entry of the freshness context (§3.5).
 
 ### 3.4 CVAR resolution
 
@@ -345,7 +348,7 @@ holds (per-CVAR governance included):
 ```
 strict(M, c) ⟺ promotion_policy.require_calibration.enabled
              ∨ promotion_policy.chance_constraints ≠ ∅
-             ∨ guaranteed-selection target               (operational profile)
+             ∨ certified-selection target                (operational profile)
              ∨ ∃ n ∈ N_C consumed by c :
                    cvars[n].governance.require_calibration = true
              ∨ ∃ n ∈ N_C consumed by c with a certificate-backed TargetProperty
@@ -476,7 +479,7 @@ the gate-count invariant, not unresolved-name errors.
 | Construct | What it is |
 |---|---|
 | `policies` (this RFC) | NEW top-level block of named operational policy declarations |
-| `promotion_policy` | Existing promotion gate parameters (§9) — unchanged |
+| `promotion_policy` | Existing promotion gate parameters (§9) — extended by this RFC with `require_calibration` (§3.5); otherwise unchanged |
 | `spec/policies/*.yml` | Existing repo convention: standalone *promotion-policy files* for `--policy` in the CI gate — unchanged, unrelated |
 
 ### 3.9 Surface syntax (draft normative for validator implementations)
@@ -525,8 +528,8 @@ module     = header, environment, evaluation_set, tvars, [ cvars ], constraints,
 scope_spec  = "scope", ":", "{", [ scope_field, { ",", scope_field } ], "}" ;
 scope_field = ( "node" | "agent" | "workflow" ), ":", ident ;
 
-(* AMENDED 1.0 production: tvar_decl gains the optional scope (the one
-   existing-production change; additive and optional) *)
+(* AMENDED 1.0 production: tvar_decl gains the optional scope (one of two
+   existing-production changes, with promotion_policy below; additive and optional) *)
 tvar_decl   = "{", "name", ":", ident, ",", "type", ":", type,
               ",", "domain", ":", domain_spec, [ ",", scope_spec ], "}" ;
 
@@ -562,17 +565,19 @@ gate_decl   = "{", "kind", ":", "margin_below", ",", "threshold", ":", ident, "}
 JSON-schema shape: `cvars`/`policies` added to `properties` (NOT `required`) of the
 module schema; `$defs.CVarDecl` / `$defs.PolicyDecl` / `$defs.GateDecl` /
 `$defs.Scope` mirroring the above; **`$defs.Scope` is also added as an optional
-property of the existing `TVarDecl`** (the one 1.0-shape modification — additive and
-optional, so every existing document remains valid); `promotion_policy.require_calibration` per §3.5 (extension-keys enum
-only); the shared `Ident` lexical `pattern` of §3.7(2) applied to all `name` fields
+property of the existing `TVarDecl`** (additive and optional, so every existing
+document remains valid); `promotion_policy.require_calibration` per §3.5 (extension-keys enum
+only; the second additive, optional change to an existing 1.0 shape); the shared `Ident` lexical `pattern` of §3.7(2) applied to all `name` fields
 of the new $defs.
 
 ## 4. Property claims (Phase 2)
 
-Each property is a named obligation stated as a checkable predicate; Phase 3
-model-checks it on finite instances (producing counterexample fixtures where the
+Each property is a named obligation stated as a checkable predicate; for each
+property whose row lists a Phase 3 obligation (P1–P7), Phase 3 model-checks it on
+finite instances (producing counterexample fixtures where the
 *negation* is satisfiable in a buggy variant), and Phase 4 carries the executable
-form. SDK-level obligations (marked →SDK) are tracked by the SDK features, not by
+form. P8 has no Phase 3 obligation: it is checked at Phase 4 and by the SDK.
+SDK-level obligations (marked →SDK) are tracked by the SDK features, not by
 TVL validators.
 
 | ID | Property | Claim (checkable form) | Verification obligation |
@@ -632,8 +637,9 @@ govern. `Promote` gains the `CalibrationPass` conjunct only under `strict(M, c)`
 
 1. Both new blocks are *optional* additions to `properties` of an
    `additionalProperties: false` schema — absent blocks ⇒ identical schema
-   acceptance. The only 1.0-shape change is the optional `scope` property on
-   `TVarDecl` — additive, so all existing documents remain valid.
+   acceptance. The only 1.0-shape changes are the optional `scope` property on
+   `TVarDecl` and the optional `promotion_policy.require_calibration` — both
+   additive, so all existing documents remain valid.
 2. Configuration documents (`tvl-configuration.schema.json`) are **untouched**;
    their `assignments` remain candidate TVAR assignments (N_F is a resolution-time
    concept, §3.1).
@@ -660,7 +666,8 @@ existing example/conformance corpus passes unchanged.
   basis of R7.
 - **Certified calibration** — Learn-then-Test (Angelopoulos et al.; empty accepted
   set = abstention ⇒ fail-closed `NO_DECISION` is literature-sanctioned), RCPS
-  (UCB scan over a monotone 1-D threshold family), Pareto Testing (fixed-sequence
+  (risk-controlling prediction sets, Bates et al.: an upper-confidence-bound (UCB)
+  scan over a monotone 1-D threshold family), Pareto Testing (fixed-sequence
   multiplicity control), Trust-or-Escalate (ICLR 2025: LTT-certified LLM cascade
   thresholds — direct prior art for certified gates). The `n ≥ ⌈1/ε⌉ − 1` floor
   (R8) is the split-conformal minimum-calibration-size bound.
@@ -726,3 +733,24 @@ Changes from Draft v1 to Draft v2:
     `parameters` explicitly outside the guarantee (§3.5, §3.8, P8).
 15. Properties not finite predicates → P-table restated as checkable
     predicates; →SDK obligations marked; "gate exception" defined (§3.6, §4).
+
+## 11. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-06-05; this
+section lists where the language as now specified differs from it. The grammar and
+schema named here are normative where they differ.
+
+- **CVAR types.** §3.3 says a CVAR uses the same `Type` grammar as a TVAR, and the
+  §3.9 EBNF gives `cvar_decl` the general `type` production. The validators that
+  implement this RFC accept only `bool`, `int`, `float` and `enum[…]` CVAR types;
+  tuple and callable CVARs are deferred. Now specified by `cvar_type` in
+  `spec/grammar/tvl.ebnf` and `$defs/CVarDecl.type` in `spec/grammar/tvl.schema.json`.
+- **`constraints` is optional.** The §3.9 `module` production lists `constraints`
+  as required, as the EBNF did at the time; the JSON Schema never required it. Since
+  TVL 1.3 the EBNF also marks it optional (RFC 0003 §4.1; `module` in
+  `spec/grammar/tvl.ebnf`). Later versions also add further optional blocks to the
+  `module` production.
+- **§3.9 surface syntax is no longer a draft.** The heading calls the syntax "draft
+  normative for validator implementations". The validators have since been
+  implemented; the normative surface syntax is `spec/grammar/tvl.ebnf` and
+  `spec/grammar/tvl.schema.json`.
