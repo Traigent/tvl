@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import math
-
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any, Dict, List, Optional
 
 
@@ -14,6 +14,30 @@ class Domain:
     minimum: Optional[float] = None
     maximum: Optional[float] = None
     precision: int = 1000  # float scaling (1 precision unit = 1/precision)
+    # Definition 3.6 grid for floats: value = origin + i * step, 0 <= i <= floor((max - origin) / step).
+    # When unset (None) the legacy grid is used: origin 0, step 1/precision.
+    origin: Optional[Fraction] = None
+    step: Optional[Fraction] = None
+
+    @property
+    def grid_origin(self) -> Fraction:
+        return self.origin if self.origin is not None else Fraction(0)
+
+    @property
+    def grid_step(self) -> Fraction:
+        return self.step if self.step is not None else Fraction(1, max(1, self.precision))
+
+    def grid_index(self, value: Any) -> Fraction:
+        """Exact (rational) grid index of ``value``; an integer iff the value is on the grid."""
+        return (_exact(value) - self.grid_origin) / self.grid_step
+
+    def grid_count(self) -> Optional[int]:
+        """Number of grid points for a bounded float domain, else None."""
+        if self.kind != "float" or self.minimum is None or self.maximum is None:
+            return None
+        hi = self._encode_bound_upper(self.maximum)
+        lo = self._encode_bound_lower(self.minimum)
+        return max(0, int(hi) - int(lo) + 1)
 
     @property
     def resolution(self) -> int:
@@ -42,12 +66,15 @@ class Domain:
         if self.kind == "float":
             if not isinstance(value, (int, float)):
                 raise ValueError(f"{self.path}: expected float, got {value!r}")
-            scaled = float(value) * self.precision
+            if self.step is None and self.origin is None:
+                scaled = float(value) * self.precision  # legacy grid (origin 0, step 1/precision)
+            else:
+                scaled = float(self.grid_index(value))
             rounded = round(scaled)
             if abs(scaled - rounded) > 1e-9:
                 raise ValueError(
                     f"{self.path}: value {value!r} is not on the precision grid "
-                    f"(precision={self.precision}, resolution={1/self.precision})"
+                    f"(precision={self.precision}, resolution={float(self.grid_step) if self.step is not None else 1/self.precision})"
                 )
             return int(rounded)
 
@@ -63,7 +90,9 @@ class Domain:
         if self.kind == "int":
             return raw
         if self.kind == "float":
-            return raw / self.precision
+            if self.origin is None and self.step is None:
+                return raw / self.precision
+            return float(self.grid_origin + raw * self.grid_step)
         return raw
 
     def contains(self, value: Any) -> bool:
@@ -98,19 +127,28 @@ class Domain:
         if value is None:
             return None
         if self.kind == "float":
-            import math
-
-            return int(math.ceil(float(value) * self.precision))
+            if self.step is None and self.origin is None:
+                return int(math.ceil(float(value) * self.precision))
+            return int(math.ceil(self.grid_index(value)))
         return int(value)
 
     def _encode_bound_upper(self, value: float | int | None) -> Optional[int]:
         if value is None:
             return None
         if self.kind == "float":
-            import math
-
-            return int(math.floor(float(value) * self.precision))
+            if self.step is None and self.origin is None:
+                return int(math.floor(float(value) * self.precision))
+            return int(math.floor(self.grid_index(value)))
         return int(value)
+
+
+def _exact(value: Any) -> Fraction:
+    """Exact rational of a decimal literal / float (via its shortest repr)."""
+    if isinstance(value, Fraction):
+        return value
+    if isinstance(value, int):
+        return Fraction(value)
+    return Fraction(repr(float(value)))
 
 
 def _encode_bool(domain: Domain, value: Any) -> int:
@@ -324,6 +362,8 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
         minimum: Optional[float] = None
         maximum: Optional[float] = None
         precision = 1000 if kind == "float" else 1
+        origin: Optional[Fraction] = None
+        step: Optional[Fraction] = None
         if isinstance(spec, dict):
             if "range" in spec:
                 range_vals = spec.get("range", [])
@@ -332,8 +372,15 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                     maximum = float(range_vals[1])
                 if kind == "float":
                     resolution = spec.get("resolution")
-                    if isinstance(resolution, (int, float)) and resolution > 0:
-                        precision = int(round(1 / float(resolution)))
+                    if isinstance(resolution, (int, float)) and not isinstance(resolution, bool) and resolution > 0:
+                        step = _exact(resolution)
+                    else:
+                        step = Fraction(1, 1000)  # semantics §2.4 default resolution
+                    precision = max(1, int(round(1 / float(step))))
+                    if minimum is not None:
+                        origin = _exact(range_vals[0])
+                    else:
+                        origin = Fraction(0)
             elif "set" in spec:
                 values = list(spec.get("set", []))
                 if not values:
@@ -343,7 +390,8 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                 # Registry-backed domains are treated as opaque enums until resolved externally.
                 return Domain(path=name, kind="enum", values=[])
         return Domain(
-            path=name, kind=kind, minimum=minimum, maximum=maximum, precision=precision
+            path=name, kind=kind, minimum=minimum, maximum=maximum, precision=precision,
+            origin=origin, step=step,
         )
 
     raise ValueError(f"{name}: unsupported TVAR type '{dtype}'")

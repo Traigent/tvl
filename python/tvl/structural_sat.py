@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from fractions import Fraction
+from typing import Any, Dict, List, Optional, Tuple
 
 try:  # pragma: no cover - optional dependency
     from ortools.sat.python import cp_model  # type: ignore
@@ -566,16 +567,33 @@ def _encode_ident_comparison(
     elif domain.kind == "bool" and rhs_domain.kind == "bool":
         _reify_comparison(model, var, op, rhs_var, bool_var)
     elif domain.kind in _NUMERIC_KINDS and rhs_domain.kind in _NUMERIC_KINDS:
-        # Cross-multiply by the other side's precision so both sides share a scale.
-        left_scaled = var * _precision_denominator(rhs_domain)
-        right_scaled = rhs_var * _precision_denominator(domain)
+        # Compare exact values origin + i*step: scale both sides by a common integer L.
+        common = _common_scale(domain, rhs_domain)
+        left_scaled = _scaled_linear(var, domain, common)
+        right_scaled = _scaled_linear(rhs_var, rhs_domain, common)
         _reify_comparison(model, left_scaled, op, right_scaled, bool_var)
     else:
         model.Add(bool_var == 0)
 
 
-def _precision_denominator(domain: Domain) -> int:
-    return domain.precision if domain.kind == "float" else 1
+def _grid_of(domain: Domain) -> Tuple[Fraction, Fraction]:
+    if domain.kind == "float":
+        return domain.grid_origin, domain.grid_step
+    return Fraction(0), Fraction(1)
+
+
+def _common_scale(left: Domain, right: Domain) -> int:
+    scale = 1
+    for dom in (left, right):
+        for q in _grid_of(dom):
+            scale = scale * q.denominator // math.gcd(scale, q.denominator)
+    return scale
+
+
+def _scaled_linear(var: Any, domain: Domain, scale: int) -> Any:
+    """``(origin + var * step) * scale`` as an integer linear expression."""
+    origin, step = _grid_of(domain)
+    return var * int(step * scale) + int(origin * scale)
 
 
 def _encode_enum_pair(
@@ -675,7 +693,7 @@ def _encode_literal_value(domain: Domain, op: str, value: Any) -> Optional[int]:
     return domain.encode(value)
 
 
-def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
+def _encode_legacy_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
     val = float(value)
     P = domain.precision
     if op in {"==", "!="}:
@@ -695,8 +713,31 @@ def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
     return domain.encode(value)
 
 
+def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
+    """Grid index bound for ``x <op> value`` on the exact Definition 3.6 grid."""
+    if domain.step is None and domain.origin is None:
+        return _encode_legacy_float_literal(domain, op, value)
+    idx = domain.grid_index(value)
+    if op in {"==", "!="}:
+        scaled = float(idx)
+        rounded = round(scaled)
+        if abs(scaled - rounded) > 1e-9:
+            return None
+        return int(rounded)
+    if op == ">=":
+        return math.ceil(idx)
+    if op == ">":
+        return math.floor(idx) + 1
+    if op == "<=":
+        return math.floor(idx)
+    if op == "<":
+        return math.ceil(idx) - 1
+    return domain.encode(value)
+
+
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
     candidates = _candidate_values(domains, expressions)
+    _widen_to_full_grids(domains, candidates)
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
     assignment: Dict[str, Any] = {}
 
@@ -737,6 +778,10 @@ def _candidates_are_exhaustive(domains: Dict[str, Domain], candidates: Dict[str,
         if domain.kind == "int" and domain.minimum is not None and domain.maximum is not None:
             if set(cand) == set(range(int(domain.minimum), int(domain.maximum) + 1)):
                 continue
+        if domain.kind == "float":
+            count = domain.grid_count()
+            if count is not None and len(set(cand)) == count:
+                continue
         return False
     return True
 
@@ -745,6 +790,29 @@ def _candidate_values(domains: Dict[str, Domain], expressions: List[Expression])
     values: Dict[str, set] = {name: _seed_values(domain) for name, domain in domains.items()}
     _collect_condition_values(values, expressions)
     return {name: _candidate_list(domains[name], val_set) for name, val_set in values.items()}
+
+
+_MAX_FULL_GRID = 2001
+_MAX_FALLBACK_PRODUCT = 1_000_000
+
+
+def _widen_to_full_grids(domains: Dict[str, Domain], candidates: Dict[str, List[Any]]) -> None:
+    """Enumerate whole Definition 3.6 float grids (so UNSAT can be proven) when affordable."""
+    grids: Dict[str, List[Any]] = {}
+    for name, cand in candidates.items():
+        domain = domains.get(name)
+        count = domain.grid_count() if domain is not None else None
+        if domain is None or count is None or count > _MAX_FULL_GRID:
+            continue
+        lo = int(domain._encode_bound_lower(domain.minimum))
+        grids[name] = [domain.decode(i) for i in range(lo, lo + count)]
+    if not grids:
+        return
+    product = 1
+    for name, cand in candidates.items():
+        product *= len(grids.get(name, cand)) or 1
+    if product <= _MAX_FALLBACK_PRODUCT:
+        candidates.update(grids)
 
 
 def _seed_values(domain: Domain) -> set:

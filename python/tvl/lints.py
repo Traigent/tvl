@@ -2197,7 +2197,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
                 }
             )
             return
-        if type_info.kind not in {"int", "float"}:
+        if not _supports_ordering(type_info):
             add(
                 {
                     "code": "constraint_operator_type_mismatch",
@@ -2421,7 +2421,53 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
         return issues
 
     return issues
+def _split_type_args(raw: str) -> Optional[List[str]]:
+    """Top-level comma-separated component types of ``tuple[...]``; None if not parseable."""
+    text = raw.strip()
+    if not text.startswith("tuple[") or not text.endswith("]"):
+        return None
+    inner = text[len("tuple["):-1]
+    parts: List[str] = []
+    depth = 0
+    cur = ""
+    for ch in inner:
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        parts.append(cur.strip())
+    return parts
+
+
+def _component_types_compatible(left: str, right: str) -> bool:
+    def kind_of(t: str) -> str:
+        if t.startswith("tuple"):
+            return "tuple"
+        if t.startswith("enum"):
+            return "enum"
+        return t
+
+    lk, rk = kind_of(left), kind_of(right)
+    if lk == "tuple" and rk == "tuple":
+        lp, rp = _split_type_args(left), _split_type_args(right)
+        if lp is None or rp is None:
+            return True
+        return len(lp) == len(rp) and all(_component_types_compatible(a, b) for a, b in zip(lp, rp))
+    if lk in {"int", "float"} and rk in {"int", "float"}:
+        return True
+    return lk == rk
+
+
 def _are_types_compatible(lhs: TypeInfo, rhs: TypeInfo) -> bool:
+    if lhs.kind == "tuple" and rhs.kind == "tuple":
+        # Semantics 4.7: same arity and pairwise-compatible component types.
+        return _component_types_compatible(lhs.raw_type, rhs.raw_type)
     if lhs.kind == rhs.kind:
         return True
     if lhs.kind in {"int", "float"} and rhs.kind in {"int", "float"}:

@@ -93,7 +93,7 @@ def _qualify_issues(source: str, issues: list[dict[str, Any]]) -> list[dict[str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Offline CI gate dry-run using a TVL module as the source of objectives and promotion policy."
+        description="Offline run of the promotion gate: prints the decision (Promote, Reject, NoDecision or Error) and exits 0 only for Promote."
     )
     parser.add_argument(
         "inputs",

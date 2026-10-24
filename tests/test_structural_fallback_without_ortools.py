@@ -22,7 +22,12 @@ def _module(tvars, structural):
     return {"tvars": tvars, "constraints": {"structural": structural}}
 
 
+# Grid of 1,000,001 points: too large to enumerate, so the fallback cannot decide it.
 FLOAT_SAT = _module(
+    [{"name": "x", "type": "float", "domain": {"range": [0, 1000], "resolution": 0.001}}],
+    [{"expr": "x > 0.2"}, {"expr": "x < 0.3"}],
+)
+SMALL_FLOAT_SAT = _module(
     [{"name": "x", "type": "float", "domain": {"range": [0, 1], "resolution": 0.01}}],
     [{"expr": "x > 0.2"}, {"expr": "x < 0.3"}],
 )
@@ -35,7 +40,7 @@ FINITE_SAT = _module(
     [{"expr": "n = 3"}],
 )
 FLOAT_UNSAT = _module(
-    [{"name": "x", "type": "float", "domain": {"range": [0, 1], "resolution": 0.01}}],
+    [{"name": "x", "type": "float", "domain": {"range": [0, 1000], "resolution": 0.001}}],
     [{"expr": "x > 0.5"}, {"expr": "x < 0.4"}],
 )
 
@@ -68,6 +73,17 @@ def test_float_non_exhaustive_is_undecided_not_unsat():
     assert [i["code"] for i in result.issues] == [CODE]
     assert result.issues[0]["severity"] == "error"
     assert "OR-Tools" in result.issues[0]["message"]
+
+
+def test_small_float_grid_is_enumerated_exactly():
+    result = check_structural(SMALL_FLOAT_SAT)
+    assert result.ok and 0.2 < result.assignment["x"] < 0.3
+    tight = _module(
+        [{"name": "x", "type": "float", "domain": {"range": [0, 1], "resolution": 0.01}}],
+        [{"expr": "x > 0.5"}, {"expr": "x < 0.4"}],
+    )
+    res = check_structural(tight)
+    assert res.ok is False and not getattr(res, "undecided", False)
 
 
 def test_float_domain_never_unsat_even_if_truly_unsat():

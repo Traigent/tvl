@@ -75,3 +75,90 @@ def test_tuple_float_range_defaults_to_0_001_resolution():
 
 def test_tuple_int_range_steps_by_one_without_resolution():
     assert _resolve_range_values("t", 0, {"range": [0, 3]}) == [0, 1, 2, 3]
+
+
+# ---- interval on numeric enums -------------------------------------------------
+
+def test_lint_allows_interval_on_numeric_enum_rejects_string():
+    assert "constraint_operator_type_mismatch" not in _codes(_module(NUM_ENUM, ["0.1 <= t <= 0.9"]))
+    assert "constraint_operator_type_mismatch" in _codes(_module(STR_ENUM, ["1 <= m <= 2"]))
+
+
+@pytest.mark.parametrize("solver", ["cpsat", "fallback"])
+def test_structural_encodes_numeric_enum_interval(monkeypatch, solver):
+    if solver == "fallback":
+        monkeypatch.setattr(structural_sat, "cp_model", None)
+    elif structural_sat.cp_model is None:
+        pytest.skip("ortools missing")
+    sat = check_structural(_module(NUM_ENUM, ["0.1 <= t <= 0.9"]))
+    assert sat.ok and sat.assignment == {"t": 0.5}
+    unsat = check_structural(_module(NUM_ENUM, ["0.6 <= t <= 0.9"]))
+    assert unsat.ok is False
+
+
+# ---- tuple equality typing -----------------------------------------------------
+
+def _tuple_module(t1, t2):
+    return {
+        "tvars": [
+            {"name": "a", "type": t1, "domain": {"components": [{"values": [1]}] * (t1.count(",") + 1)}},
+            {"name": "b", "type": t2, "domain": {"components": [{"values": [1]}] * (t2.count(",") + 1)}},
+        ],
+        "constraints": {"structural": [{"expr": "a = b"}]},
+    }
+
+
+def test_tuple_equality_arity_mismatch_rejected():
+    assert "constraint_type_mismatch" in _codes(_tuple_module("tuple[int, int]", "tuple[int, int, int]"))
+
+
+def test_tuple_equality_component_mismatch_rejected():
+    assert "constraint_type_mismatch" in _codes(_tuple_module("tuple[int, str]", "tuple[int, bool]"))
+
+
+def test_tuple_equality_matching_accepted():
+    assert "constraint_type_mismatch" not in _codes(_tuple_module("tuple[int, str]", "tuple[float, str]"))
+
+
+# ---- exact Definition 3.6 float grid -------------------------------------------
+
+def _fmod(lo, hi, res, exprs):
+    return _module(
+        [{"name": "t", "type": "float", "domain": {"range": [lo, hi], "resolution": res}}], exprs
+    )
+
+
+GRID_CASES = [
+    # (lo, hi, res, exprs, expected_ok, expected_assignment_or_None)
+    (0, 1, 0.3, ["t >= 0.95"], False, None),          # grid {0, .3, .6, .9}
+    (0, 1, 0.3, ["t >= 0.85"], True, 0.9),
+    (0, 1, 0.25, ["t > 0.75", "t < 1.0"], False, None),
+    (0, 1, 0.25, ["t >= 0.75", "t <= 0.75"], True, 0.75),
+    (0, 1, 0.1, ["t >= 1.0"], True, 1.0),
+]
+
+
+@pytest.mark.parametrize("solver", ["cpsat", "fallback"])
+@pytest.mark.parametrize("lo,hi,res,exprs,ok,val", GRID_CASES)
+def test_exact_float_grid(monkeypatch, solver, lo, hi, res, exprs, ok, val):
+    if solver == "fallback":
+        monkeypatch.setattr(structural_sat, "cp_model", None)
+    elif structural_sat.cp_model is None:
+        pytest.skip("ortools missing")
+    result = check_structural(_fmod(lo, hi, res, exprs))
+    assert result.ok is ok
+    assert not getattr(result, "undecided", False)
+    if ok and val is not None:
+        assert result.assignment["t"] == pytest.approx(val)
+
+
+@pytest.mark.parametrize("solver", ["cpsat", "fallback"])
+def test_exact_float_grid_nonzero_origin(monkeypatch, solver):
+    if solver == "fallback":
+        monkeypatch.setattr(structural_sat, "cp_model", None)
+    elif structural_sat.cp_model is None:
+        pytest.skip("ortools missing")
+    # grid {0.15, 0.35, 0.55, 0.75, 0.95}: 0.5 <= t <= 0.6 -> 0.55; t >= 0.96 -> UNSAT
+    sat = check_structural(_fmod(0.15, 1.0, 0.2, ["t >= 0.5", "t <= 0.6"]))
+    assert sat.ok and sat.assignment["t"] == pytest.approx(0.55)
+    assert check_structural(_fmod(0.15, 1.0, 0.2, ["t >= 0.96"])).ok is False
