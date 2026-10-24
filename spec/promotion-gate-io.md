@@ -368,7 +368,7 @@ Return `"Error"` first, before any other branch, when a check is undefined. Toda
 }
 ```
 
-A measurement file read by `tvl-ci-gate` must already have `trials` of at least 1 under the measurement schema, so the CLI refuses such a file before the gate runs. The `Error` decision covers bundles passed to the gate in Python.
+With canonical `chance_outcomes`, a `trials` of 0 or a missing `trials` is a schema error when the file is loaded (exit 2, no `decision`). With the deprecated top-level `chance` summary, `summary.trials: 0` passes the schema and reaches the gate, which returns `Error` with `zero_trials` (exit 2). A bundle passed to the gate in Python also gets `Error`.
 
 ### 5.1 Promote Decision
 
