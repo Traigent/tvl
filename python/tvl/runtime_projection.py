@@ -68,12 +68,20 @@ def token_map_template(documents: Sequence[Mapping[str, Any]]) -> Dict[str, Any]
     return {"format": "tvl-token-map/1", "tokens": [entries[key] for key in sorted(entries)]}
 
 
+class _TokenLookup(Dict[Tuple[str, str], str]):
+    """Token lookup that records which (namespace, local) entries the projection resolved."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.used: set = set()
+
+
 def _build_token_lookup(
     token_entries: Optional[Sequence[Mapping[str, Any]]],
 ) -> Tuple[Dict[Tuple[str, str], str], List[Dict[str, str]]]:
     if token_entries is None:
         raise RuntimeClosedError("runtime_unresolved_alias", path=["tokens"], message="tokens requires token-map entries")
-    lookup: Dict[Tuple[str, str], str] = {}
+    lookup: _TokenLookup = _TokenLookup()
     rev_lookup: Dict[Tuple[str, str], str] = {}
     normalized_entries: List[Dict[str, str]] = []
     for idx, entry in enumerate(token_entries):
@@ -108,6 +116,8 @@ def _resolve_token(lookup: Mapping[Tuple[str, str], str], namespace: str, local_
     key = (namespace, local_name)
     if key not in lookup:
         raise RuntimeClosedError("runtime_unresolved_alias", path=path, message=f"{field_path(path)}: Missing token-map entry for namespace {namespace}")
+    if isinstance(lookup, _TokenLookup):
+        lookup.used.add(key)
     return lookup[key]
 
 
@@ -568,6 +578,9 @@ def project_runtime_declarations(
     hosted_decls["monitors"] = hosted_mons
     hosted_decls["responses"] = hosted_resps
 
+    # RFC 0003 §11.4.4 / §11.4.6: token-map entries the compiled contract does not use
+    # are not copied into the local program.
+    used_tokens = [t for t in used_tokens if (t["namespace"], t["local"]) in lookup.used]
     return local_decls, hosted_decls, backend_profiles, used_tokens
 
 
