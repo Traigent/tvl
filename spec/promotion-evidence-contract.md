@@ -1,6 +1,6 @@
 # TVL Promotion Evidence Contract
 
-This note locks the current pre-submission contract for promotion evidence and chance semantics.
+This note fixes the current contract for promotion evidence: the measurement bundle that `tvl-measure-validate` and `tvl-ci-gate` read, and how TVL evaluates chance constraints from it.
 
 ## Canonical semantics
 
@@ -51,12 +51,12 @@ tvl-ci-gate <module> <incumbent-bundle> <candidate-bundle> --json
 Temporary compatibility remains for:
 
 - top-level legacy `objectives` summaries,
-- top-level legacy `chance` summaries,
-- bare derived environment symbols such as `cost_usd <= 5`.
+- top-level legacy `chance` summaries.
+
+Bare symbols in operational preconditions (`derived` constraints), such as `cost_usd <= 5`, are not a compatibility shim: they are rejected with `derived_invalid_symbol_reference`. Write them as `env.context.cost_usd <= 5`; only `env.context.<name>` symbols are allowed.
 
 Compatibility behavior:
 
 - legacy inputs emit deprecation warnings,
 - legacy chance summaries are converted to canonical counts only when `violations` can be reconstructed exactly,
-- summary-only objective bundles are not considered promotion-ready,
-- canonical `env.<symbol>` references are preferred; bare symbols remain a migration-only alias.
+- summary-only objective bundles are not considered promotion-ready.

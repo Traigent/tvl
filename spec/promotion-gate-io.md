@@ -20,7 +20,15 @@ tvl-ci-gate <module> <incumbent-bundle> <candidate-bundle> --json
 
 The module is the source of `objectives` and `promotion_policy`.
 
-The current measurement-bundle format does not carry the calibration certificates required under any strict-mode trigger (RFC 0001 section 3.6, RFC 0002 section 5). `tvl-ci-gate` MUST report `calibration_evidence_unsupported` and MUST NOT return `Promote` for a module in a strict evidence mode that has a CVAR or calibrated composite member to certify until a versioned certificate input and verifier are part of this contract.
+Calibration certificates are not supported yet. A module is in a *strict evidence mode* when one of the triggers of [RFC 0001 §3.6](../formalization/rfc-0001-knob-bindings-cvars-policies.md#36-strict-promotion-fail-closed-semantics) holds; promotion then requires a valid certificate for every calibrated value. The current measurement-bundle format cannot carry these certificates.
+
+Until a versioned certificate input and verifier are part of this contract, `tvl-ci-gate` MUST report `calibration_evidence_unsupported` and MUST NOT return `Promote` when the module:
+
+- enables `promotion_policy.require_calibration`,
+- declares any CVAR (a calibrated variable: a value fit from calibration evidence rather than searched, RFC 0001 §3.3), or
+- declares a composite with a calibrated member (a gate threshold, accept threshold, stop threshold or cardinality bound to a CVAR; [RFC 0002 §3.6](../formalization/rfc-0002-composite-knobs.md#36-certificate-coverage-fold-extends-rfc-0001-36)).
+
+A module with `chance_constraints` and none of these has nothing to certify and still gets a decision.
 
 ### 1.1 Objective Values
 
@@ -68,6 +76,10 @@ incumbent:
       mean: 0.87
       std: 0.03
       n: 50
+    response_length:
+      mean: 101.0
+      std: 3.0
+      n: 50
   chance_outcomes:
     toxicity_rate:
       violations: 4
@@ -80,6 +92,10 @@ candidate:
     accuracy:
       mean: 0.91
       std: 0.04
+      n: 50
+    response_length:
+      mean: 100.0
+      std: 2.5
       n: 50
   chance_outcomes:
     toxicity_rate:
@@ -207,32 +223,36 @@ evidence:
 ### 3.1 Test Type Decision Tree
 
 ```
-Are samples provided for both incumbent and candidate?
-├── NO (aggregated stats only)
-│   └── Use Welch's t-test over mean/std/n
+Does either arm have fewer than 2 observations (n < 2)?
+├── YES: no variance estimate; the objective result is "inconclusive" (no test is run)
 │
-└── YES (raw samples available)
-    └── Are samples paired (same evaluation instances)?
-        ├── YES: Use paired t-test
-        │   └── Test: t = mean(diff) / (std(diff) / sqrt(n))
-        │   └── df = n - 1
-        │
-        └── NO or UNKNOWN: Use Welch's t-test (DEFAULT)
-            └── Welch is safer; handles unequal variances
-            └── df = Welch-Satterthwaite approximation
+└── NO: Are samples provided for both incumbent and candidate?
+    ├── NO (aggregated stats only)
+    │   └── Use Welch's t-test over mean/std/n
+    │
+    └── YES (raw samples available)
+        └── Is `paired: true` set AND do both sample lists have the same length?
+            ├── YES: Use paired t-test on diff = candidate − incumbent (per instance)
+            │   └── Non-inferiority: t = (σᵢ × mean(diff) + εᵢ) / (std(diff) / sqrt(n))
+            │   └── Superiority:     t = (σᵢ × mean(diff) − εᵢ) / (std(diff) / sqrt(n))
+            │   └── df = n - 1
+            │
+            └── NO: Use Welch's t-test (DEFAULT)
+                └── Welch is safer; handles unequal variances
+                └── df = Welch-Satterthwaite approximation
 ```
 
-**Default**: Use Welch's t-test unless `paired: true` is explicitly specified.
+**Default**: Use Welch's t-test unless `paired: true` is set in the candidate's objective entry and the two sample lists have equal length.
 
 ### 3.2 Non-Inferiority Test
 
 For each objective i with direction σᵢ (1 for maximize, -1 for minimize) and epsilon εᵢ:
 
 **Null hypothesis**: H₀: σᵢ × (μ_candidate - μ_incumbent) ≤ -εᵢ
-(Candidate is worse than incumbent by more than ε)
+(Candidate is worse than incumbent by at least ε)
 
-**Alternative**: H₁: σᵢ × (μ_candidate - μ_incumbent) ≥ -εᵢ
-(Candidate is not worse than incumbent by more than ε)
+**Alternative**: H₁: σᵢ × (μ_candidate - μ_incumbent) > -εᵢ
+(Candidate is worse than incumbent by less than ε, if at all)
 
 **Test statistic** (Welch):
 
@@ -244,7 +264,7 @@ where SE_pooled = sqrt(s²_inc/n_inc + s²_cand/n_cand)
 
 **P-value**: One-sided, `p = P(T > t)` where T ~ t(df)
 
-Failure to reject this null is inconclusive. It does not establish that the candidate is inferior. A hard regression verdict uses the opposite one-sided test, `H₀: σᵢ × (μ_candidate - μ_incumbent) ≥ -εᵢ`, and rejects only when `p_value_inferior < α`.
+Failure to reject this null is inconclusive. It does not establish that the candidate is inferior. A hard regression verdict uses the opposite one-sided test, `H₀: σᵢ × (μ_candidate - μ_incumbent) ≥ -εᵢ`, and rejects only when its p-value is below α: `adjusted_p_inferior < α` when a multiplicity adjustment is enabled (`adjust` is not `"none"`), otherwise `p_value_inferior < α`.
 
 ### 3.3 Superiority Test
 
@@ -263,6 +283,9 @@ t = (σᵢ × (x̄_candidate - x̄_incumbent) - εᵢ) / SE_pooled
 **P-value**: One-sided, `p = P(T > t)`
 
 ### 3.4 TOST for Banded Objectives
+
+TOST (two one-sided tests) shows that a mean lies inside a band: it runs one one-sided test
+against each band edge and passes only when both reject (formal semantics §9.5).
 
 For banded objective with target [L, U] and significance α:
 
@@ -329,8 +352,11 @@ For each adjusted family of k p-values p₁, p₂, ..., pₖ:
 
 - `none`: no correction
 - `bonferroni`: adjusted pᵢ = min(1, k · pᵢ)
-- `holm`: step-down adjusted p-values (FWER control, no dependence assumptions)
-- `BH`: Benjamini-Hochberg step-up (FDR control under independence/PRDS)
+- `holm`: step-down adjusted p-values (controls the family-wise error rate, FWER: the chance of
+  at least one false claim in the family; no dependence assumptions)
+- `BH`: Benjamini-Hochberg step-up (controls the false discovery rate, FDR: the expected share of
+  false claims among the claims made; valid under independence or positive regression dependence
+  on a subset, PRDS)
 
 ### 4.3 Reporting and Decision Use
 
@@ -345,7 +371,7 @@ Decision logic uses:
 - superiority: `adjusted_p_super` when adjustment is enabled, otherwise raw `p_value_super`
 - inferiority: `adjusted_p_inferior` when adjustment is enabled, otherwise raw `p_value_inferior`
 
-Adjusting the inferiority family cannot make a candidate promotable. It can only prevent a family-level regression claim from being made on unadjusted evidence, changing some otherwise-`Reject` outcomes to `NoDecision`.
+When α ≤ 0.5, adjusting the inferiority family cannot make a candidate promotable. The inferiority and non-inferiority tests share one statistic, so `p_value_inferior = 1 − p_value_noninf`; a raw inferiority rejection (`p_value_inferior < α`) then gives `p_value_noninf > 1 − α ≥ α`, so non-inferiority already fails. The adjustment can only prevent a family-level regression claim from being made on unadjusted evidence, changing some otherwise-`Reject` outcomes to `NoDecision`. The schema accepts any α with 0 < α < 1; with α > 0.5 both tests can reject on the same objective, and the adjustment can change a `Reject` into a `Promote`.
 
 ---
 
@@ -374,10 +400,14 @@ With canonical `chance_outcomes`, a `trials` of 0 or a missing `trials` is a sch
 
 Return `"Promote"` if ALL of the following are true:
 
-1. All non-inferiority tests pass (raw `p_value_noninf < α` for all objectives)
-2. At least one superiority test passes after selected adjustment (`p_super_test < α` for at least one objective)
+1. All non-inferiority tests pass (raw `p_value_noninf < α` for all standard, non-banded objectives)
+2. At least one superiority test passes after selected adjustment (`p_super_test < α` for at least one standard objective)
 3. All banded objectives pass TOST
 4. All chance constraints pass
+5. No inferiority test demonstrates a regression (§5.2, item 1)
+6. If the module declares promotion monitors (TVL 1.3, formal semantics Definition 12.15), every promotion monitor returns `MET`
+
+Items 1–5 are the TVL 1.2 decision. A promotion monitor that returns `BREACHED` turns the result into `Reject`, and one that returns `UNKNOWN` turns a `Promote` into `NoDecision`; passing all monitors never turns a `NoDecision` into `Promote`.
 
 ### 5.2 Reject Decision
 
@@ -386,6 +416,7 @@ Return `"Reject"` if ANY of the following are true:
 1. Any inferiority test demonstrates regression beyond the allowed margin (adjusted `p_value_inferior < α` when adjustment is enabled)
 2. Any chance constraint fails
 3. Any banded objective has a point estimate outside its declared band
+4. Any promotion monitor returns `BREACHED`
 
 ### 5.3 NoDecision
 
@@ -397,11 +428,11 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 
 | Scenario | Configuration | Test | Expected Decision |
 |----------|--------------|------|-------------------|
-| Clear dominance | Candidate better on all objectives by > 2ε | Welch per obj | Promote |
-| Clear inferiority | Candidate worse on all objectives by > 2ε | Welch per obj | Reject |
-| Mixed results | Candidate better on obj1, worse on obj2 | Welch per obj | Reject (inferiority on obj2) |
+| Clear dominance | Candidate better on all objectives by > 2ε; non-inferiority and superiority significant | Welch per obj | Promote |
+| Clear inferiority | Candidate worse on all objectives by > 2ε; inferiority significant | Welch per obj | Reject |
+| Mixed results | Candidate better on obj1, worse on obj2 by more than ε; inferiority on obj2 significant | Welch per obj | Reject (inferiority on obj2) |
 | Within noise | All deltas < ε, high variance | Welch per obj | NoDecision |
-| Superior on one | Better on obj1 by > ε, equal on others | Welch per obj | Promote |
+| Superior on one | Better on obj1 by > ε (superiority significant), non-inferiority significant on the others | Welch per obj | Promote |
 | BH correction | 10 objectives, 2 superiority p-values raw < 0.05 but adjusted > 0.05 | BH | NoDecision |
 | TOST pass | Mean = 100, band = [95, 105], n = 50, σ = 5 | TOST (90% CI) | Promote (if other tests pass) |
 | TOST fail (power) | Mean = 100, band = [95, 105], n = 5, σ = 8 | TOST (90% CI) | NoDecision |
@@ -409,6 +440,8 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 | Chance pass | 0/120 violations, θ = 0.03, γ = 0.95 | Clopper-Pearson | (contributes to Promote) |
 | Chance fail | 8/100 violations, θ = 0.05, γ = 0.95 | Clopper-Pearson | Reject |
 | Paired samples | Same eval set for both configs | Paired t-test | (uses paired test) |
+
+Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough observations for the named tests to reject at α. The same effects with too few observations give `NoDecision`.
 
 ---
 
@@ -421,10 +454,9 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 
 ### 7.2 Edge Cases
 
-- **Empty samples**: Return error, cannot compute test
-- **Single sample**: Use appropriate handling (large variance estimate)
+- **Empty or single-sample arm** (fewer than 2 observations in either arm): no variance can be estimated, so no t-test runs and the objective result is `inconclusive`; with every other check passing, the decision is `NoDecision`. `tvl-ci-gate` refuses a bundle whose objective has an empty `samples` list and no `mean/std/n` (`missing_statistical_evidence`, exit 2) before the gate runs.
 - **All objectives identical**: NoDecision (no superiority)
-- **No objectives defined**: Error
+- **No objectives defined**: the module schema requires at least one objective, so such a module is rejected at validation. Called directly in Python with no objectives and no failing checks, the gate returns `NoDecision`.
 
 ### 7.3 Numerical Stability
 

@@ -5,9 +5,14 @@
 **Mathlib**: Commit 6a596ab9
 **Historical baseline build status (2026-02-01)**: All modules compiled successfully.
 
-**Current RFC 0005 check**: The new module passed direct Lean checking; the full
-`lake build` was blocked fetching dependencies. See [Local verification](#local-verification)
-for commands, logs and scope.
+**Current check**: CI (`.github/workflows/lean-proofs.yml`) runs `lake build` in `proofs/`
+on every change and fails if any Lean source contains `sorry` (an unproved placeholder),
+`admit` or an `axiom` declaration. The last local check of the RFC 0005 module is described in
+[Local verification](#local-verification).
+
+**Numbering**: the Lean docstrings and the core sections below keep the numbering of the
+original TVL paper (Theorem 4.2, Lemma 5.4, Theorem 5.6, Lemma 6.18). Each core section gives
+the matching statement in `formalization/tvl-formal-semantics.md`.
 
 > **Coverage note (added after RFC 0001/0002):** this proof tree covers the
 > TVL core subset as it stood on 2026-02-01 — `tvars`, `constraints`,
@@ -33,17 +38,27 @@ For OPAL declarative-core mechanization (assignment vs. `in`, `given`, callable 
 
 ## File Structure
 
+Line counts are `wc -l` on 2026-10-24.
+
 ```
-tvl/proofs/
+proofs/
 ├── lakefile.lean           # Lake project configuration (with Mathlib)
+├── lake-manifest.json      # pinned dependency revisions
 ├── lean-toolchain          # Lean 4.28.0-rc1
-├── Main.lean               # Entry point
+├── Main.lean               # Entry point; imports every module below
 └── TVL/
-    ├── Basic.lean          # Core definitions (85 lines)
-    ├── Types.lean          # Type system formalization (123 lines)
-    ├── TypeSoundness.lean  # Theorem 4.2 (191 lines)
-    ├── SMTEncoding.lean    # Theorem 5.6 (416 lines)
-    └── Dominance.lean      # Lemma 6.18 (118 lines)
+    ├── Basic.lean          # Core definitions (162 lines)
+    ├── Types.lean          # Type system formalization (133 lines)
+    ├── TypeSoundness.lean  # Theorem 4.2 (194 lines)
+    ├── SMTEncoding.lean    # Lemma 5.4, Theorem 5.6 (1985 lines)
+    ├── Dominance.lean      # Lemma 6.18 (117 lines)
+    ├── OPALCore.lean       # OPAL declarative core (929 lines; see OPALCORE_README.md)
+    ├── Gate.lean           # Promotion decision join (84 lines; see Runtime (TVL 1.3))
+    └── Runtime/            # TVL 1.3, 1.4 and 1.5 modules (see the sections below)
+        ├── History.lean, Declarations.lean, Compose.lean, Compiler.lean
+        ├── Extension.lean, Backend.lean, BinomialGeneric.lean, BinomialLaw.lean
+        ├── Guards.lean       # TVL 1.4 (RFC 0004)
+        └── Persistence.lean  # TVL 1.5 (RFC 0005)
 ```
 
 ---
@@ -95,19 +110,21 @@ inductive Formula where
 
 ### Typing Rules Formalized
 
-| Rule | Lean Constructor | Paper Section |
-|------|------------------|---------------|
-| T-Eq | `AtomWellTyped.tEq` | 4.1 |
-| T-Neq | `AtomWellTyped.tNeq` | 4.1 |
-| T-Cmp (≥) | `AtomWellTyped.tGeq` | 4.1 |
-| T-Cmp (≤) | `AtomWellTyped.tLeq` | 4.1 |
-| T-Mem | `AtomWellTyped.tMem` | 4.1 |
-| T-And | `FormulaWellTyped.tAnd` | 4.1 |
-| T-Or | `FormulaWellTyped.tOr` | 4.1 |
-| T-Not | `FormulaWellTyped.tNot` | 4.1 |
-| T-Impl | `FormulaWellTyped.tImpl` | 4.1 |
+| Rule | Lean Constructor | Formal semantics |
+|------|------------------|------------------|
+| T-Eq | `AtomWellTyped.tEq` | §4.6 |
+| T-Neq | `AtomWellTyped.tNeq` | §4.6 |
+| T-Cmp (≥) | `AtomWellTyped.tGeq` | §4.6 |
+| T-Cmp (≤) | `AtomWellTyped.tLeq` | §4.6 |
+| T-Mem | `AtomWellTyped.tMem` | §4.6 |
+| T-And | `FormulaWellTyped.tAnd` | §4.8 |
+| T-Or | `FormulaWellTyped.tOr` | §4.8 |
+| T-Not | `FormulaWellTyped.tNot` | §4.8 |
+| T-Impl | `FormulaWellTyped.tImpl` | §4.8 |
 
-### Ty.isAtomType Predicate (NEW)
+The other §4.6–4.7 rules (T-Interval, T-TVarEq and the tuple rules) are not modelled.
+
+### Ty.isAtomType Predicate
 
 All atom typing rules require `τ.isAtomType = true`, which explicitly blocks tuples:
 
@@ -135,6 +152,8 @@ def ConfigRespectsContext (c : Config) (Γ : Context) : Prop :=
 
 ### Theorem 4.2 - **FULLY PROVEN** ✓
 
+Formal semantics: Theorem 4.1 (Denotation Totality), for the atoms and connectives above.
+
 **Statement**: If Γ ⊢ φ : prop and configuration c respects Γ, then ⟦φ⟧(c) ∈ 𝔹.
 
 **Lean Statement**:
@@ -159,14 +178,17 @@ theorem atom_eval_defined (Γ : Context) (a : Atom) (c : Config) :
 - **Base cases (atoms)**: Each atom typing rule (T-Eq, T-Cmp, etc.) ensures operands have compatible types. The proof uses case analysis on the atom type and type τ, showing that well-typed atoms always evaluate to a boolean.
 - **Inductive cases (connectives)**: Boolean connectives preserve totality by the induction hypothesis.
 
-**Lines of Code**: 191
-**Sorry Count**: 0
+**Lines of Code**: 194
+**Sorry Count** (unproved `sorry` placeholders in the file): 0
 
 ---
 
 ## 4. ε-Dominance Composition (TVL/Dominance.lean)
 
 ### Lemma 6.18 - **FULLY PROVEN** ✓
+
+Formal semantics: Lemma 9.2 (ε-Dominance Composition). `normalized_diff_composition` proves it
+for one objective; `eps_dominance_composition_list` applies it to every objective of a list.
 
 **Statement**: Weak ε-dominance composes:
 ```
@@ -181,7 +203,7 @@ theorem normalized_diff_composition (d : Direction) (y₁ y₂ y₃ ε : Int)
     normalizedDiff d y₁ y₃ >= -(2 * ε)
 ```
 
-**Proof**: Algebraic manipulation using `linarith` tactic.
+**Proof**: Algebraic manipulation, closed by `linarith` (Lean's tactic for linear arithmetic).
 ```lean
   simp only [normalizedDiff] at *
   have key : d.sign * (y₁ - y₃) = d.sign * (y₁ - y₂) + d.sign * (y₂ - y₃) := by ring
@@ -208,25 +230,37 @@ theorem eps_dominance_composition_list
 theorem strict_dominance_does_not_compose_informal : True := trivial
 ```
 
-**Counter-example documented**:
+This Lean theorem only states `True`; nothing about strict dominance is proved. The
+counter-example is documented in the file's comments:
 - y₁ = [100, 50], y₂ = [90, 50], y₃ = [90, 40], ε = [10, 10]
 - y₁ ≻ε y₂ (strictly better on A)
 - y₂ ≻ε y₃ (strictly better on B)
 - But y₁ ≽₂ε y₃, NOT y₁ ≻₂ε y₃
 
-**Lines of Code**: 118
-**Sorry Count**: 0
+**Lines of Code**: 117
+**Sorry Count** (unproved `sorry` placeholders in the file): 0
 
 ---
 
 ## 5. SMT Encoding Soundness (TVL/SMTEncoding.lean)
 
+SMT means satisfiability modulo theories: a solver decides whether a logical formula over
+integers (here, quantifier-free linear integer arithmetic, QF-LIA) has a satisfying model.
+
 ### Rounding Soundness (Lemma 5.4) - **FULLY PROVEN** ✓
 
-**Statement**: For P-aligned domain value v and threshold n (both non-negative):
+**Statement** (what the Lean theorem proves): for natural numbers v and n and a precision
+factor P > 0,
 ```
-v ≥ n ⟺ scale(v) ≥ ⌈n/P⌉
+v · P ≥ n ⟺ v ≥ ⌈n/P⌉        where ⌈n/P⌉ is computed as (n + P - 1) / P
 ```
+
+This is a ceiling-division identity on natural numbers. It is **not** the formal semantics'
+Lemma 8.1, which states, for a P-aligned value v and a threshold n,
+`v ≥ n ⟺ scale(v) ≥ ⌈n · P⌉` (and the matching ≤, >, < forms). The Lean encoding takes values
+and thresholds as already scaled by P (see [Design Decisions](#8-design-decisions)), so the
+rounding of `n · P` is outside the Lean model, and `smt_encoding_soundness` does not use this
+lemma. Lemma 8.1 is not mechanized.
 
 **Lean Statement**:
 ```lean
@@ -248,11 +282,17 @@ private lemma le_div_imp_mul_le (k m n : Nat) (hn : n > 0) (h : k ≤ m / n) :
     k * n ≤ m
 ```
 
-### SMT Encoding Soundness (Theorem 5.6) - **COMPLETE** ✓
+### SMT Encoding Soundness (Theorem 5.6) - **PROVEN under the hypotheses below** ✓
 
-**Statement**:
+Formal semantics: a formula-level form of Theorem 8.1. Values and thresholds are taken as
+already scaled, and the §8.3 domain assertions are not modelled.
+
+**Statement**: if encoding φ succeeds (`encodeFormula φ P idx = some ψ`), the decoder is
+well formed (`WellFormedDecode`), the model m assigns every variable of φ (`ModelDefinedOn m φ`)
+and the decoder gives an integer value to every variable used in a comparison
+(`FormulaNumericInvariant`), then
 ```
-m ⊨ encode(Δ, φ, P) ⟺ ⟦φ⟧(decode(m)) = true
+evalSMT ψ m = some true ⟺ ⟦φ⟧(decode(m)) = true
 ```
 
 **Lean Statement**:
@@ -264,6 +304,8 @@ theorem smt_encoding_soundness
     (m : SMTModel)
     (decode_val : SMTVar → SMTVal → Option Val)
     (hwf : WellFormedDecode decode_val idx)
+    (hmodel : ModelDefinedOn m φ)
+    (hinv : FormulaNumericInvariant decode_val φ)
     (_encode_val : VarName → Val → Option SMTVal)
     (_roundtrip : ∀ x v, (do let n ← _encode_val x v; decode_val x n) = some v)
     (ψ : SMTFormula)
@@ -272,7 +314,7 @@ theorem smt_encoding_soundness
     evalFormula φ (decodeModel m decode_val) = some true
 ```
 
-**Key Addition - WellFormedDecode Structure**:
+**WellFormedDecode structure**:
 
 ```lean
 structure WellFormedDecode (decode_val : SMTVar → SMTVal → Option Val)
@@ -282,7 +324,7 @@ structure WellFormedDecode (decode_val : SMTVar → SMTVal → Option Val)
   equality : EqualityDecodeCorrespondence decode_val idx
 ```
 
-**Key Addition - ModelDefinedOn Precondition** (NEW):
+**ModelDefinedOn precondition**:
 
 The main theorem requires the SMT model to be defined on all formula variables:
 
@@ -294,17 +336,22 @@ def ModelDefinedOn (m : SMTModel) (φ : Formula) : Prop :=
 This handles the semantic corner case where SMT `ff` (for empty list membership)
 is always defined, but TVL `x ∈ []` requires the variable to be defined.
 
-**NumericDecodePreservation (Conditional Form)** (UPDATED):
+**NumericDecodePreservation**:
 
-The axiom now uses a conditional form that's satisfiable for all decode functions:
+This is a hypothesis on the decoder (a field of `WellFormedDecode`), not a Lean `axiom`.
+It requires that whenever a decoded value has an integer representation, that integer equals
+the SMT integer it was decoded from. A decoder that returns `vint (n + 1)` for SMT value `n`
+does not satisfy it.
 
 ```lean
 def NumericDecodePreservation (decode_val : SMTVar → SMTVal → Option Val) : Prop :=
   ∀ x n v, decode_val x n = some v → ∀ m, v.toInt? = some m → m = n
 ```
 
-This says: "If the decoded value has an integer representation m, then m = n."
-For boolean/string values where `toInt?` returns none, no constraint is imposed.
+For boolean/string values, where `toInt?` returns none, it imposes no constraint.
+
+**FormulaNumericInvariant**: for every comparison atom (`geq`, `leq`) in φ, every value the
+decoder returns for that variable has an integer representation.
 
 **Proof Structure**:
 
@@ -319,14 +366,21 @@ For boolean/string values where `toInt?` returns none, no constraint is imposed.
 
 **Helper Lemmas**:
 
-- `Val.beq_comm`: BEq symmetry for all `Val` constructors (including tuples)
+- `Val.beq_comm`: symmetry of Lean's Boolean equality (`BEq`, the `==` operator) on `Val`,
+  `(a == b) = (b == a)`, for all constructors (including tuples)
 - `mem_encoding_soundness`: Membership encoding (fully proven via list induction)
-- `mem_encoding_undefined`: When SMT model has no value, membership encoding is undefined
+- `mem_encoding_undefined`: for a **nonempty** list S, when the SMT model has no value for x,
+  the encoding of `x ∈ S` evaluates to undefined (the empty list encodes to `ff`, which is
+  always defined)
 - `mem_encoding_defined`: When SMT model has a value, membership encoding is defined
 - `encoding_definedness`: SMT definedness → formula definedness (fully proven)
 - `encoding_definedness_rev`: formula definedness → SMT definedness (fully proven)
 
-**Documented Edge Cases**: None in Lean source (zero `sorry` terms).
+**Proof holes**: none (zero `sorry` terms).
+
+**Edge case handled by a hypothesis**: `x ∈ []` encodes to `ff`, which is defined even when the
+model has no value for x, while TVL `x ∈ []` is then undefined. The `ModelDefinedOn` hypothesis
+excludes this case.
 
 ### Satisfiability Preservation (Corollary) - **FULLY PROVEN** ✓
 
@@ -336,26 +390,33 @@ For boolean/string values where `toInt?` returns none, no constraint is imposed.
 (∃ c ∈ Config: ⟦φ⟧(c) = true) ⟺ SAT(encode(φ))
 ```
 
+Formal semantics: Corollary 8.1, in the same formula-level form.
+
+The Lean theorem `satisfiability_preservation` states
+`(∃ c, evalFormula φ c = some true) ↔ (∃ m, ModelDefinedOn m φ ∧ evalSMT ψ m = some true)`,
+under the decoder hypotheses above plus an encoder `encode_val` that is total and round-trips
+through `decode_val`.
+
 **Proof Status**:
 
 - **Backward direction**: ✓ Proven using `smt_encoding_soundness`
 - **Forward direction**: ✓ Proven using `decode_encode_config_agree` and `evalFormula_ext`
 
-**Lines of Code**: ~900
+**Lines of Code**: 1985
 **Sorry Terms**: 0
 
 ---
 
 ## 6. Verification Summary
 
-| Theorem | Paper Ref | Status | Sorry Count | Notes |
-|---------|-----------|--------|-------------|-------|
-| Type Soundness | 4.2 | ✓ Complete | 0 | All proofs verified |
-| ε-Composition | 6.18 | ✓ Complete | 0 | `normalized_diff_composition` proven |
-| Rounding Soundness | 5.4 | ✓ Complete | 0 | `rounding_soundness_nonneg` proven |
-| SMT Encoding | 5.6 | ✓ Complete | 0 | All previously documented numeric decode branches discharged |
-| Val.beq_comm | Helper | ✓ Complete | 0 | Tuple/list recursion discharged |
-| Satisfiability | Cor. | ✓ Complete | 0 | Both directions fully proven |
+| Theorem | Paper Ref | Formal semantics | Status | Sorry Count | Notes |
+|---------|-----------|------------------|--------|-------------|-------|
+| Type Soundness | 4.2 | Theorem 4.1 | ✓ Complete | 0 | Requires `ConfigRespectsContext` |
+| ε-Composition | 6.18 | Lemma 9.2 | ✓ Complete | 0 | `normalized_diff_composition` proven |
+| Rounding Soundness | 5.4 | none (differs from Lemma 8.1) | ✓ Complete | 0 | Natural-number ceiling division |
+| SMT Encoding | 5.6 | Theorem 8.1, formula-level | ✓ Complete | 0 | Requires the decoder, model and encoding hypotheses |
+| Val.beq_comm | Helper | | ✓ Complete | 0 | Tuple/list recursion discharged |
+| Satisfiability | Cor. | Corollary 8.1, formula-level | ✓ Complete | 0 | Both directions fully proven |
 
 **Total Sorry Terms**: 0
 
@@ -367,8 +428,8 @@ For boolean/string values where `toInt?` returns none, no constraint is imposed.
 |-------|------|------|
 | Γ ⊢ φ : prop | `FormulaWellTyped Γ φ` | Types.lean |
 | ⟦φ⟧(c) | `evalFormula φ c` | TypeSoundness.lean |
-| c ≽ε c' | `weakEpsDominates objs ε y y'` | Dominance.lean |
-| c ≻ε c' | `strictEpsDominates objs ε y y'` | Dominance.lean |
+| σ(d) · (y − y') (one objective) | `normalizedDiff d y y'` | Dominance.lean |
+| c ≽ε c' (all objectives) | hypotheses of `eps_dominance_composition_list` (no named definition) | Dominance.lean |
 | σ(d) | `Direction.sign d` | Dominance.lean |
 | encode(φ) | `encodeFormula φ P idx` | SMTEncoding.lean |
 | ⌈n/P⌉ | `(n + P - 1) / P` | SMTEncoding.lean |
@@ -410,19 +471,21 @@ All major proof obligations have been completed:
 - ✓ Equality atoms (eq, neq) using `EqualityDecodeCorrespondence`
 - ✓ Comparison atoms (geq, leq) using `NumericDecodePreservation`
 - ✓ All membership atom cases (empty, singleton, multi-element lists) via `mem_encoding_soundness`
-- ✓ Val.beq_comm for non-tuple cases (vbool, vint, vfloat, vstr)
+- ✓ Val.beq_comm for all `Val` constructors, including tuples
 - ✓ Rounding soundness theorem for ceiling division
 - ✓ Satisfiability preservation (both directions)
 - ✓ Type soundness and ε-dominance composition (fully proven)
 - ✓ Definedness helper lemmas (encoding_definedness, encoding_definedness_rev)
 
-### Documented Edge Cases
+### Proof holes and edge cases
 
-None in Lean source (`rg` over `tvl/proofs/TVL/*.lean` returns no `sorry` terms).
+No `sorry` terms: `rg -n '\bsorry\b' proofs/TVL --glob '*.lean'` returns nothing, and CI rejects
+them. The empty-membership case is handled by the `ModelDefinedOn` hypothesis (Section 5).
 
 ### Future Extensions
 
-- Formalize promotion correctness (Theorem 6.15)
+- Formalize promotion correctness (formal semantics Proposition 9.1 and the statistical tests
+  of §9.4–9.5; `Gate.lean` covers only the decision join over supplied test results)
 - Add Welch's t-test properties for statistical dominance
 - Mechanize sequential testing error bounds
 - Extend the formalization to cover `cvars`/`policies` (RFC 0001) and
@@ -437,33 +500,37 @@ None in Lean source (`rg` over `tvl/proofs/TVL/*.lean` returns no `sorry` terms)
 # Install elan (Lean version manager)
 curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 
-# Build the proofs
-cd tvl/proofs
+# Build the proofs (from the repository root)
+cd proofs
 lake exe cache get    # Download pre-built Mathlib (saves ~30 min)
 lake build
 ```
 
-**Expected Output**:
-```
-Build completed successfully (6136 jobs).
-```
+**Expected final line**: `Build completed successfully (N jobs).` The job count depends on
+the module set; it was 6136 at the 2026-02-01 baseline, before the Gate, OPAL and Runtime
+modules were added.
 
 ---
 
 ## 11. Conclusion
 
-The TVL mechanized proofs provide strong formal guarantees for the core theoretical foundations:
+The core TVL proofs establish, for the modelled subset (atoms `=`, `≠`, `≥`, `≤`, `∈` over
+non-tuple TVARs, and the four connectives):
 
-- **Type Soundness (Theorem 4.2)**: Guarantees that well-typed formulas always evaluate to boolean values
-- **ε-Dominance Composition (Lemma 6.18)**: Proves the key property used in multi-objective optimization
-- **Rounding Soundness (Lemma 5.4)**: Establishes the correctness of float-to-integer encoding
-- **QF-LIA Encoding Soundness (Theorem 5.6)**: Proves the bidirectional correspondence between SMT satisfiability and TVL formula truth
+- **Type Soundness (Theorem 4.2)**: a well-typed formula evaluates to a boolean under every
+  configuration that respects the typing context (`ConfigRespectsContext`)
+- **ε-Dominance Composition (Lemma 6.18)**: weak ε-dominance composes with tolerance 2ε
+- **Rounding Soundness (Lemma 5.4)**: the natural-number ceiling-division identity
+  `v · P ≥ n ⟺ v ≥ ⌈n/P⌉`; the semantics' threshold rounding `⌈n · P⌉` (Lemma 8.1) is not mechanized
+- **QF-LIA Encoding Soundness (Theorem 5.6)**: SMT truth of the encoded formula matches TVL truth
+  under the decoded model, given the decoder, model-totality, numeric-invariant and successful-encoding
+  hypotheses of Section 5, with values and thresholds already scaled
 
-All major proof obligations have been completed with no `sorry` terms in Lean source.
+These core files contain no `sorry` terms.
 
-**Total Lines of Proof Code**: ~950 (excluding Mathlib)
-**Theorems Fully Proven**: 5 (Type Soundness, ε-Composition, Rounding Soundness, SMT Encoding, Satisfiability)
-**Documented Edge Cases**: 0
+**Lines of core proof code**: 2591 (`Basic`, `Types`, `TypeSoundness`, `SMTEncoding`, `Dominance`;
+`wc -l`, 2026-10-24; the whole `proofs/` library, excluding Mathlib, is 4803 lines)
+**Theorems proven**: 5 (Type Soundness, ε-Composition, Rounding Soundness, SMT Encoding, Satisfiability)
 
 ---
 
@@ -538,7 +605,9 @@ Each entry uses exactly one class. A helper's class concerns only its own statem
   legacy test results is an explicit completeness premise; numerical tests and
   evaluator implementations are not certified by the join algebra.
 - Generic exact rational/real tails are connected to `PMF.binomial`; parameter
-  inequalities supply `GoodWindow`/`BadWindow` stochastic-domination contracts.
+  inequalities supply `GoodWindow`/`BadWindow` stochastic-domination contracts
+  (`BinomialGeneric.lean`: a count K is a good window when each upper tail `Pr[K ≥ j]` is at
+  most the exact binomial upper tail at θ, and a bad window when it is at least that tail).
   These generic names denote tail-law inequalities, without unresolved counts or
   verdict definitions. No real population's independence, representativeness,
   attribution or unbiased selection is inferred. The finite union bound needs
@@ -551,7 +620,11 @@ Each entry uses exactly one class. A helper's class concerns only its own statem
   library. Static composition neither compares grants nor checks enabled
   capabilities.
   Full catalogue validation, opaque identity binding, pack activation and source
-  refinement remain unproved. Equal floor-provenance maps are still required.
+  refinement remain unproved. Here identity binding is how a contract's identity is tied to
+  its source, and pack activation is the authorized registration that gives a tenant-floor
+  pack its authority (formal semantics §12.12; RFC 0003 §9.4). Compatible contracts must still
+  have equal floor-provenance maps (`ContractCompatible` in `Compose.lean`): the record, per
+  composed monitor taken from a pack, of which pack monitor it came from (RFC 0003 §9.4, step 7).
 - `Compiler.lean` states an OPEN declaration-normalization/projection
   obligation over a normalized source fragment. It is not an
   implementation or proof of the Python compiler, parser or canonical wire codec.
@@ -580,9 +653,12 @@ for the boundary and trusted-input limits.
 
 ## RFC 0004: Reactive notification guards (TVL 1.4)
 
-`TVL/Runtime/Guards.lean` is imported by `Main.lean`. The model uses strong Kleene folds,
-a validated notify-only rule type, unchanged occurrence identity/scope, and the exact monitor
-unless graph (attempt guards add no edge). These statements do not prove controller execution,
+`TVL/Runtime/Guards.lean` is imported by `Main.lean`. The model folds guard lists with the
+three-valued (strong Kleene) connectives of formal semantics Definition 13.8: a conjunction is
+FALSE if any guard is FALSE, a disjunction is TRUE if any guard is TRUE, and UNDECIDED
+otherwise. It also uses a validated notify-only rule type, unchanged occurrence identity/scope,
+and the exact monitor unless graph of Definition 13.10 (an edge from a rule's source monitor to
+each monitor named by an episode guard in its `unless`; attempt guards add no edge). These statements do not prove controller execution,
 source parsing, wire projection, attempt lifecycle or undecided-run implementation.
 
 | Statement | Class | Scope |
@@ -598,8 +674,10 @@ attempts and undecided histories relationally; this is outside these four Lean c
 ## RFC 0005: Persistence and exact mean comparison (TVL 1.5)
 
 `TVL/Runtime/Persistence.lean`, imported by `Main.lean`, models arbitrary finite
-lists of base window verdicts. Missing slots must already be represented as
-UNKNOWN by the caller. The model does not select windows or validate the authored
+lists of base window verdicts: one slot per counted window of the source monitor, each MET,
+BREACHED or UNKNOWN. In RFC 0005 §2.2 the threshold k is `breached_in` and the list length n is
+`of_last`; the result is BREACHED when at least k slots are BREACHED. Missing slots must already
+be represented as UNKNOWN by the caller. The model does not select windows or validate the authored
 `1 ≤ k ≤ n ≤ 168` constraints; its mathematical results hold for every natural
 threshold, including zero, and every finite list.
 
@@ -623,8 +701,8 @@ arithmetic implementation. There are no new admitted proofs or assumptions.
 
 ### Local verification
 
-The full build command `/home/nimrod/.elan/bin/lake build`, run from `proofs/`,
-exited **1** during dependency acquisition. Its final lines were:
+When this module was added, a local full `lake build` in `proofs/` stopped with exit
+status **1** while fetching dependencies (cloning Mathlib failed). Its final lines were:
 
 ```text
 warning: manifest out of date: git revision of dependency 'mathlib' changed; use `lake update mathlib` to update it
@@ -632,22 +710,19 @@ info: mathlib: cloning https://github.com/leanprover-community/mathlib4.git
 error: external command 'git' exited with code 128
 ```
 
-Full output is in `/tmp/tvl-impl1-lake-build.log`. No dependency/configuration
-files were changed. The warning is reported without inferring its cause:
-`lakefile.lean`'s requested Mathlib revision, `lake-manifest.json`'s resolved
-Mathlib revision, and the existing sibling cache's `git rev-parse HEAD` all equal
-`6a596ab93c06c66333edc70d52d8955648f6669c`; the manifest's `inputRev` is null.
+No dependency or configuration files were changed. `lakefile.lean` and
+`lake-manifest.json` both pin Mathlib `6a596ab93c06c66333edc70d52d8955648f6669c`; the
+manifest's `inputRev` is null. The cause of the warning was not investigated.
 
-A separate direct Lean check of this new module exited **0**, with no diagnostics,
-using read-only existing cached dependency libraries. This checks the new module,
-not the complete `Main.lean` dependency graph. From the worktree root, reproduce:
+A direct Lean check of `TVL/Runtime/Persistence.lean` alone, against already-built
+Mathlib libraries, exited **0** with no diagnostics. This checks that one module, not the
+complete `Main.lean` dependency graph. With the dependencies built (see
+[Build Instructions](#10-build-instructions)), the same check is:
 
 ```bash
-LEAN_PATH=$(find ../runtime-1-3/proofs/.lake/packages -path '*/.lake/build/lib/lean' -type d -printf '%p:') \
-  /home/nimrod/.elan/toolchains/leanprover--lean4---v4.28.0-rc1/bin/lean \
-  proofs/TVL/Runtime/Persistence.lean
+cd proofs
+lake env lean TVL/Runtime/Persistence.lean
 ```
 
-The direct check's diagnostic log is `/tmp/tvl-impl1-direct-lean.log` (empty on
-success). `git diff --check` also exited 0. These are local mathematical checks,
-not runtime implementation evidence or a claim that the full library builds.
+These are mathematical checks of the Lean model, not evidence about any runtime
+implementation. The CI workflow above is the check of the full library.

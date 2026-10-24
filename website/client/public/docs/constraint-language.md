@@ -119,7 +119,7 @@ All constraints are type-checked against the declared TVARs:
 | `bool` | `=`, `!=`, `in` | `true`, `false` (or a set of them) |
 | `int` | `=`, `!=`, `<`, `<=`, `>`, `>=`, `in` | integers |
 | `float` | `=`, `!=`, `<`, `<=`, `>`, `>=`, `in` | numbers |
-| `enum[T]` | `=`, `!=`, `in` | literals from domain |
+| `enum[T]` | `=`, `!=`, `in`; also `<`, `<=`, `>`, `>=` when every value in the domain is an int or float | literals from domain (numbers for ordering) |
 | `tuple[...]` | `=`, `!=`, `in` | tuples from domain |
 | `callable[P]` | `=`, `!=`, `in` | identifiers from registry |
 

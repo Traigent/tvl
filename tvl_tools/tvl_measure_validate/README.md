@@ -8,9 +8,9 @@ tvl-measure-validate spec/examples/rag-support-bot.tvl.yml \
   spec/measurements/rag-support-bot.measure.yml --json
 ```
 
-- Canonical measurement bundles use `objective_values` with `samples` or `mean/std/n`,
+- Canonical measurement bundles use `objective_values` with `samples` or `mean`/`std`/`n` (mean, standard deviation and number of observations),
   plus `chance_outcomes` with `violations` and `trials`.
 - Legacy top-level `objectives` and `chance` fields are still parsed with deprecation warnings.
 
 - Exit 0: all checks pass
-- Exit 2: structural/operational/chance violation or schema failure
+- Exit 2: structural/operational/chance violation, schema failure, or (for a module that uses requirements, monitors or responses) a bundle that is not promotion-ready

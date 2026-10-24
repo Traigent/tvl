@@ -2,7 +2,13 @@
 
 This document is the authoritative entry point for the OPAL declarative-core mechanization in Lean.
 
-- Source file: `tvl/proofs/TVL/OPALCore.lean`
+OPAL is the language described in the OPAL appendix of the TVL paper manuscript (see the
+header of `OPALCore.lean`). This repository has no separate OPAL language reference; the constructs modelled here
+are exactly those listed below and defined in the Lean file: assignment (`x = v`), domain
+binding (`x in D`, resolved from an optimizer snapshot), guarded constraints
+(`when x is v: φ`), `given` policies and callable templates.
+
+- Source file: `proofs/TVL/OPALCore.lean`
 - Namespace: `TVL.OPALCore`
 - Scope: declarative OPAL core (assign/in/when/given/callable templates), not host-language `def` body interpretation
 
@@ -52,21 +58,21 @@ This document is the authoritative entry point for the OPAL declarative-core mec
 
 ## Trusted Assumptions and Design Choices
 
-- Host execution is outside the mechanized core; OPAL/host boundary assumptions remain explicit in manuscript Appendix A.
+- Host execution is outside the mechanized core. The OPAL/host boundary assumptions are stated in Appendix A of the TVL paper manuscript, which is not published in this repository; within this repository, the boundary is the scope list above.
 - Nested template typing uses finite fuel (`templateFuelN`, `templateArgFuelN`) to model finite source trees while keeping proofs tractable.
 - Registry well-formedness is captured by `wellFormedRegistryN` and used in completeness lemmas.
 
 ## Build and Check
 
 ```bash
-cd tvl/proofs
+cd proofs
 lake build
 ```
 
 For focused iteration:
 
 ```bash
-cd tvl/proofs
+cd proofs
 lake build TVL.OPALCore
 ```
 
