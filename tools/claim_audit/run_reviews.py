@@ -94,11 +94,11 @@ class Runner:
         self.tokens += usage_tokens(kw.get("usage") or {})
 
     # -- planning helpers (call ca.cmd_plan quietly)
-    def plan(self, role: str) -> list[Path]:
+    def plan(self, role: str, resample: str | None = None) -> list[Path]:
         before = set((self.au.audit / "batches").glob("*.json")) if (self.au.audit / "batches").exists() else set()
         self.au._units = None
         ns = argparse.Namespace(
-            checks=",".join(self.cfg["review"]["checks"]), max_words=int(self.cfg["review"]["max_words"]), paths=None, role=role
+            checks=",".join(self.cfg["review"]["checks"]), max_words=int(self.cfg["review"]["max_words"]), paths=None, role=role, resample=resample
         )
         with contextlib.redirect_stdout(io.StringIO()):
             ca.cmd_plan(self.au, ns)
@@ -176,7 +176,7 @@ class Runner:
                 errs = [f"exit code {code}" if code else "no JSON object found in output"]
             else:
                 data.setdefault("batch_id", bid)
-                data.setdefault("reviewer", reviewer)
+                data["reviewer"] = reviewer  # identity comes from config, not from the model's self-report
                 data.setdefault("role", role)
                 (self.runs / f"{bid}.results.json").write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
                 recs, errs = ca.validate_results(self.au, data)
@@ -234,12 +234,27 @@ class Runner:
                 out.append(np_)
         return out
 
-    def run_meta(self) -> bool:
-        """Meta-review everything currently 'reviewed'. Returns False if a stop condition hit."""
-        if self.reviewed_pairs() == 0:
+    def resample_eligible(self, checks: list[str]) -> int:
+        self.au._units = None
+        return sum(
+            1 for s in self.au.pair_states(checks)
+            if s["status"] == "closed" and s["review"]["verdict"] == "pass" and s["meta"] and s["meta"]["reviewer"] == "sampling"
+        )
+
+    def run_meta(self, resample: str | None = None) -> bool:
+        """Meta-review everything currently 'reviewed' (or, with resample, auto-accepted passes of those checks).
+        Returns False if a stop condition hit."""
+        if resample:
+            if self.resample_eligible([ca.canon_check_id(c) for c in resample.split(",")]) == 0:
+                return True
+        elif self.reviewed_pairs() == 0:
             return True
-        paths = self.split_meta(self.plan("meta"))
+        paths = self.split_meta(self.plan("meta", resample))
+        ran = 0
         for p in paths:
+            if self.args.max_batches and resample and ran >= self.args.max_batches:
+                p.unlink()
+                continue
             if (self.au.audit / "STOP").exists():
                 return False
             if self.args.max_tokens and self.tokens >= self.args.max_tokens:
@@ -247,12 +262,28 @@ class Runner:
             b = json.loads(p.read_text(encoding="utf-8"))
             if frozenset(map(tuple, b["pairs"])) in self.skipped:
                 continue
+            ran += 1
             ok = self.run_batch("meta", p)
             if not ok:
                 self.skipped.add(frozenset(map(tuple, b["pairs"])))
                 if self.consec_fail >= 2:
                     return False
         return True
+
+    def resample_loop(self, resample: str) -> int:
+        """Second round: only meta batches for auto-accepted passes; no review batches."""
+        checks = [ca.canon_check_id(c) for c in resample.split(",")]
+        ok = self.run_meta(resample)
+        if self.consec_fail >= 2:
+            print(f"two consecutive failures: {self.fail_reason}", file=sys.stderr)
+            return 3
+        if (self.au.audit / "STOP").exists() or not ok:
+            return 0
+        left = self.resample_eligible(checks)
+        if left and self.skipped:
+            print(f"{left} auto-accepted passes left after skipped batches", file=sys.stderr)
+            return 3
+        return 0
 
     # -- main loop
     def loop(self) -> int:
@@ -325,6 +356,7 @@ def main(argv=None, root: Path | None = None, tracked: list[str] | None = None) 
     ap.add_argument("--max-tokens", type=int, default=0, help="stop when logged usage reaches T tokens (0 = no limit)")
     ap.add_argument("--meta-every", type=int, default=0, help="override meta.every_n_review_batches")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--resample", default=None, help="second round: meta-review auto-accepted passes of these checks (comma list); no review batches")
     args = ap.parse_args(argv)
     r = Path(args.root) if args.root else (root or Path(__file__).resolve().parents[2])
     au = ca.Audit(r, tracked)
@@ -332,16 +364,18 @@ def main(argv=None, root: Path | None = None, tracked: list[str] | None = None) 
     cfg["review"]["checks"] = [ca.canon_check_id(c) for c in cfg["review"]["checks"]]
     rn = Runner(au, cfg, args)
     if args.dry_run:
-        paths = rn.plan("review")
+        paths = rn.plan("meta", args.resample) if args.resample else rn.plan("review")
         if not paths:
             print("nothing pending")
             return 0
         print(f"next batch: {paths[0]}  ({len(paths)} batches planned)")
         print("----- prompt -----")
-        print(rn.build_prompt("review", paths[0]))
+        print(rn.build_prompt("meta" if args.resample else "review", paths[0]))
         for p in paths:
             p.unlink()
         return 0
+    if args.resample:
+        return rn.resample_loop(args.resample)
     return rn.loop()
 
 

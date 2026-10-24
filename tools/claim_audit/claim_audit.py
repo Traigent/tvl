@@ -390,9 +390,14 @@ class Audit:
             if r.get("role") == "review":
                 reviews[(r["unit_id"], r["text_hash"], r["check_id"], r["check_version"])] = r
         metas: dict[str, dict] = {}
+        autos: set[str] = set()
         for r in led:
             if r.get("role") == "meta" and r.get("corrects"):
-                metas[r["corrects"]] = r
+                if r.get("reviewer") == "sampling":
+                    autos.add(r["corrects"])
+                    metas.setdefault(r["corrects"], r)  # an auto-meta never replaces a real one
+                else:
+                    metas[r["corrects"]] = r  # latest real meta supersedes any auto-meta
         out = []
         for u in self.units():
             for cid, c in checks.items():
@@ -403,7 +408,7 @@ class Audit:
                 if c["exclude_paths"] and glob_match(u["path"], c["exclude_paths"]):
                     continue
                 rev = reviews.get((u["unit_id"], u["text_hash"], cid, c["version"]))
-                st = {"unit": u, "check": c, "review": rev, "meta": None, "status": "pending", "verdict": None, "disputed": False}
+                st = {"unit": u, "check": c, "review": rev, "meta": None, "status": "pending", "verdict": None, "disputed": False, "resampled": False}
                 if rev:
                     st["verdict"] = rev["verdict"]
                     if c["kind"] == "script":
@@ -415,6 +420,7 @@ class Audit:
                             st["meta"] = meta
                             st["verdict"] = meta["verdict"]
                             st["disputed"] = meta["verdict"] != rev["verdict"]
+                            st["resampled"] = meta["reviewer"] != "sampling" and rev["record_id"] in autos
                         else:
                             st["status"] = "reviewed"
                 out.append(st)
@@ -588,7 +594,12 @@ def cut_batches(units: list[dict], max_words: int) -> list[list[dict]]:
 
 def cmd_plan(au: Audit, args) -> int:
     checks = au.checks()
+    resample = [canon_check_id(c) for c in args.resample.split(",")] if getattr(args, "resample", None) else None
+    if resample and args.role != "meta":
+        raise SystemExit("--resample needs --role meta")
     want = [canon_check_id(c) for c in args.checks.split(",")] if args.checks else None
+    if resample:
+        want = resample
     if want:
         for c in want:
             if c not in checks:
@@ -628,15 +639,22 @@ def cmd_plan(au: Audit, args) -> int:
             written.append(p)
         print(f"pending pairs: {len(pend)}; units: {len(units)}")
     else:
-        elig = [s for s in states if s["status"] == "reviewed"]
+        if resample:  # second round: passes closed only by an auto-meta get a real meta review
+            elig = [s for s in states if s["status"] == "closed" and s["review"]["verdict"] == "pass"
+                    and s["meta"] and s["meta"]["reviewer"] == "sampling"]
+        else:
+            elig = [s for s in states if s["status"] == "reviewed"]
         sampled, auto = [], []
         for s in elig:
+            if resample:
+                sampled.append(s)
+                continue
             r = s["review"]
             if r["verdict"] in ("issue", "na") or int(r["record_id"], 16) % s["check"]["meta_sample_mod"] == 0:
                 sampled.append(s)
             else:
                 auto.append(s)
-        bid_auto = next_batch_id(au, "meta")
+        bid_auto = next_batch_id(au, "meta") if auto else None
         recs = [
             make_record(
                 unit_id=s["unit"]["unit_id"], text_hash=s["unit"]["text_hash"], check_id=s["check"]["id"],
@@ -648,7 +666,10 @@ def cmd_plan(au: Audit, args) -> int:
         ]
         if recs:
             append_jsonl(au.audit / "ledger.jsonl", recs)
-        print(f"reviewed pairs: {len(elig)}; sampled for meta-review: {len(sampled)}; auto-closed (not sampled): {len(auto)}")
+        if resample:
+            print(f"resample: {len(sampled)} auto-accepted passes selected for real meta-review")
+        else:
+            print(f"reviewed pairs: {len(elig)}; sampled for meta-review: {len(sampled)}; auto-closed (not sampled): {len(auto)}")
         by_unit = OrderedDict()
         for s in sampled:
             by_unit.setdefault(s["unit"]["unit_id"], []).append(s)
@@ -869,10 +890,11 @@ def coverage_data(au: Audit) -> dict:
                    and s["meta"]["reviewer"] != "sampling" and s["review"]["verdict"] == "pass"]
         auto = sum(1 for s in states if s["check"]["id"] == cid and s["status"] == "closed" and s["meta"]
                    and s["meta"]["reviewer"] == "sampling" and s["review"]["verdict"] == "pass")
+        resampled = sum(1 for s in sampled if s["resampled"])
         n = len(sampled)
         k = sum(1 for s in sampled if s["meta"]["verdict"] == "issue")
         ub = cp_upper(k, n) if n else None
-        overturn[cid] = {"k": k, "n": n, "rate": (k / n) if n else None, "upper95": ub, "auto_accepted_passes": auto,
+        overturn[cid] = {"k": k, "n": n, "rate": (k / n) if n else None, "upper95": ub, "auto_accepted_passes": auto, "sampled_first_round": n - resampled, "resampled": resampled,
                          "est_hidden_issues_upper": (ub * auto) if ub is not None else None, "meta_sample_mod": c["meta_sample_mod"]}
     meta_closed = [s for s in states if s["status"] == "closed" and s["meta"]]
     auto_n = sum(1 for s in meta_closed if s["meta"]["reviewer"] == "sampling")
@@ -881,7 +903,8 @@ def coverage_data(au: Audit) -> dict:
         "by_check": {k: {x: v[x] for x in keys} for k, v in byc.items()},
         "by_path": {k: {x: v[x] for x in keys} for k, v in byp.items()},
         "totals": {"pairs": total, **{k: tot[k] for k in keys}},
-        "meta_closed_sampled": len(meta_closed) - auto_n, "meta_closed_auto": auto_n,
+        "meta_closed_sampled": len(meta_closed) - auto_n - sum(1 for s in meta_closed if s["resampled"]),
+        "meta_closed_resampled": sum(1 for s in meta_closed if s["resampled"]), "meta_closed_auto": auto_n,
         "script_closed": sum(1 for s in states if s["status"] == "closed" and s["check"]["kind"] == "script"),
         "disputed": sum(1 for s in states if s["disputed"]),
         "overturn": overturn,
@@ -905,16 +928,16 @@ def cmd_coverage(au: Audit, args) -> int:
         table("By path", d["by_path"])
         t = d["totals"]
         print(f"\nTOTAL pairs={t['pairs']} pending={t['pending']} reviewed={t['reviewed']} closed={t['closed']}")
-        print(f"model pairs closed by meta: sampled(real second review)={d['meta_closed_sampled']} auto(not sampled)={d['meta_closed_auto']}")
+        print(f"model pairs closed by meta: sampled={d['meta_closed_sampled']} resampled={d['meta_closed_resampled']} auto(not sampled)={d['meta_closed_auto']}")
         print(f"script pairs closed: {d['script_closed']}")
         print(f"disputed (meta verdict differs from review): {d['disputed']}")
         print("\nMeta overturn of sampled review passes (k = passes the meta reviewer changed to issue, n = sampled passes)")
-        print(f"{'check':10s} {'mod':>4s} {'k/n':>9s} {'rate':>7s} {'upper95':>8s} {'auto passes':>12s} {'hidden issues <='}")
+        print(f"{'check':10s} {'mod':>4s} {'k/n':>9s} {'rate':>7s} {'upper95':>8s} {'sampled':>8s} {'resampled':>9s} {'auto passes':>12s} {'hidden issues <='}")
         for cid, o in d["overturn"].items():
             if o["n"]:
-                print(f"{cid:10s} {o['meta_sample_mod']:4d} {str(o['k']) + '/' + str(o['n']):>9s} {o['rate']:7.3f} {o['upper95']:8.4f} {o['auto_accepted_passes']:12d} {o['est_hidden_issues_upper']:.1f}")
+                print(f"{cid:10s} {o['meta_sample_mod']:4d} {str(o['k']) + '/' + str(o['n']):>9s} {o['rate']:7.3f} {o['upper95']:8.4f} {o['sampled_first_round']:8d} {o['resampled']:9d} {o['auto_accepted_passes']:12d} {o['est_hidden_issues_upper']:.1f}")
             else:
-                print(f"{cid:10s} {o['meta_sample_mod']:4d} {'0/0':>9s} {'n/a':>7s} {'n/a':>8s} {o['auto_accepted_passes']:12d} n/a")
+                print(f"{cid:10s} {o['meta_sample_mod']:4d} {'0/0':>9s} {'n/a':>7s} {'n/a':>8s} {0:8d} {0:9d} {o['auto_accepted_passes']:12d} n/a")
     if args.strict:
         if not d["all_closed"]:
             print("STRICT: FAIL, not every applicable pair is closed", file=sys.stderr)
@@ -992,6 +1015,7 @@ def main(argv: list[str] | None = None, root: Path | None = None, tracked: list[
     p.add_argument("--max-words", type=int, default=3500)
     p.add_argument("--paths", default=None)
     p.add_argument("--role", choices=ROLES, default="review")
+    p.add_argument("--resample", default=None, help="second round: comma list of checks whose auto-accepted passes get a real meta review (needs --role meta)")
     p = sub.add_parser("record")
     p.add_argument("results")
     sub.add_parser("run-script-checks")

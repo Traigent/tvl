@@ -40,6 +40,25 @@ force every unit to be rechecked. Nothing else needs to change; `plan` finds the
 Status of a pair: pending (no matching review), reviewed (model check with no meta), closed
 (script review, or model review with a meta record).
 
+## Second round: resampling auto-accepted passes
+Why: sampling accepts most passes without a second look, and `coverage` bounds how many issues may hide there
+(the "hidden issues <=" column, upper bound x auto-accepted passes). When that bound is high for a check, because
+the sampled overturn rate is high or because n is small (a wide Clopper-Pearson interval), spend more meta
+review on that check rather than accepting the bound.
+
+How: `claim_audit.py plan --role meta --resample TVL-C01,TVL-C02,TVL-C05` selects current review records with
+verdict `pass` whose only meta is an auto-meta (reviewer "sampling") and plans real meta batches for them
+(same split into batches of about 60 records). It writes no ledger records. Record the results as usual
+(`record`), or run `run_reviews.py --resample TVL-C01,TVL-C02,TVL-C05`, which runs only these meta batches
+(no review batches) with the normal meta prompt, logging and stop rules (`--max-batches` then counts meta batches).
+
+Supersession: a real meta record for the same review supersedes the auto-meta. Closure and verdict use the latest
+real meta (an auto-meta written later never replaces a real one); a differing verdict is marked `disputed`.
+`coverage` prints sampled / resampled / auto per check: sampled = real meta from the first round, resampled =
+real meta that superseded an auto-meta, auto = still only auto-accepted. The overturn estimate (k/n, upper
+bound) uses all real metas, sampled and resampled. Resampled passes were chosen because they were not sampled,
+so pooling them is an approximation, but it can only tighten the bound on the remaining auto-accepted passes.
+
 ## Per-check path exclusions
 `exclude_paths` (globs) in `checks.yml` removes a check from matching files entirely (for example C05 is not applied to CHANGELOG.md, whose terseness is by design). Excluded pairs are not counted in coverage; existing records stay in the ledger.
 

@@ -124,7 +124,12 @@ FILES = {
 
 
 def last_batch(tmp_path):
-    return sorted((tmp_path / "audit" / "batches").glob("*.json"))[-1]
+    # newest by issue order (names sort by role within one second, so do not sort by name)
+    issued = (tmp_path / "audit" / "batches" / "ISSUED.txt").read_text().split()
+    for bid in reversed(issued):
+        p = tmp_path / "audit" / "batches" / f"{bid}.json"
+        if p.exists():
+            return p
 
 
 def test_plan_respects_max_words_and_pending_only(tmp_path):
@@ -392,3 +397,87 @@ def test_batch_ids_never_reused(tmp_path):
         ids.append(bid)
         # even if a batch file is deleted, the id is not reissued
     assert len(set(ids)) == 5
+
+
+# ------------------------------------------------------------------ second round (resample)
+def _seed_reviews(tmp_path, files, verdicts):
+    """verdicts: {(check_id, index): ('pass'|'issue', 'auto'|None)}; returns (au, review records by (check, idx))."""
+    au = ca.Audit(tmp_path, tracked=sorted(files))
+    units = au.units()
+    recs, revs = [], {}
+    for (cid, i), (verdict, auto) in verdicts.items():
+        u = units[i]
+        rev = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id=cid, check_version=1, verdict=verdict,
+                             role="review", reviewer="s", batch_id="b", finding="this finding has more than eight words in it",
+                             evidence="e")
+        recs.append(rev)
+        revs[(cid, i)] = rev
+        if auto:
+            recs.append(ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id=cid, check_version=1, verdict=verdict,
+                                       role="meta", reviewer="sampling", batch_id="m", finding="not sampled", corrects=rev["record_id"],
+                                       sample_mod=5))
+    ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", recs)
+    return au, revs
+
+
+RS_FILES = {"a.md": "Alpha paragraph has plenty of words.\n\nBeta paragraph has plenty of words.\n\nGamma paragraph has plenty of words.\n"}
+
+
+def test_resample_selection_supersession_and_counts(tmp_path, capsys):
+    make_repo(tmp_path, RS_FILES)
+    _, revs = _seed_reviews(tmp_path, RS_FILES, {
+        ("TVL-C01", 0): ("pass", "auto"),   # selected
+        ("TVL-C01", 1): ("pass", "auto"),   # selected
+        ("TVL-C01", 2): ("pass", None),     # reviewed only: not a resample candidate
+        ("TVL-C05", 0): ("pass", "auto"),   # check not listed
+    })
+    ca.main(["--root", str(tmp_path), "plan", "--role", "meta", "--resample", "C01"], tracked=sorted(RS_FILES))
+    b = json.loads(last_batch(tmp_path).read_text())
+    assert b["role"] == "meta" and len(b["pairs"]) == 2 and {p[1] for p in b["pairs"]} == {"TVL-C01"}
+    assert {r["record_id"] for r in b["reviews"]} == {revs[("TVL-C01", 0)]["record_id"], revs[("TVL-C01", 1)]["record_id"]}
+    # no new auto-meta records were written by the resample plan
+    assert len([r for r in ca.read_jsonl(tmp_path / "audit" / "ledger.jsonl") if r["role"] == "meta"]) == 3
+    # real metas: one agrees, one overturns
+    res = [
+        {"unit_id": revs[("TVL-C01", 0)]["unit_id"], "check_id": "TVL-C01", "verdict": "pass", "finding": "agree: fine", "evidence": "e", "corrects": revs[("TVL-C01", 0)]["record_id"]},
+        {"unit_id": revs[("TVL-C01", 1)]["unit_id"], "check_id": "TVL-C01", "verdict": "issue", "finding": "disagree: the statement is wrong and the authority says otherwise", "evidence": "x:1", "corrects": revs[("TVL-C01", 1)]["record_id"]},
+    ]
+    rp = tmp_path / "r.json"
+    rp.write_text(json.dumps({"batch_id": b["batch_id"], "reviewer": "sol", "role": "meta", "results": res}))
+    assert ca.main(["--root", str(tmp_path), "record", str(rp)], tracked=sorted(RS_FILES)) == 0
+    au = ca.Audit(tmp_path, tracked=sorted(RS_FILES))
+    st = {s["unit"]["start_line"]: s for s in au.pair_states(["TVL-C01"])}
+    assert st[1]["status"] == "closed" and st[1]["meta"]["reviewer"] == "sol" and st[1]["resampled"] and st[1]["verdict"] == "pass"
+    assert st[3]["verdict"] == "issue" and st[3]["disputed"] and st[3]["resampled"]
+    d = ca.coverage_data(au)
+    o = d["overturn"]["TVL-C01"]
+    assert (o["k"], o["n"], o["resampled"], o["sampled_first_round"], o["auto_accepted_passes"]) == (1, 2, 2, 0, 0)
+    assert d["meta_closed_resampled"] == 2 and d["meta_closed_auto"] == 1
+    assert d["overturn"]["TVL-C05"]["auto_accepted_passes"] == 1
+    # planning again selects nothing for C01; the reviewed-only pair is untouched
+    before = len(list((tmp_path / "audit" / "batches").glob("*.json")))
+    ca.main(["--root", str(tmp_path), "plan", "--role", "meta", "--resample", "C01"], tracked=sorted(RS_FILES))
+    assert len(list((tmp_path / "audit" / "batches").glob("*.json"))) == before
+    capsys.readouterr()
+    ca.main(["--root", str(tmp_path), "coverage"], tracked=sorted(RS_FILES))
+    out = capsys.readouterr().out
+    assert "resampled=2" in out and "resampled" in out.split("Meta overturn")[1]
+
+
+def test_resample_requires_meta_role(tmp_path):
+    make_repo(tmp_path, RS_FILES)
+    with pytest.raises(SystemExit):
+        ca.main(["--root", str(tmp_path), "plan", "--resample", "C01"], tracked=sorted(RS_FILES))
+
+
+def test_auto_meta_never_supersedes_real_meta(tmp_path):
+    make_repo(tmp_path, RS_FILES)
+    au, revs = _seed_reviews(tmp_path, RS_FILES, {("TVL-C01", 0): ("pass", None)})
+    rev = revs[("TVL-C01", 0)]
+    real = ca.make_record(unit_id=rev["unit_id"], text_hash=rev["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
+                          role="meta", reviewer="sol", batch_id="m1", finding="disagree: wrong", evidence="x", corrects=rev["record_id"])
+    auto = ca.make_record(unit_id=rev["unit_id"], text_hash=rev["text_hash"], check_id="TVL-C01", check_version=1, verdict="pass",
+                          role="meta", reviewer="sampling", batch_id="m2", finding="not sampled", corrects=rev["record_id"], sample_mod=5)
+    ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", [real, auto])  # auto written after the real one
+    s = ca.Audit(tmp_path, tracked=sorted(RS_FILES)).pair_states(["TVL-C01"])[0]
+    assert s["meta"]["reviewer"] == "sol" and s["verdict"] == "issue" and s["resampled"]

@@ -21,13 +21,16 @@ CHECKS = {"checks": [
 ]}
 
 
-def setup(tmp_path, mode, max_words=8, every=2, meta_mode=None):
+def setup(tmp_path, mode, max_words=8, every=2, meta_mode=None, sample_mod=1):
     for p, t in FILES.items():
         (tmp_path / p).write_text(t)
     a = tmp_path / "audit"
     a.mkdir()
     (a / "corpus.yml").write_text(yaml.safe_dump({"include": ["*.md"], "exclude": []}))
-    (a / "checks.yml").write_text(yaml.safe_dump(CHECKS))
+    chk = json.loads(json.dumps(CHECKS))
+    for c in chk["checks"]:
+        c["meta_sample_mod"] = sample_mod
+    (a / "checks.yml").write_text(yaml.safe_dump(chk))
     (a / "ledger.jsonl").write_text("")
     fake = str(HERE / "fake_model.py")
     cfg = {
@@ -149,3 +152,23 @@ def test_codex_usage_from_stderr(tmp_path, monkeypatch):
     monkeypatch.setattr(rr.subprocess, "run", fake_run)
     run(tmp_path, "--max-batches", "1", "--meta-every", "1", monkeypatch=monkeypatch)
     assert any((r.get("usage") or {}).get("tokens_used") == 1234 for r in log(tmp_path))
+
+
+def test_resample_only_loop(tmp_path, monkeypatch):
+    # huge mod: the normal run closes every pass by auto-meta and makes no meta call
+    setup(tmp_path, "ok", max_words=100, sample_mod=10**9)
+    assert run(tmp_path, monkeypatch=monkeypatch) == 0
+    assert [r["role"] for r in log(tmp_path)].count("meta") == 0
+    n_before = len(log(tmp_path))
+    assert run(tmp_path, "--resample", "C01", monkeypatch=monkeypatch) == 0
+    new = log(tmp_path)[n_before:]
+    assert new and all(r["role"] == "meta" and r["recorded"] for r in new)  # no review batches
+    au = ca.Audit(tmp_path, tracked=sorted(FILES))
+    c01 = [s for s in au.pair_states(["TVL-C01"])]
+    assert c01 and all(s["resampled"] and s["meta"]["reviewer"] == "sol" for s in c01)
+    c05 = au.pair_states(["TVL-C05"])
+    assert all(s["meta"]["reviewer"] == "sampling" and not s["resampled"] for s in c05)
+    # idempotent: nothing left to resample
+    n = len(log(tmp_path))
+    assert run(tmp_path, "--resample", "C01", monkeypatch=monkeypatch) == 0
+    assert len(log(tmp_path)) == n
