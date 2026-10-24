@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Info diagnostic `outside_proved_subset`: emitted once per construct family present (`cvars`, `policies`, `composites`) that the Lean proofs do not model. Diagnostics with the new `info` severity are printed and included in JSON output but never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
+- `tools/claim_audit`: a paragraph-level audit of the claims in the published documentation.
+
+### Changed
+
+- Specification page corrections: version compatibility table, scoped overlay narrowing, budget-check responsibilities, assurance-scope table, a decision table for `chance_constraints` versus a promotion monitor, and the authority section.
+- Publication review corrections across the documentation, including the error code catalog (new entries for operational-check, calibration-readiness and document-shape codes, and a statement of which tool codes it does not list yet).
+
 ## [1.5.0] - 2026-10-23
 
 TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantics §14 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.5.0; authored modules using the new constructs declare `tvl_version: "1.5"`. Not published to a package registry.
@@ -57,7 +67,7 @@ TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Pa
 
 ### Fixed
 
-- `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
+- `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5 that the module records, not only an explicit `require_calibration`. The operational-profile trigger of RFC 0001 section 3.6 is not checked, because the gate does not receive the operational profile.
 - `tvl-lint` applies the documented default `promotion_policy.alpha` of 0.05 when it is omitted, instead of failing with `invalid_alpha`; explicit `null` or out-of-range values are still rejected.
 - Runtime diagnostics printed by the CLI text renderers show their field location once instead of twice.
 
@@ -82,7 +92,7 @@ TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Pa
 - Added `p_value_inferior`, `adjusted_p_inferior`, and `any_band_out_of_band` to promotion evidence.
 - Made unsupported strict-calibration evidence and measurement/module identity mismatches promotion-readiness failures.
 - Advanced the Promotion Gate I/O document to draft version 1.1 for review of these observable contract changes.
-- Package, citation, and `tvl.__version__` metadata now report language version 1.2.0 (the 1.1 and 1.2 extensions below were already in the schema, validators, and examples).
+- Before TVL 1.3 was accepted, package, citation, and `tvl.__version__` metadata were raised to language version 1.2.0 (the 1.1 and 1.2 extensions below were already in the schema, validators, and examples); this release reports 1.3.0.
 - Documented every diagnostic emitted by `tvl.lints` in `docs/reference/error-codes.md`, including the codes for `cvars`, `policies`, `require_calibration`, and `composites`.
 - Installation instructions now describe installing from a clone of this repository; the package is not published to a registry.
 
@@ -191,13 +201,13 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 
 ### Changed
 
-- Version bump from 0.9 to 1.0 across all artifacts
+- Version bump from 0.9 to 1.0 across all language-versioned artifacts (the VS Code extension keeps its own version)
 - Development status upgraded to "Production/Stable"
 - Repository URL updated to the Traigent organization (`https://github.com/Traigent/tvl`)
 
 ### Fixed
 
-- Consistent versioning across all components
+- Consistent versioning across all language-versioned components
 - Added `__version__` to Python SDK for programmatic access
 
 ---
@@ -222,7 +232,7 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 
 #### Constraint Language
 
-- **Structural constraints**: Typed DNF compiled to SAT (QF_LIA) / SMT (QF_LRA)
+- **Structural constraints**: Typed DNF compiled to quantifier-free linear integer arithmetic (QF_LIA), with float domains scaled to integers
 - Atoms: equality (`=`, `!=`), comparison (`<`, `<=`, `>`, `>=`), intervals, set membership (`in`)
 - Logical connectives: `and`, `or`, `not`, implication (`=>`)
 - TVAR-to-TVAR equality comparisons with type checking

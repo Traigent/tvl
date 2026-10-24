@@ -13,7 +13,7 @@ Thank you for your interest in improving TVL. This repository contains the norma
 
 Contributions are accepted under the repository licences: CC-BY-4.0 for the prose paths listed in `LICENSE-content` (documentation, RFCs and the book), and Apache-2.0 (`LICENSE`) for everything else, including code and `spec/`. There is no contributor license agreement. Instead, every commit must carry a `Signed-off-by: Your Name <you@example.com>` line, which certifies the [Developer Certificate of Origin](DCO). Add it with `git commit -s`.
 
-Use your real name; anonymous sign-offs are not accepted. The email must match the commit author. If a sign-off is missing, fix the last commit with `git commit --amend -s`, or several commits with `git rebase --signoff origin/main`, then force-push your branch. A check on every pull request lists any commit that lacks one.
+Use your real name; anonymous sign-offs are not accepted. The email must match the commit author. If a sign-off is missing, fix the last commit with `git commit --amend -s`, or several commits with `git rebase --signoff origin/main`, then force-push your branch. A check on every pull request, except pull requests opened by bots such as Dependabot, lists any non-merge commit that lacks one.
 
 ## Development setup
 
@@ -39,7 +39,7 @@ Run what is relevant to your change before opening a pull request. CI runs the P
 |------|---------|
 | Python tests (CI) | `pytest -q tests` |
 | Conformance suite | `pytest -q tests/test_conformance_suite.py` |
-| Conformance fixture integrity (TVL 1.3 draft) | `python conformance/tools/check_runtime_cases.py` |
+| Runtime conformance fixture integrity (TVL 1.3 to 1.5 cases) | `python conformance/tools/check_runtime_cases.py` |
 | Lean proofs (CI) | `cd proofs && lake build` (needs the Lean toolchain from [elan](https://github.com/leanprover/elan); CI also rejects `sorry`, `admit` and `axiom` in `proofs/`) |
 | Website (CI) | `cd website && pnpm install --frozen-lockfile && pnpm run test && pnpm run build` |
 | VS Code extension | `cd vscode-tvl && npm ci && npm test` |

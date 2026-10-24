@@ -89,7 +89,7 @@ This module already contains the minimum pieces most production-facing TVL specs
 *   a namespace under `tvl.module`
 *   an explicit `environment.snapshot_id`
 *   an `evaluation_set`
-*   typed TVAR declarations
+*   typed TVAR (tuned variable) declarations under `tvars`
 *   structural and optional derived checks
 *   objectives plus a promotion policy
 *   optional `metric_ref` identifiers so the evaluation harness knows which metric contract computes each objective
@@ -106,7 +106,7 @@ tvl-check-operational support-bot.tvl.yml --json
 
 What each step does:
 
-*   `tvl-parse` checks that the file is syntactically well-formed YAML with the expected TVL shape.
+*   `tvl-parse` checks that the file is well-formed YAML and prints the parsed document; it does not check the TVL shape (`tvl-validate` does).
 *   `tvl-lint` catches common policy and authoring issues.
 *   `tvl-validate` runs schema and semantic validation.
 *   `tvl-check-structural` checks the structural constraint set for satisfiability.

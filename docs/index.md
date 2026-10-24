@@ -18,7 +18,7 @@ Those requirements usually get translated into scattered prompt edits, hidden mo
 
     Declare allowed models, prompts, routing policies, retrieval parameters, tool choices, memory, and orchestration as typed TVARs.
 
--   :material-shield-check: **State required properties**
+-   :material-clipboard-check: **State required properties**
 
     Express structural rules, operational assumptions, measurable objectives, acceptable ranges, and behavioral constraints.
 
@@ -48,11 +48,11 @@ The public language contract defines what these requirements mean. Search algori
     Monitor requirements and govern adaptation with **TVL Reactive Contracts**, the runtime layer of requirements, monitors, responses, the promotion gate and approvals. The [runtime guide](guides/requirements-monitors-responses.md) introduces the vocabulary and its lineage, including the narrower outcome-notification rules.
 
 !!! note "Language version"
-    The current language version is **TVL 1.5**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime requirements, monitors and responses (RFC 0003); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004); TVL 1.5 added breach persistence and census aggregates (RFC 0005). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. These guides focus on the core constructs; the RFCs live in `formalization/`, and every diagnostic is listed in the [error code catalog](reference/error-codes.md).
+    The current language version is **TVL 1.5**. TVL 1.1 added calibrated variables (`cvars`), operational `policies`, and `promotion_policy.require_calibration` (RFC 0001); TVL 1.2 added `composites` (RFC 0002); TVL 1.3 added runtime requirements, monitors and responses (RFC 0003); TVL 1.4 added reactive outcome notifications, undecided-run notifications and notification guards (RFC 0004); TVL 1.5 added breach persistence and census aggregates (RFC 0005). All are conservative extensions, so a module that uses none of them (nor TVAR ownership `scope`, also added in 1.1) is also a valid 1.0 module. These guides focus on the core constructs; the RFCs live in `formalization/`, and the [error code catalog](reference/error-codes.md) lists the linter and operational diagnostics and says which tool codes it does not list yet.
 
 ## A Valid TVL Example
 
-The example below mirrors the canonical `rag-support-bot.tvl.yml` module shipped in `spec/examples`:
+The example below is an abridged copy of the canonical `rag-support-bot.tvl.yml` module shipped in `spec/examples`; the shipped file also has an `exploration` block (strategy, convergence and budgets):
 
 ```yaml title="rag-support-bot.tvl.yml"
 tvl:
@@ -170,13 +170,13 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 
     Review the current TVL surface, including types, constraints, objectives, and promotion policy.
 
--   :material-pulse: **[Requirements, Monitors and Responses (TVL 1.3 draft)](guides/requirements-monitors-responses.md)**
+-   :material-pulse: **[Requirements, Monitors and Responses (TVL 1.3 and later)](guides/requirements-monitors-responses.md)**
 
     State what an agent must keep doing in production, which evidence checks it, and what should happen when it stops.
 
 -   :material-book-clock: **[Book Chapter 6 · Requirements in Production](https://github.com/Traigent/tvl/blob/main/tvl_book/website_content/book/chapter-06-requirements-in-production.md)**
 
-    The TVL 1.3 draft told as stories: a latency promise, an authorization before every charge, a release gate on the same requirement, and a response ladder under an organisation floor.
+    TVL 1.3 runtime requirements told as stories: a latency promise, an authorization before every charge, a release gate on the same requirement, and a response ladder under an organisation floor.
 
 -   :material-code-braces: **[Example Walkthroughs](examples/walkthroughs.md)**
 
@@ -191,4 +191,4 @@ tvl-check-operational spec/examples/rag-support-bot.tvl.yml --json
 ---
 
 !!! info "Created by Traigent"
-    TVL is developed by [Traigent](https://traigent.com). The current design and terminology on this site are aligned with the TVL schema, shipped examples, formal spec artifacts, and the latest Traigent research and publication materials in this repository.
+    TVL is developed by [Traigent](https://traigent.com). The design and terminology on this site follow the TVL schema, shipped examples and formal specification in this repository; where they differ, those artifacts are authoritative.
