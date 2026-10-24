@@ -69,6 +69,29 @@ class OperationalTests(unittest.TestCase):
         codes = {issue["code"] for issue in result.issues}
         self.assertIn("invalid_budget_max_trials", codes)
 
+    def test_operational_max_spend_zero_is_valid(self) -> None:
+        doc = _base_module()
+        doc["exploration"]["budgets"] = {"max_spend_usd": 0}
+        result = check_operational(doc)
+        codes = {issue["code"] for issue in result.issues}
+        self.assertNotIn("invalid_budget_max_spend", codes)
+        self.assertTrue(result.ok)
+
+    def test_operational_max_spend_fraction_is_valid(self) -> None:
+        doc = _base_module()
+        doc["exploration"]["budgets"] = {"max_spend_usd": 0.5}
+        self.assertTrue(check_operational(doc).ok)
+
+    def test_operational_max_spend_negative_is_invalid(self) -> None:
+        doc = _base_module()
+        doc["exploration"]["budgets"] = {"max_spend_usd": -1}
+        result = check_operational(doc)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.binding_budget, "max_spend_usd")
+        issues = [i for i in result.issues if i["code"] == "invalid_budget_max_spend"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["message"], "exploration.budgets.max_spend_usd must be >= 0")
+
     def test_operational_derived_violation(self) -> None:
         doc = _base_module()
         doc["environment"]["context"] = {"cost_usd": 10}

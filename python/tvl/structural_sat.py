@@ -52,6 +52,25 @@ class StructuralResult:
     core_metadata: Optional[Dict[str, Any]] = None
 
 
+@dataclass
+class UndecidedStructuralResult(StructuralResult):
+    """Neither a witness nor a UNSAT proof was found (OR-Tools missing, domains not exhausted).
+
+    ``ok`` is False (fail closed) but the module must NOT be reported as unsatisfiable.
+    """
+
+    undecided: bool = True
+    issues: Optional[List[Dict[str, Any]]] = None
+
+
+UNDECIDED_WITHOUT_SOLVER_CODE = "structural_undecided_without_solver"
+UNDECIDED_WITHOUT_SOLVER_MESSAGE = (
+    "Structural satisfiability could not be decided: OR-Tools is not installed and the "
+    "fallback search cannot exhaust this module's domains. Install OR-Tools "
+    "(pip install ortools) to decide this module."
+)
+
+
 def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
     domains = extract_domains(module.get("tvars", {}))
     model = cp_model.CpModel() if cp_model is not None else None
@@ -643,8 +662,41 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
     if solution is not None:
         return StructuralResult(ok=True, assignment=solution, unsat_core=None)
 
+    # No witness found. A sampled search only proves UNSAT when every domain was
+    # enumerated completely; otherwise fail closed with an explicit undecided result.
+    if not _candidates_are_exhaustive(domains, candidates):
+        return UndecidedStructuralResult(
+            ok=False,
+            assignment=None,
+            unsat_core=None,
+            undecided=True,
+            issues=[
+                {
+                    "code": UNDECIDED_WITHOUT_SOLVER_CODE,
+                    "message": UNDECIDED_WITHOUT_SOLVER_MESSAGE,
+                    "path": ["constraints", "structural"],
+                    "severity": "error",
+                }
+            ],
+        )
+
     core = _approximate_unsat_core(domains, expressions, candidates)
     return StructuralResult(ok=False, assignment=None, unsat_core=core)
+
+
+def _candidates_are_exhaustive(domains: Dict[str, Domain], candidates: Dict[str, List[Any]]) -> bool:
+    """True only if every searched variable's candidate list is its entire finite domain."""
+    for name, cand in candidates.items():
+        domain = domains.get(name)
+        if domain is None:
+            return False
+        if domain.kind in ("bool", "enum"):
+            continue
+        if domain.kind == "int" and domain.minimum is not None and domain.maximum is not None:
+            if set(cand) == set(range(int(domain.minimum), int(domain.maximum) + 1)):
+                continue
+        return False
+    return True
 
 
 def _candidate_values(domains: Dict[str, Domain], expressions: List[Expression]) -> Dict[str, List[Any]]:

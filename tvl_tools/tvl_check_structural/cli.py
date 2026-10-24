@@ -301,7 +301,7 @@ def _emit_repair_candidates(result: Any, file_path: Path) -> list[dict[str, Any]
 
 
 def _emit_candidate_validation(result: Any, candidate_payload: dict[str, Any], duration_ms: int) -> None:
-    status = "sat" if result.ok else "unsat"
+    status = "sat" if result.ok else ("undecided" if getattr(result, "undecided", False) else "unsat")
     validation_event = {
         "schemaVersion": "1.0",
         "kind": "RepairCandidateValidated",
@@ -331,13 +331,15 @@ def _report_json(
         "kind": "PhaseResult",
         "phase": "structural",
         "ok": result.ok,
-        "status": "passed" if result.ok else "unsat",
+        "status": "passed" if result.ok else ("undecided" if getattr(result, "undecided", False) else "unsat"),
         "assignment": result.assignment,
         "unsat_core": result.unsat_core,
         "repair_candidates": candidates,
         "timestamp": _current_timestamp(),
         "durationMs": duration_ms,
     }
+    if getattr(result, "undecided", False):
+        payload["issues"] = result.issues or []
     print(json.dumps(payload, indent=2))
     raise SystemExit(0 if result.ok else 2)
 
@@ -348,6 +350,11 @@ def _report_text(result: Any) -> None:
         for name, value in sorted((result.assignment or {}).items()):
             print(f"  {name}: {value}")
         raise SystemExit(0)
+
+    if getattr(result, "undecided", False):
+        for issue in result.issues or []:
+            print(f"Error: {issue['code']}: {issue['message']}", file=sys.stderr)
+        raise SystemExit(2)
 
     print("Structural constraints UNSAT.")
     for entry in result.unsat_core or []:
