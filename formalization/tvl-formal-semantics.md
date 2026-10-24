@@ -366,6 +366,8 @@ LinExpr ::= AffineTerm (+ AffineTerm | - AffineTerm)*
 
 DerivedAtom ::= LinExpr ≤ Number
               | LinExpr ≥ Number
+              | LinExpr < Number
+              | LinExpr > Number
               | LinExpr = Number
 
 DerivedClause ::= {require: DerivedAtom}
@@ -733,7 +735,7 @@ Given environment typing context `Γ_env`:
 Γ_env ⊢ e : num
 ────────────────────── (T-DerivedCmp)
 Γ_env ⊢ (e ≤ n) : prop
-(similarly for ≥, =)
+(similarly for ≥, <, >, =)
 ```
 
 **Definition 4.4 (Well-formed Derived Constraint)**.
@@ -847,8 +849,25 @@ Given well-formed environment `E_τ` with respect to `Γ_env`:
 ```
 ⟦e ≤ n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) ≤ n
 ⟦e ≥ n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) ≥ n
+⟦e < n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) < n
+⟦e > n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) > n
 ⟦e = n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) = n
 ```
+
+The strict atoms `<` and `>` are part of the derived-constraint grammar (`comparison_op` in
+`spec/grammar/tvl.ebnf`). They are strict over the numeric values: a derived atom `e < n` is false
+when `⟦e⟧(E_τ) = n`, and `e > n` likewise. Integer and float environment values are compared on
+the same numeric scale; no strict atom is rewritten to a non-strict one with an offset, because
+derived constraints are evaluated directly against `E_τ` and never pass through the scaled-integer
+SMT encoding of §8.
+
+**Remark 5.1 (Reference evaluation of derived constraints)**. The definitions above are exact
+over ℚ. The reference implementation (`python/tvl/operational.py`) folds the numeric constants of
+`e` into the bound `n`, evaluates `Σ kᵢ · E_τ(xᵢ)` in IEEE-754 double precision, and compares it
+with the folded bound with no tolerance; for `<` it reports a violation iff the sum is `≥` the
+bound, and for `>` iff the sum is `≤` the bound. Where rounding moves a value onto or across the
+bound, the floating-point result can differ from the exact denotation; this applies to every
+derived operator, strict or not, and to `=` most of all.
 
 ---
 
