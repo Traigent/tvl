@@ -290,8 +290,10 @@ def test_negated_strict_interval_keeps_endpoints(solver):
 
 
 # Exact evaluation must not crash on non-finite numbers (NaN/inf keep IEEE semantics).
-def test_exact_evaluation_tolerates_non_finite_enum_members(solver):
+def test_exact_evaluation_rejects_non_finite_enum_members(solver):
+    # Superseded by review 3 finding 6: float domains are rationals (formal semantics
+    # Definitions 3.1-3.2), so a non-finite member fails closed instead of being decided.
     tvars = [{"name": "t", "type": "enum[float]", "domain": [float("inf"), 0.5]}]
     result = check_structural(_mod(tvars, ["t > 0.7"]))
-    assert result.ok is True and result.assignment == {"t": float("inf")}
-    assert result.exact_assignment == {"t": float("inf")}
+    assert result.ok is False and getattr(result, "undecided", False) is True
+    assert [i["code"] for i in result.issues] == ["structural_non_finite_domain"]

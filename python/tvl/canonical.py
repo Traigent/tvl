@@ -8,6 +8,7 @@ import re
 from fractions import Fraction
 from tvl.errors import TVLError
 from tvl.lints import _to_exact_fraction
+from tvl.model import bounded_fraction
 from typing import Any, Optional, Sequence
 
 
@@ -85,7 +86,8 @@ def to_fraction(value: Any) -> Fraction:
         return frac
     if isinstance(value, str):
         try:
-            return Fraction(value)
+            # bounded: Fraction("1e-99999999") alone would compute 10**99999999 (a hang)
+            return bounded_fraction(value)
         except (ValueError, ZeroDivisionError) as exc:
             raise RuntimeClosedError("runtime_invalid_profile") from exc
     raise RuntimeClosedError("runtime_invalid_profile")

@@ -1,17 +1,84 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, Dict, List, Optional
+
+# Exact-arithmetic bounds for numeric LITERALS read from source text. Every binary64 value
+# (normal or subnormal) is written with at most 17 significant digits and a decimal exponent
+# in [-324, 308], so these bounds reject nothing a float can mean, and keep every exact
+# rational the checker builds from literals small. Without them ``Fraction("1e-99999999")``
+# alone computes 10**99999999 (a hang), and a ~5000-digit witness overflows Python's
+# int->str conversion limit.
+MAX_LITERAL_DIGITS = 400
+MAX_LITERAL_EXPONENT = 400
+# Largest numerator/denominator (in decimal digits) ``exact_to_str`` will print.
+MAX_EXACT_STR_DIGITS = 2000
+
+_DECIMAL_LITERAL_RE = re.compile(r"\s*[+-]?([0-9_]*)(?:\.([0-9_]*))?(?:[eE]([+-]?[0-9_]+))?\s*")
+
+
+class ExactLiteralLimitError(ValueError):
+    """A numeric literal's mantissa or exponent exceeds the exact-arithmetic bounds."""
+
+
+class ExactFormatLimitError(ValueError):
+    """An exact rational is too large to print within ``MAX_EXACT_STR_DIGITS`` digits."""
+
+
+def literal_limit_violation(text: str) -> Optional[str]:
+    """Why the decimal literal ``text`` exceeds the exact bounds, or None when it is within them.
+
+    Pure text inspection: never builds the rational, so it is O(len(text)).
+    """
+    match = _DECIMAL_LITERAL_RE.fullmatch(text)
+    if match is None:
+        return None
+    whole, frac, exp = match.group(1) or "", match.group(2) or "", match.group(3)
+    digits = len(whole.replace("_", "")) + len(frac.replace("_", ""))
+    if digits > MAX_LITERAL_DIGITS:
+        return f"numeric literal has {digits} digits (limit {MAX_LITERAL_DIGITS})"
+    if exp is not None:
+        exp_digits = exp.replace("_", "").lstrip("+-").lstrip("0")
+        if len(exp_digits) > 6 or (exp_digits and int(exp_digits) > MAX_LITERAL_EXPONENT):
+            return f"numeric literal exponent exceeds +-{MAX_LITERAL_EXPONENT}"
+    return None
+
+
+def bounded_fraction(text: str) -> Fraction:
+    """``Fraction(text)`` for a decimal or ratio literal, refusing literals beyond the bounds.
+
+    Raises :class:`ExactLiteralLimitError` (a ``ValueError``) instead of materialising a huge
+    power of ten; other malformed text raises ``ValueError`` as ``Fraction`` does.
+    """
+    reason = literal_limit_violation(text)
+    if reason is not None:
+        raise ExactLiteralLimitError(f"{reason}: {text[:40]!r}")
+    return Fraction(text)
+
+
+def _decimal_digits_upper(n: int) -> int:
+    """Upper bound on the decimal digits of ``|n|`` (no int->str conversion)."""
+    return int(abs(n).bit_length() * 0.30103) + 1
 
 
 def exact_to_str(value: Fraction) -> str:
     """Exact text of a rational: a terminating decimal when one exists, else ``"p/q"``.
 
     Used for the public exact witness (``StructuralResult.exact_assignment``) so that
-    grid points binary64 cannot tell apart stay distinguishable.
+    grid points binary64 cannot tell apart stay distinguishable. Raises
+    :class:`ExactFormatLimitError` (never a bare int->str ``ValueError``) when the text
+    would need more than ``MAX_EXACT_STR_DIGITS`` digits for a numerator or denominator.
     """
+    if (
+        _decimal_digits_upper(value.numerator) > MAX_EXACT_STR_DIGITS
+        or _decimal_digits_upper(value.denominator) > MAX_EXACT_STR_DIGITS
+    ):
+        raise ExactFormatLimitError(
+            f"exact value needs more than {MAX_EXACT_STR_DIGITS} digits to print"
+        )
     if value.denominator == 1:
         return str(value.numerator)
     den = value.denominator
@@ -25,6 +92,10 @@ def exact_to_str(value: Fraction) -> str:
     if den != 1:
         return f"{value.numerator}/{value.denominator}"
     digits = max(twos, fives)
+    if digits > MAX_EXACT_STR_DIGITS:
+        raise ExactFormatLimitError(
+            f"exact value needs more than {MAX_EXACT_STR_DIGITS} digits to print"
+        )
     scaled = value * 10**digits  # an integer by construction
     sign = "-" if scaled < 0 else ""
     text = str(abs(scaled.numerator)).rjust(digits + 1, "0")
@@ -199,7 +270,9 @@ def _exact(value: Any) -> Fraction:
     raw = getattr(value, "_raw_lexeme", None)
     if isinstance(raw, str):
         try:
-            return Fraction(raw)
+            return bounded_fraction(raw)
+        except ExactLiteralLimitError:
+            raise
         except (ValueError, ZeroDivisionError):
             pass
     return Fraction(repr(float(value)))

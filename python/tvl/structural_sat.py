@@ -10,7 +10,15 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
-from .model import Domain, exact_to_str, extract_domains, _exact
+from .model import (
+    Domain,
+    ExactFormatLimitError,
+    ExactLiteralLimitError,
+    bounded_fraction,
+    exact_to_str,
+    extract_domains,
+    _exact,
+)
 from .structural_parser import DNF, Literal, StructuralParseError, clause_to_string, parse_expression
 
 
@@ -82,6 +90,13 @@ _INT_LIMIT = 2**62
 ENCODING_OVERFLOW_CODE = "structural_encoding_overflow"
 SOLVER_INCONCLUSIVE_CODE = "structural_solver_inconclusive"
 WITNESS_UNVERIFIED_CODE = "structural_witness_unverified"
+WITNESS_TOO_LARGE_CODE = "structural_witness_too_large"
+ILL_TYPED_CODE = "structural_ill_typed_atom"
+NON_FINITE_CODE = "structural_non_finite_domain"
+UNRESOLVED_DOMAIN_CODE = "structural_unresolved_domain"
+
+_ORDERING_OPS = {"<", "<=", ">", ">="}
+_REGISTRY_PLACEHOLDER_PREFIX = "__registry_unresolved_"
 
 
 class _EncodingOverflow(Exception):
@@ -143,11 +158,20 @@ def _sat_result(expressions: List["Expression"], exact: Dict[str, Any]) -> "Stru
             "Structural satisfiability could not be decided: the solver's witness does not "
             "satisfy the constraints under exact evaluation.",
         )
-    assignment = {name: float(v) if isinstance(v, Fraction) else v for name, v in exact.items()}
-    exact_assignment = {
-        name: exact_to_str(_num(v)) if _is_plain_number(v) and isinstance(_num(v), Fraction) else v
-        for name, v in exact.items()
-    }
+    try:
+        assignment = {name: float(v) if isinstance(v, Fraction) else v for name, v in exact.items()}
+        exact_assignment = {
+            name: exact_to_str(_num(v)) if _is_plain_number(v) and isinstance(_num(v), Fraction) else v
+            for name, v in exact.items()
+        }
+    except (ExactFormatLimitError, OverflowError):
+        # Fail closed: a witness that cannot be printed exactly (and within bounds) is not
+        # reported as SAT; a lossy or truncated value would break the exact-witness contract.
+        return _undecided(
+            WITNESS_TOO_LARGE_CODE,
+            "Structural satisfiability could not be decided: the witness has a value too large "
+            "to report exactly. Use literals with fewer digits or smaller exponents.",
+        )
     return StructuralResult(ok=True, assignment=assignment, unsat_core=None, exact_assignment=exact_assignment)
 
 
@@ -166,12 +190,19 @@ UNDECIDED_WITHOUT_SOLVER_MESSAGE = (
 
 
 def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
-    domains = extract_domains(module.get("tvars", {}))
+    try:
+        domains = extract_domains(module.get("tvars", {}))
+    except ExactLiteralLimitError as exc:
+        raise StructuralParseError(f"TVAR domain literal out of bounds: {exc}") from exc
     model = cp_model.CpModel() if cp_model is not None else None
     variables: Dict[str, Any] = {}
 
     if cp_model is not None:
         for path, domain in domains.items():
+            if domain.kind == "enum" and not domain.values:
+                # Unresolved (registry-backed) domain: no value to decode. check_structural
+                # refuses to decide any atom that references it, so it needs no variable.
+                continue
             if domain.kind == "enum":
                 upper = max(len(domain.values or []) - 1, 0)
                 variables[path] = model.NewIntVar(0, upper, f"{path}_enc")
@@ -230,10 +261,17 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
 
 
 def check_structural(module: Dict[str, Any]) -> StructuralResult:
+    non_finite = _non_finite_issue(module.get("tvars", {}))
+    if non_finite is not None:
+        return _undecided(NON_FINITE_CODE, non_finite)
     try:
         structural = build_structural_model(module)
+        problem = _typing_problem(structural.domains, structural.expressions)
+        if problem is not None:
+            return _undecided(*problem)
         if cp_model is None:
-            return _check_structural_bruteforce(structural.domains, structural.expressions)
+            searchable = {n: d for n, d in structural.domains.items() if not _is_empty_enum(d)}
+            return _check_structural_bruteforce(searchable, structural.expressions)
 
         model: cp_model.CpModel = structural.model
         var_map = structural.variables
@@ -337,6 +375,135 @@ def _record_core_expression(
             core_metadata["variables"].add(cond.ident)
 
 
+# Fail-closed input checks -------------------------------------------------------
+
+
+def _non_finite_issue(tvars: Any) -> Optional[str]:
+    """Message for the first NaN/infinite number in the TVAR declarations, else None.
+
+    The formal semantics interprets ``float`` (and ``enum[float]``) as the rationals
+    (Definitions 3.1-3.2), so NaN and +-inf denote no domain value. Admitting them made
+    comparison negation unsound (``not (0 <= x <= 1)`` rewritten to two atoms that are both
+    false on NaN); they are rejected before any encoding.
+    """
+    stack: List[Tuple[Any, List[Any]]] = [(tvars, ["tvars"])]
+    while stack:
+        node, path = stack.pop()
+        if isinstance(node, float) and not math.isfinite(node):
+            return (
+                "Structural satisfiability could not be decided: the TVAR declaration value at "
+                f"{'.'.join(str(p) for p in path)} is {node!r}; TVL numeric domains are rationals "
+                "(formal semantics Definitions 3.1-3.2), so NaN and infinities are not admitted."
+            )
+        if isinstance(node, dict):
+            stack.extend((v, path + [k]) for k, v in node.items())
+        elif isinstance(node, (list, tuple)):
+            stack.extend((v, path + [i]) for i, v in enumerate(node))
+    return None
+
+
+def _is_empty_enum(domain: Domain) -> bool:
+    return domain.kind == "enum" and not domain.values
+
+
+def _is_placeholder(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.startswith(_REGISTRY_PLACEHOLDER_PREFIX)
+    if isinstance(value, tuple):
+        return any(_is_placeholder(v) for v in value)
+    return False
+
+
+def _element_class(domain: Domain) -> str:
+    """Element type class of a domain: ``num``, ``bool``, ``enum`` (non-numeric) or ``unresolved``."""
+    if domain.kind in _NUMERIC_KINDS:
+        return "num"
+    if domain.kind == "bool":
+        return "bool"
+    values = domain.values or []
+    if not values or any(_is_placeholder(v) for v in values):
+        return "unresolved"
+    return "num" if _is_numeric_enum(domain) else "enum"
+
+
+def _typing_problem(domains: Dict[str, Domain], expressions: List[Expression]) -> Optional[Tuple[str, str]]:
+    """``(code, message)`` for the first atom the checker must not decide, else None.
+
+    The encoder and the evaluator agree exactly on well-typed atoms (formal semantics
+    T-Eq/T-Neq/T-Cmp/T-TVarEq). An ill-typed atom, an unknown identifier, or an atom over an
+    unresolved registry domain has no sound truth value to give either backend: fixing it to
+    false made its negation false too (e.g. ``not (ghost == 1)`` reported UNSAT), so the
+    module is reported undecided instead.
+    """
+    for expr in expressions:
+        for clause in expr.expanded_clauses:
+            for cond in clause:
+                problem = _atom_problem(cond, domains)
+                if problem is not None:
+                    code, why = problem
+                    return code, (
+                        "Structural satisfiability could not be decided: atom "
+                        f"'{cond.ident} {cond.operator} {cond.rhs_ident if cond.rhs_ident is not None else cond.value!r}' "
+                        f"in '{expr.text}' {why}."
+                    )
+    return None
+
+
+def _atom_problem(cond: Condition, domains: Dict[str, Domain]) -> Optional[Tuple[str, str]]:
+    domain = domains.get(cond.ident)
+    if domain is None:
+        return ILL_TYPED_CODE, f"references '{cond.ident}', which is not a declared TVAR"
+    cls = _element_class(domain)
+    if cls == "unresolved":
+        return UNRESOLVED_DOMAIN_CODE, f"references '{cond.ident}', whose registry domain is not resolved"
+    op = cond.operator
+    if op not in _REIFIED_COMPARISONS:
+        return ILL_TYPED_CODE, f"uses unsupported operator '{op}'"
+    if cond.rhs_ident is not None:
+        rhs = domains.get(cond.rhs_ident)
+        if rhs is None:
+            return ILL_TYPED_CODE, f"references '{cond.rhs_ident}', which is not a declared TVAR"
+        rhs_cls = _element_class(rhs)
+        if rhs_cls == "unresolved":
+            return UNRESOLVED_DOMAIN_CODE, f"references '{cond.rhs_ident}', whose registry domain is not resolved"
+        if op in _ORDERING_OPS:
+            return ILL_TYPED_CODE, "orders two TVARs, which T-TVarEq does not type"
+        if cls != rhs_cls and not (domain.kind == "enum" and rhs.kind == "enum"):
+            return ILL_TYPED_CODE, "compares TVARs of different element types (T-TVarEq)"
+        return None
+    value = cond.value
+    if op in _ORDERING_OPS:
+        if cls != "num" or not _is_plain_number(value):
+            return ILL_TYPED_CODE, "orders a non-numeric operand (T-Cmp requires int or float)"
+        return None
+    if cls == "num" and not _is_plain_number(value):
+        return ILL_TYPED_CODE, "compares a numeric TVAR with a non-numeric literal (T-Eq/T-Neq)"
+    if cls == "bool" and not isinstance(value, bool):
+        return ILL_TYPED_CODE, "compares a bool TVAR with a non-bool literal (T-Eq/T-Neq)"
+    return None
+
+
+def _atom_key(value: Any) -> Any:
+    """Hashable identity used for equality by BOTH the encoder and the evaluator.
+
+    Numbers compare as exact rationals (never binary64), bools only equal bools, tuples
+    compare component-wise by the same rule.
+    """
+    if isinstance(value, bool):
+        return ("b", value)
+    if _is_plain_number(value):
+        return ("n", _num(value))
+    if isinstance(value, (tuple, list)):
+        return ("t", tuple(_atom_key(v) for v in value))
+    if isinstance(value, str):
+        return ("s", value)
+    try:
+        hash(value)
+    except TypeError:
+        return ("r", repr(value))
+    return ("o", value)
+
+
 # Helper functions -----------------------------------------------------------
 
 
@@ -365,7 +532,9 @@ def _literal_exact(raw: Any, value: Any) -> Optional[Fraction]:
         return None
     if isinstance(raw, str):
         try:
-            return Fraction(raw.strip())
+            return bounded_fraction(raw.strip())
+        except ExactLiteralLimitError as exc:
+            raise StructuralParseError(f"numeric literal out of bounds: {exc}") from exc
         except (ValueError, ZeroDivisionError):
             pass
     key = _num(value)
@@ -684,7 +853,11 @@ def _encode_ident_comparison(
     condition: Condition,
     bool_var: cp_model.BoolVar,
 ) -> None:
-    """Encode ``ident ==/!= other_ident``; unsupported pairings are false."""
+    """Encode ``ident ==/!= other_ident`` by exact value equality.
+
+    Pairings check_structural would refuse as ill-typed never reach here from it; for direct
+    callers they keep the no-match polarity: ``==`` false, ``!=`` true.
+    """
     rhs_var = var_map.get(condition.rhs_ident)
     rhs_domain = domains.get(condition.rhs_ident)
     op = condition.operator
@@ -692,6 +865,12 @@ def _encode_ident_comparison(
         model.Add(bool_var == 0)
     elif domain.kind == "enum" and rhs_domain.kind == "enum":
         _encode_enum_pair(model, var, domain, rhs_var, rhs_domain, op, bool_var)
+    elif domain.kind == "enum" and rhs_domain.kind in _NUMERIC_KINDS and _is_numeric_enum(domain):
+        pairs = _enum_grid_pairs(domain, rhs_domain)
+        _encode_pairs(model, var, rhs_var, pairs, op, bool_var)
+    elif rhs_domain.kind == "enum" and domain.kind in _NUMERIC_KINDS and _is_numeric_enum(rhs_domain):
+        pairs = [(j, i) for i, j in _enum_grid_pairs(rhs_domain, domain)]
+        _encode_pairs(model, var, rhs_var, pairs, op, bool_var)
     elif domain.kind == "bool" and rhs_domain.kind == "bool":
         _reify_comparison(model, var, op, rhs_var, bool_var)
     elif domain.kind in _NUMERIC_KINDS and rhs_domain.kind in _NUMERIC_KINDS:
@@ -701,7 +880,7 @@ def _encode_ident_comparison(
         right_scaled = _scaled_linear(rhs_var, rhs_domain, common)
         _reify_comparison(model, left_scaled, op, right_scaled, bool_var)
     else:
-        model.Add(bool_var == 0)
+        model.Add(bool_var == (1 if op == "!=" else 0))
 
 
 def _grid_of(domain: Domain) -> Tuple[Fraction, Fraction]:
@@ -737,11 +916,43 @@ def _encode_enum_pair(
     op: str,
     bool_var: cp_model.BoolVar,
 ) -> None:
-    """Encode equality between two enum variables over their shared values."""
-    left_index = {value: idx for idx, value in enumerate(domain.values or [])}
-    right_index = {value: idx for idx, value in enumerate(rhs_domain.values or [])}
-    shared = sorted(set(left_index.keys()) & set(right_index.keys()), key=str)
-    pairs = [(left_index[v], right_index[v]) for v in shared]
+    """Encode equality between two enum variables: index pairs whose values are EXACTLY equal.
+
+    Values are grouped by :func:`_atom_key` (the evaluator's equality), never by Python
+    ``==``/hash on binary64 floats, so 0.1 and 0.100000000000000001 stay distinct.
+    """
+    left_groups: Dict[Any, List[int]] = {}
+    for idx, value in enumerate(domain.values or []):
+        left_groups.setdefault(_atom_key(value), []).append(idx)
+    pairs = sorted(
+        (i, j)
+        for j, value in enumerate(rhs_domain.values or [])
+        for i in left_groups.get(_atom_key(value), [])
+    )
+    _encode_pairs(model, var, rhs_var, pairs, op, bool_var)
+
+
+def _enum_grid_pairs(enum_domain: Domain, num_domain: Domain) -> List[Tuple[int, int]]:
+    """(enum index, numeric variable value) pairs whose values are exactly equal."""
+    origin, step = _grid_of(num_domain)
+    lower, upper = _index_bounds(num_domain)
+    pairs: List[Tuple[int, int]] = []
+    for i, member in enumerate(enum_domain.values or []):
+        idx = (_num(member) - origin) / step
+        if idx.denominator == 1 and lower <= idx <= upper:
+            pairs.append((i, int(idx)))
+    return pairs
+
+
+def _encode_pairs(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    rhs_var: cp_model.IntVar,
+    pairs: List[Tuple[int, int]],
+    op: str,
+    bool_var: cp_model.BoolVar,
+) -> None:
+    """``bool_var`` iff ``(var, rhs_var)`` is (``==``) / is not (``!=``) one of ``pairs``."""
     if not pairs:
         # No value can be equal on both sides (including an empty enum).
         model.Add(bool_var == (1 if op == "!=" else 0))
@@ -760,16 +971,28 @@ def _encode_value_comparison(
     condition: Condition,
     bool_var: cp_model.BoolVar,
 ) -> None:
-    """Encode ``ident <op> literal``; unencodable literals and operators are false."""
+    """Encode ``ident <op> literal`` exactly as the evaluator decides it.
+
+    A literal that matches no domain value makes ``==`` false and ``!=`` TRUE (T-Neq types
+    the literal against the element type, not against the domain's members). Unencodable
+    literals (ill-typed: check_structural refuses them before encoding) keep that same
+    no-match polarity for direct callers; ordering on them is false.
+    """
     op = condition.operator
-    if domain.kind == "enum" and op in {"<", "<=", ">", ">="} and _is_numeric_enum(domain):
-        # Non-numeric enums keep the legacy index comparison (the lint rejects them upstream).
+    if domain.kind == "enum" and op in _ORDERING_OPS and _is_numeric_enum(domain):
         _encode_enum_ordering(model, var, domain, op, condition, bool_var)
         return
+    if domain.kind == "enum" and op in {"==", "!="}:
+        target = _atom_key(condition.exact if condition.exact is not None else condition.value)
+        matches = [i for i, member in enumerate(domain.values or []) if _atom_key(member) == target]
+        _reify_membership(model, var, len(domain.values or []), matches, op, bool_var)
+        return
+    # Non-numeric enum ordering keeps the legacy index comparison for direct callers
+    # (check_structural refuses it as ill-typed, T-Cmp).
     try:
         encoded_value = _encode_literal_value(domain, op, condition)
     except Exception:
-        model.Add(bool_var == 0)
+        model.Add(bool_var == (1 if op == "!=" else 0))
         return
     if encoded_value is None:
         # Equality against a float that is off the precision grid.
@@ -777,13 +1000,35 @@ def _encode_value_comparison(
     elif op in _REIFIED_COMPARISONS:
         # Variable bounds are within +-_INT_LIMIT, so clamping preserves every comparison.
         encoded_value = max(-_INT_LIMIT - 1, min(_INT_LIMIT + 1, encoded_value))
-        if domain.kind == "float" and op in {">", "<"}:
-            # _encode_float_literal moved a strict bound to the nearest admissible grid index
+        if domain.kind in _NUMERIC_KINDS and condition.exact is not None and op in {">", "<"}:
+            # _encode_grid_literal moved a strict bound to the nearest admissible grid index
             # (floor+1 / ceil-1) of the EXACT rational index, so the comparison is non-strict.
             op = ">=" if op == ">" else "<="
         _reify_comparison(model, var, op, encoded_value, bool_var)
     else:
         model.Add(bool_var == 0)
+
+
+def _reify_membership(
+    model: cp_model.CpModel,
+    var: cp_model.IntVar,
+    size: int,
+    matches: List[int],
+    op: str,
+    bool_var: cp_model.BoolVar,
+) -> None:
+    """``bool_var`` iff ``var`` is (``==``) / is not (``!=``) one of the ``matches`` indices."""
+    match_set = set(matches)
+    others = [i for i in range(size) if i not in match_set]
+    holds, fails = (matches, others) if op == "==" else (others, matches)
+    if holds:
+        model.AddLinearExpressionInDomain(var, cp_model.Domain.FromValues(holds)).OnlyEnforceIf(bool_var)
+    else:
+        model.Add(bool_var == 0)
+    if fails:
+        model.AddLinearExpressionInDomain(var, cp_model.Domain.FromValues(fails)).OnlyEnforceIf(bool_var.Not())
+    else:
+        model.Add(bool_var == 1)
 
 
 def _is_numeric_enum(domain: Domain) -> bool:
@@ -829,26 +1074,22 @@ def _encode_enum_ordering(
 
 
 def _encode_literal_value(domain: Domain, op: str, condition: "Condition") -> Optional[int]:
-    """Encode a literal for comparison; ``None`` means an off-grid float equality."""
+    """Encode a literal for comparison; ``None`` means an off-grid numeric equality."""
     value, exact = condition.value, condition.exact
-    if domain.kind == "float" and exact is not None:
-        return _encode_float_literal(domain, op, exact)
-    if domain.kind == "enum" and exact is not None:
-        # Numeric enum members match a numeric literal by exact value (as in the fallback).
-        for idx, member in enumerate(domain.values or []):
-            if _is_plain_number(member) and _num(member) == exact:
-                return idx
-        raise ValueError(f"{domain.path}: value {value!r} not in enum {domain.values}")
+    if domain.kind in _NUMERIC_KINDS and exact is not None:
+        return _encode_grid_literal(domain, op, exact)
     return domain.encode(value)
 
 
-def _encode_float_literal(domain: Domain, op: str, exact: Fraction) -> Optional[int]:
-    """Grid index bound for ``x <op> exact`` on the float grid, computed exactly.
+def _encode_grid_literal(domain: Domain, op: str, exact: Fraction) -> Optional[int]:
+    """Index bound for ``x <op> exact`` on an int or float grid, computed exactly.
 
-    Both the Definition 3.6 grid and the legacy origin-0 / step-1/precision grid go through
-    the rational index (exact - origin) / step, so ceil/floor never see binary64 rounding.
+    Floats use the Definition 3.6 grid (or the legacy origin-0 / step-1/precision grid), ints
+    the unit grid; both go through the rational index (exact - origin) / step, so ceil/floor
+    never see binary64 rounding and an int TVAR compares exactly against ``2.5``.
     """
-    idx = domain.grid_index(exact)
+    origin, step = _grid_of(domain)
+    idx = (exact - origin) / step
     if op in {"==", "!="}:
         # Exact: an off-grid value equals no grid point.
         return int(idx) if idx.denominator == 1 else None
@@ -860,7 +1101,7 @@ def _encode_float_literal(domain: Domain, op: str, exact: Fraction) -> Optional[
         return math.floor(idx)
     if op == "<":
         return math.ceil(idx) - 1
-    return domain.encode(exact)
+    raise ValueError(f"{domain.path}: unsupported operator {op!r}")
 
 
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
@@ -1067,12 +1308,13 @@ def _evaluate_condition(cond: Condition, assignment: Dict[str, Any]) -> bool:
     else:
         target = cond.exact if cond.exact is not None else cond.value
     op = cond.operator
-    if _is_plain_number(value) and _is_plain_number(target):
-        value, target = _num(value), _num(target)
     if op == "==":
-        return value == target
+        return _atom_key(value) == _atom_key(target)
     if op == "!=":
-        return value != target
+        return _atom_key(value) != _atom_key(target)
+    if not (_is_plain_number(value) and _is_plain_number(target)):
+        return False  # T-Cmp: ordering is defined on numbers only
+    value, target = _num(value), _num(target)
     if op == ">=":
         return value >= target
     if op == ">":

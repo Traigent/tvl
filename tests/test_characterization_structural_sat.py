@@ -162,13 +162,15 @@ def test_encode_condition_enum_enum_empty_values(op: str, value: int) -> None:
     assert _truth_table(domains, cond) == _const(domains, value)
 
 
-def test_encode_condition_enum_enum_bool_int_hash_alias() -> None:
-    # True and 1 hash equal, so they count as a shared value.
+def test_encode_condition_enum_enum_bool_is_not_int() -> None:
+    # True and 1 hash equal in Python, but bool and int are distinct base domains (formal
+    # semantics Definition 3.1) and the evaluator keeps them apart, so they share no value.
+    # (Previously pinned as a shared value: an encoder/evaluator disagreement, review 3.)
     left = Domain(path="l", kind="enum", values=[True, "x"])
     right = Domain(path="r", kind="enum", values=[1, "y"])
     domains = {"l": left, "r": right}
     cond = Condition("l", "==", None, rhs_ident="r")
-    assert _truth_table(domains, cond) == _expected(domains, lambda i, j: (i, j) == (0, 0))
+    assert _truth_table(domains, cond) == _const(domains, 0)
 
 
 @pytest.mark.parametrize("op", ["==", "!="])
@@ -314,7 +316,9 @@ def test_encode_condition_bool_literal_unencodable_is_false() -> None:
         ("==", "b", lambda i: i == 1),
         ("!=", "b", lambda i: i != 1),
         ("==", "zz", lambda i: False),
-        ("!=", "zz", lambda i: False),
+        # A literal absent from the domain: == is false, != is TRUE on every member
+        # (T-Neq; previously pinned as false, which made `x != 'zz'` UNSAT: review 3).
+        ("!=", "zz", lambda i: True),
         # Ordering on an enum literal compares indices.
         ("<", "b", lambda i: i < 1),
         (">=", "c", lambda i: i >= 2),

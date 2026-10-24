@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass, field as dataclass_field
 from fractions import Fraction
@@ -1620,6 +1621,21 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
                 continue
 
             domain_spec = decl.get("domain")
+            non_finite = _first_non_finite(domain_spec)
+            if non_finite is not None:
+                bad_path, bad_value = non_finite
+                issues.append(
+                    {
+                        "code": "non_finite_domain_value",
+                        "message": (
+                            f"TVAR '{name}' domain contains {bad_value!r}; numeric domains are "
+                            "rationals (formal semantics Definitions 3.1-3.2), so NaN and "
+                            "infinities are not admitted"
+                        ),
+                        "path": ["tvars", idx, "domain"] + bad_path,
+                        "severity": "error",
+                    }
+                )
             domain_values, minimum, maximum = _parse_domain(name, normalized, domain_spec, ["tvars", idx], issues)
             if domain_values is not None and len(domain_values) == 0:
                 issues.append(
@@ -1653,6 +1669,20 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
         clause_ids={},
         cvar_names=cvar_names,
     )
+
+
+def _first_non_finite(node: Any) -> Optional[Tuple[List[Any], float]]:
+    """(relative path, value) of the first NaN/infinite float inside ``node``, else None."""
+    stack: List[Tuple[Any, List[Any]]] = [(node, [])]
+    while stack:
+        current, path = stack.pop()
+        if isinstance(current, float) and not math.isfinite(current):
+            return path, current
+        if isinstance(current, dict):
+            stack.extend((v, path + [k]) for k, v in current.items())
+        elif isinstance(current, (list, tuple)):
+            stack.extend((v, path + [i]) for i, v in enumerate(current))
+    return None
 
 
 def _normalize_kind(raw_type: str) -> Optional[str]:
@@ -3010,8 +3040,13 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
                 "formal_property": "'Implements protocol' is not formally defined",
             })
 
-        # W6003: Inadequate precision for float domains
-        if isinstance(raw_type, str) and raw_type.strip().lower() == "float":
+        # W6003: Inadequate precision for float domains (a non-finite domain is already an
+        # error, non_finite_domain_value; its grid has no precision to judge).
+        if (
+            isinstance(raw_type, str)
+            and raw_type.strip().lower() == "float"
+            and _first_non_finite(domain_spec) is None
+        ):
             precision_issue = _check_float_precision(name, domain_spec, precision, idx)
             if precision_issue is not None:
                 issues.append(precision_issue)

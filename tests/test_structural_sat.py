@@ -449,7 +449,8 @@ class StructuralSatTests(unittest.TestCase):
         self.assertEqual(result.assignment["cfg"], ((2, 10), 5))
 
     def test_tuple_registry_component_placeholder_value(self) -> None:
-        """Registry-backed tuple components remain representable via placeholders."""
+        """An atom over a registry-backed (unresolved) component is undecided, never decided
+        from the placeholder values (review 3: `m == 'gpt-4'` on a registry enum was UNSAT)."""
         doc = _base_module()
         doc["tvars"] = [
             {
@@ -470,8 +471,9 @@ class StructuralSatTests(unittest.TestCase):
         }
 
         result = check_structural(doc)
-        self.assertTrue(result.ok)
-        self.assertEqual(result.assignment["cfg"], ("__registry_unresolved_0__", 1))
+        self.assertFalse(result.ok)
+        self.assertTrue(getattr(result, "undecided", False))
+        self.assertEqual([i["code"] for i in result.issues], ["structural_unresolved_domain"])
 
 
 class MalformedStructuralConstraintTests(unittest.TestCase):
