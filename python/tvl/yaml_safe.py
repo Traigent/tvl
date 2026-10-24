@@ -86,29 +86,40 @@ class _BoundedSafeLoader(yaml.SafeLoader):
                 )
         return super().compose_node(parent, index)
 
+    def _check_mapping_node_duplicates(self, node: Any, _depth: int = 0) -> None:
+        """Reject duplicate keys among a mapping node's own pairs and inside its merge sources.
+
+        Runs on the ORIGINAL pairs, before merge-key flattening: an explicit key may
+        override a key inherited through ``<<`` (not a duplicate), but a merge source that
+        itself repeats a key is a parse error (RFC 0001 section 3.5(4)).
+        """
+        if _depth > 64 or not isinstance(node, yaml.MappingNode):
+            return
+        seen: set = set()
+        for key_node, value_node in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                sources = value_node.value if isinstance(value_node, yaml.SequenceNode) else [value_node]
+                for source in sources:
+                    self._check_mapping_node_duplicates(source, _depth + 1)
+                continue
+            try:
+                key = self.construct_object(key_node, deep=True)
+                hash(key)
+            except Exception:  # noqa: BLE001 - unhashable keys are reported by the base class
+                continue
+            if key in seen:
+                mark = key_node.start_mark
+                raise DuplicateKeyError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"duplicate_key: duplicate mapping key {key!r} "
+                    f"(line {mark.line + 1}, column {mark.column + 1})",
+                    mark,
+                )
+            seen.add(key)
+
     def construct_mapping(self, node: Any, deep: bool = False) -> Any:
-        # Check the ORIGINAL pairs, before merge-key flattening: an explicit key
-        # legitimately overrides a key inherited through ``<<``, which is not a duplicate.
-        if isinstance(node, yaml.MappingNode):
-            seen: set = set()
-            for key_node, _value_node in node.value:
-                if key_node.tag == "tag:yaml.org,2002:merge":
-                    continue
-                try:
-                    key = self.construct_object(key_node, deep=True)
-                    hash(key)
-                except Exception:  # noqa: BLE001 - unhashable keys are reported by the base class
-                    continue
-                if key in seen:
-                    mark = key_node.start_mark
-                    raise DuplicateKeyError(
-                        "while constructing a mapping",
-                        node.start_mark,
-                        f"duplicate_key: duplicate mapping key {key!r} "
-                        f"(line {mark.line + 1}, column {mark.column + 1})",
-                        mark,
-                    )
-                seen.add(key)
+        self._check_mapping_node_duplicates(node)
         return super().construct_mapping(node, deep=deep)
 
     def construct_yaml_float(self, node: Any) -> Any:

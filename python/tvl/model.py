@@ -6,6 +6,21 @@ from fractions import Fraction
 from typing import Any, Dict, List, Optional
 
 
+class ExactFloat(float):
+    """A float that carries the exact rational it denotes.
+
+    Used for decimal literals and exact-grid witnesses so evaluation never depends
+    on the binary64 rounding of the displayed value.
+    """
+
+    exact: Fraction
+
+    def __new__(cls, value: float, exact: Optional[Fraction] = None) -> "ExactFloat":
+        obj = super().__new__(cls, value)
+        obj.exact = exact if exact is not None else Fraction(repr(float(value)))
+        return obj
+
+
 @dataclass
 class Domain:
     path: str
@@ -69,7 +84,14 @@ class Domain:
             if self.step is None and self.origin is None:
                 scaled = float(value) * self.precision  # legacy grid (origin 0, step 1/precision)
             else:
-                scaled = float(self.grid_index(value))
+                # Exact grid (Definition 3.6): membership is exact, with no tolerance.
+                idx = self.grid_index(value)
+                if idx.denominator != 1:
+                    raise ValueError(
+                        f"{self.path}: value {value!r} is not on the precision grid "
+                        f"(precision={self.precision}, resolution={float(self.grid_step)})"
+                    )
+                return int(idx)
             rounded = round(scaled)
             if abs(scaled - rounded) > 1e-9:
                 raise ValueError(
@@ -92,7 +114,8 @@ class Domain:
         if self.kind == "float":
             if self.origin is None and self.step is None:
                 return raw / self.precision
-            return float(self.grid_origin + raw * self.grid_step)
+            exact = self.grid_origin + raw * self.grid_step
+            return ExactFloat(float(exact), exact)
         return raw
 
     def contains(self, value: Any) -> bool:
@@ -146,6 +169,9 @@ def _exact(value: Any) -> Fraction:
     """Exact rational of a decimal literal / float (via its shortest repr)."""
     if isinstance(value, Fraction):
         return value
+    exact = getattr(value, "exact", None)
+    if isinstance(exact, Fraction):
+        return exact
     if isinstance(value, int):
         return Fraction(value)
     return Fraction(repr(float(value)))

@@ -10,7 +10,7 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
-from .model import Domain, extract_domains
+from .model import Domain, ExactFloat, extract_domains, _exact
 from .structural_parser import DNF, Literal, StructuralParseError, clause_to_string, parse_expression
 
 
@@ -64,6 +64,51 @@ class UndecidedStructuralResult(StructuralResult):
     issues: Optional[List[Dict[str, Any]]] = None
 
 
+# CP-SAT needs every coefficient * bound product within signed 64-bit; stay well inside it.
+_INT_LIMIT = 2**62
+
+ENCODING_OVERFLOW_CODE = "structural_encoding_overflow"
+SOLVER_INCONCLUSIVE_CODE = "structural_solver_inconclusive"
+
+
+class _EncodingOverflow(Exception):
+    def __init__(self, variable: str) -> None:
+        super().__init__(variable)
+        self.variable = variable
+
+
+def _undecided(code: str, message: str) -> "UndecidedStructuralResult":
+    return UndecidedStructuralResult(
+        ok=False,
+        assignment=None,
+        unsat_core=None,
+        undecided=True,
+        issues=[
+            {
+                "code": code,
+                "message": message,
+                "path": ["constraints", "structural"],
+                "severity": "error",
+            }
+        ],
+    )
+
+
+def _overflow_result(variable: str) -> "UndecidedStructuralResult":
+    return _undecided(
+        ENCODING_OVERFLOW_CODE,
+        f"Structural satisfiability could not be decided: the exact encoding of variable "
+        f"'{variable}' exceeds the solver's signed 64-bit integer range. Narrow its range "
+        "or use a coarser resolution.",
+    )
+
+
+def _index_bounds(domain: Domain) -> Tuple[int, int]:
+    lower = int(domain._encode_bound_lower(domain.minimum)) if domain.minimum is not None else -cp_model.INT32_MAX
+    upper = int(domain._encode_bound_upper(domain.maximum)) if domain.maximum is not None else cp_model.INT32_MAX
+    return lower, upper
+
+
 UNDECIDED_WITHOUT_SOLVER_CODE = "structural_undecided_without_solver"
 UNDECIDED_WITHOUT_SOLVER_MESSAGE = (
     "Structural satisfiability could not be decided: OR-Tools is not installed and the "
@@ -83,8 +128,9 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
                 upper = max(len(domain.values or []) - 1, 0)
                 variables[path] = model.NewIntVar(0, upper, f"{path}_enc")
             elif domain.kind in {"int", "float"}:
-                lower = int(domain._encode_bound_lower(domain.minimum)) if domain.minimum is not None else -cp_model.INT32_MAX
-                upper = int(domain._encode_bound_upper(domain.maximum)) if domain.maximum is not None else cp_model.INT32_MAX
+                lower, upper = _index_bounds(domain)
+                if max(abs(lower), abs(upper)) > _INT_LIMIT:
+                    raise _EncodingOverflow(path)
                 variables[path] = model.NewIntVar(lower, upper, f"{path}_val")
             elif domain.kind == "bool":
                 variables[path] = model.NewBoolVar(f"{path}_bool")
@@ -136,14 +182,17 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
 
 
 def check_structural(module: Dict[str, Any]) -> StructuralResult:
-    structural = build_structural_model(module)
-    if cp_model is None:
-        return _check_structural_bruteforce(structural.domains, structural.expressions)
+    try:
+        structural = build_structural_model(module)
+        if cp_model is None:
+            return _check_structural_bruteforce(structural.domains, structural.expressions)
 
-    model: cp_model.CpModel = structural.model
-    var_map = structural.variables
-    domains = structural.domains
-    _encode_expression_assumptions(model, var_map, domains, structural.expressions)
+        model: cp_model.CpModel = structural.model
+        var_map = structural.variables
+        domains = structural.domains
+        _encode_expression_assumptions(model, var_map, domains, structural.expressions)
+    except _EncodingOverflow as exc:
+        return _overflow_result(exc.variable)
 
     solver = cp_model.CpSolver()
     assumption_literals = [expr.assumption for expr in structural.expressions if expr.assumption is not None]
@@ -156,6 +205,14 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
             for name, var in var_map.items()
         }
         return StructuralResult(ok=True, assignment=assignment, unsat_core=None)
+
+    # Only INFEASIBLE proves UNSAT; MODEL_INVALID, UNKNOWN, ... are inconclusive.
+    if status != cp_model.INFEASIBLE:
+        return _undecided(
+            SOLVER_INCONCLUSIVE_CODE,
+            f"Structural satisfiability could not be decided: the solver returned status "
+            f"{solver.StatusName(status) if hasattr(solver, 'StatusName') else status}, not INFEASIBLE.",
+        )
 
     if have_assumptions and hasattr(solver, "SufficientAssumptionsForInfeasibility"):
         unsat_core_vars = solver.SufficientAssumptionsForInfeasibility()
@@ -250,13 +307,23 @@ def _convert_literal_value(token_type: Optional[str], raw: Any) -> Any:
     return _convert_untyped_literal(raw)
 
 
+def _exact_float(raw: str) -> Any:
+    """A float literal carrying the exact rational of its source text."""
+    value = float(raw)
+    try:
+        exact = Fraction(raw.strip())
+    except (ValueError, ZeroDivisionError):
+        return value
+    return ExactFloat(value, exact)
+
+
 def _convert_number_token(raw: str) -> Any:
     if "." in raw or "e" in raw.lower():
-        return float(raw)
+        return _exact_float(raw)
     try:
         return int(raw)
     except ValueError:
-        return float(raw)
+        return _exact_float(raw)
 
 
 def _convert_untyped_literal(raw: str) -> Any:
@@ -264,7 +331,7 @@ def _convert_untyped_literal(raw: str) -> Any:
         return raw.lower() == "true"
     try:
         if "." in raw or "e" in raw.lower():
-            return float(raw)
+            return _exact_float(raw)
         return int(raw)
     except ValueError:
         return raw
@@ -593,7 +660,11 @@ def _common_scale(left: Domain, right: Domain) -> int:
 def _scaled_linear(var: Any, domain: Domain, scale: int) -> Any:
     """``(origin + var * step) * scale`` as an integer linear expression."""
     origin, step = _grid_of(domain)
-    return var * int(step * scale) + int(origin * scale)
+    coef, const = int(step * scale), int(origin * scale)
+    lower, upper = _index_bounds(domain)
+    if abs(coef) * max(abs(lower), abs(upper)) + abs(const) > _INT_LIMIT:
+        raise _EncodingOverflow(domain.path)
+    return var * coef + const
 
 
 def _encode_enum_pair(
@@ -643,6 +714,12 @@ def _encode_value_comparison(
         # Equality against a float that is off the precision grid.
         model.Add(bool_var == (0 if op == "==" else 1))
     elif op in _REIFIED_COMPARISONS:
+        # Variable bounds are within +-_INT_LIMIT, so clamping preserves every comparison.
+        encoded_value = max(-_INT_LIMIT - 1, min(_INT_LIMIT + 1, encoded_value))
+        if domain.kind == "float" and op in {">", "<"}:
+            # _encode_float_literal already moved a strict bound to the nearest admissible grid
+            # index (floor+1 / ceil-1), so the comparison against it is non-strict.
+            op = ">=" if op == ">" else "<="
         _reify_comparison(model, var, op, encoded_value, bool_var)
     else:
         model.Add(bool_var == 0)
@@ -719,11 +796,8 @@ def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
         return _encode_legacy_float_literal(domain, op, value)
     idx = domain.grid_index(value)
     if op in {"==", "!="}:
-        scaled = float(idx)
-        rounded = round(scaled)
-        if abs(scaled - rounded) > 1e-9:
-            return None
-        return int(rounded)
+        # Exact: an off-grid value equals no grid point.
+        return int(idx) if idx.denominator == 1 else None
     if op == ">=":
         return math.ceil(idx)
     if op == ">":
@@ -737,7 +811,7 @@ def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
 
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
     candidates = _candidate_values(domains, expressions)
-    _widen_to_full_grids(domains, candidates)
+    full_grids = _widen_to_full_grids(domains, candidates)
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
     assignment: Dict[str, Any] = {}
 
@@ -747,7 +821,7 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
 
     # No witness found. A sampled search only proves UNSAT when every domain was
     # enumerated completely; otherwise fail closed with an explicit undecided result.
-    if not _candidates_are_exhaustive(domains, candidates):
+    if not _candidates_are_exhaustive(domains, candidates, full_grids):
         return UndecidedStructuralResult(
             ok=False,
             assignment=None,
@@ -767,7 +841,9 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
     return StructuralResult(ok=False, assignment=None, unsat_core=core)
 
 
-def _candidates_are_exhaustive(domains: Dict[str, Domain], candidates: Dict[str, List[Any]]) -> bool:
+def _candidates_are_exhaustive(
+    domains: Dict[str, Domain], candidates: Dict[str, List[Any]], full_grids: Optional[set] = None
+) -> bool:
     """True only if every searched variable's candidate list is its entire finite domain."""
     for name, cand in candidates.items():
         domain = domains.get(name)
@@ -776,12 +852,13 @@ def _candidates_are_exhaustive(domains: Dict[str, Domain], candidates: Dict[str,
         if domain.kind in ("bool", "enum"):
             continue
         if domain.kind == "int" and domain.minimum is not None and domain.maximum is not None:
-            if set(cand) == set(range(int(domain.minimum), int(domain.maximum) + 1)):
+            # Arithmetic check (never materialise the range): the candidates are distinct,
+            # lie in [min, max] (filtered by contains), so they cover it iff the counts match.
+            size = int(domain.maximum) - int(domain.minimum) + 1
+            if size >= 0 and len(set(cand)) == size:
                 continue
-        if domain.kind == "float":
-            count = domain.grid_count()
-            if count is not None and len(set(cand)) == count:
-                continue
+        if domain.kind == "float" and full_grids and name in full_grids:
+            continue
         return False
     return True
 
@@ -796,7 +873,7 @@ _MAX_FULL_GRID = 2001
 _MAX_FALLBACK_PRODUCT = 1_000_000
 
 
-def _widen_to_full_grids(domains: Dict[str, Domain], candidates: Dict[str, List[Any]]) -> None:
+def _widen_to_full_grids(domains: Dict[str, Domain], candidates: Dict[str, List[Any]]) -> set:
     """Enumerate whole Definition 3.6 float grids (so UNSAT can be proven) when affordable."""
     grids: Dict[str, List[Any]] = {}
     for name, cand in candidates.items():
@@ -807,12 +884,14 @@ def _widen_to_full_grids(domains: Dict[str, Domain], candidates: Dict[str, List[
         lo = int(domain._encode_bound_lower(domain.minimum))
         grids[name] = [domain.decode(i) for i in range(lo, lo + count)]
     if not grids:
-        return
+        return set()
     product = 1
     for name, cand in candidates.items():
         product *= len(grids.get(name, cand)) or 1
     if product <= _MAX_FALLBACK_PRODUCT:
         candidates.update(grids)
+        return set(grids)
+    return set()
 
 
 def _seed_values(domain: Domain) -> set:
@@ -867,9 +946,17 @@ def _int_candidates(domain: Domain, val_set: set) -> List[Any]:
 
 
 def _float_candidates(domain: Domain, val_set: set) -> List[Any]:
-    valid = [float(v) for v in val_set if isinstance(v, (int, float))]
+    valid = [v for v in val_set if isinstance(v, (int, float)) and not isinstance(v, bool)]
     if not valid:
         valid = _fallback_candidates(domain, float)
+    if domain.step is not None or domain.origin is not None:
+        # Exact grid: keep distinct grid indices, represented by their exact values.
+        indices = set()
+        for v in valid:
+            if domain.contains(v):
+                indices.add(domain.encode(v))
+        return [domain.decode(i) for i in sorted(indices)]
+    valid = [float(v) for v in valid]
     return sorted({v for v in valid if domain.contains(v)})
 
 
@@ -909,6 +996,14 @@ def _evaluate_expression(expr: Expression, assignment: Dict[str, Any]) -> bool:
     return False
 
 
+def _is_exact_number(v: Any) -> bool:
+    return isinstance(v, Fraction) or isinstance(getattr(v, "exact", None), Fraction)
+
+
+def _is_plain_number(v: Any) -> bool:
+    return isinstance(v, (int, float, Fraction)) and not isinstance(v, bool)
+
+
 def _evaluate_condition(cond: Condition, assignment: Dict[str, Any]) -> bool:
     value = assignment.get(cond.ident)
     if value is None:
@@ -920,6 +1015,9 @@ def _evaluate_condition(cond: Condition, assignment: Dict[str, Any]) -> bool:
     else:
         target = cond.value
     op = cond.operator
+    if _is_exact_number(value) or _is_exact_number(target):
+        if _is_plain_number(value) and _is_plain_number(target):
+            value, target = _exact(value), _exact(target)
     if op == "==":
         return value == target
     if op == "!=":

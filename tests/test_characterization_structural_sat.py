@@ -251,9 +251,10 @@ def test_encode_condition_unknown_operator_is_false() -> None:
 
 
 # Float domain: precision 10 over [0, 1] -> encoded 0..10.
-# Strict operators currently apply the strictness offset AND a strict
-# comparison, so `t > 0.3` admits only encoded >= 5 and `t < 0.3` only <= 1.
-# Pinned as-is; whether that is intended is outside a refactor's remit.
+# Strict operators: the literal bound is moved to the nearest admissible grid index and
+# compared non-strictly, so `t > 0.3` admits encoded >= 4 and `t < 0.3` admits <= 2.
+# (Previously the offset was applied twice, which wrongly excluded satisfying points:
+# review finding 2026-10-24.)
 @pytest.mark.parametrize(
     "op,value,predicate",
     [
@@ -263,12 +264,12 @@ def test_encode_condition_unknown_operator_is_false() -> None:
         ("!=", 0.35, lambda e: True),
         (">=", 0.3, lambda e: e >= 3),
         (">=", 0.35, lambda e: e >= 4),
-        (">", 0.3, lambda e: e > 4),
-        (">", 0.35, lambda e: e > 4),
+        (">", 0.3, lambda e: e > 3),
+        (">", 0.35, lambda e: e > 3),
         ("<=", 0.3, lambda e: e <= 3),
         ("<=", 0.35, lambda e: e <= 3),
-        ("<", 0.3, lambda e: e < 2),
-        ("<", 0.35, lambda e: e < 3),
+        ("<", 0.3, lambda e: e < 3),
+        ("<", 0.35, lambda e: e < 4),
         ("==", 1, lambda e: e == 10),
         (">=", 0, lambda e: True),
     ],
