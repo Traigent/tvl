@@ -182,7 +182,7 @@ TVL enforces explicit typing on all tuned variables:
 |------|-------------|-----------------|
 | `bool` | Boolean flag | `[true, false]` |
 | `int` | Integer value | `range: [1, 10]` or `set: [1, 2, 4, 8]` |
-| `float` | Floating-point | `range: [0.0, 1.0]` with a required `resolution` |
+| `float` | Floating-point | `range: [0.0, 1.0]`, optional `resolution` (default 0.001) |
 | `enum[str]` | Finite set of strings | `["gpt-4o", "claude-3"]` |
 | `enum[int]` | Finite set of integers | `[100, 500, 1000]` |
 | `enum[float]` | Finite set of floats | `[0.1, 0.5, 0.9]` |

@@ -23,6 +23,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - A repository-wide source authority rule: the formal semantics governs meaning, the grammar and schemas govern syntax, accepted RFCs govern where the semantics is silent, the Python implementation is reference behaviour, not normative, and the docs are informative (language reference and `GOVERNANCE.md`).
 - `SECURITY.md` supported versions: 1.5.x supported, 1.3.x–1.4.x best effort, below 1.3 not supported.
 - Formal semantics diagnostic tables now list the codes the implementation emits (for example `unknown_derived_symbol` in place of `derived_env_undefined`, and the `outside_proved_subset` info diagnostic).
+- Formal semantics: a range `resolution` is optional, matching the grammar; the default step is 1 for an `int` range and 0.001 for a float range (§2.4). The language reference and the book now say the same; a float range inside a tuple component still needs a `resolution` in the schema.
+- RFC 0001 errata: the certificate field `target` (`TargetProperty`) is a closed, opaque identifier string with no nested fields (RFC 0001 §11).
+- RFC 0002 errata: definitions of the telemetry measures `vote_margin`, `vote_agreement` and `gate_margin_pass_rate`, taken from the reference runtime (RFC 0002 §11).
+- Publication review corrections to the website pages and book chapters.
+- Formal roadmap (`formalization/tvl-formal-roadmap.md`) rewritten as a status page: it records which core results exist on paper and in Lean, with their scope, and lists the remaining work without dates.
+- Formal semantics §11.1 lists the core results already proved in Lean and the areas that remain; the proof of Theorem 7.1 counts the size of set and tuple atoms instead of treating every atom as constant time.
 
 ## [1.5.0] - 2026-10-23
 

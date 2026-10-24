@@ -928,7 +928,7 @@ This section records formal results about the normative core under the stated as
 **Theorem 7.1 (Structural Constraint Evaluation)**.
 For any well-formed structural constraint set `Φ^str` and configuration `c`, determining `F^str(c, Φ^str)` is decidable in polynomial time.
 
-*Proof*: Each atom is a comparison that can be evaluated in O(1). Formula structure is finite. Total complexity is O(|Φ^str| · |atoms|). □
+*Proof*: Evaluate each atom once and combine the results bottom-up over the finite formula structure. A comparison or equality atom compares one value with one literal; a membership atom `x ∈ S` scans `S`; a tuple atom compares its components (Definition 5.2). So each atom takes time linear in its own size, counting set elements, tuple components and the length of the values compared, and the total time is linear in the size of `Φ^str` together with `c`. □
 
 **Theorem 7.2 (Satisfiability Decidability)**.
 For any well-formed structural constraint set `Φ^str` over finite domains, determining whether `∃c: F^str(c, Φ^str) = true` is decidable (in NP).
@@ -1569,11 +1569,12 @@ An evaluator claiming to implement a TVL 1.3 evaluator profile MUST meet the con
 
 ### 11.1 Mechanization
 
-Priority areas for mechanized proofs (Coq/Lean/Isabelle):
+The Lean 4 proof tree in `proofs/` already mechanizes, for the core subset of §1.4, Theorem 4.1 (`type_soundness`), a formula-level form of Theorem 8.1 and Corollary 8.1 (`smt_encoding_soundness`, `satisfiability_preservation`: values and thresholds are taken as already scaled, and the §8.3 domain assertions are not modelled) and Lemma 9.2 (`normalized_diff_composition`). See `proofs/PROOF_SUMMARY.md` for the exact statements and their preconditions. The Lean atoms are `=`, `≠`, `≥`, `≤` and `∈` over non-tuple TVARs. Remaining areas:
 
-1. **Denotation totality** (Theorem 4.1)
-2. **SMT encoding soundness** (Theorem 8.1)
-3. **ε-dominance composition** (Lemma 9.2)
+1. **Decidability** (Theorems 7.1–7.4)
+2. **The atoms and types the Lean model omits**: strict comparisons, intervals, TVAR-to-TVAR equality and tuple atoms
+3. **Promotion** (Proposition 9.1 and the statistical tests of §9.4–9.5)
+4. **`cvars`, `policies` and `composites`** (§1.4)
 
 ### 11.2 Extensions
 
