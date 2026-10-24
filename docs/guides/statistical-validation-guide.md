@@ -30,11 +30,13 @@ The current command-line contract is documented in [Promotion Gate I/O](../../sp
 
 ## Desired properties in TVL
 
-TVL distinguishes three kinds of requirement:
+For promotion, a TVL module states three kinds of requirement in its objectives and promotion policy:
 
 1. **Directional objectives** express properties to maximize or minimize, such as task success, groundedness, cost, or latency.
 2. **Banded objectives** express an acceptable interval, such as a response length or tool-call count that should stay within a range.
 3. **Chance constraints** express an upper limit on the rate of an undesirable event, such as policy violations or latency-SLO breaches.
+
+Since TVL 1.3 a module can also declare runtime requirements in a separate `requirements` block, checked by monitors; see [Requirements, Monitors and Responses](requirements-monitors-responses.md).
 
 These fields specify what a candidate must demonstrate. The evaluator implementation determines how observations are produced and must be identified in the evidence.
 
@@ -55,14 +57,15 @@ Failure to establish non-inferiority is not automatically evidence of inferiorit
 
 ## Decision meanings
 
-The reference decision vocabulary is:
+The reference gate returns one of three decisions:
 
 | Decision | Meaning |
 | --- | --- |
 | `Promote` | The candidate passed every required acceptability check, established non-inferiority on all directional objectives, and established a required improvement. |
-| `Reject` | The evidence established a hard failure, such as a breached chance constraint, an observed point estimate outside a hard band, an invalid candidate, or demonstrated regression beyond the allowed margin. |
+| `Reject` | A hard check failed: a chance constraint did not pass (a TVL 1.2 chance constraint rejects on any non-pass, including inconclusive counts), an observed point estimate fell outside a hard band, or the evidence demonstrated regression beyond the allowed margin. |
 | `NoDecision` | The available evidence was insufficient to justify either promotion or rejection. |
-| `Error` | The inputs were invalid, inconsistent, unbound, or could not support the declared checks. |
+
+Invalid, inconsistent or unbound inputs, or inputs that cannot support the declared checks, are not a fourth decision: the gate reports them as errors (see the error codes in [Promotion Gate I/O](../../spec/promotion-gate-io.md)) and the candidate is not promotion-ready.
 
 A production or certification workflow should preserve this distinction. Treating missing evidence as demonstrated failure misstates the result; treating it as success is unsafe.
 

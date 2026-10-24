@@ -33,8 +33,8 @@ Source: [tool-use.yml](https://github.com/Traigent/tvl/blob/main/spec/examples/t
 
 Use this when you want the current statistical features:
 
-*   banded objective with `TOST`
-*   `adjust: holm`
+*   banded objective with `TOST` (two one-sided tests, which check that a metric stays inside a target band)
+*   `adjust: holm` (the Holm correction for testing several objectives at once)
 *   fairness-oriented chance constraints
 *   finite domains suitable for grid-style search
 
@@ -44,9 +44,9 @@ Source: [text-to-sql.yml](https://github.com/Traigent/tvl/blob/main/spec/example
 
 This is a good example of a tighter single-pipeline evaluation set:
 
-*   banded token-budget objective
-*   standard quality objective
-*   `tpe` exploration
+*   quality, cost, and latency objectives
+*   a promotion policy with `adjust: holm` and a timeout chance constraint
+*   no `exploration` block, so the search strategy is left to the implementation
 *   explicit dataset anchoring
 
 ### 5. Multi-Tenant Router
@@ -101,7 +101,7 @@ tvl-check-structural <module> --json
 tvl-check-operational <module> --json
 ```
 
-If you are working with composed overlays or runtime artifacts, extend the flow with:
+If you are working with overlays (files that change parts of a base module, merged by `tvl-compose`) or runtime artifacts (a chosen configuration file and the measurement bundle recorded for it), extend the flow with:
 
 ```bash
 tvl-compose staging.overlay.yml -o merged.tvl.yml

@@ -116,14 +116,14 @@ All constraints are type-checked against the declared TVARs:
 
 | TVAR Type | Allowed Operators | Allowed Comparands |
 |-----------|-------------------|-------------------|
-| `bool` | `=`, `!=` | `true`, `false` |
+| `bool` | `=`, `!=`, `in` | `true`, `false` (or a set of them) |
 | `int` | `=`, `!=`, `<`, `<=`, `>`, `>=`, `in` | integers |
 | `float` | `=`, `!=`, `<`, `<=`, `>`, `>=`, `in` | numbers |
 | `enum[T]` | `=`, `!=`, `in` | literals from domain |
 | `tuple[...]` | `=`, `!=`, `in` | tuples from domain |
 | `callable[P]` | `=`, `!=`, `in` | identifiers from registry |
 
-**Important**: Float equality (`=`) generates a warning because floating-point comparison may be unstable. Consider using range constraints instead.
+**Important**: Float equality (`=`) with a numeric literal generates a warning (`float_equality`) because floating-point comparison may be unstable. Consider using range constraints instead.
 
 **Note**: Ordering comparisons between TVARs (e.g., `a >= b`) are not supported. TVAR-to-TVAR checks are supported for equality/inequality (e.g., `a = b`).
 
@@ -228,13 +228,15 @@ constraints:
 
 ## Compilation to SMT
 
-Structural constraints compile to SMT/SAT-style solver inputs in the reference implementation:
+The reference implementation (`python/tvl/structural_sat.py`) builds an OR-Tools CP-SAT model, and falls back to
+enumerating the domains when CP-SAT is not installed. The SMT-LIB form shown below is an illustrative encoding
+(formal semantics §8, which is non-normative); a validator may use any solver that gives the same answers.
 
-1. **Boolean TVARs**: Direct propositional encoding
-2. **Integer TVARs**: QF_LIA (quantifier-free linear integer arithmetic)
-3. **Float TVARs**: Scaled to integers for QF_LIA (default precision: 1000)
+1. **Boolean TVARs**: Boolean variables
+2. **Integer TVARs**: bounded integer variables (in SMT terms, QF_LIA: quantifier-free linear integer arithmetic)
+3. **Float TVARs**: Scaled to integers (default precision: 1000)
 4. **Enum TVARs**: Encoded as bounded integers
-5. **DNF formulas**: Direct SMT encoding
+5. **DNF formulas**: each clause becomes a Boolean literal; an expression holds when one of its clauses holds
 
 ### Example Compilation
 
@@ -244,7 +246,7 @@ TVL constraint:
   then: "temperature <= 0.5"
 ```
 
-SMT-LIB output (temperature scaled by 1000):
+Illustrative SMT-LIB encoding (temperature scaled by 1000):
 ```smt
 (declare-const use_cot Bool)
 (declare-const temperature Int)
@@ -280,7 +282,7 @@ tvl-check-operational module.tvl.yml --json
 
 3. **Separate concerns**: Use structural constraints for TVAR relationships, operational preconditions (`constraints.derived`) for numeric `env.context.*` feasibility checks, and chance constraints for measured rollout gates
 
-4. **Test constraints**: Write unit tests for your constraints using the test harness pattern from `ch3_constraint_tests.py`
+4. **Test constraints**: Write unit tests for your constraints using the test harness pattern from [`tvl_book/examples/ch3_constraint_tests.py`](https://github.com/Traigent/tvl/blob/main/tvl_book/examples/ch3_constraint_tests.py)
 
 5. **Document intent**: Add comments explaining why constraints exist, not just what they do
 
@@ -288,7 +290,7 @@ tvl-check-operational module.tvl.yml --json
 
 ## Error Codes Reference
 
-See [error-codes.md](./error-codes.md) for a complete list of constraint-related error codes:
+See [error-codes.md](./error-codes.md) for the linter's constraint-related codes. The configuration constraint evaluator used by `tvl-config-validate` also reports `constraint_failed` and `unknown_reference`, which that catalog does not list yet. Linter codes:
 
 - `undeclared_tvar`: Unknown TVAR in constraint
 - `constraint_value_out_of_domain`: Literal outside domain
@@ -302,21 +304,21 @@ See [error-codes.md](./error-codes.md) for a complete list of constraint-related
 ## Grammar (EBNF)
 
 ```ebnf
-formula       = disjunction ;
+formula       = implication ;
+implication   = disjunction , [ "=>" , formula ] ;        (* Sugar: A => B ≡ ¬A ∨ B *)
 disjunction   = conjunction , { "or" , conjunction } ;
 conjunction   = unary , { "and" , unary } ;
-unary         = [ "not" ] , ( atom | "(" , formula , ")" | implication ) ;
-implication   = formula , "=>" , formula ;
+unary         = [ "not" ] , ( atom | "(" , formula , ")" ) ;
 
 atom          = equality_atom | comparison_atom | interval_atom | tvar_eq_atom | membership_atom ;
-equality_atom = ident , "=" , value ;
-comparison_atom = ( ident , ">=" , scalar ) | ( ident , "<=" , scalar ) ;
-interval_atom = number , "<=" , ident , "<=" , number ;
-tvar_eq_atom  = ident , "=" , ident ;
+equality_atom = ident , ("=" | "!=") , value ;
+comparison_atom = ident , (">=" | "<=" | ">" | "<") , number ;
+interval_atom = number , ("<=" | "<") , ident , ("<=" | "<") , number ;
+tvar_eq_atom  = ident , ("=" | "!=") , ident ;
 membership_atom = ident , "in" , set_literal ;
 
 set_literal   = "{" , value , { "," , value } , "}" ;
-scalar        = number | ident ;
 ```
 
-See `tvl/spec/grammar/tvl.ebnf` for the complete grammar specification.
+Comparisons take only numeric literals; TVAR-to-TVAR checks are limited to equality and inequality.
+See [`spec/grammar/tvl.ebnf`](https://github.com/Traigent/tvl/blob/main/spec/grammar/tvl.ebnf) for the complete grammar specification.
