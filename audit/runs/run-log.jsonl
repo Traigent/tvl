@@ -370,3 +370,4 @@
 {"batch_id": "B-20261024182111-003-meta", "elapsed_s": 236.2, "exit_code": 0, "pairs": 59, "recorded": true, "retry": false, "reviewer": "sol", "role": "meta", "ts": "2026-10-24T18:35:30Z", "units": 31, "usage": {"tokens_used": 103024}}
 {"batch_id": "B-20261024182112-001-meta", "elapsed_s": 190.5, "exit_code": 0, "pairs": 60, "recorded": true, "retry": false, "reviewer": "sol", "role": "meta", "ts": "2026-10-24T18:38:41Z", "units": 33, "usage": {"tokens_used": 119420}}
 {"batch_id": "B-20261024182112-002-meta", "elapsed_s": 78.8, "exit_code": 0, "pairs": 8, "recorded": true, "retry": false, "reviewer": "sol", "role": "meta", "ts": "2026-10-24T18:40:00Z", "units": 5, "usage": {"tokens_used": 41050}}
+{"batch_id": "B-20261024184025-001-confirm", "elapsed_s": 177.8, "exit_code": 0, "pairs": 27, "recorded": true, "retry": false, "reviewer": "sol", "role": "confirm", "ts": "2026-10-24T18:43:24Z", "units": 23, "usage": {"tokens_used": 84475}}
