@@ -468,12 +468,30 @@ Effect sizes alone never decide: a `Promote` or `Reject` row assumes enough obse
 
 ## 8. Error Codes
 
+The full catalog of diagnostics is [docs/reference/error-codes.md](../docs/reference/error-codes.md). The codes below are the ones emitted for promotion inputs.
+
+**Measurement bundle not promotion-ready** (`tvl-ci-gate` exits 2 with no decision; `tvl-measure-validate` reports `promotion_ready: false`):
+
 | Code | Description |
 |------|-------------|
-| `missing_samples` | Neither samples nor aggregated stats provided |
-| `insufficient_samples` | Fewer than 2 samples for t-test |
-| `missing_policy` | No promotion_policy in module |
-| `missing_epsilon` | No min_effect for standard objective |
-| `invalid_direction` | Unknown objective direction |
-| `missing_band_target` | Banded objective without target |
-| `zero_trials` | Chance constraint with zero trials or no trial count; the gate returns `Error` |
+| `missing_statistical_evidence` | `objective_values.<name>` gives neither a nonempty `samples` list nor `mean/std/n` |
+| `missing_chance_counts` | `chance_outcomes.<name>` does not give `violations` and `trials` |
+| `missing_monitor_counts` | A promotion monitor has no valid `monitor_outcomes.<name>` counts in the candidate bundle |
+| `measurement_module_mismatch` | The bundle's `module_id` names a different module from the one the gate uses |
+| `calibration_evidence_unsupported` | The module needs calibration certificates, which the bundle cannot carry (§1) |
+
+**Gate and measurement results**:
+
+| Code | Reported by | Description |
+|------|-------------|-------------|
+| `zero_trials` | gate; `tvl-measure-validate` | Chance constraint with zero trials or no trial count; the gate returns `Error` (§5.0) |
+| `chance_violation` | `tvl-measure-validate` | A chance constraint's upper confidence bound exceeds its threshold |
+| `missing_measurement` | `tvl-measure-validate` | No chance outcome for a declared chance constraint |
+| `missing_statistical_runtime` | `tvl-measure-validate` | scipy is not installed, so chance constraints cannot be evaluated |
+| `unsupported_construct` | both tools | The input is a `tvl-runtime-report/1` file, not a measurement bundle |
+
+**Warnings** for deprecated input forms: `deprecated_measurement_objectives`, `deprecated_measurement_chance`, `legacy_chance_not_convertible` (a legacy `chance` summary whose violation count cannot be reconstructed exactly), and `deprecated_ci_gate_policy_flag` (`--policy` used).
+
+**Module errors found by `tvl-lint`** (`tvl-ci-gate` also runs these checks on modules that use TVL 1.3 constructs): `missing_min_effect` (no `promotion_policy.min_effect` entry for a standard objective), `invalid_direction` (direction is not `maximize` or `minimize`) and `missing_band_target` (banded objective without a target).
+
+Fewer than 2 observations in an arm is not an error code: the objective result is `inconclusive` (§7.2).
