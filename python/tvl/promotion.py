@@ -846,6 +846,18 @@ def _test_banded_objective(
 
     mean, std, n = _band_candidate_stats(cand_data)
     if n < 2:
+        # Formal semantics §9.5: a point estimate outside the declared band is
+        # rejected; an on-target result without the evidence TOST needs is
+        # inconclusive. With n = 0 there is no point estimate.
+        if n >= 1 and (mean < band_lower or mean > band_upper):
+            return BandedResult(
+                name=spec.name,
+                n=n,
+                mean=mean,
+                band_lower=band_lower,
+                band_upper=band_upper,
+                verdict="out_of_band",
+            )
         return BandedResult(name=spec.name, verdict="inconclusive")
 
     se = std / math.sqrt(n)
@@ -854,8 +866,11 @@ def _test_banded_objective(
     # TOST: Two one-sided tests
     # H01: μ <= L, reject at α → t1 = (mean - L) / SE
     # H02: μ >= U, reject at α → t2 = (U - mean) / SE
-    t1 = (mean - band_lower) / se if se > 0 else 0
-    t2 = (band_upper - mean) / se if se > 0 else 0
+    # With se = 0 (zero sample variance) each statistic is ±∞ by the sign of
+    # its numerator, so a mean strictly inside [L, U] rejects both nulls
+    # (Definition 9.6); a mean on a band edge rejects neither (t = 0).
+    t1 = _t_statistic(mean - band_lower, se)
+    t2 = _t_statistic(band_upper - mean, se)
 
     p1 = 1.0 - scipy_stats.t.cdf(t1, df)
     p2 = 1.0 - scipy_stats.t.cdf(t2, df)
@@ -881,6 +896,15 @@ def _test_banded_objective(
     )
 
 
+def _t_statistic(numerator: float, se: float) -> float:
+    """``numerator / se``, taking its limit ±∞ (or 0 for a zero numerator) when se = 0."""
+    if se > 0:
+        return numerator / se
+    if numerator == 0:
+        return 0.0
+    return math.copysign(math.inf, numerator)
+
+
 def _band_target_bounds(target: Any) -> Optional[Tuple[Any, Any]]:
     """Band bounds from ``[low, high]`` or ``{center, tol}``; None if neither form."""
     if isinstance(target, list) and len(target) == 2:
@@ -900,6 +924,9 @@ def _band_candidate_stats(cand_data: Dict[str, Any]) -> Tuple[Any, Any, Any]:
         mean = sum(samples) / n
         var = sum((x - mean) ** 2 for x in samples) / (n - 1)
         return mean, math.sqrt(var), n
+    if samples is not None and len(samples) == 1 and cand_data.get("n") is None:
+        # A lone sample is the point estimate when no aggregated stats are given.
+        return samples[0], 0.0, 1
     return cand_data.get("mean", 0.0), cand_data.get("std", 0.0), cand_data.get("n", 0)
 
 

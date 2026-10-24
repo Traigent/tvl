@@ -340,3 +340,32 @@ def test_schema_diagnostic_never_echoes_rejected_values_or_unknown_keys(tmp_path
     code, out, _ = invoke("tvl-validate", [str(write_doc(tmp_path, doc)), "--format", "json"], monkeypatch)
     assert code == 2
     assert "CANARY" not in out
+
+
+def test_scipy_failure_diagnostic_is_closed_and_never_echoes_monitor_name(monkeypatch) -> None:
+    """RFC 0003 §5.10: a reported code carries a fixed message, without echoing any input."""
+    import types
+
+    class _BrokenBeta:
+        @staticmethod
+        def ppf(*_args, **_kwargs):
+            raise RuntimeError("scipy unavailable")
+
+    fake_stats = types.ModuleType("scipy.stats")
+    fake_stats.beta = _BrokenBeta  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "scipy.stats", fake_stats)
+    doc = example(1)
+    for monitor in doc["monitors"]:
+        if monitor["name"] == "latency_2s_prod":
+            monitor["name"] = "CANARY_MONITOR"
+    for response in doc.get("responses") or []:
+        for rule in response.get("rules") or []:
+            trigger = rule.get("trigger") or {}
+            if trigger.get("monitor") == "latency_2s_prod":
+                trigger["monitor"] = "CANARY_MONITOR"
+    issues = [i for i in lint_module(doc) if i["code"] == "runtime_invalid_profile"]
+    assert issues, "the scipy-failure branch must be reached"
+    assert all("CANARY" not in i["message"] for i in issues)
+    with pytest.raises(RuntimeClosedError) as caught:
+        compile_runtime_document(doc, token_map_doc=None)
+    assert "CANARY" not in caught.value.message

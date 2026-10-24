@@ -97,19 +97,21 @@ theorem eps_dominance_composition_list
   If c₁ is strictly better than c₂ on objective A, and c₂ is strictly better
   than c₃ on objective B, then c₁ might only be weakly better than c₃ on both.
 
-  Concrete counter-example (documented in paper):
+  Concrete counter-example (formal semantics §9.8, with ε = δ = 10):
     objectives: [A (max), B (max)]
     ε = [10, 10]
-    y₁ = [100, 50]  -- Better on A
-    y₂ = [90, 50]
-    y₃ = [90, 40]   -- Better on B
+    y₁ = [0, 0]
+    y₂ = [-20, 10]
+    y₃ = [-10, -10]
 
   Then:
-    y₁ ≻ε y₂ (strictly better on A: 100-90=10 > ε, weakly better on B)
-    y₂ ≻ε y₃ (weakly better on A: 90-90=0 ≥ -10, strictly better on B: 50-40=10 > ε)
+    y₁ ≻ε y₂ (y₁ - y₂ = [20, -10]: strictly better on A, 20 > 10;
+              weakly better on B, -10 ≥ -10)
+    y₂ ≻ε y₃ (y₂ - y₃ = [-10, 20]: weakly better on A, -10 ≥ -10;
+              strictly better on B, 20 > 10)
   But:
-    y₁ vs y₃: On A: 100-90=10 = ε (not strictly better for 2ε=20)
-              On B: 50-40=10 = ε (not strictly better for 2ε=20)
+    y₁ vs y₃: y₁ - y₃ = [10, 10], and 10 ≥ -20 on both objectives,
+              but 10 is not > 2ε = 20 on either
     So y₁ ≽₂ε y₃ but NOT y₁ ≻₂ε y₃
 -/
 theorem strict_dominance_does_not_compose_informal : True := trivial

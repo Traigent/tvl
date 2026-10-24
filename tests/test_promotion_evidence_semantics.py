@@ -204,3 +204,42 @@ def test_omitted_adjust_defaults_to_holm():
     stats = {"objective_values": {"quality": {"mean": 0.80, "std": 0.10, "n": 100}}}
     _, evidence = epsilon_pareto_gate(stats, stats, policy, objectives)
     assert evidence["summary"]["adjustment_method"] == "holm"
+
+
+def _band(cand_data: dict, target=(0.0, 1.0)):
+    from tvl.promotion import ObjectiveSpec, _test_banded_objective
+
+    spec = ObjectiveSpec(name="b", direction="maximize", epsilon=0.0, band={"target": list(target)})
+    return _test_banded_objective(spec, cand_data, 0.05)
+
+
+@pytest.mark.skipif(not SCIPY_AVAILABLE, reason="scipy required")
+@pytest.mark.parametrize(
+    "cand_data,expected",
+    [
+        ({"mean": 0.5, "std": 0.0, "n": 10}, "in_band"),
+        ({"samples": [0.5, 0.5, 0.5]}, "in_band"),
+        ({"mean": 1.5, "std": 0.0, "n": 10}, "out_of_band"),
+        ({"mean": 0.0, "std": 0.0, "n": 10}, "inconclusive"),
+    ],
+)
+def test_band_with_zero_sample_variance_follows_definition_9_6(cand_data, expected) -> None:
+    """Definition 9.6 with s = 0: mean strictly inside [L, U] rejects both one-sided nulls."""
+    assert _band(cand_data).verdict == expected
+
+
+@pytest.mark.skipif(not SCIPY_AVAILABLE, reason="scipy required")
+@pytest.mark.parametrize(
+    "cand_data,expected",
+    [
+        ({"mean": 1.5, "std": 0.0, "n": 1}, "out_of_band"),
+        ({"samples": [1.5]}, "out_of_band"),
+        ({"samples": [-0.5]}, "out_of_band"),
+        ({"mean": 0.5, "std": 0.0, "n": 1}, "inconclusive"),
+        ({"samples": [0.5]}, "inconclusive"),
+        ({"mean": 1.5, "std": 0.0, "n": 0}, "inconclusive"),
+    ],
+)
+def test_band_point_estimate_outside_band_rejects_below_two_observations(cand_data, expected) -> None:
+    """§9.5: a point estimate outside the band is rejected; on-target with too little evidence is inconclusive."""
+    assert _band(cand_data).verdict == expected

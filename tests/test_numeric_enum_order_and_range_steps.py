@@ -117,7 +117,45 @@ def test_tuple_equality_component_mismatch_rejected():
 
 
 def test_tuple_equality_matching_accepted():
-    assert "constraint_type_mismatch" not in _codes(_tuple_module("tuple[int, str]", "tuple[float, str]"))
+    assert "constraint_type_mismatch" not in _codes(_tuple_module("tuple[int, str]", "tuple[int, str]"))
+    assert "constraint_type_mismatch" not in _codes(_tuple_module("tuple[int, str]", "tuple[ int,str ]"))
+
+
+def test_tuple_equality_int_float_component_rejected():
+    """T-TupleVarEq: both sides have type tuple[τ₁,...,τₙ]; int and float components differ."""
+    assert "constraint_type_mismatch" in _codes(_tuple_module("tuple[int, str]", "tuple[float, str]"))
+    assert "constraint_type_mismatch" in _codes(_tuple_module("tuple[int]", "tuple[float]"))
+
+
+def _scalar_eq_module(t1, d1, t2, d2):
+    return _module([{"name": "a", "type": t1, "domain": d1}, {"name": "b", "type": t2, "domain": d2}], ["a = b"])
+
+
+@pytest.mark.parametrize(
+    "t1,d1,t2,d2",
+    [
+        ("int", [1, 2], "float", [1.0, 2.0]),
+        ("enum[str]", ["x", "y"], "enum[int]", [1, 2]),
+        ("enum[int]", [1, 2], "enum[float]", [1.0, 2.0]),
+        ("int", [1, 2], "enum[float]", [1.0, 2.0]),
+    ],
+)
+def test_scalar_tvar_equality_requires_equal_element_types(t1, d1, t2, d2):
+    """T-TVarEq: x = y is well-typed only when elem(τ) = elem(τ') (semantics §4.6)."""
+    assert "constraint_type_mismatch" in _codes(_scalar_eq_module(t1, d1, t2, d2))
+
+
+@pytest.mark.parametrize(
+    "t1,d1,t2,d2",
+    [
+        ("int", [1, 2], "int", [2, 3]),
+        ("int", [1, 2], "enum[int]", [1, 2]),
+        ("enum[str]", ["x", "y"], "enum[str]", ["y", "z"]),
+        ("float", [0.1, 0.2], "enum[float]", [0.1]),
+    ],
+)
+def test_scalar_tvar_equality_with_equal_element_types_accepted(t1, d1, t2, d2):
+    assert "constraint_type_mismatch" not in _codes(_scalar_eq_module(t1, d1, t2, d2))
 
 
 # ---- exact Definition 3.6 float grid -------------------------------------------
