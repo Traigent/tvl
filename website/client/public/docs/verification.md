@@ -36,8 +36,9 @@ Typical structural verifier outputs are:
 
 *   **SAT** + a witness assignment such as `model = "gpt-4o", retriever.k = 5`
 *   **UNSAT** + an UNSAT core or conflicting expression set showing which clauses cannot all hold together
+*   **undecided** (only without OR-Tools) + the issue `structural_undecided_without_solver`
 
-The solver result is exact when OR-Tools (a required dependency) is installed. If OR-Tools cannot be imported, the checker falls back to a search over sampled candidate values: domain bounds and the literals that constraints compare against, with neighbours. That fallback can miss a valid float assignment, so it can report UNSAT, with a core, for a satisfiable module. Treat a fallback UNSAT as unconfirmed.
+The solver result is exact when OR-Tools (a required dependency) is installed. If OR-Tools cannot be imported, the checker falls back to a search over sampled candidate values: domain bounds and the literals that constraints compare against, with neighbours. A witness that fallback finds is a real SAT result. When it finds none, it reports UNSAT only if it tried every value of every domain (booleans, enums and bounded integers). Otherwise, for example with a float TVAR, the result is **undecided**: `tvl-check-structural` exits 2 with the error `structural_undecided_without_solver`, and its JSON output has `status: "undecided"` and an `issues` list. It never reports an UNSAT it has not shown. Install OR-Tools to decide such a module.
 
 ## Structural Verifier
 
@@ -51,7 +52,7 @@ Purpose:
 
 *   load declared TVAR domains
 *   parse `constraints.structural`
-*   decide whether the constraint set is satisfiable (exactly with OR-Tools; the fallback search described above can wrongly report UNSAT for float constraints)
+*   decide whether the constraint set is satisfiable (exactly with OR-Tools; without it, the fallback search described above may return undecided instead)
 *   emit a witness assignment when satisfiable
 *   emit an UNSAT core or conflicting expressions when not satisfiable
 
@@ -121,7 +122,7 @@ These tools work with measured evidence, chance constraints, and the `promotion_
 
 **Keep the final evaluation independent of selection.** The gate compares one incumbent with one candidate. It cannot see how many candidates you tried or whether you chose the candidate on the same data. Choose on a tuning split, keep a separate evaluation set for the final comparison, and record how many candidates you tried. Repeated looks at the same evaluation set bias the result in the candidate's favour, and the formal semantics lists independent collection of the evidence among the assumptions behind a Promote (`formalization/tvl-formal-semantics.md`, section 9.8).
 
-**Reading the exit status of `tvl-ci-gate`.** It exits 0 only for `Promote`. It exits 2 for `Reject`, for `NoDecision`, and for inputs it cannot use (bundles that are not promotion-ready, unreadable files, any error). A nonzero status alone therefore does not tell you which. With `--json`, read `decision` when it is present; when it is absent, read the `error` and `readiness_issues` fields. The exit-code table is in the error-codes reference.
+**Reading the exit status of `tvl-ci-gate`.** It exits 0 only for `Promote`. It exits 2 for `Reject`, for `NoDecision`, for `Error` (a check that is undefined, such as a chance constraint with no trials: `zero_trials`; a measurement file with `trials` below 1 is already refused by the measurement schema), and for inputs it cannot use (bundles that are not promotion-ready, unreadable files, any error). A nonzero status alone therefore does not tell you which. With `--json`, read `decision` when it is present (for `Error`, the `error` and `codes` fields say why); when it is absent, read the `error` and `readiness_issues` fields. The exit-code table is in the error-codes reference.
 
 **Calibration.** The reference gate cannot validate calibration certificates. `tvl-ci-gate` refuses under every strict-mode trigger of RFC 0001 section 3.6 that is visible in the module, including the composite coverage fold of RFC 0002 section 3.6: `promotion_policy.require_calibration.enabled`; a `cvar` whose `governance.require_calibration` is set; any declared `cvar` (each one has a certificate); a chance constraint in a module that has a `cvar` or a calibrated composite member; and a composite with a gate threshold, a `signal_accept` stop, an aggregate accept threshold, a cvar-valued cardinality, or an aggregate judge that references a composite with a calibrated member. A module with a chance constraint and nothing to certify still gets a decision. The RFC 0001 trigger that comes from the operational profile (a selection target) is not covered: the gate does not receive the profile, so it cannot check it. For a module requiring calibration certificates `tvl-ci-gate` reports the readiness issue `calibration_evidence_unsupported` and exits 2 without a decision. This differs from `NoDecision`: no evidence comparison ran.
 

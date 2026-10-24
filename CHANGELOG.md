@@ -10,11 +10,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Info diagnostic `outside_proved_subset`: emitted once per construct family present (`cvars`, `policies`, `composites`) that the Lean proofs do not model. Diagnostics with the new `info` severity are printed and included in JSON output but never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
 - `tools/claim_audit`: a paragraph-level audit of the claims in the published documentation.
+- Error `structural_undecided_without_solver`: without OR-Tools, the fallback structural search no longer reports an UNSAT it has not shown. It reports SAT when it finds a witness, UNSAT only when it tried every value of every domain, and otherwise this error (`tvl-check-structural` exits 2, JSON `status: "undecided"`).
+- Gate decision `Error` with code `zero_trials`: a chance constraint with zero trials or no trial count makes its check undefined (Definition 9.8), so the gate returns `Error` before any other branch, instead of `Reject`. When the gate returns it, `tvl-ci-gate` prints `Decision: Error` and exits 2 (a measurement file with `trials` below 1 is already refused by the measurement schema).
+- Error `duplicate_key`: a YAML mapping that repeats a key is rejected at parse time (RFC 0001 §3.5(4)); the message names the key, line and column. A key that overrides one inherited through `<<` is not a duplicate.
 
 ### Changed
 
 - Specification page corrections: version compatibility table, scoped overlay narrowing, budget-check responsibilities, assurance-scope table, a decision table for `chance_constraints` versus a promotion monitor, and the authority section.
 - Publication review corrections across the documentation, including the error code catalog (new entries for operational-check, calibration-readiness and document-shape codes, and a statement of which tool codes it does not list yet).
+- Formal semantics: derived constraints admit strict `<` and `>`, matching the grammar and the reference checker; a strict atom is false at equality.
+- `exploration.budgets.max_spend_usd: 0` is valid and means no paid spending is allowed; `tvl-check-operational` accepts it and reports `invalid_budget_max_spend` only for a negative value.
+- A repository-wide source authority rule: the formal semantics governs meaning, the grammar and schemas govern syntax, accepted RFCs govern where the semantics is silent, the Python implementation is reference behaviour, not normative, and the docs are informative (language reference and `GOVERNANCE.md`).
+- `SECURITY.md` supported versions: 1.5.x supported, 1.3.x–1.4.x best effort, below 1.3 not supported.
+- Formal semantics diagnostic tables now list the codes the implementation emits (for example `unknown_derived_symbol` in place of `derived_env_undefined`, and the `outside_proved_subset` info diagnostic).
 
 ## [1.5.0] - 2026-10-23
 

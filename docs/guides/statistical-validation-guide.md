@@ -57,7 +57,7 @@ Failure to establish non-inferiority is not automatically evidence of inferiorit
 
 ## Decision meanings
 
-The reference gate returns one of three decisions:
+The reference gate returns one of three decisions, or `Error` when a check is undefined:
 
 | Decision | Meaning |
 | --- | --- |
@@ -65,7 +65,7 @@ The reference gate returns one of three decisions:
 | `Reject` | A hard check failed: a chance constraint did not pass (a TVL 1.2 chance constraint rejects on any non-pass, including inconclusive counts), an observed point estimate fell outside a hard band, or the evidence demonstrated regression beyond the allowed margin. |
 | `NoDecision` | The available evidence was insufficient to justify either promotion or rejection. |
 
-Invalid, inconsistent or unbound inputs, or inputs that cannot support the declared checks, are not a fourth decision: the gate reports them as errors (see the error codes in [Promotion Gate I/O](../../spec/promotion-gate-io.md)) and the candidate is not promotion-ready.
+Invalid, inconsistent or unbound inputs, or inputs that cannot support the declared checks, are not a decision: the tools report them as errors (see the error codes in [Promotion Gate I/O](../../spec/promotion-gate-io.md)) and the candidate is not promotion-ready. One such case reaches the gate itself: a chance constraint with zero trials or no trial count makes its check undefined, so the gate returns `Error` with the code `zero_trials`, neither `Reject` nor `NoDecision`. `tvl-ci-gate` prints `Decision: Error` and exits 2.
 
 A production or certification workflow should preserve this distinction. Treating missing evidence as demonstrated failure misstates the result; treating it as success is unsafe.
 

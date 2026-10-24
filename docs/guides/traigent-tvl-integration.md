@@ -34,7 +34,7 @@ An integration should fail closed when:
 - a chance or band requirement fails; or
 - a strict certification requirement cannot be verified.
 
-Inconclusive comparisons, on-target bands without enough evidence, and inconclusive promotion monitors produce `NoDecision`, not a claim of failure or success, unless another check already rejects the candidate: any `Reject` wins. A TVL 1.2 chance constraint is the exception: it rejects on any non-pass, including inconclusive counts.
+Inconclusive comparisons, on-target bands without enough evidence, and inconclusive promotion monitors produce `NoDecision`, not a claim of failure or success, unless another check already rejects the candidate: any `Reject` wins. A TVL 1.2 chance constraint is the exception: it rejects on any non-pass, including inconclusive counts. A chance constraint with zero trials is not a `Reject`: its check is undefined, and the gate returns `Error` (`zero_trials`).
 
 ## Search remains replaceable
 

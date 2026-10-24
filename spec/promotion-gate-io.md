@@ -122,7 +122,7 @@ runtime may use `metric_ref` upstream to resolve how each objective was computed
 ## 2. Output: Decision + Evidence Bundle
 
 ```yaml
-decision: "Reject"   # "Promote" | "Reject" | "NoDecision"
+decision: "Reject"   # "Promote" | "Reject" | "NoDecision" | "Error"
 
 evidence:
   per_objective:
@@ -186,7 +186,7 @@ evidence:
       ci_upper: 0.0660             # One-sided upper bound at confidence γ
       threshold: 0.05
       confidence: 0.99
-      verdict: "fail"              # "pass" | "fail"
+      verdict: "fail"              # "pass" | "fail" | "error" (undefined check, e.g. zero_trials)
       reason: "ci_upper (0.0660) > threshold (0.05)"
 
   summary:
@@ -305,6 +305,8 @@ ci_upper = beta.ppf(1 - alpha_tail, k + 1, n - k) if k < n else 1.0
 
 **Pass condition**: ci_upper ≤ θ
 
+**Precondition**: n ≥ 1. With n = 0, or no trial count, the check is undefined: the constraint gets verdict `"error"` with code `zero_trials`, and the gate returns the decision `"Error"` (§5.0).
+
 **Note**: This is one-sided; we only care that the true violation rate is BELOW the threshold.
 
 ---
@@ -348,6 +350,25 @@ Adjusting the inferiority family cannot make a candidate promotable. It can only
 ---
 
 ## 5. Decision Logic
+
+### 5.0 Error
+
+Return `"Error"` first, before any other branch, when a check is undefined. Today this is a chance constraint with zero trials or no trial count (`zero_trials`, Definition 9.8 of the formal semantics). `Error` is neither `Reject` nor `NoDecision`. The evidence bundle lists the codes in `summary.chance_error_codes`, and `summary.decision_reason` names the constraints.
+
+`tvl-ci-gate` reports this decision as `Decision: Error` and exits 2. With `--json` it prints:
+
+```json
+{
+  "ok": false,
+  "decision": "Error",
+  "error": "zero_trials: no trials for chance constraints: toxicity_rate",
+  "codes": ["zero_trials"],
+  "warnings": [],
+  "evidence": { "...": "..." }
+}
+```
+
+A measurement file read by `tvl-ci-gate` must already have `trials` of at least 1 under the measurement schema, so the CLI refuses such a file before the gate runs. The `Error` decision covers bundles passed to the gate in Python.
 
 ### 5.1 Promote Decision
 
@@ -423,3 +444,4 @@ Return `"NoDecision"` otherwise, including when non-inferiority has not been est
 | `missing_epsilon` | No min_effect for standard objective |
 | `invalid_direction` | Unknown objective direction |
 | `missing_band_target` | Banded objective without target |
+| `zero_trials` | Chance constraint with zero trials or no trial count; the gate returns `Error` |

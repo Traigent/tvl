@@ -32,7 +32,7 @@ chance_outcomes:
 Canonical rules:
 
 - `objective_values.<name>` must provide either `samples` or `mean/std/n`.
-- `chance_outcomes.<name>` must provide `violations` and `trials`.
+- `chance_outcomes.<name>` must provide `violations` and `trials`, with `trials` at least 1. The measurement schema refuses a file with `trials: 0`; a bundle with zero trials given to the gate in Python gets the decision `Error` (`zero_trials`).
 - Quantile metrics use batch-level quantile observations, not raw per-request latencies.
 
 ## CLI contract

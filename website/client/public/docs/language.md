@@ -446,7 +446,7 @@ Here `latency_slo` names a violation-count measurement. The evidence bundle bind
 
 `threshold: 0.05` bounds the violation rate, not latency. The constraint passes only when the one-sided Clopper–Pearson upper bound at confidence `0.95` is at most `0.05`. The gate computes this bound separately for each constraint on the candidate's counts. Confidence is separate from promotion `alpha` and does not establish coverage across candidate selection.
 
-Missing named measurements or required counts make CLI evidence not promotion-ready (`missing_chance_counts`), before a decision is evaluated. Evaluated chance results with positive trials whose upper bound exceeds the threshold, including inconclusive ones, fail the constraint and lead to `Reject`. Zero trials is different: the formal semantics (§9.6) says no decision can be computed and requires an error (`zero_trials`). The current Python gate instead marks the constraint failed, which leads to `Reject`; this is a known discrepancy with the specification.
+Missing named measurements or required counts make CLI evidence not promotion-ready (`missing_chance_counts`), before a decision is evaluated. Evaluated chance results with positive trials whose upper bound exceeds the threshold, including inconclusive ones, fail the constraint and lead to `Reject`. Zero trials is different: the chance check is undefined without trials (formal semantics §9.6, Definition 9.8), so the gate returns the decision `Error` with the code `zero_trials`, neither `Reject` nor `NoDecision`, before any other decision branch. A measurement file read by `tvl-ci-gate` or `tvl-measure-validate` must already have `trials` of at least 1 under the measurement schema; `zero_trials` covers bundles passed to the gate in Python. When the gate returns `Error`, `tvl-ci-gate` prints `Decision: Error` and exits 2.
 
 ### Chance constraints and promotion monitors
 
@@ -458,7 +458,7 @@ Chance constraints provide a hard acceptance filter: every non-pass rejects. Pro
 | `NoDecision` | `Reject` | `NoDecision` | `NoDecision` |
 | `Promote` | `Reject` | `NoDecision` | `Promote` |
 
-Validation errors remain errors before this join. The specification states no preference for which construct new modules should use; choose according to the intended treatment of inconclusive evidence.
+Validation errors remain errors before this join; a gate `Error` such as `zero_trials` is returned before it. The specification states no preference for which construct new modules should use; choose according to the intended treatment of inconclusive evidence.
 
 Notes:
 

@@ -1283,7 +1283,7 @@ not enabled, and with `response_action_unsupported` for an action it cannot carr
 | `tvl-validate` | module or pack | any issue, warnings included |
 | `tvl-lint` | module or pack | any issue (no schema check) |
 | `tvl-compose --pack` / `--meet` | module + pack(s); with `--meet`, module + one module or pack | any composition error |
-| `tvl-ci-gate module incumbent candidate` | module + two bundles | not `Promote` (including `NoDecision` and not ready) |
+| `tvl-ci-gate module incumbent candidate` | module + two bundles | not `Promote` (including `NoDecision`, `Error` and not ready) |
 | `tvl-compile-runtime` | module or pack + token map | any error, or unreadable input |
 
 ## 11. What TVL 1.3 cannot express

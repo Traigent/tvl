@@ -165,6 +165,13 @@ This document catalogs the diagnostic codes of the module and pack linter (`tvl.
 - **Example**: `structural: ["model = 'gpt-4o'"]` (a bare string) or `{ when: "zero_shot = true" }` (no `then`)
 - **Remediation**: Write each entry as `{ when: ..., then: ... }` or `{ expr: ... }`.
 
+### `structural_undecided_without_solver`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: OR-Tools is not installed, and the fallback search neither found a satisfying assignment nor tried every value of every domain (for example, the module has a float TVAR). Satisfiability is undecided. The checker does not report this as UNSAT. It exits 2; with `--json` the result has `status: "undecided"` and an `issues` list holding this code.
+- **Example**: a module whose structural constraints involve a float TVAR, checked without OR-Tools, where the sampled values find no witness
+- **Remediation**: Install OR-Tools (`pip install ortools`) and run the check again.
+
 ---
 
 ## Derived Constraint Errors
@@ -207,9 +214,9 @@ This document catalogs the diagnostic codes of the module and pack linter (`tvl.
 
 ### `invalid_budget_max_spend`
 - **Severity**: error
-- **Description**: `exploration.budgets.max_spend_usd` is not positive.
-- **Example**: `budgets: { max_spend_usd: 0 }`
-- **Remediation**: Set `max_spend_usd` to a positive number.
+- **Description**: `exploration.budgets.max_spend_usd` is negative.
+- **Example**: `budgets: { max_spend_usd: -1 }`
+- **Remediation**: Set `max_spend_usd` to 0 or a positive number; 0 means no paid spending is allowed.
 
 ### `invalid_budget_max_wallclock`
 - **Severity**: error
@@ -361,6 +368,14 @@ This document catalogs the diagnostic codes of the module and pack linter (`tvl.
 - **Description**: A chance constraint `threshold` is not a number in [0, 1].
 - **Example**: `threshold: 1.5`
 - **Remediation**: Set `threshold` to a violation-rate bound between 0 and 1.
+
+
+### `zero_trials`
+- **Severity**: error
+- **Reported by**: the promotion gate (`epsilon_pareto_gate` in the Python package) and the `chance` report of `validate_measurement`; `tvl-ci-gate` when the gate returns it
+- **Description**: A chance constraint has `trials: 0`, or no trial count. The chance check is undefined without trials (precondition of Definition 9.8 in the formal semantics), so the gate returns the decision `Error`, which is neither `Reject` nor `NoDecision`. This is checked before any other decision branch. When the gate returns `Error`, `tvl-ci-gate` prints `Decision: Error` and exits 2; with `--json` it prints `{ "ok": false, "decision": "Error", "error": ..., "codes": ["zero_trials"], "warnings": ..., "evidence": ... }`. A measurement file read by `tvl-ci-gate` or `tvl-measure-validate` is first checked against the measurement schema, which requires `trials` to be present and at least 1, so such a file is refused earlier (exit 2, with an `error` message and no `decision`). `zero_trials` therefore shows up when the gate is called from Python on a bundle that did not pass through that schema check.
+- **Example**: `chance_outcomes: { safety: { violations: 0, trials: 0 } }`
+- **Remediation**: Provide at least one trial for every chance constraint.
 
 ---
 
@@ -795,6 +810,12 @@ These codes come from the `composites` block introduced by RFC 0002 (`formalizat
 
 ## Schema Validation Errors
 
+### `duplicate_key`
+- **Severity**: error (at parse time)
+- **Description**: A YAML mapping repeats a key (RFC 0001 §3.5(4)). The file is rejected as it is read, before any other check. The message names the key, its line and its column, for example `duplicate_key: duplicate mapping key 'tvl' (line 3, column 1)`. A key written explicitly next to a `<<` merge, overriding the key it would inherit, is not a duplicate.
+- **Example**: a module with two top-level `tvars:` keys
+- **Remediation**: Keep one copy of the key and merge the values into it.
+
 ### `schema_error`
 - **Severity**: error
 - **Description**: Module fails JSON Schema validation.
@@ -910,7 +931,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `invalid_convergence_threshold` | error | Exploration | Bad threshold |
 | `invalid_convergence_window` | error | Exploration | Bad window |
 | `invalid_budget_max_trials` | error | Operational | max_trials not positive |
-| `invalid_budget_max_spend` | error | Operational | max_spend_usd not positive |
+| `invalid_budget_max_spend` | error | Operational | max_spend_usd negative |
 | `invalid_budget_max_wallclock` | error | Operational | max_wallclock_s not positive |
 | `unsupported_derived_expression` | error | Operational | Derived constraint not `symbol OP value` |
 | `unknown_derived_symbol` | error | Operational | env.context symbol not defined |
@@ -919,12 +940,14 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `duplicate_domain_value` | error | Domain | Repeated enum member |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
+| `structural_undecided_without_solver` | error | Structural | No OR-Tools; fallback could not decide |
 | `derived_references_bindings` | error | Derived | Bindings in derived |
 | `empty_objectives` | error | Objective | No objectives |
 | `duplicate_objective` | error | Objective | Duplicate objective name |
 | `invalid_direction` | error | Objective | Bad direction |
 | `unknown_min_effect_objective` | error | Policy | min_effect key not an objective |
 | `invalid_chance_threshold` | error | Policy | Bad chance threshold |
+| `zero_trials` | error | Policy | Chance constraint with no trials; gate decision Error |
 | `invalid_cvars` | error | CVAR (1.1) | cvars not a list |
 | `invalid_cvar_decl` | error | CVAR (1.1) | CVAR entry not an object |
 | `invalid_cvar_name` | error | CVAR (1.1) | Bad CVAR name |
@@ -984,6 +1007,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `missing_stop_signal` | error | Composite (1.2) | signal_accept without signal |
 | `missing_stop_predicate` | error | Composite (1.2) | external_accept without predicate |
 | `stop_signal_outside_state` | error | Composite (1.2) | Stop input not in state_keys |
+| `duplicate_key` | error | Schema | Repeated YAML mapping key (parse time) |
 | `schema_error` | error | Schema | JSON Schema violation |
 | `invalid_document` | error | Schema | Top level is not a mapping |
 | `unverifiable_registry_domain` | warning | Formal | Registry domain used |
@@ -1150,7 +1174,7 @@ Reactive constructs require quoted `tvl_version` "1.4" or later ("1.5" is also a
 | `tvl-validate`, `tvl-lint` | no issue, or only `info` issues | any `error` or `warning` issue |
 | `tvl-compose` | composed | any composition error or unreadable input |
 | `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
-| `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, not ready, or any error |
+| `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, `Error` (an undefined check such as `zero_trials`), not ready, or any error |
 
 ## TVL 1.5 diagnostics
 
