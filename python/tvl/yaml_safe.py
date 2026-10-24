@@ -30,6 +30,16 @@ class YAMLLimitError(yaml.YAMLError):
     """Raised when a YAML document exceeds a safety limit (size or alias budget)."""
 
 
+class DuplicateKeyError(yaml.constructor.ConstructorError):
+    """Raised when a YAML mapping repeats a key (RFC 0001 §3.5(4): MUST reject at parse time).
+
+    Subclasses ``yaml.YAMLError`` via ``ConstructorError`` so existing handlers
+    surface it as a normal parse failure. ``code`` is ``duplicate_key``.
+    """
+
+    code = "duplicate_key"
+
+
 class _YAMLFloat(float):
     """Float subclass retaining original YAML decimal lexeme when precision was lost in binary64."""
 
@@ -75,6 +85,31 @@ class _BoundedSafeLoader(yaml.SafeLoader):
                     f"({MAX_YAML_ALIASES}); possible entity-expansion DoS"
                 )
         return super().compose_node(parent, index)
+
+    def construct_mapping(self, node: Any, deep: bool = False) -> Any:
+        # Check the ORIGINAL pairs, before merge-key flattening: an explicit key
+        # legitimately overrides a key inherited through ``<<``, which is not a duplicate.
+        if isinstance(node, yaml.MappingNode):
+            seen: set = set()
+            for key_node, _value_node in node.value:
+                if key_node.tag == "tag:yaml.org,2002:merge":
+                    continue
+                try:
+                    key = self.construct_object(key_node, deep=True)
+                    hash(key)
+                except Exception:  # noqa: BLE001 - unhashable keys are reported by the base class
+                    continue
+                if key in seen:
+                    mark = key_node.start_mark
+                    raise DuplicateKeyError(
+                        "while constructing a mapping",
+                        node.start_mark,
+                        f"duplicate_key: duplicate mapping key {key!r} "
+                        f"(line {mark.line + 1}, column {mark.column + 1})",
+                        mark,
+                    )
+                seen.add(key)
+        return super().construct_mapping(node, deep=deep)
 
     def construct_yaml_float(self, node: Any) -> Any:
         val = super().construct_yaml_float(node)
