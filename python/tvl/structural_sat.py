@@ -94,15 +94,25 @@ WITNESS_TOO_LARGE_CODE = "structural_witness_too_large"
 ILL_TYPED_CODE = "structural_ill_typed_atom"
 NON_FINITE_CODE = "structural_non_finite_domain"
 UNRESOLVED_DOMAIN_CODE = "structural_unresolved_domain"
+PAIR_TABLE_TOO_LARGE_CODE = "structural_pair_table_too_large"
 
 _ORDERING_OPS = {"<", "<=", ">", ">="}
-_REGISTRY_PLACEHOLDER_PREFIX = "__registry_unresolved_"
+# Largest allowed-assignment table one TVAR-vs-TVAR equality atom may build. Domains are
+# deduplicated first (so an enum-vs-enum table has at most min(|D|, |D'|) rows); this bound
+# is counted BEFORE any table is materialised.
+_MAX_PAIR_TABLE = 1_000_000
 
 
 class _EncodingOverflow(Exception):
     def __init__(self, variable: str) -> None:
         super().__init__(variable)
         self.variable = variable
+
+
+class _PairTableTooLarge(Exception):
+    def __init__(self, left: str, right: str, rows: int) -> None:
+        super().__init__(left, right, rows)
+        self.left, self.right, self.rows = left, right, rows
 
 
 def _undecided(code: str, message: str) -> "UndecidedStructuralResult":
@@ -194,6 +204,8 @@ def build_structural_model(module: Dict[str, Any]) -> StructuralModel:
         domains = extract_domains(module.get("tvars", {}))
     except ExactLiteralLimitError as exc:
         raise StructuralParseError(f"TVAR domain literal out of bounds: {exc}") from exc
+    for domain in domains.values():
+        _dedupe_enum_values(domain)
     model = cp_model.CpModel() if cp_model is not None else None
     variables: Dict[str, Any] = {}
 
@@ -279,6 +291,13 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
         _encode_expression_assumptions(model, var_map, domains, structural.expressions)
     except _EncodingOverflow as exc:
         return _overflow_result(exc.variable)
+    except _PairTableTooLarge as exc:
+        return _undecided(
+            PAIR_TABLE_TOO_LARGE_CODE,
+            f"Structural satisfiability could not be decided: the equality between TVARs "
+            f"'{exc.left}' and '{exc.right}' needs a table of at least {exc.rows} equal-value "
+            f"pairs, above the limit of {_MAX_PAIR_TABLE}. Narrow their domains.",
+        )
 
     solver = cp_model.CpSolver()
     assumption_literals = [expr.assumption for expr in structural.expressions if expr.assumption is not None]
@@ -387,6 +406,9 @@ def _non_finite_issue(tvars: Any) -> Optional[str]:
     false on NaN); they are rejected before any encoding.
     """
     stack: List[Tuple[Any, List[Any]]] = [(tvars, ["tvars"])]
+    # Containers already expanded, by identity: an alias cycle (``&d [*d]``) or shared alias
+    # is scanned once, so the walk terminates and stays linear in the distinct nodes.
+    seen: set = set()
     while stack:
         node, path = stack.pop()
         if isinstance(node, float) and not math.isfinite(node):
@@ -395,6 +417,10 @@ def _non_finite_issue(tvars: Any) -> Optional[str]:
                 f"{'.'.join(str(p) for p in path)} is {node!r}; TVL numeric domains are rationals "
                 "(formal semantics Definitions 3.1-3.2), so NaN and infinities are not admitted."
             )
+        if isinstance(node, (dict, list, tuple)):
+            if id(node) in seen:
+                continue
+            seen.add(id(node))
         if isinstance(node, dict):
             stack.extend((v, path + [k]) for k, v in node.items())
         elif isinstance(node, (list, tuple)):
@@ -406,12 +432,24 @@ def _is_empty_enum(domain: Domain) -> bool:
     return domain.kind == "enum" and not domain.values
 
 
-def _is_placeholder(value: Any) -> bool:
-    if isinstance(value, str):
-        return value.startswith(_REGISTRY_PLACEHOLDER_PREFIX)
-    if isinstance(value, tuple):
-        return any(_is_placeholder(v) for v in value)
-    return False
+def _dedupe_enum_values(domain: Domain) -> None:
+    """Drop repeated enum members, keeping the first of each exact value (:func:`_atom_key`).
+
+    Definition 3.6 interprets ``[v1, ..., vn]`` and ``{set: [...]}`` as the SET
+    ``{v1, ..., vn}``, so repeats carry no meaning; keeping them only multiplied the
+    TVAR-equality tables (``[1] * 20000`` on both sides built 4e8 pairs).
+    """
+    if domain.kind != "enum" or not domain.values:
+        return
+    seen: set = set()
+    unique: List[Any] = []
+    for value in domain.values:
+        key = _atom_key(value)
+        if key not in seen:
+            seen.add(key)
+            unique.append(value)
+    if len(unique) != len(domain.values):
+        domain.values = unique
 
 
 def _element_class(domain: Domain) -> str:
@@ -420,8 +458,9 @@ def _element_class(domain: Domain) -> str:
         return "num"
     if domain.kind == "bool":
         return "bool"
-    values = domain.values or []
-    if not values or any(_is_placeholder(v) for v in values):
+    # Registry status is declaration provenance (Domain.unresolved), never a value's
+    # spelling: an explicit enum member "__registry_unresolved_x" is an ordinary string.
+    if domain.unresolved or not domain.values:
         return "unresolved"
     return "num" if _is_numeric_enum(domain) else "enum"
 
@@ -661,13 +700,48 @@ _NOT_A_NUMBER = object()
 
 
 def _parse_tuple_number(stripped: str) -> Any:
-    """``float``/``int`` for a numeric element, else the ``_NOT_A_NUMBER`` sentinel."""
+    """``float``/``int`` for a numeric element, else the ``_NOT_A_NUMBER`` sentinel.
+
+    A float component keeps its exact source value, as scalar literals do: the rational is
+    read from the literal TEXT by :func:`bounded_fraction` (never from binary64) and carried
+    on the returned float, so :func:`_atom_key` compares ``0.100000000000000001`` exactly
+    against a domain member with the same lexeme instead of against binary64 ``0.1``.
+    """
     try:
         if "." in stripped or "e" in stripped.lower():
-            return float(stripped)
-        return int(stripped)
+            number = float(stripped)
+        else:
+            return int(stripped)
     except ValueError:
         return _NOT_A_NUMBER
+    if not math.isfinite(number):
+        return number
+    try:
+        exact = bounded_fraction(stripped)
+    except ExactLiteralLimitError as exc:
+        raise StructuralParseError(f"numeric literal out of bounds: {exc}") from exc
+    except (ValueError, ZeroDivisionError):
+        return number
+    if Fraction(repr(number)) == exact:
+        return number
+    return _ExactFloat(number, stripped)
+
+
+class _ExactFloat(float):
+    """A float literal component whose source decimal binary64 cannot hold exactly.
+
+    ``model._exact`` reads ``_raw_lexeme`` (the same protocol as the YAML loader's floats).
+    """
+
+    __slots__ = ("_raw_lexeme",)
+
+    def __new__(cls, value: float, raw_lexeme: str) -> "_ExactFloat":
+        obj = super().__new__(cls, value)
+        obj._raw_lexeme = raw_lexeme
+        return obj
+
+    def __repr__(self) -> str:
+        return self._raw_lexeme
 
 
 def _unescape_string(s: str) -> str:
@@ -924,6 +998,11 @@ def _encode_enum_pair(
     left_groups: Dict[Any, List[int]] = {}
     for idx, value in enumerate(domain.values or []):
         left_groups.setdefault(_atom_key(value), []).append(idx)
+    # Count the table before building it (members are deduplicated by build_structural_model,
+    # but direct callers may pass raw Domains).
+    rows = sum(len(left_groups.get(_atom_key(value), ())) for value in rhs_domain.values or [])
+    if rows > _MAX_PAIR_TABLE:
+        raise _PairTableTooLarge(domain.path, rhs_domain.path, rows)
     pairs = sorted(
         (i, j)
         for j, value in enumerate(rhs_domain.values or [])

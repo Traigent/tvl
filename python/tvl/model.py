@@ -115,6 +115,11 @@ class Domain:
     # When unset (None) the legacy grid is used: origin 0, step 1/precision.
     origin: Optional[Fraction] = None
     step: Optional[Fraction] = None
+    # Declaration provenance: True iff the domain (or a tuple component of it) is
+    # registry-backed and so has no resolved values here (formal semantics Definition 3.6:
+    # registry interpretation is undefined). Its ``values`` are placeholders; this flag,
+    # never a string prefix, is what marks them.
+    unresolved: bool = False
 
     @property
     def grid_origin(self) -> Fraction:
@@ -427,6 +432,31 @@ def _resolve_component_values(name: str, idx: int, comp: Any) -> List[Any]:
     )
 
 
+def _has_registry_component(components: Any) -> bool:
+    """True iff a (possibly nested) tuple component resolves through its ``registry`` key.
+
+    Mirrors the precedence of :func:`_resolve_component_values`: ``values``/``set``, then a
+    non-empty ``range``, then nested ``components``, then ``registry``.
+    """
+    stack = [components]
+    seen: set = set()
+    while stack:
+        specs = stack.pop()
+        if not isinstance(specs, list) or id(specs) in seen:
+            continue
+        seen.add(id(specs))
+        for idx, comp in enumerate(specs):
+            if not isinstance(comp, dict) or "values" in comp or "set" in comp:
+                continue
+            if "range" in comp and _resolve_range_values("", idx, comp):
+                continue
+            if "components" in comp:
+                stack.append(comp["components"])
+            elif "registry" in comp:
+                return True
+    return False
+
+
 def _enumerate_tuple_product(name: str, components: Any) -> List[Any]:
     """Enumerate the Cartesian product of tuple component domains.
 
@@ -466,6 +496,7 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
 
     if kind == "enum":
         values: List[Any]
+        unresolved = False
         if isinstance(spec, dict):
             if "set" in spec:
                 values = list(spec.get("set", []))
@@ -473,8 +504,10 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                 # Registry-backed domains are resolved externally; keep a small placeholder
                 # so downstream tooling can operate without crashing.
                 values = ["__registry_unresolved_0__", "__registry_unresolved_1__"]
+                unresolved = True
             elif "components" in spec:
                 values = _enumerate_tuple_product(name, spec["components"])
+                unresolved = _has_registry_component(spec["components"])
             else:
                 raise ValueError(f"{name}: unsupported enum domain spec {spec}")
         else:
@@ -483,7 +516,7 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
             values = sorted(values)
         if not values:
             raise ValueError(f"{name}: enum domain requires values")
-        return Domain(path=name, kind="enum", values=values)
+        return Domain(path=name, kind="enum", values=values, unresolved=unresolved)
 
     if kind in {"int", "float"}:
         minimum: Optional[float] = None
@@ -515,7 +548,7 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                 return Domain(path=name, kind="enum", values=values)
             elif "registry" in spec:
                 # Registry-backed domains are treated as opaque enums until resolved externally.
-                return Domain(path=name, kind="enum", values=[])
+                return Domain(path=name, kind="enum", values=[], unresolved=True)
         return Domain(
             path=name, kind=kind, minimum=minimum, maximum=maximum, precision=precision,
             origin=origin, step=step,

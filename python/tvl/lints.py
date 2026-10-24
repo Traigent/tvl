@@ -1674,10 +1674,16 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
 def _first_non_finite(node: Any) -> Optional[Tuple[List[Any], float]]:
     """(relative path, value) of the first NaN/infinite float inside ``node``, else None."""
     stack: List[Tuple[Any, List[Any]]] = [(node, [])]
+    # Containers already expanded, by identity, so an alias cycle (``&d [*d]``) terminates.
+    seen: set = set()
     while stack:
         current, path = stack.pop()
         if isinstance(current, float) and not math.isfinite(current):
             return path, current
+        if isinstance(current, (dict, list, tuple)):
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
         if isinstance(current, dict):
             stack.extend((v, path + [k]) for k, v in current.items())
         elif isinstance(current, (list, tuple)):
