@@ -754,3 +754,18 @@ schema named here are normative where they differ.
   normative for validator implementations". The validators have since been
   implemented; the normative surface syntax is `spec/grammar/tvl.ebnf` and
   `spec/grammar/tvl.schema.json`.
+- **`target` (`TargetProperty`) is a closed identifier.** §3.5 types the certificate
+  field `target` and the `ctx_core` entry `target` as `TargetProperty` but never
+  defines that type. It is an opaque identifier string that names the target
+  property, with no nested fields and no payload. So the field is one of the closed
+  shapes of §3.5, and P8 covers it. This matches the Phase 3 model checker:
+  `FreshnessContext.target` and `Certificate.target` are plain strings
+  (`tests/model_checking/model.py:209`, `:256`). The `ctx_core` hash covers `target`
+  (`:231`), and validity requires `cert.target = ctx_now.target` by string equality
+  (`:274`). The model accepts any string; it applies no lexical pattern. The tests
+  use labels such as `"tgt"` (`tests/model_checking/test_certificate.py:36`). The
+  reference validators in `python/tvl/` never read a certificate, so they apply no
+  check to `target`. Instead they refuse promotion whenever a module is in a strict
+  mode that needs certificates (`python/tvl/measurement.py:323-336`). Any statistical
+  level or bound that a target names stays outside the certificate, as §3.5 already
+  requires for extra context.
