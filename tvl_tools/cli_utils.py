@@ -9,6 +9,11 @@ import yaml
 from tvl.yaml_safe import safe_load
 
 
+def blocking_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Issues that decide ok/exit status: everything except severity "info"."""
+    return [i for i in issues if i.get("severity") != "info"]
+
+
 def format_issue_line(issue: dict[str, Any]) -> str:
     """Format one diagnostic for text output, printing its location exactly once.
 

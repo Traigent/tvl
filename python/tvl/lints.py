@@ -2894,6 +2894,7 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
     - W6001: Registry-backed domains (no formal semantics for resolve())
     - W6002: Callable types (protocol implementation not formally defined)
     - W6003: Inadequate float precision (SMT encoding may lose injectivity)
+    - outside_proved_subset: cvars / policies / composites declarations
 
     Args:
         doc: The TVL module document
@@ -2903,6 +2904,11 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
         List of warning issues
     """
     issues: List[Issue] = []
+
+    # outside_proved_subset: one warning per construct family that the Lean
+    # proof tree (proofs/TVL/*.lean) does not model. Callable domains are
+    # covered by unverifiable_callable_type below, so they are not repeated.
+    issues.extend(_outside_proved_subset_issues(doc))
 
     tvars = doc.get("tvars") or []
     if not isinstance(tvars, list):
@@ -2953,6 +2959,40 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
                 issues.append(precision_issue)
 
     return issues
+
+
+_OUTSIDE_PROVED_SUBSET_FAMILIES = (
+    ("cvars", "cvars (RFC 0001 calibrated variables)"),
+    ("policies", "policies (RFC 0001)"),
+    ("composites", "composites (RFC 0002)"),
+)
+
+
+def _outside_proved_subset_issues(doc: Dict[str, Any]) -> List[Issue]:
+    """Warn once per declared construct family absent from the Lean proofs.
+
+    Presence of at least one declaration triggers the warning; an empty or
+    absent section does not. See proofs/PROOF_SUMMARY.md (coverage note).
+    """
+    out: List[Issue] = []
+    for key, label in _OUTSIDE_PROVED_SUBSET_FAMILIES:
+        value = doc.get(key)
+        if not isinstance(value, list) or not value:
+            continue
+        out.append({
+            "code": "outside_proved_subset",
+            "severity": "info",
+            "message": (
+                f"Module uses {label}, which is outside the machine-proved "
+                "(Lean) subset. Proved guarantees (type soundness, SMT "
+                "encoding soundness) do not cover this construct. See "
+                "proofs/PROOF_SUMMARY.md."
+            ),
+            "path": [key],
+            "construct": key,
+            "formal_property": f"No Lean model of {key} exists in proofs/TVL",
+        })
+    return out
 
 
 def _check_float_precision(
