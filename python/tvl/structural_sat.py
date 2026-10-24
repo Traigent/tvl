@@ -10,7 +10,7 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
-from .model import Domain, ExactFloat, extract_domains, _exact
+from .model import Domain, exact_to_str, extract_domains, _exact
 from .structural_parser import DNF, Literal, StructuralParseError, clause_to_string, parse_expression
 
 
@@ -35,6 +35,14 @@ class Condition:
     operator: str
     value: Any
     rhs_ident: Optional[str] = None
+    # Exact rational of a numeric literal, from its source text (None for non-numeric literals).
+    # Conditions built without one take the decimal of the value's shortest repr.
+    exact: Optional[Fraction] = None
+
+    def __post_init__(self) -> None:
+        if self.exact is None and self.rhs_ident is None and _is_plain_number(self.value):
+            key = _num(self.value)
+            self.exact = key if isinstance(key, Fraction) else None
 
 
 @dataclass
@@ -51,6 +59,10 @@ class StructuralResult:
     assignment: Optional[Dict[str, Any]]
     unsat_core: Optional[List[Dict[str, Any]]]
     core_metadata: Optional[Dict[str, Any]] = None
+    # Exact witness: name -> exact decimal / "p/q" string for numeric values (non-numeric
+    # values unchanged). ``assignment`` keeps plain binary64 floats for compatibility, and
+    # two distinct grid points may round to the same float there; this field never does.
+    exact_assignment: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -69,6 +81,7 @@ _INT_LIMIT = 2**62
 
 ENCODING_OVERFLOW_CODE = "structural_encoding_overflow"
 SOLVER_INCONCLUSIVE_CODE = "structural_solver_inconclusive"
+WITNESS_UNVERIFIED_CODE = "structural_witness_unverified"
 
 
 class _EncodingOverflow(Exception):
@@ -101,6 +114,41 @@ def _overflow_result(variable: str) -> "UndecidedStructuralResult":
         f"'{variable}' exceeds the solver's signed 64-bit integer range. Narrow its range "
         "or use a coarser resolution.",
     )
+
+
+def _is_plain_number(v: Any) -> bool:
+    return isinstance(v, (int, float, Fraction)) and not isinstance(v, bool)
+
+
+def _num(v: Any) -> Any:
+    """Comparison key of a number: its exact rational when finite, else the float itself.
+
+    ``Fraction`` compares exactly against +-inf and is never equal to NaN, so mixing the
+    two keeps IEEE semantics for non-finite values and exact semantics for the rest.
+    """
+    if isinstance(v, float) and not math.isfinite(v):
+        return v
+    return _exact(v)
+
+
+def _sat_result(expressions: List["Expression"], exact: Dict[str, Any]) -> "StructuralResult":
+    """Report SAT only after re-verifying the exact witness against every expression.
+
+    ``exact`` holds float values as ``Fraction``. The public ``assignment`` carries plain
+    floats (compatibility); ``exact_assignment`` carries the exact values as strings.
+    """
+    if not all(_evaluate_expression(expr, exact) for expr in expressions):
+        return _undecided(
+            WITNESS_UNVERIFIED_CODE,
+            "Structural satisfiability could not be decided: the solver's witness does not "
+            "satisfy the constraints under exact evaluation.",
+        )
+    assignment = {name: float(v) if isinstance(v, Fraction) else v for name, v in exact.items()}
+    exact_assignment = {
+        name: exact_to_str(_num(v)) if _is_plain_number(v) and isinstance(_num(v), Fraction) else v
+        for name, v in exact.items()
+    }
+    return StructuralResult(ok=True, assignment=assignment, unsat_core=None, exact_assignment=exact_assignment)
 
 
 def _index_bounds(domain: Domain) -> Tuple[int, int]:
@@ -200,11 +248,11 @@ def check_structural(module: Dict[str, Any]) -> StructuralResult:
     status = _solve_under_assumptions(solver, model, assumption_literals, have_assumptions)
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        assignment = {
-            name: domains[name].decode(int(solver.Value(var)))
+        exact = {
+            name: domains[name].decode_exact(int(solver.Value(var)))
             for name, var in var_map.items()
         }
-        return StructuralResult(ok=True, assignment=assignment, unsat_core=None)
+        return _sat_result(structural.expressions, exact)
 
     # Only INFEASIBLE proves UNSAT; MODEL_INVALID, UNKNOWN, ... are inconclusive.
     if status != cp_model.INFEASIBLE:
@@ -307,14 +355,26 @@ def _convert_literal_value(token_type: Optional[str], raw: Any) -> Any:
     return _convert_untyped_literal(raw)
 
 
-def _exact_float(raw: str) -> Any:
-    """A float literal carrying the exact rational of its source text."""
-    value = float(raw)
-    try:
-        exact = Fraction(raw.strip())
-    except (ValueError, ZeroDivisionError):
-        return value
-    return ExactFloat(value, exact)
+def _exact_float(raw: str) -> float:
+    return float(raw)
+
+
+def _literal_exact(raw: Any, value: Any) -> Optional[Fraction]:
+    """Exact rational of a numeric literal, read from its SOURCE TEXT (never from binary64)."""
+    if not _is_plain_number(value):
+        return None
+    if isinstance(raw, str):
+        try:
+            return Fraction(raw.strip())
+        except (ValueError, ZeroDivisionError):
+            pass
+    key = _num(value)
+    return key if isinstance(key, Fraction) else None
+
+
+def _value_condition(ident: str, operator: str, token_type: Optional[str], raw: Any) -> "Condition":
+    value = _convert_literal_value(token_type, raw)
+    return Condition(ident, operator, value, exact=_literal_exact(raw, value))
 
 
 def _convert_number_token(raw: str) -> Any:
@@ -481,7 +541,7 @@ def _integrate_literal(clauses: List[List[Condition]], literal: Literal, tvar_na
 
 
 def _integrate_membership(clauses: List[List[Condition]], literal: Literal) -> List[List[Condition]]:
-    values = [_convert_literal_value(t, v) for t, v in zip(literal.value_types, literal.values)]
+    values = list(zip(literal.value_types, literal.values))
     if not values:
         if literal.negated:
             return clauses
@@ -490,35 +550,37 @@ def _integrate_membership(clauses: List[List[Condition]], literal: Literal) -> L
         new_clauses: List[List[Condition]] = []
         for clause in clauses:
             extended = list(clause)
-            for value in values:
-                extended.append(Condition(literal.ident, "!=", value))
+            for token_type, raw in values:
+                extended.append(_value_condition(literal.ident, "!=", token_type, raw))
             new_clauses.append(extended)
         return new_clauses
     new_clauses = []
     for clause in clauses:
-        for value in values:
+        for token_type, raw in values:
             new_clause = list(clause)
-            new_clause.append(Condition(literal.ident, "==", value))
+            new_clause.append(_value_condition(literal.ident, "==", token_type, raw))
             new_clauses.append(new_clause)
     return new_clauses
 
 
 def _integrate_interval(clauses: List[List[Condition]], literal: Literal) -> List[List[Condition]]:
     left, right, op1, op2 = literal.values
-    left_value = _convert_literal_value("NUMBER", left)
-    right_value = _convert_literal_value("NUMBER", right)
     new_clauses: List[List[Condition]] = []
     if literal.negated:
+        # not (left op1 x op2 right)  ==  x below the lower bound  or  x above the upper bound,
+        # where a strict bound ("<") excludes the endpoint, so its negation includes it.
+        below = "<" if op1 == "<=" else "<="
+        above = ">" if op2 == "<=" else ">="
         for clause in clauses:
-            new_clauses.append(list(clause) + [Condition(literal.ident, "<", left_value)])
-            new_clauses.append(list(clause) + [Condition(literal.ident, ">", right_value)])
+            new_clauses.append(list(clause) + [_value_condition(literal.ident, below, "NUMBER", left)])
+            new_clauses.append(list(clause) + [_value_condition(literal.ident, above, "NUMBER", right)])
         return new_clauses
     map_op_left = {"<=": ">=", "<": ">"}
     map_op_right = {"<=": "<=", "<": "<"}
     for clause in clauses:
         new_clause = list(clause)
-        new_clause.append(Condition(literal.ident, map_op_left.get(op1, ">="), left_value))
-        new_clause.append(Condition(literal.ident, map_op_right.get(op2, "<="), right_value))
+        new_clause.append(_value_condition(literal.ident, map_op_left.get(op1, ">="), "NUMBER", left))
+        new_clause.append(_value_condition(literal.ident, map_op_right.get(op2, "<="), "NUMBER", right))
         new_clauses.append(new_clause)
     return new_clauses
 
@@ -531,8 +593,7 @@ def _integrate_comparison(
     raw = literal.values[0]
     if value_type == "IDENT" and raw in tvar_names and operator in {"==", "!="}:
         return [clause + [Condition(literal.ident, operator, None, rhs_ident=raw)] for clause in clauses]
-    value = _convert_literal_value(value_type, raw)
-    return [clause + [Condition(literal.ident, operator, value)] for clause in clauses]
+    return [clause + [_value_condition(literal.ident, operator, value_type, raw)] for clause in clauses]
 
 
 def _normalize_operator(operator: str, negated: bool) -> str:
@@ -703,10 +764,10 @@ def _encode_value_comparison(
     op = condition.operator
     if domain.kind == "enum" and op in {"<", "<=", ">", ">="} and _is_numeric_enum(domain):
         # Non-numeric enums keep the legacy index comparison (the lint rejects them upstream).
-        _encode_enum_ordering(model, var, domain, op, condition.value, bool_var)
+        _encode_enum_ordering(model, var, domain, op, condition, bool_var)
         return
     try:
-        encoded_value = _encode_literal_value(domain, op, condition.value)
+        encoded_value = _encode_literal_value(domain, op, condition)
     except Exception:
         model.Add(bool_var == 0)
         return
@@ -717,8 +778,8 @@ def _encode_value_comparison(
         # Variable bounds are within +-_INT_LIMIT, so clamping preserves every comparison.
         encoded_value = max(-_INT_LIMIT - 1, min(_INT_LIMIT + 1, encoded_value))
         if domain.kind == "float" and op in {">", "<"}:
-            # _encode_float_literal already moved a strict bound to the nearest admissible grid
-            # index (floor+1 / ceil-1), so the comparison against it is non-strict.
+            # _encode_float_literal moved a strict bound to the nearest admissible grid index
+            # (floor+1 / ceil-1) of the EXACT rational index, so the comparison is non-strict.
             op = ">=" if op == ">" else "<="
         _reify_comparison(model, var, op, encoded_value, bool_var)
     else:
@@ -735,22 +796,26 @@ def _encode_enum_ordering(
     var: cp_model.IntVar,
     domain: Domain,
     op: str,
-    value: Any,
+    condition: "Condition",
     bool_var: cp_model.BoolVar,
 ) -> None:
     """T-Cmp on a numeric enum: reify membership over the indices whose VALUE satisfies ``op``.
 
-    String/bool enums or a non-numeric literal cannot be ordered: the atom is false.
+    Values and literal compare as exact rationals. String/bool enums or a non-numeric
+    literal cannot be ordered: the atom is false.
     """
     values = list(domain.values or [])
+    value = condition.exact
 
-    def numeric(x: Any) -> bool:
-        return isinstance(x, (int, float)) and not isinstance(x, bool)
-
-    if not numeric(value) or not values or not all(numeric(v) for v in values):
+    if value is None or not values or not all(_is_plain_number(v) for v in values):
         model.Add(bool_var == 0)
         return
-    test = {"<": lambda a: a < value, "<=": lambda a: a <= value, ">": lambda a: a > value, ">=": lambda a: a >= value}[op]
+    test = {
+        "<": lambda a: _num(a) < value,
+        "<=": lambda a: _num(a) <= value,
+        ">": lambda a: _num(a) > value,
+        ">=": lambda a: _num(a) >= value,
+    }[op]
     allowed = [i for i, v in enumerate(values) if test(v)]
     others = [i for i in range(len(values)) if i not in set(allowed)]
     if allowed:
@@ -763,38 +828,27 @@ def _encode_enum_ordering(
         model.Add(bool_var == 1)
 
 
-def _encode_literal_value(domain: Domain, op: str, value: Any) -> Optional[int]:
+def _encode_literal_value(domain: Domain, op: str, condition: "Condition") -> Optional[int]:
     """Encode a literal for comparison; ``None`` means an off-grid float equality."""
-    if domain.kind == "float" and isinstance(value, (int, float)):
-        return _encode_float_literal(domain, op, value)
+    value, exact = condition.value, condition.exact
+    if domain.kind == "float" and exact is not None:
+        return _encode_float_literal(domain, op, exact)
+    if domain.kind == "enum" and exact is not None:
+        # Numeric enum members match a numeric literal by exact value (as in the fallback).
+        for idx, member in enumerate(domain.values or []):
+            if _is_plain_number(member) and _num(member) == exact:
+                return idx
+        raise ValueError(f"{domain.path}: value {value!r} not in enum {domain.values}")
     return domain.encode(value)
 
 
-def _encode_legacy_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
-    val = float(value)
-    P = domain.precision
-    if op in {"==", "!="}:
-        scaled = val * P
-        rounded = round(scaled)
-        if abs(scaled - rounded) > 1e-9:
-            return None
-        return int(rounded)
-    if op == ">=":
-        return math.ceil(val * P)
-    if op == ">":
-        return math.floor(val * P) + 1
-    if op == "<=":
-        return math.floor(val * P)
-    if op == "<":
-        return math.ceil(val * P) - 1
-    return domain.encode(value)
+def _encode_float_literal(domain: Domain, op: str, exact: Fraction) -> Optional[int]:
+    """Grid index bound for ``x <op> exact`` on the float grid, computed exactly.
 
-
-def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
-    """Grid index bound for ``x <op> value`` on the exact Definition 3.6 grid."""
-    if domain.step is None and domain.origin is None:
-        return _encode_legacy_float_literal(domain, op, value)
-    idx = domain.grid_index(value)
+    Both the Definition 3.6 grid and the legacy origin-0 / step-1/precision grid go through
+    the rational index (exact - origin) / step, so ceil/floor never see binary64 rounding.
+    """
+    idx = domain.grid_index(exact)
     if op in {"==", "!="}:
         # Exact: an off-grid value equals no grid point.
         return int(idx) if idx.denominator == 1 else None
@@ -806,7 +860,7 @@ def _encode_float_literal(domain: Domain, op: str, value: Any) -> Optional[int]:
         return math.floor(idx)
     if op == "<":
         return math.ceil(idx) - 1
-    return domain.encode(value)
+    return domain.encode(exact)
 
 
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
@@ -817,7 +871,7 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
 
     solution = _search_assignment(order, candidates, expressions, assignment, 0)
     if solution is not None:
-        return StructuralResult(ok=True, assignment=solution, unsat_core=None)
+        return _sat_result(expressions, solution)
 
     # No witness found. A sampled search only proves UNSAT when every domain was
     # enumerated completely; otherwise fail closed with an explicit undecided result.
@@ -882,7 +936,7 @@ def _widen_to_full_grids(domains: Dict[str, Domain], candidates: Dict[str, List[
         if domain is None or count is None or count > _MAX_FULL_GRID:
             continue
         lo = int(domain._encode_bound_lower(domain.minimum))
-        grids[name] = [domain.decode(i) for i in range(lo, lo + count)]
+        grids[name] = [domain.decode_exact(i) for i in range(lo, lo + count)]
     if not grids:
         return set()
     product = 1
@@ -921,6 +975,8 @@ def _collect_condition_values(values: Dict[str, set], expressions: List[Expressi
                 if isinstance(cond.value, (int, float)):
                     vals.add(cond.value + 1)
                     vals.add(cond.value - 1)
+                if cond.exact is not None:
+                    vals.add(cond.exact)
 
 
 def _candidate_list(domain: Domain, val_set: set) -> List[Any]:
@@ -946,18 +1002,21 @@ def _int_candidates(domain: Domain, val_set: set) -> List[Any]:
 
 
 def _float_candidates(domain: Domain, val_set: set) -> List[Any]:
-    valid = [v for v in val_set if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    """Distinct in-bounds grid points among the known values, as exact ``Fraction`` values."""
+    valid = [v for v in val_set if _is_plain_number(v)]
     if not valid:
         valid = _fallback_candidates(domain, float)
-    if domain.step is not None or domain.origin is not None:
-        # Exact grid: keep distinct grid indices, represented by their exact values.
-        indices = set()
-        for v in valid:
-            if domain.contains(v):
-                indices.add(domain.encode(v))
-        return [domain.decode(i) for i in sorted(indices)]
-    valid = [float(v) for v in valid]
-    return sorted({v for v in valid if domain.contains(v)})
+    lower = domain._encode_bound_lower(domain.minimum)
+    upper = domain._encode_bound_upper(domain.maximum)
+    indices = set()
+    for v in valid:
+        idx = domain.grid_index(v)  # exact rational index, on both grid forms
+        if idx.denominator != 1:
+            continue
+        i = int(idx)
+        if (lower is None or i >= lower) and (upper is None or i <= upper):
+            indices.add(i)
+    return [domain.decode_exact(i) for i in sorted(indices)]
 
 
 def _fallback_candidates(domain: Domain, cast: Any) -> List[Any]:
@@ -996,15 +1055,8 @@ def _evaluate_expression(expr: Expression, assignment: Dict[str, Any]) -> bool:
     return False
 
 
-def _is_exact_number(v: Any) -> bool:
-    return isinstance(v, Fraction) or isinstance(getattr(v, "exact", None), Fraction)
-
-
-def _is_plain_number(v: Any) -> bool:
-    return isinstance(v, (int, float, Fraction)) and not isinstance(v, bool)
-
-
 def _evaluate_condition(cond: Condition, assignment: Dict[str, Any]) -> bool:
+    """Evaluate one atom; numeric operands always compare as exact rationals."""
     value = assignment.get(cond.ident)
     if value is None:
         return False
@@ -1013,11 +1065,10 @@ def _evaluate_condition(cond: Condition, assignment: Dict[str, Any]) -> bool:
         if target is None:
             return False
     else:
-        target = cond.value
+        target = cond.exact if cond.exact is not None else cond.value
     op = cond.operator
-    if _is_exact_number(value) or _is_exact_number(target):
-        if _is_plain_number(value) and _is_plain_number(target):
-            value, target = _exact(value), _exact(target)
+    if _is_plain_number(value) and _is_plain_number(target):
+        value, target = _num(value), _num(target)
     if op == "==":
         return value == target
     if op == "!=":

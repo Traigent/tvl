@@ -402,20 +402,22 @@ def test_candidate_values_float_domain() -> None:
     domains = {"t": Domain(path="t", kind="float", minimum=0.0, maximum=1.0, precision=10)}
     exprs = [_expr([Condition("t", ">", 0.3), Condition("t", "<", 0.35)])]
     result = _candidate_values(domains, exprs)
-    assert result == {"t": [0.0, 0.3, 1.0]}
-    assert all(isinstance(v, float) for v in result["t"])
+    # Float candidates are exact grid points (Fraction): evaluation never sees binary64 rounding
+    # (code-review-2 finding 2). Same points as before: 0.0, 0.3, 1.0.
+    assert result == {"t": [Fraction(0), Fraction(3, 10), Fraction(1)]}
+    assert all(isinstance(v, Fraction) for v in result["t"])
 
 
 def test_candidate_values_unbounded_float_without_conditions() -> None:
     assert _candidate_values({"t": Domain(path="t", kind="float")}, []) == {"t": [0.0]}
 
 
-def test_candidate_values_float_int_condition_values_become_floats() -> None:
+def test_candidate_values_float_int_condition_values_become_exact_grid_points() -> None:
     domains = {"t": Domain(path="t", kind="float", minimum=0, maximum=10, precision=1)}
     exprs = [_expr([Condition("t", "==", 4)])]
     result = _candidate_values(domains, exprs)
-    assert result == {"t": [0.0, 3.0, 4.0, 5.0, 10.0]}
-    assert all(isinstance(v, float) for v in result["t"])
+    assert result == {"t": [Fraction(v) for v in (0, 3, 4, 5, 10)]}
+    assert all(isinstance(v, Fraction) for v in result["t"])
 
 
 def test_candidate_values_unknown_kind_uses_condition_values_or_none() -> None:

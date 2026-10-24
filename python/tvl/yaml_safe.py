@@ -86,26 +86,50 @@ class _BoundedSafeLoader(yaml.SafeLoader):
                 )
         return super().compose_node(parent, index)
 
-    def _check_mapping_node_duplicates(self, node: Any, _depth: int = 0) -> None:
-        """Reject duplicate keys among a mapping node's own pairs and inside its merge sources.
+    def construct_document(self, node: Any) -> Any:
+        # Validate the whole composed graph BEFORE any construction: PyYAML's merge-key
+        # flattening mutates ``MappingNode.value`` in place, so duplicates must be judged on
+        # the original pairs, captured here, never on a node a previous merge rewrote.
+        self._check_duplicate_keys(node)
+        return super().construct_document(node)
 
-        Runs on the ORIGINAL pairs, before merge-key flattening: an explicit key may
-        override a key inherited through ``<<`` (not a duplicate), but a merge source that
-        itself repeats a key is a parse error (RFC 0001 section 3.5(4)).
+    def _check_duplicate_keys(self, root: Any) -> None:
+        """Reject a mapping node that repeats one of its own keys (RFC 0001 section 3.5(4)).
+
+        Every mapping node reachable from ``root`` is checked exactly once on its ORIGINAL
+        pairs, merge sources included (they are mapping nodes of the same graph). An explicit
+        key overriding a key inherited through ``<<`` is not a duplicate: merge entries are
+        not keys of the node. The walk is iterative with a visited set keyed by node
+        identity, so aliases cycles and shared sub-graphs cost O(nodes + edges) and there is
+        no depth limit to exceed (nothing is ever skipped).
         """
-        if _depth > 64 or not isinstance(node, yaml.MappingNode):
-            return
-        seen: set = set()
-        for key_node, value_node in node.value:
-            if key_node.tag == "tag:yaml.org,2002:merge":
-                sources = value_node.value if isinstance(value_node, yaml.SequenceNode) else [value_node]
-                for source in sources:
-                    self._check_mapping_node_duplicates(source, _depth + 1)
+        visited: set = set()
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            if id(node) in visited:
                 continue
+            visited.add(id(node))
+            if isinstance(node, yaml.SequenceNode):
+                stack.extend(node.value)
+            elif isinstance(node, yaml.MappingNode):
+                pairs = list(node.value)  # original pairs: nothing has been flattened yet
+                self._check_pairs(node, pairs)
+                for key_node, value_node in pairs:
+                    stack.append(key_node)
+                    stack.append(value_node)
+
+    def _check_pairs(self, node: Any, pairs: list) -> None:
+        seen: set = set()
+        for key_node, _value_node in pairs:
+            if key_node.tag in ("tag:yaml.org,2002:merge", "tag:yaml.org,2002:value"):
+                continue
+            if not isinstance(key_node, yaml.ScalarNode):
+                continue  # collection keys are unhashable; the base constructor reports them
             try:
                 key = self.construct_object(key_node, deep=True)
                 hash(key)
-            except Exception:  # noqa: BLE001 - unhashable keys are reported by the base class
+            except Exception:  # noqa: BLE001 - malformed/unhashable keys are reported by the base class
                 continue
             if key in seen:
                 mark = key_node.start_mark
@@ -117,10 +141,6 @@ class _BoundedSafeLoader(yaml.SafeLoader):
                     mark,
                 )
             seen.add(key)
-
-    def construct_mapping(self, node: Any, deep: bool = False) -> Any:
-        self._check_mapping_node_duplicates(node)
-        return super().construct_mapping(node, deep=deep)
 
     def construct_yaml_float(self, node: Any) -> Any:
         val = super().construct_yaml_float(node)
@@ -162,4 +182,9 @@ def safe_load(source: Any) -> Any:
             f"YAML input too large ({size} bytes > {MAX_YAML_BYTES} byte limit)"
         )
 
-    return yaml.load(data, Loader=_BoundedSafeLoader)
+    try:
+        return yaml.load(data, Loader=_BoundedSafeLoader)
+    except RecursionError as exc:
+        # PyYAML's composer and merge flattening recurse per nesting level; a pathologically
+        # deep document is rejected as a YAML error rather than escaping as RecursionError.
+        raise YAMLLimitError("YAML nesting too deep to parse safely") from exc

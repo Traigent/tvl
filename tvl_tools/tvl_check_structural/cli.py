@@ -166,6 +166,12 @@ def _write_temp_file(content: str, suffix: str = "") -> Path:
         return Path(tmp.name)
 
 
+def _witness(result: Any) -> Optional[dict[str, Any]]:
+    """The exact witness when the result carries one, else the float assignment."""
+    exact = getattr(result, "exact_assignment", None)
+    return exact if isinstance(exact, dict) else result.assignment
+
+
 def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
     if not isinstance(assignment, dict):
         return None
@@ -308,7 +314,7 @@ def _emit_candidate_validation(result: Any, candidate_payload: dict[str, Any], d
         "candidateId": candidate_payload.get("id") or "candidate",
         "status": status,
         "durationMs": duration_ms,
-        "witnessId": _build_witness_id(result.assignment) if result.ok else None,
+        "witnessId": _build_witness_id(_witness(result)) if result.ok else None,
         "timestamp": _current_timestamp(),
     }
     _emit_event(validation_event)
@@ -333,6 +339,9 @@ def _report_json(
         "ok": result.ok,
         "status": "passed" if result.ok else ("undecided" if getattr(result, "undecided", False) else "unsat"),
         "assignment": result.assignment,
+        # Exact witness (numeric values as exact decimal or "p/q" strings): grid points that
+        # round to the same binary64 float in "assignment" stay distinct here.
+        "exact_assignment": getattr(result, "exact_assignment", None),
         "unsat_core": result.unsat_core,
         "repair_candidates": candidates,
         "timestamp": _current_timestamp(),
@@ -347,7 +356,7 @@ def _report_json(
 def _report_text(result: Any) -> None:
     if result.ok:
         print("Structural constraints satisfiable.")
-        for name, value in sorted((result.assignment or {}).items()):
+        for name, value in sorted((_witness(result) or {}).items()):
             print(f"  {name}: {value}")
         raise SystemExit(0)
 

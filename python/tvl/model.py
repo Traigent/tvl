@@ -6,19 +6,30 @@ from fractions import Fraction
 from typing import Any, Dict, List, Optional
 
 
-class ExactFloat(float):
-    """A float that carries the exact rational it denotes.
+def exact_to_str(value: Fraction) -> str:
+    """Exact text of a rational: a terminating decimal when one exists, else ``"p/q"``.
 
-    Used for decimal literals and exact-grid witnesses so evaluation never depends
-    on the binary64 rounding of the displayed value.
+    Used for the public exact witness (``StructuralResult.exact_assignment``) so that
+    grid points binary64 cannot tell apart stay distinguishable.
     """
-
-    exact: Fraction
-
-    def __new__(cls, value: float, exact: Optional[Fraction] = None) -> "ExactFloat":
-        obj = super().__new__(cls, value)
-        obj.exact = exact if exact is not None else Fraction(repr(float(value)))
-        return obj
+    if value.denominator == 1:
+        return str(value.numerator)
+    den = value.denominator
+    twos = fives = 0
+    while den % 2 == 0:
+        den //= 2
+        twos += 1
+    while den % 5 == 0:
+        den //= 5
+        fives += 1
+    if den != 1:
+        return f"{value.numerator}/{value.denominator}"
+    digits = max(twos, fives)
+    scaled = value * 10**digits  # an integer by construction
+    sign = "-" if scaled < 0 else ""
+    text = str(abs(scaled.numerator)).rjust(digits + 1, "0")
+    whole, frac = text[:-digits], text[-digits:].rstrip("0")
+    return f"{sign}{whole}.{frac}" if frac else f"{sign}{whole}"
 
 
 @dataclass
@@ -79,30 +90,45 @@ class Domain:
             return value
 
         if self.kind == "float":
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, (int, float, Fraction)):
                 raise ValueError(f"{self.path}: expected float, got {value!r}")
-            if self.step is None and self.origin is None:
-                scaled = float(value) * self.precision  # legacy grid (origin 0, step 1/precision)
-            else:
-                # Exact grid (Definition 3.6): membership is exact, with no tolerance.
-                idx = self.grid_index(value)
-                if idx.denominator != 1:
+            if self.step is None and self.origin is None and not isinstance(value, Fraction):
+                # Legacy configuration-membership check (origin 0, step 1/precision), kept
+                # bit-for-bit (see tests/test_domain_encode_characterization.py). The structural
+                # solver never uses it for floats: literal thresholds and candidates go through
+                # the exact rational grid index (structural_sat._encode_float_literal).
+                scaled = float(value) * self.precision
+                rounded = round(scaled)
+                if abs(scaled - rounded) > 1e-9:
                     raise ValueError(
                         f"{self.path}: value {value!r} is not on the precision grid "
-                        f"(precision={self.precision}, resolution={float(self.grid_step)})"
+                        f"(precision={self.precision}, resolution={1/self.precision})"
                     )
-                return int(idx)
-            rounded = round(scaled)
-            if abs(scaled - rounded) > 1e-9:
+                return int(rounded)
+            # Exact grid (Definition 3.6): membership is exact, with no tolerance.
+            idx = self.grid_index(value)
+            if idx.denominator != 1:
                 raise ValueError(
                     f"{self.path}: value {value!r} is not on the precision grid "
-                    f"(precision={self.precision}, resolution={float(self.grid_step) if self.step is not None else 1/self.precision})"
+                    f"(precision={self.precision}, resolution={float(self.grid_step)})"
                 )
-            return int(rounded)
+            return int(idx)
 
         raise ValueError(f"{self.path}: unsupported domain kind {self.kind}")
 
     def decode(self, raw: int) -> Any:
+        """Public (JSON-compatible) value of an encoded index; floats are plain binary64.
+
+        Use :meth:`decode_exact` wherever the value is compared or evaluated.
+        """
+        if self.kind == "float":
+            if self.origin is None and self.step is None:
+                return raw / self.precision
+            return float(self.decode_exact(raw))
+        return self.decode_exact(raw)
+
+    def decode_exact(self, raw: int) -> Any:
+        """Exact value of an encoded index: a ``Fraction`` for floats (origin + raw * step)."""
         if self.kind == "bool":
             return bool(raw)
         if self.kind == "enum":
@@ -112,10 +138,7 @@ class Domain:
         if self.kind == "int":
             return raw
         if self.kind == "float":
-            if self.origin is None and self.step is None:
-                return raw / self.precision
-            exact = self.grid_origin + raw * self.grid_step
-            return ExactFloat(float(exact), exact)
+            return self.grid_origin + raw * self.grid_step
         return raw
 
     def contains(self, value: Any) -> bool:
@@ -150,8 +173,7 @@ class Domain:
         if value is None:
             return None
         if self.kind == "float":
-            if self.step is None and self.origin is None:
-                return int(math.ceil(float(value) * self.precision))
+            # Exact ceil of the rational grid index (legacy grid included).
             return int(math.ceil(self.grid_index(value)))
         return int(value)
 
@@ -159,21 +181,27 @@ class Domain:
         if value is None:
             return None
         if self.kind == "float":
-            if self.step is None and self.origin is None:
-                return int(math.floor(float(value) * self.precision))
             return int(math.floor(self.grid_index(value)))
         return int(value)
 
 
 def _exact(value: Any) -> Fraction:
-    """Exact rational of a decimal literal / float (via its shortest repr)."""
+    """Exact rational a number denotes.
+
+    A ``Fraction`` is already exact; an ``int`` is itself; a float denotes the decimal of
+    its YAML source lexeme when the loader retained one (binary64 could not hold it),
+    otherwise the decimal of its shortest repr.
+    """
     if isinstance(value, Fraction):
         return value
-    exact = getattr(value, "exact", None)
-    if isinstance(exact, Fraction):
-        return exact
     if isinstance(value, int):
         return Fraction(value)
+    raw = getattr(value, "_raw_lexeme", None)
+    if isinstance(raw, str):
+        try:
+            return Fraction(raw)
+        except (ValueError, ZeroDivisionError):
+            pass
     return Fraction(repr(float(value)))
 
 
