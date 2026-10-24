@@ -14,8 +14,10 @@ for commands, logs and scope.
 > `objectives`, and `promotion_policy`. **`cvars`/`policies` (RFC 0001,
 > 2026-06-05) and `composites` (RFC 0002, 2026-06-06) are not formalized
 > here**; nothing in `proofs/TVL/*.lean` models those constructs. See
-> `formalization/tvl-formal-semantics.md` §1.4 for the full disclosure (a
-> lint warning for this is tracked as follow-up work, not yet implemented).
+> `formalization/tvl-formal-semantics.md` §1.4 for the full disclosure. The
+> linter reports this with the info diagnostic `outside_proved_subset`, once
+> per construct family present (`cvars`, `policies`, `composites`); info
+> severity never affects the exit status.
 
 ---
 

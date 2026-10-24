@@ -2,9 +2,9 @@
 
 TVL verification answers whether a candidate satisfies a declared AI agent requirements contract. A positive result is scoped to the module, candidate, evaluation set, evaluator, environment, and evidence used by the check; it is not a universal safety or correctness claim.
 
-This page explains the verifier model behind the TVL CLI and the SAT/UNSAT terminology that appears in the specification and example fixtures.
+This page explains the verifier model behind the TVL CLI and the SAT/UNSAT terminology that appears in the specification and example fixtures. **SAT** (satisfiable) means at least one assignment of values meets every structural constraint; **UNSAT** (unsatisfiable) means none does.
 
-For the full mathematical treatment, see `tvl/formalization/tvl-formal-semantics.md`. This page is the user-facing implementation guide.
+For the full mathematical treatment, see `formalization/tvl-formal-semantics.md`. This page is the user-facing implementation guide.
 
 ## The Three Layers
 
@@ -37,6 +37,8 @@ Typical structural verifier outputs are:
 *   **SAT** + a witness assignment such as `model = "gpt-4o", retriever.k = 5`
 *   **UNSAT** + an UNSAT core or conflicting expression set showing which clauses cannot all hold together
 
+The solver result is exact when OR-Tools (a required dependency) is installed. If OR-Tools cannot be imported, the checker falls back to a search over sampled candidate values: domain bounds and the literals that constraints compare against, with neighbours. That fallback can miss a valid float assignment, so it can report UNSAT, with a core, for a satisfiable module. Treat a fallback UNSAT as unconfirmed.
+
 ## Structural Verifier
 
 Tool:
@@ -49,7 +51,7 @@ Purpose:
 
 *   load declared TVAR domains
 *   parse `constraints.structural`
-*   decide whether the constraint set is satisfiable
+*   decide whether the constraint set is satisfiable (exactly with OR-Tools; the fallback search described above can wrongly report UNSAT for float constraints)
 *   emit a witness assignment when satisfiable
 *   emit an UNSAT core or conflicting expressions when not satisfiable
 
@@ -68,9 +70,9 @@ What it does **not** check:
 
 Repository locations:
 
-*   CLI entry point: `tvl-check-structural` in `tvl/pyproject.toml`
-*   implementation: `tvl/tvl_tools/tvl_check_structural/cli.py`
-*   solver/model logic: `tvl/python/tvl/structural_sat.py`
+*   CLI entry point: `tvl-check-structural` in `pyproject.toml`
+*   implementation: `tvl_tools/tvl_check_structural/cli.py`
+*   solver/model logic: `python/tvl/structural_sat.py`
 
 ## Operational Verifier
 
@@ -88,7 +90,7 @@ Purpose:
 
 What it checks today in the reference implementation:
 
-*   positive and well-formed exploration budgets
+*   well-formed exploration budgets: positive `max_trials` and `max_wallclock_s`, and `max_spend_usd` at least 0 (0 means no paid spending is allowed)
 *   operational precondition expressions over numeric `env.context.*` symbols
 *   rejection of unsupported environment-field usage and rejection of binding references inside operational preconditions
 
@@ -100,9 +102,9 @@ What it does **not** check:
 
 Repository locations:
 
-*   CLI entry point: `tvl-check-operational` in `tvl/pyproject.toml`
-*   implementation: `tvl/tvl_tools/tvl_check_operational/cli.py`
-*   checking logic: `tvl/python/tvl/operational.py`
+*   CLI entry point: `tvl-check-operational` in `pyproject.toml`
+*   implementation: `tvl_tools/tvl_check_operational/cli.py`
+*   checking logic: `python/tvl/operational.py`
 
 ## Promotion-Evidence Checks
 
@@ -121,7 +123,7 @@ These tools work with measured evidence, chance constraints, and the `promotion_
 
 **Reading the exit status of `tvl-ci-gate`.** It exits 0 only for `Promote`. It exits 2 for `Reject`, for `NoDecision`, and for inputs it cannot use (bundles that are not promotion-ready, unreadable files, any error). A nonzero status alone therefore does not tell you which. With `--json`, read `decision` when it is present; when it is absent, read the `error` and `readiness_issues` fields. The exit-code table is in the error-codes reference.
 
-**Calibration.** The reference gate cannot validate calibration certificates. `tvl-ci-gate` refuses under every strict-mode trigger of RFC 0001 section 3.6 and RFC 0002 section 5: `promotion_policy.require_calibration.enabled`; a `cvar` whose `governance.require_calibration` is set; any declared `cvar` (each one has a certificate); a chance constraint in a module that has a `cvar` or a calibrated composite member; and a composite with a gate threshold, a `signal_accept` stop, an aggregate accept threshold, a cvar-valued cardinality, or an aggregate judge that references a composite with a calibrated member. A module with a chance constraint and nothing to certify still gets a decision. For a module requiring calibration certificates `tvl-ci-gate` reports the readiness issue `calibration_evidence_unsupported` and exits 2 without a decision. This differs from `NoDecision`: no evidence comparison ran.
+**Calibration.** The reference gate cannot validate calibration certificates. `tvl-ci-gate` refuses under every strict-mode trigger of RFC 0001 section 3.6 that is visible in the module, including the composite coverage fold of RFC 0002 section 3.6: `promotion_policy.require_calibration.enabled`; a `cvar` whose `governance.require_calibration` is set; any declared `cvar` (each one has a certificate); a chance constraint in a module that has a `cvar` or a calibrated composite member; and a composite with a gate threshold, a `signal_accept` stop, an aggregate accept threshold, a cvar-valued cardinality, or an aggregate judge that references a composite with a calibrated member. A module with a chance constraint and nothing to certify still gets a decision. The RFC 0001 trigger that comes from the operational profile (a selection target) is not covered: the gate does not receive the profile, so it cannot check it. For a module requiring calibration certificates `tvl-ci-gate` reports the readiness issue `calibration_evidence_unsupported` and exits 2 without a decision. This differs from `NoDecision`: no evidence comparison ran.
 
 ## Where Users Should Start
 
@@ -138,7 +140,7 @@ If you are trying to understand constraint syntax, read:
 
 If you want the full semantics, read:
 
-*   `tvl/formalization/tvl-formal-semantics.md`
+*   `formalization/tvl-formal-semantics.md`
 
 ## What Implementers Need To Support
 
@@ -156,4 +158,4 @@ If you want parity with the reference toolchain, also implement:
 3. Promotion-policy evaluation for incumbent vs candidate evidence
 4. Overlay composition if you support preprocessed layered specs
 
-The public contract is the semantic behavior, not the exact solver brand. You may use CP-SAT, SMT, brute-force enumeration for small domains, or another decision procedure, as long as SAT/UNSAT results and diagnostics remain faithful to the language semantics.
+The public contract is the semantic behavior, not the exact solver brand. You may use a CP-SAT solver (constraint programming with Boolean satisfiability techniques, as in OR-Tools, which the reference checker uses), an SMT solver (satisfiability modulo theories), brute-force enumeration for small domains, or another decision procedure, as long as SAT/UNSAT results and diagnostics remain faithful to the language semantics.

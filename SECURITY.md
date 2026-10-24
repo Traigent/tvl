@@ -34,9 +34,9 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 
 | Version | Status |
 |---------|--------|
-| 1.2.x | Supported |
-| 1.3 (draft) | Best effort |
-| Below 1.2 | Not supported |
+| 1.5.x | Supported |
+| 1.3.x–1.4.x | Best effort |
+| Below 1.3 | Not supported |
 
 ## Disclosure
 

@@ -48,7 +48,7 @@ The certificate should identify immutable versions or hashes for those artifacts
 
 This is a scoped statement. It does not establish that the agent is safe in every context, correct for every input, or superior under conditions that were not evaluated. Broader claims require broader requirements and evidence.
 
-Evaluator reliability is part of that scope. A pinned evaluator definition makes the judgment reproducible; it does not prove that the evaluator is valid, unbiased, calibrated, or appropriate for every population. Those properties need their own requirements and evidence.
+Evaluator reliability is part of that scope. A pinned evaluator definition makes the judgment repeatable on the same recorded observations; a stochastic evaluator also needs its randomness controlled or its samples recorded. Pinning does not prove that the evaluator is valid, unbiased, calibrated, or appropriate for every population. Those properties need their own requirements and evidence.
 
 TVL also separates two kinds of claims:
 
@@ -87,7 +87,7 @@ Those choices affect how an implementation finds or evaluates candidates. They d
 
 ## Relationship to PAC results
 
-Probably Approximately Correct results can be relevant to a particular optimizer or evaluation procedure. A PAC guarantee depends on a named algorithm, assumptions about the observations, a precise error definition, and a proof or cited theorem that applies to that setting.
+Probably Approximately Correct (PAC) results state that, with at least a stated probability (the confidence), an answer is within a stated error of the true one. Such results can be relevant to a particular optimizer or evaluation procedure. A PAC guarantee depends on a named algorithm, assumptions about the observations, a precise error definition, and a proof or cited theorem that applies to that setting.
 
 TVL therefore treats PAC parameters or claims as implementation-specific evidence unless a future language profile defines their full semantics and conformance requirements. The core language does not promise that every conforming optimizer discovers an approximate Pareto set with a stated probability.
 
