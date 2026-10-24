@@ -25,7 +25,7 @@ The TVL toolchain provides focused CLI tools for validation and CI integration:
 | Tool | Purpose |
 |------|---------|
 | `tvl-parse` | Parse YAML to a JSON abstract syntax tree (AST, the module as structured data), basic syntax checking |
-| `tvl-lint` | Normative lints: missing min_effect, duplicate TVARs, etc. |
+| `tvl-lint` | Normative lints: missing min_effect, duplicate TVARs (tuned variables: the settings a module declares with a type and a domain), etc. |
 | `tvl-validate` | JSON Schema + lint validation (combines parse + lint) |
 | `tvl-check-structural` | SAT/SMT satisfiability of structural constraints (a solver checks that at least one configuration meets all of them) |
 | `tvl-check-operational` | Static check of derived preconditions against the declared environment, plus budget checks (`max_trials` and `max_wallclock_s` must be positive, `max_spend_usd` at least 0; it does not estimate cost or observe a run) |
@@ -33,7 +33,7 @@ The TVL toolchain provides focused CLI tools for validation and CI integration:
 | `tvl-measure-validate` | Validate measurements against spec + promotion policy |
 | `tvl-ci-gate` | Offline promotion gate: compares incumbent and candidate measurement bundles under the module's promotion policy, prints `Promote`, `Reject`, `NoDecision` or `Error`, and exits 0 only for `Promote` |
 | `tvl-compose` | Flatten overlay files into TVL modules (`--validate` also runs schema + lint checks) |
-| `tvl-compile-runtime` | Compile a module or pack into a version-tagged runtime contract and local artifacts |
+| `tvl-compile-runtime` | Compile a module or a pack (a separate `tvl_pack` document holding an organization's floor of runtime requirements) into a version-tagged runtime contract and local artifacts |
 | `tvl-microsim-bridge` | Export Orientation RAG MicroSim presets (reads a legacy `configuration_space` block, not `tvars`) |
 
 ### Quick Validation
