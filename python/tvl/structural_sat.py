@@ -1375,33 +1375,45 @@ def _encode_grid_literal(domain: Domain, op: str, exact: Fraction) -> Optional[i
     raise ValueError(f"{domain.path}: unsupported operator {op!r}")
 
 
+def _undecided_without_solver() -> "UndecidedStructuralResult":
+    return _undecided(UNDECIDED_WITHOUT_SOLVER_CODE, UNDECIDED_WITHOUT_SOLVER_MESSAGE)
+
+
+class _SearchBudgetExceeded(Exception):
+    """The fallback search evaluated its whole budget of complete assignments."""
+
+
+class _SearchBudget:
+    def __init__(self, leaves: int) -> None:
+        self.remaining = leaves
+
+    def spend(self) -> None:
+        if self.remaining <= 0:
+            raise _SearchBudgetExceeded()
+        self.remaining -= 1
+
+
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
     candidates = _candidate_values(domains, expressions)
     full_grids = _widen_to_full_grids(domains, candidates)
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
     assignment: Dict[str, Any] = {}
 
-    solution = _search_assignment(order, candidates, expressions, assignment, 0)
+    try:
+        solution = _search_assignment(
+            order, candidates, expressions, assignment, 0, _SearchBudget(_MAX_FALLBACK_PRODUCT)
+        )
+    except _SearchBudgetExceeded:
+        # The product of the candidate lists (2**n for n Booleans) is past the budget and no
+        # witness turned up before it ran out: neither SAT nor UNSAT has been shown.
+        return _undecided_without_solver()
     if solution is not None:
         return _sat_result(expressions, solution, domains)
 
     # No witness found. A sampled search only proves UNSAT when every domain was
     # enumerated completely; otherwise fail closed with an explicit undecided result.
     if not _candidates_are_exhaustive(domains, candidates, full_grids):
-        return UndecidedStructuralResult(
-            ok=False,
-            assignment=None,
-            unsat_core=None,
-            undecided=True,
-            issues=[
-                {
-                    "code": UNDECIDED_WITHOUT_SOLVER_CODE,
-                    "message": UNDECIDED_WITHOUT_SOLVER_MESSAGE,
-                    "path": ["constraints", "structural"],
-                    "severity": "error",
-                }
-            ],
-        )
+        return _undecided_without_solver()
 
     core = _approximate_unsat_core(domains, expressions, candidates)
     return StructuralResult(ok=False, assignment=None, unsat_core=core)
@@ -1547,8 +1559,11 @@ def _search_assignment(
     expressions: List[Expression],
     assignment: Dict[str, Any],
     index: int,
+    budget: Optional["_SearchBudget"] = None,
 ) -> Optional[Dict[str, Any]]:
     if index == len(order):
+        if budget is not None:
+            budget.spend()
         if all(_evaluate_expression(expr, assignment) for expr in expressions):
             return dict(assignment)
         return None
@@ -1556,7 +1571,7 @@ def _search_assignment(
     name = order[index]
     for value in candidates.get(name, [None]):
         assignment[name] = value
-        result = _search_assignment(order, candidates, expressions, assignment, index + 1)
+        result = _search_assignment(order, candidates, expressions, assignment, index + 1, budget)
         if result is not None:
             return result
         assignment.pop(name, None)
