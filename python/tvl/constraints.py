@@ -202,14 +202,50 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
             text=expr,
         )
 
-    disjuncts: List[List[Atom]] = []
-    for disj in _OR_SPLIT.split(text):
-        disj = disj.strip()
-        if not disj:
-            continue
-        disjuncts.append(_parse_conjunction(disj))
+    try:
+        disjuncts: List[List[Atom]] = []
+        for disj in _OR_SPLIT.split(text):
+            disj = disj.strip()
+            if not disj:
+                continue
+            disjuncts.append(_parse_conjunction(disj))
+    except ConstraintParseError as err:
+        if err.code not in _GRAMMAR_FALLBACK_CODES:
+            raise
+        # A grammar-valid construct the flat regex parser cannot represent (chained
+        # comparison, ``not``, ``in {...}``, parentheses): parse it with the structural parser
+        # the linter and the checker use, then reduce it to the same flat atoms.
+        return _parse_with_structural_parser(text, err)
 
     return disjuncts or [[]]
+
+
+# Codes of the regex parser that mean "construct not representable", not "illegal text".
+_GRAMMAR_FALLBACK_CODES = frozenset(
+    {"unsupported_negation", "unsupported_interval", "constraint_parse_error", "illegal_ident"}
+)
+
+
+def _parse_with_structural_parser(text: str, original: "ConstraintParseError") -> List[List[Atom]]:
+    from .structural_parser import StructuralParseError, parse_expression as parse_structural
+    from .structural_sat import _expand_dnf
+
+    try:
+        conditions = _expand_dnf(parse_structural(text), set())
+    except (StructuralParseError, ValueError):
+        raise original from None
+    if not conditions:
+        # No clause at all (an empty ``in {}``): not representable, and never vacuously true.
+        raise original
+    disjuncts: List[List[Atom]] = []
+    for clause in conditions:
+        atoms: List[Atom] = []
+        for cond in clause:
+            if cond.rhs_ident is not None:
+                raise original
+            atoms.append(Atom(path=cond.ident, op=cond.operator, value=cond.value))
+        disjuncts.append(atoms)
+    return disjuncts
 
 
 def _parse_expression_list(expr: List[Any]) -> List[List[Atom]]:

@@ -115,16 +115,14 @@ def test_inline_implication_rejected_in_literal_position():
     assert exc.value.code == "unsupported_implication"
 
 
-def test_not_rejected_instead_of_uncaught_crash():
-    with pytest.raises(ConstraintParseError) as exc:
-        parse_expression("not x = 5")
-    assert exc.value.code == "unsupported_negation"
+def test_not_is_parsed_not_rejected():
+    # ``not`` is grammar-valid (tvl.ebnf unary); it used to be rejected as unsupported_negation.
+    assert parse_expression("not x = 5") == [[Atom(path="x", op="!=", value=5)]]
 
 
-def test_interval_atom_rejected():
-    with pytest.raises(ConstraintParseError) as exc:
+def test_interval_atom_with_non_numeric_bounds_still_rejected():
+    with pytest.raises(ConstraintParseError):
         parse_expression("lo <= x <= hi")
-    assert exc.value.code == "unsupported_interval"
 
 
 def test_quoted_value_containing_arrow_is_not_an_inline_implication():
@@ -162,11 +160,11 @@ def test_config_validate_rejects_unparseable_constraint_fail_closed():
     makes validate_configuration fail closed (ok is False)."""
     module = {
         "tvars": [{"name": "x", "type": "int", "domain": {"range": [0, 5]}}],
-        "constraints": {"structural": [{"expr": "not x = 5"}]},
+        "constraints": {"structural": [{"expr": "x in []"}]},
     }
     result = validate_configuration(module, {"assignments": {"x": 1}})
     assert result["ok"] is False
-    assert any(i["code"] == "unsupported_negation" for i in result["constraints"])
+    assert any(i["code"] == "constraint_parse_error" for i in result["constraints"])
 
 
 # --------------------------------------------------------------------------- #
@@ -377,7 +375,7 @@ def test_normalize_failures_uses_parse_issue_message_not_generic_violation():
 def test_config_validate_cli_text_mode_prints_parse_issue_code_and_message(tmp_path, capsys):
     module = _base_tvl_module()
     module["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [0, 5]}}]
-    module["constraints"] = {"structural": [{"expr": "not x = 5"}]}
+    module["constraints"] = {"structural": [{"expr": "x in []"}]}
     module_path = tmp_path / "mod.tvl.yml"
     module_path.write_text(yaml.safe_dump(module))
 
@@ -397,6 +395,6 @@ def test_config_validate_cli_text_mode_prints_parse_issue_code_and_message(tmp_p
     assert exc.value.code == 5
     out = capsys.readouterr().out
     assert "[constraint #None]" not in out
-    assert "unsupported_negation" in out
-    assert "Negation ('not') is not supported by config-validate: 'not x = 5'" in out
-    assert "{'expr': 'not x = 5'}" not in out
+    assert "constraint_parse_error" in out
+    assert "Could not parse constraint literal: 'x in []'" in out
+    assert "{'expr': 'x in []'}" not in out
