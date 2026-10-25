@@ -8,6 +8,7 @@ from fractions import Fraction
 from math import lcm
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from .model import ExactLiteralLimitError, exact_number_or_none
 from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
 
 Issue = Dict[str, Any]
@@ -3162,12 +3163,16 @@ def _check_float_precision(
 
 
 def _exact_decimal(value: Any) -> Optional[Fraction]:
-    """The exact rational a YAML number was written as; None if it has none."""
+    """The exact rational a YAML number was written as; None if it has none.
+
+    A float whose YAML source lexeme was retained (one binary64 cannot hold, such as
+    ``0.100000000000000001``) is read from that lexeme, never from ``str(value)``.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     try:
-        return Fraction(str(value))
-    except (ValueError, ZeroDivisionError, OverflowError):
+        return exact_number_or_none(value)
+    except (ValueError, ZeroDivisionError, OverflowError, ExactLiteralLimitError):
         return None
 
 
