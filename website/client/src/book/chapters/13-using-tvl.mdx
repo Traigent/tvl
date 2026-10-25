@@ -114,7 +114,7 @@ A complete bundle, for ten examples:
 
 The fields, in the format of the <Ref to="promotion-evidence" section="“Canonical measurement bundle”">promotion evidence contract</Ref>:
 
-- `module_id`, optional, must equal the module's `tvl.module`, or the gate reports an input error, not a decision. `config_id`, `bundle_id`: your labels.
+- `module_id`, optional: a nonempty value must equal the module's `tvl.module`, or the gate reports an input error, not a decision. `config_id`, `bundle_id`: your labels.
 - `objective_values.<name>`, one per objective: either `samples`, one value per example, or `mean`, `std`, the standard deviation of those values (not of the mean), and `n`, the number of examples (<ChapterLink n={6} />). Add `paired: true` only when both bundles hold the same examples in the same order.
 - `chance_outcomes.<name>`: `violations` and `trials`. `monitor_outcomes.<name>` in TVL 1.3: `n` resolved units and `k` of them violating; optionally `u` unresolved, `pl` unplaceable and `complete` (<ChapterLink n={10} />). `summary`: anything else.
 
@@ -132,7 +132,7 @@ tvl-ci-gate tvl/my-agent.tvl.yml out/incumbent.measure.yml out/candidate.measure
 
 <h2 id="ch13-ci">A CI job</h2>
 
-`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; its tests run the shell `run:` steps locally, except the installs, and check the rest's configuration, not hosted Actions. Copy it and change the paths in `env` and the `on` filters. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job. The three 2s differ in `gate.json`: Reject and NoDecision carry a `decision` and evidence; an unusable input has only an `error`:
+`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; its tests run the shell `run:` steps locally, except the installs, and check the rest's configuration, not hosted Actions. Copy it and change the paths in `env` and the `on` filters. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job. The 2s differ in `gate.json`: Reject and NoDecision carry a `decision` and evidence; an unusable input has only an `error` (a legacy zero-trial bundle gives decision `Error`):
 
 | Gate exit | `decision` in `gate.json` | Meaning | What to do |
 |---|---|---|---|
@@ -180,7 +180,7 @@ A short script, left out above, prints the decision. Pin a commit in your instal
 4. **Gate.** `tvl-ci-gate … --json`: text mode prints an empty `Reason:` for 1.2 modules.
 5. **Deploy.** Your own step, only after Promote; the candidate becomes the incumbent. Each CI run pays for two evaluations. Identical evidence in both bundles gives NoDecision (or Reject, if the candidate fails a band or a chance constraint) and fails the job. Gate only changes under `tvl/` (`paths: ['tvl/**']` on `pull_request` and `push`); deploy agent-code changes your usual way.
 
-On Reject or NoDecision, do not re-run until it passes: each re-run is another chance for a false Promote (<ChapterLink n={6} />). Fix a new evaluation's size before you see results. For a production UNKNOWN (TVL 1.3), see <ChapterLink n={10} />.
+On Reject or NoDecision, do not re-sample until it passes: each fresh evaluation is another chance for a false Promote (<ChapterLink n={6} />). Fix a new evaluation's size before you see results. For a production UNKNOWN (TVL 1.3), see <ChapterLink n={10} />.
 
 <Misconception wrong="TVL will stop a bad deploy by itself.">
 <p>`tvl-ci-gate` prints a decision and exits; it stops a deploy only if your pipeline makes the deploy depend on that job. In TVL 1.3 production too, nothing happens on its own (<ChapterLink n={11} />).</p>
