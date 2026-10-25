@@ -1120,7 +1120,15 @@ differ from it.
   `no_accept` or `error` for one candidate exclude that candidate, while a judge
   that cannot be invoked at all is an `error`. These cases follow the reference
   runtime (Traigent Python SDK, `traigent/knobs/runtime.py` `_judge_max`,
-  `_judge_callable`, `_execute_ensemble`).
+  `_judge_callable`, `_execute_ensemble`). The owner accepted this resolution on
+  2026-10-25.
+- **`accept` over `judge_max` is a lint error (2026-10-25).** The text in §3.2
+  ("this RFC does not define the result of an `accept` over `judge_max`") and in §3.10
+  ("an `accept` over `judge_max` has no vote to read") is kept as the accepted record. By
+  owner ruling of 2026-10-25 the combination is rejected: the reference validator emits the
+  error `accept_over_judge_max` (`python/tvl/lints.py`, `_check_ensemble`; see
+  `docs/reference/error-codes.md`) for an ensemble whose `aggregate.kind` is `judge_max` and
+  that carries an `accept` block.
 - **Formulas for three §3.10 measures (2026-10-24).** §3.10 names `vote_margin`,
   `vote_agreement` and `gate_margin_pass_rate` but does not define them. The per-item
   definitions below are taken from the reference runtime (Traigent Python SDK,

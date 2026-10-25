@@ -1,0 +1,56 @@
+# Expected: ERROR accept_over_judge_max — a judge_max ensemble takes no vote, so an accept block has no statistic to read (RFC 0002 errata 2026-10-25).
+tvl:
+  module: corp.validation.p7
+environment:
+  snapshot_id: '2026-06-06T00:00:00Z'
+evaluation_set:
+  dataset: s3://datasets/validation/dev.parquet
+tvars:
+- name: cheap_model
+  type: enum[str]
+  domain:
+  - a
+  - b
+- name: strong_model
+  type: enum[str]
+  domain:
+  - c
+  - d
+- name: k_samples
+  type: int
+  domain:
+    range:
+    - 1
+    - 9
+cvars:
+- name: vote.accept_threshold
+  type: float
+  calibration:
+    source: ensemble_pool
+    signal: vote_margin
+    depends_on: [cheap_model, k_samples]
+constraints:
+  structural: []
+objectives:
+- name: quality
+  direction: maximize
+promotion_policy:
+  dominance: epsilon_pareto
+  alpha: 0.05
+  min_effect:
+    quality: 0.02
+composites:
+- name: scored
+  kind: ensemble
+  arms:
+  - stage: s
+    tuned_params: [cheap_model]
+  cardinality: k_samples
+  aggregate:
+    kind: judge_max
+    judge:
+      stage: judge_stage
+    accept:
+      kind: stat_at_least
+      stat: vote_margin
+      threshold: vote.accept_threshold

@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Lint error `non_finite_domain_value`: NaN or an infinity in a TVAR domain.
 - Parse-time error `complex_mapping_key`: a YAML mapping key that is a mapping or a sequence is rejected.
 - YAML loading limits: merge keys (`<<`) may copy at most 100,000 key/value pairs in total, a float literal may have at most 400 digits and an exponent within ±400, and a document nested too deeply to parse is rejected. Each is a YAML parse error.
+- Lint error `accept_over_judge_max`: an `accept` block on a `judge_max` ensemble aggregate is rejected, because `judge_max` takes no vote for `accept` to read (owner ruling 2026-10-25; RFC 0002 errata).
 
 ### Changed
 
@@ -28,6 +29,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - A repository-wide source authority rule: the formal semantics governs meaning, the grammar and schemas govern syntax, accepted RFCs govern where the semantics is silent, the Python implementation is reference behaviour, not normative, and the docs are informative (language reference and `GOVERNANCE.md`).
 - `SECURITY.md` supported versions: 1.5.x supported, 1.3.x–1.4.x best effort, below 1.3 not supported.
 - Formal semantics diagnostic tables now list the codes the implementation emits (for example `unknown_derived_symbol` in place of `derived_env_undefined`, and the `outside_proved_subset` info diagnostic).
+- Grammar (`spec/grammar/tvl.ebnf`): `str` is admitted as a tuple component (`tuple[int, str]`), matching the schema, the semantics and the implementation; `str` is still not a top-level type. The website copies are synced.
+- RFC 0002 errata: the owner accepted on 2026-10-25 the 2026-10-24 resolution that a judging failure under `judge_max` excludes only that candidate.
 - Formal semantics: a range `resolution` is optional, matching the grammar; the default step is 1 for an `int` range and 0.001 for a float range (§2.4). The language reference and the book now say the same; a float range inside a tuple component still needs a `resolution` in the schema.
 - RFC 0001 errata: the certificate field `target` (`TargetProperty`) is a closed, opaque identifier string with no nested fields (RFC 0001 §11).
 - RFC 0002 errata: definitions of the telemetry measures `vote_margin`, `vote_agreement` and `gate_margin_pass_rate`, taken from the reference runtime (RFC 0002 §11).

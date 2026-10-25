@@ -1314,6 +1314,14 @@ def _check_ensemble(decl: Dict[str, Any], ctx: _CompositeCtx) -> None:
         )
 
     accept = aggregate.get("accept")
+    if akind == "judge_max" and accept is not None:
+        ctx.add(
+            "accept_over_judge_max",
+            f"composite '{ctx.name}' has an accept block over a judge_max aggregate; "
+            "judge_max takes no vote, so there is no vote statistic to read "
+            "(RFC 0002 errata 2026-10-25)",
+            apath + ["accept"],
+        )
     if isinstance(accept, dict):
         cpath = apath + ["accept"]
         stat = accept.get("stat")
