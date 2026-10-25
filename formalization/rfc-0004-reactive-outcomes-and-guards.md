@@ -19,8 +19,10 @@ things a team running that loop needs cannot be written.
    limit, or have its deploy refused at the time of the effect (RFC 0003 §7.6 item 5). Each outcome is recorded only as
    the action state of the occurrence (RFC 0003 §11.6); no trigger event exists for it (RFC 0003 §4.1 `event_name`).
    "Tell the on-call engineer when the fix did not work" is not expressible.
-2. **An undecided requirement is silent.** When evidence keeps arriving but windows stay `UNKNOWN` (too few units, too
-   many unresolved), `evidence_liveness` stays LIVE (RFC 0003 §6.14) and no episode opens. A requirement can stay
+2. **An undecided requirement is silent.** When evidence keeps arriving but windows stay `UNKNOWN`, `evidence_liveness`
+   can stay LIVE and no episode opens. A window decided `UNKNOWN(inconclusive)` from real units carries usable
+   evidence; whether a window with too few units or too many unresolved units does is up to the evaluator profile
+   (RFC 0003 §6.14). A requirement can stay
    undecided for days without anyone being told.
 3. **A notification sees one monitor.** A trigger names exactly one monitor (RFC 0003 §4.1 `trigger`). "Page only if
    latency and the error rate are both breached" and "do not page about latency while the upstream-provider monitor is
@@ -31,10 +33,11 @@ and nothing else: no new action, no new authority, no window shape, no statistic
 established alerting or deployment system (§6).
 
 **Scope study.** The constructs were selected from a 38-scenario expressiveness study of TVL 1.3 against alerting and
-repair practice (SRE burn-rate alerting, Prometheus/Alertmanager, Datadog monitors, complex event processing, Dwyer's
-specification patterns, progressive-delivery analysis). Deliberately out of scope (§6): sliding windows and exact
-multi-window burn alerts, K-of-N persistence, aggregate budgets, comparison against a previous configuration (canary
-analysis), anomaly detection, calendars, success notifications, and guards on any action other than `notify`.
+repair practice (site reliability engineering (SRE) burn-rate alerting, Prometheus/Alertmanager, Datadog monitors, complex event processing, Dwyer's
+specification patterns, progressive-delivery analysis). Deliberately out of scope, with reasons in §6: sliding windows and
+exact multi-window burn alerts, K-of-N persistence (notify only after at least K breached windows among the last N), comparison against a previous configuration (canary analysis),
+success notifications, and guards on any action other than `notify`. Also out of scope, without a §6 entry: aggregate
+budgets, anomaly detection and calendars.
 
 ## 2. Design
 
@@ -81,12 +84,13 @@ approval has been given, until the first of:
 
 If the originating scope closes or the response revision changes after the optimization or deploy has started, the attempt stays open until that effect records its outcome or succeeds, and then closes; no later effect starts.
 
-The third group records **no outcome**: either nothing is left to repair, or a person decided. Waiting for approval or
+The last two closures (scope closure or revision change before the pending effect, and approval declined or expired
+before the effect starts) record **no outcome**: either nothing is left to repair, or a person decided. Waiting for approval or
 holding while authority is unreachable (RFC 0003 §7.3) keeps the attempt open and records nothing.
 
 **Outcomes.** Each attempt records at most one optimize outcome and at most one deploy outcome. Outcomes are terminal
 for their occurrence: a controller records one only when no retry of the same occurrence can change it (a retry of one
-occurrence is the same occurrence, RFC 0003 §7.4 item 1). How a controller retries one occurrence is its evaluator profile's (RFC 0003 §3.5), but
+occurrence is the same occurrence, RFC 0003 §7.4 item 1). How a controller retries one occurrence is defined by its evaluator profile (RFC 0003 §3.5), but
 a profile that supports this RFC states a **finite** retry bound (a count or a time) for deploy occurrences; reaching it
 records `deploy_failed`.
 
@@ -98,7 +102,7 @@ promotion evidence was invalid, `optimize_failed`; (3) otherwise `optimize_no_ca
 | Event | Recorded when (all while the attempt is open) |
 |---|---|
 | `optimize_no_candidate` | the optimization finished, its candidates' promotion evidence was valid, and the joined promotion gate (RFC 0003 §6.11) returned `Reject` or `NoDecision` for every candidate, or it produced none |
-| `optimize_failed` | the optimization will not reach a gate decision: it errored, it was cancelled by a person or the controller, it stopped at its cost limit, or a candidate's promotion evidence was invalid (`missing_monitor_counts`, RFC 0003 §5.9) |
+| `optimize_failed` | no candidate was promoted, and the optimization errored, was cancelled by a person or the controller, stopped at its cost limit, or had a candidate whose promotion evidence was invalid (`missing_monitor_counts`, RFC 0003 §5.9). Other candidates may already have returned `Reject` or `NoDecision` |
 | `deploy_refused` | the deploy occurrence reached the time of its effect and an effect-time check of RFC 0003 §7.6 item 3 did not hold; nothing was deployed |
 | `deploy_failed` | the checks held but the deployment write did not succeed and the controller has stopped retrying this occurrence; nothing changed in production (RFC 0003 §7.6 item 5) |
 
@@ -162,7 +166,7 @@ and both may fire over the same period when evidence is intermittent. Neither im
 
 ### 2.4 Guards on notifications (`only_while`, `unless`)
 
-A guard is a condition on another monitor's episode or on a repair attempt, checked when a `notify` rule fires. A
+A guard is a condition on a monitor's episode (usually another monitor's) or on a repair attempt, checked when a `notify` rule fires. A
 guard never changes the rule's trigger, scope or occurrence identity (RFC 0003 §7.4).
 
 **Evaluation (three-valued).** Each guard evaluates to TRUE, FALSE or UNDECIDED:
@@ -203,7 +207,7 @@ RFC 0003 T7 for triggers); its `rule` names an `optimize` rule of the same respo
 trigger `{rule: r, …}`, the trigger monitor of r. Build the directed graph over monitors with an edge from a rule's
 source monitor to each monitor named by an `episode_open` guard in its `unless`. A cycle, including a self-loop, is an
 error (`runtime_guard_cycle`): two monitors whose pages silence each other could both stay silent while both breach,
-and a page silenced by its own episode never fires. Alertmanager documents the same trap for inhibit rules.
+and a page silenced by its own episode is suppressed for as long as that episode is open. Alertmanager documents the same trap for inhibit rules.
 `attempt_open` guards add no edge: an attempt is a repair, not a notification, and silencing a page while its own
 repair runs (the inhibition pattern below) is intended.
 
@@ -290,7 +294,9 @@ Formal semantics §13 defines the attempt lifecycle and its outcome function (§
 over window records (§2.3), and guard evaluation as a function into {TRUE, FALSE, UNDECIDED} with Kleene connectives
 and the `notify` resolution of §2.4.
 
-Lean (`proofs/TVL/Runtime/Guards.lean`) formalizes the following statements, each with its recorded class:
+Lean (`proofs/TVL/Runtime/Guards.lean`) formalizes the following statements, each with its recorded class
+(`proofs/PROOF_SUMMARY.md`: SUBSTANTIVE means proved with content beyond its definitions; BY-CONSTRUCTION means proved
+but true by definition or by the chosen representation):
 
 - `undecided_never_suppresses` (SUBSTANTIVE, small): for every guard valuation, replacing any guard's value by
   UNDECIDED never turns "delivered" into "suppressed". A truth-table property of the resolution; it says nothing
@@ -361,8 +367,24 @@ notifications only and documents the mutual-inhibition trap.
 ## 7. Recorded decisions and limitations
 
 1. **Success outcomes** (§6): deferred beyond 1.4; no success notification trigger.
-2. **Contract format tags — closed, ruling A.** Projected new constructs use `/2` and version `"1.4"`; without them,
+2. **Contract format tags — closed (owner decision).** Projected new constructs use `/2` and version `"1.4"`; without them,
    artifacts use frozen `/1` and version `"1.3"`, regardless of authored version. Refusal rules are recorded in §3.
 3. **Guards in packs over module monitors.** Disallowed in 1.4; pack guards may name only pack monitors.
 4. **`attempt_open` for `deploy: never`.** The attempt closes when a promoted candidate exists; the candidate's later
    manual deployment is outside the response and untracked in 1.4.
+
+## 8. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-10-21 (TVL 1.4.0), with the errors below
+corrected in place.
+
+- **§2.2 `optimize_failed` (corrected in place).** The accepted table defined `optimize_failed` as "the optimization
+  will not reach a gate decision". That was wrong at acceptance: formal semantics Definition 13.3 records
+  `optimize_failed` whenever no candidate was promoted and the run did not complete normally or had a candidate with
+  invalid promotion evidence, even if other candidates already received `Reject` or `NoDecision`. The row now states
+  that condition, matching Definition 13.3.
+- **§2.4 guard cycles (corrected in place).** The accepted text said that "a page silenced by its own episode never
+  fires". That was wrong at acceptance: an `unless: episode_open` guard on the rule's own monitor suppresses the page
+  only while that episode is open, which is what the guard semantics of §2.4 give. The sentence now says the page is
+  suppressed for as long as that episode is open; the cycle is still an error (`runtime_guard_cycle`).
+

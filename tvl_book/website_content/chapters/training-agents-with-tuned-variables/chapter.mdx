@@ -20,7 +20,8 @@ primary_example: /examples/tool-use.tvl.yml
 
 Agent systems are often described with pattern names such as routing, debate, reflection, or map-reduce.
 Those names are useful, but they are not the operational contract. What matters in practice is the
-control surface underneath them: budgets, counts, ordering, judges, reducers, stop rules, and
+control surface underneath them: budgets, counts, ordering, judges (components that assess or select
+candidate answers), reducers (components that combine intermediate outputs into one result), stop rules, and
 evidence thresholds.
 
 This chapter translates that idea into a TVL-oriented workflow. Instead of treating an agent as a
@@ -29,9 +30,10 @@ criteria.
 
 <ConceptCallout title="Simple Framing" tone="info">
 
-- The pattern name tells you the scaffold.
+- The pattern name tells you the scaffold: the fixed structure of the agent workflow (which steps run, in what
+  order, and how their results combine).
 - The tuned variables tell you what can change.
-- The promotion policy tells you when a changed scaffold is safe enough to ship.
+- The promotion policy tells you when a changed scaffold meets the declared evidence requirements for release.
 
 </ConceptCallout>
 

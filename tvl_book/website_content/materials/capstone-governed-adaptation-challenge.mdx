@@ -25,10 +25,14 @@ Choose an AI workflow that changes under real operational pressure: a support bo
 
 ## Required Outputs
 
-- One TVL module with at least three meaningful TVARs.
+- One TVL module with at least three meaningful TVARs (tuned variables: the knobs declared under `tvars`, each
+  with a type and a domain; see [Chapter 2](../book/chapter-02-basics.md)).
 - At least two structural constraints and two `env.context.*` feasibility checks.
-- One staging overlay and one production or hotfix overlay.
-- A description of the manifest fields required for promotion.
+- One staging overlay and one production or hotfix overlay. An overlay is a small file of overrides that `tvl-compose`
+  applies to a base module (see [Chapter 4](../book/chapter-04-patterns.md)).
+- A description of the manifest fields required for promotion. A manifest is the record an integration emits after a run:
+  the resolved spec, validation logs, the promotion decision, and rollback instructions (see
+  [Chapter 5](../book/chapter-05-integration.md#manifests-and-promotion)).
 
 ## Evaluation Rubric
 

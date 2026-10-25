@@ -17,7 +17,7 @@ opal_bridge: false
 ---
 
 - **Explicit tuned variables** make the changeable surface reviewable instead of leaving it buried in prompts or runtime code.
-- **Clear rule boundaries** separate structural design rules from operational preconditions over `env.context.*`.
+- **Clear rule boundaries** separate structural design rules from operational preconditions over `env.context.*` (the numeric operating assumptions, such as provider price or baseline latency, declared under `environment.context`).
 - **Reusable evaluation hooks** keep metric definitions attached to objectives instead of scattered across scripts.
 - **Governed promotion** requires declared evidence before production changes roll out.
 - **Deterministic exports** make generated files and downstream artifacts reproducible in CI.
@@ -26,8 +26,10 @@ opal_bridge: false
 
 The onboarding chatbot is hours away from orientation week. A new model release promises higher quality,
 but gateway latency just doubled. With TVL you keep the guardrails, narrow or widen the approved surface,
-and rerun the optimizer instead of making frantic code edits. The system explores safely and only recommends
-promotion when the declared evidence is strong enough.
+and rerun the optimizer instead of making frantic code edits. TVL itself does not run the search: it states which
+configurations are admissible and what evidence promotion needs. An optimizer that honours the TVL contract explores
+only inside the declared constraints, and the promotion gate recommends promotion only when the declared evidence
+thresholds are met.
 
 <MermaidDiagram chart={"timeline\n    title TVL Response Loop\n    Baseline Spec : Generate lock files, run smoke tests\n    Model Catalog Update : Widen enum choices, rerun optimizer\n    Latency Spike : Tighten constraints, regenerate manifests\n    Budget Shift : Adjust objectives, capture reviewer sign-off"} />
 

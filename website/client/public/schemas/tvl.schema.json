@@ -45,7 +45,7 @@
     },
     "tvl_version": {
       "type": ["string", "number"],
-      "description": "Optional declared language version."
+      "description": "Declared language version; runtime lints require 1.5 for breach persistence and census aggregates, 1.4 for reactive outcomes and guards, otherwise 1.3, 1.4 or 1.5."
     },
     "environment": {
       "type": "object",
@@ -855,14 +855,16 @@
       "description": "TVL 1.3 (RFC 0003 §4.1, §5.1): runtime requirement declaration. The schema checks closed keys, primitive types, required base keys, and runtime ident pattern; registries and variant-specific fields are checked by lints.",
       "properties": {
         "name": { "$ref": "#/$defs/RuntimeIdent" },
-        "kind": { "type": "string", "examples": ["evidence_liveness", "rate_bound", "recovery_time", "zero_tolerance"], "x-enum": ["evidence_liveness", "rate_bound", "recovery_time", "zero_tolerance"] },
+        "kind": { "type": "string", "examples": ["aggregate_bound", "evidence_liveness", "rate_bound", "recovery_time", "zero_tolerance"], "x-enum": ["aggregate_bound", "evidence_liveness", "rate_bound", "recovery_time", "zero_tolerance"] },
         "unit": { "type": "string" },
         "among": { "$ref": "#/$defs/PredicateDecl" },
         "violation": { "$ref": "#/$defs/PredicateDecl" },
         "max_rate": { "type": "number" },
         "of": { "$ref": "#/$defs/RuntimeIdent" },
         "within_hours": { "type": "integer" },
-        "max_stale_windows": { "type": "integer" }
+        "max_stale_windows": { "type": "integer" },
+        "aggregate": { "$ref": "#/$defs/RuntimeAggregateDecl" },
+        "bound": { "$ref": "#/$defs/BoundDecl" }
       }
     },
     "PredicateDecl": {
@@ -986,7 +988,7 @@
       "additionalProperties": false,
       "required": ["method"],
       "properties": {
-        "method": { "type": "string", "examples": ["clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1"], "x-enum": ["clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_count_v1"] },
+        "method": { "type": "string", "examples": ["clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_aggregate_v1", "exact_count_v1"], "x-enum": ["clopper_pearson_exact_v1", "clopper_pearson_rational_v2", "exact_aggregate_v1", "exact_count_v1"] },
         "model": { "type": "string" },
         "confidence": { "type": "number" },
         "false_alarm_budget": { "type": "number" },
@@ -1039,18 +1041,179 @@
         "rate_floor": { "type": "number" },
         "repeat_after_hours": { "type": "integer" },
         "max_repeats": { "type": "integer" },
-        "on_check_error": { "type": "string" }
+        "on_check_error": { "type": "string" },
+        "deploy": { "type": "string" },
+        "only_while": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuardDecl"
+          }
+        },
+        "unless": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuardDecl"
+          }
+        },
+        "persist": { "$ref": "#/$defs/PersistDecl" }
       }
     },
     "TriggerDecl": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "monitor",
+            "event"
+          ],
+          "properties": {
+            "monitor": {
+              "$ref": "#/$defs/RuntimeIdent"
+            },
+            "event": {
+              "type": "string",
+              "examples": [
+                "burn_breached",
+                "episode_continued",
+                "episode_open_for",
+                "episode_opened",
+                "episode_resolved",
+                "episode_withdrawn",
+                "live_again",
+                "recovery_cancelled",
+                "recovery_overdue",
+                "recovery_recovered",
+                "stale",
+                "unit_violation",
+                "unknown_for"
+              ],
+              "x-enum": [
+                "burn_breached",
+                "episode_continued",
+                "episode_open_for",
+                "episode_opened",
+                "episode_resolved",
+                "episode_withdrawn",
+                "live_again",
+                "recovery_cancelled",
+                "recovery_overdue",
+                "recovery_recovered",
+                "stale",
+                "unit_violation",
+                "unknown_for"
+              ]
+            },
+            "hours": {
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rule",
+            "event"
+          ],
+          "properties": {
+            "rule": {
+              "$ref": "#/$defs/RuntimeIdent"
+            },
+            "event": {
+              "type": "string",
+              "x-enum": [
+                "optimize_no_candidate",
+                "optimize_failed",
+                "deploy_refused",
+                "deploy_failed"
+              ],
+              "examples": [
+                "optimize_no_candidate",
+                "optimize_failed",
+                "deploy_refused",
+                "deploy_failed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "RuntimeAggregateDecl": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["monitor", "event"],
+      "description": "TVL 1.5 (RFC 0005 §2.3): census aggregate. The schema checks closed keys and primitive types; the operator and metric registries and the source commitment are checked by lints.",
       "properties": {
-        "monitor": { "$ref": "#/$defs/RuntimeIdent" },
-        "event": { "type": "string", "examples": ["burn_breached", "episode_continued", "episode_open_for", "episode_opened", "episode_resolved", "episode_withdrawn", "live_again", "recovery_cancelled", "recovery_overdue", "recovery_recovered", "stale", "unit_violation"], "x-enum": ["burn_breached", "episode_continued", "episode_open_for", "episode_opened", "episode_resolved", "episode_withdrawn", "live_again", "recovery_cancelled", "recovery_overdue", "recovery_recovered", "stale", "unit_violation"] },
-        "hours": { "type": "integer" }
+        "op": { "type": "string", "examples": ["mean", "sum"], "x-enum": ["mean", "sum"] },
+        "metric": { "type": "string", "examples": ["cost_usd", "score"], "x-enum": ["cost_usd", "score"] },
+        "source_digest": { "type": "string" }
       }
+    },
+    "BoundDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.5 (RFC 0005 §2.3): one comparator. Exactly one key is a variant rule checked by lints.",
+      "properties": {
+        "lte": { "type": "number" },
+        "gte": { "type": "number" }
+      }
+    },
+    "PersistDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TVL 1.5 (RFC 0005 §2.2): breach persistence on a notification. Integer ranges are checked by lints.",
+      "properties": {
+        "breached_in": { "type": "integer" },
+        "of_last": { "type": "integer" }
+      }
+    },
+    "GuardDecl": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "monitor",
+            "state"
+          ],
+          "properties": {
+            "monitor": {
+              "$ref": "#/$defs/RuntimeIdent"
+            },
+            "state": {
+              "type": "string",
+              "examples": [
+                "episode_open"
+              ],
+              "x-enum": [
+                "episode_open"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rule",
+            "state"
+          ],
+          "properties": {
+            "rule": {
+              "$ref": "#/$defs/RuntimeIdent"
+            },
+            "state": {
+              "type": "string",
+              "examples": [
+                "attempt_open"
+              ],
+              "x-enum": [
+                "attempt_open"
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

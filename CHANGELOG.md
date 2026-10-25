@@ -6,9 +6,69 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Info diagnostic `outside_proved_subset`: emitted once per construct family present (`cvars`, `policies`, `composites`) that the Lean proofs do not model. Diagnostics with the new `info` severity are printed and included in JSON output but never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
+- `tools/claim_audit`: a paragraph-level audit of the claims in the published documentation.
+- Error `structural_undecided_without_solver`: without OR-Tools, the fallback structural search no longer reports an UNSAT it has not shown. It reports SAT when it finds a witness, UNSAT only when it tried every value of every domain, and otherwise this error (`tvl-check-structural` exits 2, JSON `status: "undecided"`).
+- Gate decision `Error` with code `zero_trials`: a chance constraint with zero trials or no trial count makes its check undefined (Definition 9.8), so the gate returns `Error` before any other branch, instead of `Reject`. When the gate returns it, `tvl-ci-gate` prints `Decision: Error` and exits 2 (canonical `chance_outcomes` with `trials` 0 or missing are a schema error at load, exit 2; a deprecated `chance` summary with `summary.trials: 0` reaches the gate and gives `Error`).
+- Error `duplicate_key`: a YAML mapping that repeats a key is rejected at parse time (RFC 0001 §3.5(4)); the message names the key, line and column. A key that overrides one inherited through `<<` is not a duplicate.
+- `tvl-check-structural` JSON field `exact_assignment` (and `StructuralResult.exact_assignment`): the witness with every numeric value as an exact decimal or `"p/q"` string, tuple components included. The existing `assignment` field keeps plain binary64 numbers for compatibility and can merge distinct grid points. The text output prints the exact witness.
+- Undecided results of `tvl-check-structural` (exit 2, JSON `status: "undecided"`), each with its own error code: `structural_encoding_overflow`, `structural_solver_inconclusive`, `structural_witness_unverified`, `structural_witness_too_large`, `structural_ill_typed_atom`, `structural_non_finite_domain`, `structural_unresolved_domain`, `structural_pair_table_too_large`, `structural_expansion_too_large` and `structural_value_too_large`. The checker reports one of these instead of a SAT or UNSAT it cannot show.
+- Lint error `non_finite_domain_value`: NaN or an infinity in a TVAR domain.
+- Parse-time error `complex_mapping_key`: a YAML mapping key that is a mapping or a sequence is rejected.
+- YAML loading limits: merge keys (`<<`) may copy at most 100,000 key/value pairs in total, a float literal may have at most 400 digits and an exponent within ±400, and a document nested too deeply to parse is rejected. Each is a YAML parse error.
+
+### Changed
+
+- Specification page corrections: version compatibility table, scoped overlay narrowing, budget-check responsibilities, assurance-scope table, a decision table for `chance_constraints` versus a promotion monitor, and the authority section.
+- Publication review corrections across the documentation, including the error code catalog (new entries for operational-check, calibration-readiness and document-shape codes, and a statement of which tool codes it does not list yet).
+- Formal semantics: derived constraints admit strict `<` and `>`, matching the grammar and the reference checker; a strict atom is false at equality.
+- `exploration.budgets.max_spend_usd: 0` is valid and means no paid spending is allowed; `tvl-check-operational` accepts it and reports `invalid_budget_max_spend` only for a negative value.
+- A repository-wide source authority rule: the formal semantics governs meaning, the grammar and schemas govern syntax, accepted RFCs govern where the semantics is silent, the Python implementation is reference behaviour, not normative, and the docs are informative (language reference and `GOVERNANCE.md`).
+- `SECURITY.md` supported versions: 1.5.x supported, 1.3.x–1.4.x best effort, below 1.3 not supported.
+- Formal semantics diagnostic tables now list the codes the implementation emits (for example `unknown_derived_symbol` in place of `derived_env_undefined`, and the `outside_proved_subset` info diagnostic).
+- Formal semantics: a range `resolution` is optional, matching the grammar; the default step is 1 for an `int` range and 0.001 for a float range (§2.4). The language reference and the book now say the same; a float range inside a tuple component still needs a `resolution` in the schema.
+- RFC 0001 errata: the certificate field `target` (`TargetProperty`) is a closed, opaque identifier string with no nested fields (RFC 0001 §11).
+- RFC 0002 errata: definitions of the telemetry measures `vote_margin`, `vote_agreement` and `gate_margin_pass_rate`, taken from the reference runtime (RFC 0002 §11).
+- Publication review corrections to the website pages and book chapters.
+- Formal roadmap (`formalization/tvl-formal-roadmap.md`) rewritten as a status page: it records which core results exist on paper and in Lean, with their scope, and lists the remaining work without dates.
+- Formal semantics §11.1 lists the core results already proved in Lean and the areas that remain; the proof of Theorem 7.1 counts the size of set and tuple atoms instead of treating every atom as constant time.
+- Float range TVARs are encoded by exact grid index (Definition 3.6) instead of being scaled by a precision of 1000. Only legacy `min`/`max`/`precision` float domains keep the precision scaling.
+- Ordering comparisons (`<`, `<=`, `>`, `>=`) and intervals are allowed on enums whose values are all numbers (T-Cmp, T-Interval); string enums still reject them.
+- The domain model (`tvl.model`) gives a float range inside a tuple component the default step 0.001 when it has no `resolution`, instead of raising an error. The JSON Schema still requires the `resolution` there, so such a module is still a schema error.
+- Repeated enum members are treated as one set member by `tvl-check-structural`; `tvl-validate` still reports `duplicate_domain_value`.
+- `tvl-ci-gate --help` no longer describes the tool as a dry run.
+
+### Fixed
+
+Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
+
+- **(1.5.0)** False UNSAT on strict float comparisons: the strict bound was applied twice, so a satisfiable module such as `t > 0.5`, `t < 0.7` on `{range: [0, 1], resolution: 0.1}` was reported UNSAT. Strict and non-strict bounds are now computed exactly on the grid.
+- **(1.5.0)** False SAT from a resolution that does not divide the range: the checker searched a finer grid than the declared one, so `{range: [0, 1], resolution: 0.3}` with `t >= 0.95` was reported SAT with `t = 1.0`, which is not on the grid `{0, 0.3, 0.6, 0.9}`. Witnesses could also be off-grid when the range did not start at 0.
+- **(1.5.0)** Every CP-SAT status other than a solution was treated as UNSAT. Only `INFEASIBLE` now proves UNSAT; any other status is `structural_solver_inconclusive`.
+- **(1.5.0)** Without OR-Tools, the fallback search could report UNSAT for a satisfiable module (for example `x > 0.3`, `x < 0.31` on a float range). It now reports UNSAT only after trying every value, and otherwise `structural_undecided_without_solver`.
+- **(1.5.0)** Range endpoints and numeric literals were compared as binary64 floats. So `e = 0.100000000000000001` was reported SAT for an enum holding only `0.1`, and `n > 1.5`, `n <= 2` on an `int` range was reported UNSAT. Both are now read exactly from their source text and decided exactly.
+- **(1.5.0)** Tuple grids were built by rounding to 12 decimals and by rounding the step count, which could add a point past the upper bound. Tuple grids now follow Definition 3.6 exactly, and the 10,000-value product limit is checked as each axis is added: a range axis that would pass the limit is refused before its values are built, and the full product is never built past the limit.
+- **(1.5.0)** Denial of service on loading: merge keys (`<<`) that double at each level, and float literals with a huge exponent such as `1.0e-99999999`, made every tool hang. Both are now rejected quickly by the loading limits above.
+- **(1.5.0)** Duplicate YAML mapping keys were accepted silently (the last value won). They are now rejected as `duplicate_key`, including keys repeated inside a mapping used as a merge source.
+- **(1.5.0)** Very small resolutions could raise `OverflowError`, and `in` sets and negated intervals could expand without a limit; the expansion is now bounded (`structural_expansion_too_large`).
+- **(1.5.0)** Negated strict intervals dropped their endpoints: `not (0 < x < 1)` on `{range: [0, 1], resolution: 0.5}` was reported UNSAT, though `x = 0` and `x = 1` satisfy it.
+- **(1.5.0)** `tvl-compile-runtime`: the local artefact carried every token-map entry, not only the entries the contract uses (`token_map_digest` still covers the whole map), and inputs were read before the schema and lint checks ran (RFC 0003 §11.4.4, §11.4.6, §11.5).
+- **(1.5.0)** A gate check with zero trials returned `Reject`; it now returns `Error` with `zero_trials` (see Added).
+- **(1.5.0)** `tvl-check-operational` rejected `max_spend_usd: 0` (see Changed).
+- Tuple equality between TVARs now checks arity and component types (formal semantics §4.7).
+- **(1.5.0)** `tvl-check-structural` read a reversed range such as `{range: [5, 1]}` as an empty domain and reported UNSAT. The range is malformed (§2.4) and is now refused; `tvl-validate` reports it as `invalid_range_domain`, as before.
+- **(1.5.0)** Equality between two TVARs now follows T-TVarEq exactly: both sides need the same element type, with no numeric widening. `tvl-validate` now rejects `int_var = float_var` and `enum[str]` against `enum[int]` as `constraint_type_mismatch`, and accepts `int_var = enum_int_var`, which it used to reject. Tuple TVARs need the same component types (T-TupleVarEq). `tvl-check-structural` still decides `int_var = float_var` (`docs/reference/error-codes.md`, `structural_ill_typed_atom`).
+- **(1.5.0)** `inadequate_precision` follows Definition 8.6: it warns when some value `v` of a float domain has `v·P` not an integer, read from the exact decimal written. It used to warn only when two values collided after rounding, or when a range resolution was misaligned, so an aligned-looking set such as `[0.0005, 0.5]` with P = 1000 is now reported.
+- **(1.5.0)** Banded objectives with zero variance: with `std = 0` the TOST statistics are taken as +∞ or −∞, so a mean strictly inside the band passes and a mean exactly on a band edge is `inconclusive`. Before, every zero-variance result was `inconclusive` (formal semantics Definition 9.6).
+- **(1.5.0)** Banded objectives with fewer than 2 observations: a single observation outside the band is `out_of_band` and the gate returns `Reject`, as for any point estimate outside the band (formal semantics §9.5). Before, it was `inconclusive`. An in-band single observation, or none, is still `inconclusive` (`spec/promotion-gate-io.md` §3.4).
+- **(1.5.0)** An `int` or `float` TVAR with a bare list domain such as `[1, 2]` was read as an unbounded range, so `a == b` on `a: [1, 2]`, `b: [3, 4]` was reported SAT with `a = 0`, `b = 0`. A bare list of numbers is now a finite set, like `{set: [...]}`. Two follow-ups to the unreleased banded-objective changes above: an `n` that is not a non-negative integer makes a banded objective `inconclusive` instead of evidence, and so does a NaN, negative or infinite `std` when `n >= 2` (with `n < 2` the `std` is not read, so a single observation outside the band is still `out_of_band`); and a `samples` list with one value is the point estimate, even when `n: 1` is also given (it used to fall back to a mean of 0).
+- **(1.5.0)** The `runtime_invalid_profile` diagnostic for a `clopper_pearson_exact_v1` monitor whose power bounds `scipy.stats.beta` cannot evaluate no longer repeats the monitor name in its message; the path locates the monitor (RFC 0003 §5.10).
+
 ## [1.5.0] - 2026-10-23
 
-TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantics §14 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.5.0; authored modules using the new constructs declare `tvl_version: "1.5"`. Not published to a package registry.
+TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantics §14 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.5.0; authored modules using the new constructs declare `tvl_version: "1.5"`. Published to PyPI as `tvl-spec` 1.5.0 on 2026-10-23.
 
 ### Added
 
@@ -21,7 +81,7 @@ TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantic
 
 ## [1.4.0] - 2026-10-21
 
-TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semantics §13 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.4.0; authored modules using the new constructs declare `tvl_version: "1.4"`. Projected constructs select `/1` or `/2` as described below. Not published to a package registry.
+TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semantics §13 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.4.0; authored modules using the new constructs declare `tvl_version: "1.4"`. Projected constructs select `/1` or `/2` as described below. Published to PyPI as `tvl-spec` 1.4.0 on 2026-10-22.
 
 ### Added
 
@@ -57,7 +117,7 @@ TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Pa
 
 ### Fixed
 
-- `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5, not only an explicit `require_calibration`.
+- `tvl-ci-gate` now refuses promotion (`calibration_evidence_unsupported`, exit 2) under every strict-mode calibration trigger of RFC 0001 section 3.6 and RFC 0002 section 5 that the module records, not only an explicit `require_calibration`. The operational-profile trigger of RFC 0001 section 3.6 is not checked, because the gate does not receive the operational profile.
 - `tvl-lint` applies the documented default `promotion_policy.alpha` of 0.05 when it is omitted, instead of failing with `invalid_alpha`; explicit `null` or out-of-range values are still rejected.
 - Runtime diagnostics printed by the CLI text renderers show their field location once instead of twice.
 
@@ -82,7 +142,7 @@ TVL 1.3 (RFC 0003, runtime requirements, monitors and responses) is accepted. Pa
 - Added `p_value_inferior`, `adjusted_p_inferior`, and `any_band_out_of_band` to promotion evidence.
 - Made unsupported strict-calibration evidence and measurement/module identity mismatches promotion-readiness failures.
 - Advanced the Promotion Gate I/O document to draft version 1.1 for review of these observable contract changes.
-- Package, citation, and `tvl.__version__` metadata now report language version 1.2.0 (the 1.1 and 1.2 extensions below were already in the schema, validators, and examples).
+- Before TVL 1.3 was accepted, package, citation, and `tvl.__version__` metadata were raised to language version 1.2.0 (the 1.1 and 1.2 extensions below were already in the schema, validators, and examples); this release reports 1.3.0.
 - Documented every diagnostic emitted by `tvl.lints` in `docs/reference/error-codes.md`, including the codes for `cvars`, `policies`, `require_calibration`, and `composites`.
 - Installation instructions now describe installing from a clone of this repository; the package is not published to a registry.
 
@@ -191,18 +251,20 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 
 ### Changed
 
-- Version bump from 0.9 to 1.0 across all artifacts
+- Version bump from 0.9 to 1.0 across all language-versioned artifacts (the VS Code extension keeps its own version)
 - Development status upgraded to "Production/Stable"
 - Repository URL updated to the Traigent organization (`https://github.com/Traigent/tvl`)
 
 ### Fixed
 
-- Consistent versioning across all components
+- Consistent versioning across all language-versioned components
 - Added `__version__` to Python SDK for programmatic access
 
 ---
 
-## [0.9.0] - 2025-01-26
+## [0.9.0] - 2025-01-26 (date from pre-public history; not verifiable in this repository)
+
+> This entry predates the public repository (its first commit is dated 2026-04-13). The release date and the test count below come from the earlier private history and cannot be checked against this repository.
 
 ### Added
 
@@ -222,7 +284,7 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 
 #### Constraint Language
 
-- **Structural constraints**: Typed DNF compiled to SAT (QF_LIA) / SMT (QF_LRA)
+- **Structural constraints**: Typed DNF compiled to quantifier-free linear integer arithmetic (QF_LIA), with float domains scaled to integers
 - Atoms: equality (`=`, `!=`), comparison (`<`, `<=`, `>`, `>=`), intervals, set membership (`in`)
 - Logical connectives: `and`, `or`, `not`, implication (`=>`)
 - TVAR-to-TVAR equality comparisons with type checking
@@ -279,7 +341,7 @@ Date is when RFC 0001 (`formalization/rfc-0001-knob-bindings-cvars-policies.md`)
 - Configuration schema: `tvl-configuration.schema.json`
 - Measurement schema: `tvl-measurement.schema.json`
 - GitHub Actions CI pipeline
-- 69 unit tests covering type system, constraints, and promotion policy
+- 69 unit tests (count from pre-public history; not verifiable in this repository) covering type system, constraints, and promotion policy
 
 ### Fixed
 

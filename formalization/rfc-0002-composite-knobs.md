@@ -12,7 +12,9 @@ Agentic systems repeat a small number of control-flow patterns whose variables
 travel together: a *cascade* runs a cheap arm and escalates past a calibrated
 gate; an *ensemble* fans out `k` samples and aggregates; a *self-debug loop*
 generates, critiques, and revises under a stop rule. Today TVL can declare the
-individual variables (RFC 0001: tvars, cvars, one cascade policy strategy) but
+individual variables (RFC 0001: tvars, the tuned variables or TVARs that search
+explores; cvars, the calibrated variables or CVARs whose values are fitted from
+data; and one cascade policy strategy) but
 has no construct that says *"these members form one reusable pattern with its
 own dependency structure, calibratable surface, cost model, and telemetry."*
 Each consumer rebuilds the bundle by convention; conventions drift.
@@ -74,6 +76,14 @@ and fail-closed governance; procedural, plural naming where adoption lives.
   untouched, as in RFC 0001).
 
 ## 3. Formal model (Phase 1)
+
+The property names P1–P8 are RFC 0001's property claims (RFC 0001 §4). The ones
+this RFC relies on most are P1 (conservative extension), P2 (optimizer soundness),
+P5 (SAT preservation: removing cvars and policies does not change whether the
+constraints are satisfiable), P6 (namespace uniqueness) and P8 (privacy: the persisted
+certificate and signal-observation shapes are closed, with no raw-content-typed
+field; "the P8 surface" means those closed shapes, see §7). This RFC's own claims
+are C1–C6 (§5).
 
 ### 3.1 What a composite is — and is not
 
@@ -196,7 +206,8 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
                                          reject: invalid_signal_use *)
 ```
 
-**Well-formedness (statically checked; error codes in §3.11):**
+**Well-formedness (statically checked, except the resolution-time rejection R9 in
+item 7; error codes in §3.11):**
 
 1. `kind` ∈ the closed registry (`unknown_composite_kind`); exactly the body
    fields of the declared kind are present — unknown or cross-kind fields
@@ -204,7 +215,8 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
 2. Cascade arity: `|gates| = |arms| − 1` (`cascade_arity`, reused from
    RFC 0001 with identical semantics); the degenerate `m = 1` cascade has
    no gates and always returns its arm (RFC 0001 rule carries over).
-   `arms` must be non-empty for every constructor (`empty_arms`).
+   `arms` must be non-empty for a cascade and for an ensemble (`empty_arms`);
+   a loop has a single `body` arm and no `arms` list.
 3. **Arm resolution is tag-driven and unambiguous**: `composite(x)` must
    resolve (exact match, RFC 0001 §3.7) into `N_X`
    (`missing_composite_ref`); `stage(s)` is opaque and never consults the
@@ -361,10 +373,15 @@ SignalUse ::= ⟨ signal : Ident,       (* a NAMED signal reference into the SAM
     candidate whose judging raises, or yields NaN/±∞/non-numeric, is
     EXCLUDED from selection; if ALL candidates are excluded the ensemble
     evaluation FAILS (propagates as an evaluation error — never a silent
-    pick), feeding the fail-closed law under strict modes. Selection is the
+    pick), feeding the fail-closed law under strict modes. §3.2.1 lists
+    exactly which judge failures exclude a candidate and which are an
+    `error`. Selection is the
     maximum score; ties break by the RFC 0001 deterministic total order
     over the candidates' serialized equivalence keys.
-  - `accept` (optional, either aggregate kind): `stat_at_least` evaluates
+  - `accept` (optional; the grammar allows it with either aggregate kind,
+    but only `majority_vote` takes a vote, so only there does it have a
+    vote statistic to read, §11; this RFC does not define the result of an
+    `accept` over `judge_max`): `stat_at_least` evaluates
     the named content-free vote statistic; failing it is an honest
     no-accept outcome that propagates to the consumer (under strict modes
     it feeds the fail-closed law). The acceptance inequality is `stat ≥ θ`
@@ -409,6 +426,23 @@ every construct:
 - **`error` is absorbing.** An `error` from any arm/body/gate/judge/stop fails
   the enclosing item's evaluation in every construct, propagating outward to the
   root (where, under strict modes, it feeds the RFC 0001 §3.6 fail-closed law).
+  Judge failures under `judge_max` are the one exception, and they split
+  exactly as follows:
+  - *Excluded, not an `error`*: a failure while judging ONE candidate — the
+    judge raises, produces no output, or yields a value that is not a finite
+    number (NaN, ±∞, a non-numeric value; a boolean is not a score), or a
+    nested-composite judge yields `no_accept` or `error` for that candidate.
+    Only that candidate is EXCLUDED from selection (§3.2 execution
+    semantics); the remaining candidates are still judged.
+  - *`error`*: every candidate that reached the judge was excluded in this
+    way; or the judge cannot be invoked at all (for example, the runtime has
+    no binding for the judge stage).
+  The arms that produce the candidates follow the general rules: an `error`
+  from one of them is absorbing (the judge never runs), and a committee arm's
+  `no_accept` excludes it before judging. If no candidate reaches the judge
+  because all were excluded by `no_accept`, the ensemble yields `no_accept`
+  (below), not `error`. With this precedence, every `judge_max` evaluation
+  has exactly one result kind.
   This unifies the per-construct exception sentences above (post-cascade stage
   exception, pre-cascade signal exception, all-judge-excluded, loop body/stop
   exception, non-finite threshold) — those sentences are retained for locality
@@ -525,7 +559,8 @@ is a TVAR is parameterized by that TVAR exactly as a stage is parameterized
 by its `tuned_params`, so swapping `k` must read stale through the same
 parent-coverage cascade. The intersection with `N_T` keeps the codomain
 TVAR-only (C6): a Calibrated or absent cardinality contributes nothing to
-`leafT` (it is instead a member of `Cal`, §3.6). Because `leafT(composite(x))`
+`leafT`. A Calibrated cardinality is instead a member of `Cal` (§3.6); an absent
+one contributes to neither. Because `leafT(composite(x))`
 recurses over `arms/body/judge(x)`, nested ensembles' tuned cardinalities
 fold up to every enclosing threshold's obligation.
 
@@ -652,7 +687,8 @@ expander). The surface accepts ONLY the sugar key.
 4. standard telemetry names (§3.10);
 5. a byte-stable **golden expansion test** (known-answer fixture);
 6. demonstrated fail-closed behavior under the §3.6 fold (a red-first test
-   in the consuming SDK).
+   in the consuming SDK: a test shown to fail before the implementation and to
+   pass after it).
 
 **Catalog v1:**
 
@@ -687,13 +723,16 @@ the chain of length `K` is:
 ```
 KChain(Loop(b, S, signal_accept(σ, θ), K))
    = ⟨ stages = [b₍₁₎ .. b₍K₎],
-       escalate after stage i  ⟺  ¬stop₍ᵢ₎  =  σ(state₍ᵢ₎) < θ ⟩
+       escalate after stage i  ⟺  result₍ᵢ₎ = no_accept
+                                   ∨ ¬stop₍ᵢ₎   (¬stop₍ᵢ₎ = σ(state₍ᵢ₎) < θ) ⟩
 ```
 
 where `b₍ᵢ₎` is the body specialized to iteration `i`'s threaded state over
 the declared `state_keys`, and the chain escalates to stage `i+1` exactly
-when the `signal_accept` stop has NOT fired (`σ(state₍ᵢ₎) < θ`, the
-acceptance-direction complement). `external_accept` loops (opaque runtime
+when stage `i` yields `no_accept` or the `signal_accept` stop has NOT fired
+(`σ(state₍ᵢ₎) < θ`, the acceptance-direction complement). This matches the loop
+rules of §3.2.1: a `no_accept` body continues the loop, and an `error` from any
+stage is absorbing and fails the chain. `external_accept` loops (opaque runtime
 predicate — no declared state predicate to chain) and `exhausted` loops (no
 acceptance predicate at all) offer **no unroll**.
 
@@ -701,10 +740,12 @@ This is a **compilation relation, not semantic equality**: it is meaning-preserv
 
 1. the body's state flows exclusively through the declared `state_keys`
    (`state_keys = []` ⟺ pure body) — no ambient mutation;
-2. the stop rule is a deterministic function of the declared state
-   (structurally enforced for `signal_accept` by `stop_signal_outside_state`
-   — the only stop kind that offers unroll, so condition 2 is structural
-   here, not contract-asserted);
+2. the stop rule is a deterministic function of the declared state. For
+   `signal_accept`, the only stop kind that offers unroll, the
+   `stop_signal_outside_state` lint checks structurally that the signal's
+   declared inputs are within `state_keys`; that the signal's scoring function
+   is deterministic is a runtime contract (§6 assumption 5), not checked by
+   the lint;
 3. iterations are bounded by `max_iters` (always true in this algebra —
    `max_iters` is required);
 4. telemetry and side effects are observationally accounted:
@@ -721,7 +762,7 @@ the golden expansion fixtures and SDK property tests for every pattern that
 offers `unroll`. Outside the conditions, and for non-`signal_accept` loops,
 no equivalence is claimed.
 
-### 3.9 Surface syntax (draft normative for validator implementations)
+### 3.9 Surface syntax (draft normative for validator implementations; now normative in the grammar, see §11)
 
 **The arm surface form** — ONE shape, used EVERYWHERE an `Arm` appears
 (cascade `arms[]`, loop `body`, ensemble `arms[]` and `judge`):
@@ -793,6 +834,11 @@ enums, finite numbers only — nothing content-typed; P8 discipline):
 - loop: `iterations_used`, `stop_reason` (enum over StopDecl kinds ∪
   `exhausted`).
 
+The formulas for `vote_margin`, `vote_agreement` and `gate_margin_pass_rate`
+are in §11 "Errata and later changes", in the entry "Formulas for three §3.10
+measures (2026-10-24)": per-item definitions, which votes count, and the
+denominator of `gate_margin_pass_rate` over a set of items.
+
 ### 3.11 Error-code surface (exact diagnostics)
 
 New codes introduced by this RFC (each with a happy + rejecting conformance
@@ -801,7 +847,9 @@ execution rules above are in **1:1 correspondence** — every code below is
 emitted by exactly the cited rule, and every rule that rejects cites exactly
 one of these codes or a REUSED RFC 0001 code (`missing_ref` family,
 `cascade_arity`, `unknown_gate_kind` — reused with identical semantics on
-the composite construct):
+the composite construct). §11 records two exceptions in the reference validators:
+`unknown_aggregate_kind` has a second emitter, and R9 has no rejecting static
+fixture.
 
 | Code | Emitted by |
 |---|---|
@@ -812,7 +860,7 @@ the composite construct):
 | `composite_binds_value` | §3.1 — a value bound on a composite |
 | `composite_shadows_name` | §3.1 — `N_X` name shadows another class |
 | `duplicate_composite` | §3.1 — duplicate name within `N_X` |
-| `empty_arms` | item 2 — `arms` empty for any constructor |
+| `empty_arms` | item 2 — `arms` empty on a cascade or an ensemble |
 | `ambiguous_arm` | item 3 — bare arm id collides with a composite name |
 | `missing_composite_ref` | item 3 — `composite(x)` resolves to no `N_X` member |
 | `composite_cycle` | item 4 — the `N_X` reference graph is cyclic |
@@ -820,7 +868,7 @@ the composite construct):
 | `gate_kind_placement_mismatch` | item 5 — `margin_below` in `pre`, or `signal_below` in `post` (both directions; subsumes the former `pre_gate_requires_signal`) |
 | `missing_gate_signal` | item 5 / `GateDecl` — `signal_below` gate missing its `signal` |
 | `duplicate_stage` (extended scope) | item 6 — duplicate `stage(·)` within one composite |
-| `cardinality_arity_mismatch` | item 7 — `cardinality` present iff `|arms| = 1` violated |
+| `cardinality_arity_mismatch` | item 7 — `cardinality` present iff `\|arms\| = 1` violated |
 | `invalid_cardinality_type` | item 7 — `cardinality` ref not int-typed |
 | `invalid_cardinality_value` (R9) | item 7 — resolution-time `k < 1` (extends the §3.4 acceptance algebra as `Accept₁.₂`) |
 | `stop_signal_outside_state` | item 8 / `StopDecl` — `stop.signal.inputs ⊄ state_keys` |
@@ -883,8 +931,9 @@ site:
   `calibration.signal` OPTIONAL, so a legacy `policies:` cascade is unaffected;
   only the composite use site adds this obligation.
 
-`parameters?` and `scope?` carry over verbatim with identical semantics and
-the identical outside-P8 categorization.
+`parameters?` and `scope?` carry over verbatim with identical semantics, and
+`parameters` stays outside the P8 privacy property exactly as before (P8 is
+defined in RFC 0001 §4; see §7).
 
 **P1 is preserved.** Because a TVL 1.1 module declares no `composites:` block,
 neither ratchet can fire on it — both lints are use-site obligations of a
@@ -902,6 +951,14 @@ API.
 
 ## 5. Property claims (Phase 2)
 
+`Cal` is the coverage fold's set of calibratable members (§3.6) and `N_X` the
+composite namespace (§3.1). In the model checker, SAT (satisfiable) means it found
+an assignment that meets the query, here a counterexample, and UNSAT means none
+exists. MUST-BE-SAT marks a deliberately broken model variant that must yield a
+counterexample; the note below the table explains why each check has one.
+CVAR→CVAR names a dependency of one calibrated variable on another, which this RFC
+defers (§2).
+
 | Claim | Statement | Verification plan |
 |---|---|---|
 | **C1** Constructor disjointness | every composite node has exactly one kind from the closed registry; cross-kind/unknown fields reject | model checking (kind partition); lints with exact diagnostics (§3.11) |
@@ -911,9 +968,11 @@ API.
 | **C5** Loop→K-chain compilation (`signal_accept` only) | for `signal_accept` loops, under §3.8 conditions 1–3, `Unroll` into the internal K-chain preserves the selected output / execution trace at small scopes (model-checked, trace comparison Loop vs. K-chain); condition 4's telemetry accounting holds for every catalog pattern offering `unroll` (golden fixtures + SDK property tests); `external_accept`/`exhausted` loops offer no unroll and claim nothing | split by mechanism as stated |
 | **C6** Dependency-compilation soundness (TVAR-ONLY obligations) | `required_parents` obligations land in `N_T` only and are checkable statically; no rule of this RFC can emit or require a non-TVAR `depends_on` entry; `missing_ref` remains the single entry-validity authority. **Scope:** the obligations bind tuned-TVAR freshness only; they do NOT establish CVAR→CVAR (cross-level value-dependency) freshness, which stays deferred (§2; §6 assumption 8) | model checking (codomain check + MUST-BE-SAT violation transition); `missing_composite_parent` lint tests |
 
-Model-checking discipline: every UNSAT assertion is paired with a
-deliberately-broken transition that MUST be SAT (vacuity teeth — program
-convention).
+Model-checking discipline: every property check that must find no
+counterexample (an UNSAT assertion) is paired with a deliberately broken
+variant that must yield one (MUST-BE-SAT). If the broken variant also found no
+counterexample, the check would be vacuous, passing whatever the model says;
+the pair shows that the check can fail.
 
 ## 6. Documented assumptions
 
@@ -936,8 +995,10 @@ The claims above hold under, and only under:
    (same epistemic position as RFC 0001's `depends_on` itself).
 5. **Loop state discipline** — §3.8 condition 1 is structurally encouraged
    (`state_keys` + `stop_signal_outside_state`) but ambient-effect freedom
-   is the implementation's responsibility; `external_accept` determinism
-   (condition 2) is asserted by contract, not proven.
+   is the implementation's responsibility; determinism of a `signal_accept`
+   stop's scoring function (condition 2) is asserted by contract, not proven.
+   `external_accept` loops offer no unroll, so the §3.8 conditions do not
+   apply to them.
 6. **Judge contract** — the judge's finite-numeric-score obligation is a
    runtime contract; violations are detected per §3.2 (exclusion /
    fail-closed), not prevented.
@@ -960,6 +1021,10 @@ The claims above hold under, and only under:
 
 ## 7. Field categorization (P8 alignment)
 
+P8 is RFC 0001's privacy property (RFC 0001 §4): the persisted certificate and
+signal-observation shapes are closed, with no raw-content-typed field.
+"The P8 surface" below means those closed, content-free shapes.
+
 Composites introduce **no content-typed fields**: kinds, placements, arity,
 identifiers (names, StageRefs, predicate ids, state keys, signal ids from
 the `calibration.signal` namespace, opaque input-feature ids), one required
@@ -978,17 +1043,18 @@ increment (§2).
   pipelines: the post-cascade with calibrated acceptance is the productized
   core of RFC 0001's cascade policy; this RFC generalizes arity and nesting.
 - **Self-consistency** (Wang et al. 2022), best-of-n / judge selection: the
-  ensemble constructor with `majority_vote`/`judge_max`; the program's own
-  margin-routing study (vote-margin AUC 0.71) supplies the calibration
-  recipe shape for `accept` gates.
+  ensemble constructor with `majority_vote`/`judge_max`. Agreement among
+  samples as a signal of correctness is why `accept` gates calibrate a
+  threshold on a vote statistic (`vote_margin` or `vote_agreement`).
 - **Self-Refine** (Madaan et al. 2023), **Reflexion** (Shinn et al. 2023),
-  CRITIC: the loop constructor; "self-debug as a 2-step knob" is
+  **CRITIC** (Gou et al., ICLR 2024): the loop constructor; "self-debug as a 2-step knob" is
   `self_debug` at `max_iters = 1..K`.
-- **Composition-over-inheritance** in API design (Effective Java items
-  18–20; React's component model) and the LangChain-Chains →
-  LCEL/DSPy migration: the empirical case for sealing structure and naming
-  recipes — taxonomy-as-inheritance collapsed under exactly the pressure the
-  pattern catalog absorbs.
+- **Composition-over-inheritance** in API design (Bloch, *Effective Java*,
+  3rd ed., items 18–20; React's component model) and the LangChain-Chains →
+  LCEL (LangChain Expression Language)/DSPy migration: these motivate sealing structure and naming recipes.
+  In taxonomy-as-inheritance, each new pattern is a new subclass, so the class
+  hierarchy grows with every pattern. Composition with a named catalog (§3.7)
+  adds a pattern as a catalog entry over the same sealed constructors instead.
 
 ## 9. Acceptance criteria for this RFC
 
@@ -1023,3 +1089,94 @@ This RFC went through seven draft revisions on 2026-06-06 and was accepted the s
 | Draft v7 | `unknown_composite_field` added (item 1); RFC 0001's `cascade_arity` and `unknown_gate_kind` explicitly reused with identical semantics and added to the table; the 1:1 claim wording now names the reused-code set precisely. |
 | Validation | Model checking: C1–C6 pass, including paired vacuity checks, with independent oracles (reachability, member walk, dual execution). Two §3.5 clarifications were folded in at acceptance (loop-over-composite stop obligation note; gate/arm indexing worked example). Recorded obligation for the validators: the §3.2 item-11 signal/threshold binding and `signal_inputs` freshness (`missing_calibration_signal`, `signal_mismatch`, `unbound_signal_inputs`) are verified by validator conformance fixtures, not by the algebra suite. |
 | Accepted (2026-06-06) | No further changes. |
+
+## 11. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-06-06; this
+section lists where the language as now specified, or its reference validators,
+differ from it.
+
+- **§3.9 surface syntax is no longer a draft.** The heading calls the syntax "draft
+  normative for validator implementations", and §3.9 says the EBNF and schema
+  deltas land with the validators. They have landed: the normative surface syntax
+  is the `composites` production in `spec/grammar/tvl.ebnf` and `composites` in
+  `spec/grammar/tvl.schema.json`.
+- **`unknown_aggregate_kind` has two emitters.** §3.11 maps it to an
+  `aggregate.kind` outside the registry only. The reference validator also emits
+  it when `accept.stat` is not `vote_margin` or `vote_agreement` (§3.2
+  `AcceptDecl`), which §3.11 gives no code of its own. See
+  `docs/reference/error-codes.md` (`unknown_aggregate_kind`) and
+  `python/tvl/lints.py` (`_check_ensemble`).
+- **R9 has no rejecting static fixture.** §3.11 says each new code has a happy and
+  a rejecting fixture in the validator conformance suite. `invalid_cardinality_value`
+  (R9) is a resolution-time rejection, so its validator fixture is statically
+  clean and the rejection is checked by the resolver model-checking suite
+  (`tests/test_composites.py`, comment above `EXPECTED`; `tests/model_checking`).
+- **Judge failures under `judge_max` (2026-10-24).** The accepted §3.2.1 said
+  an `error` from any judge is absorbing while §3.2 excluded a candidate whose
+  judging failed; that conflict was corrected in place in §3.2.1. The exact
+  split given there also names cases the accepted text did not: a judge that
+  produces no output, a boolean score, and a nested-composite judge that yields
+  `no_accept` or `error` for one candidate exclude that candidate, while a judge
+  that cannot be invoked at all is an `error`. These cases follow the reference
+  runtime (Traigent Python SDK, `traigent/knobs/runtime.py` `_judge_max`,
+  `_judge_callable`, `_execute_ensemble`).
+- **Formulas for three §3.10 measures (2026-10-24).** §3.10 names `vote_margin`,
+  `vote_agreement` and `gate_margin_pass_rate` but does not define them. The per-item
+  definitions below are taken from the reference runtime (Traigent Python SDK,
+  `traigent/knobs/cascade.py` `vote_over`; `traigent/knobs/runtime.py`
+  `_ensemble_measures`, `_cascade_measures`); the TypeScript SDK has no composite runtime.
+  Only the rate of `gate_margin_pass_rate` over a set of items is defined here. A vote is
+  a list of `n ≥ 0` votes, each an equivalence key or an abstention (a null key); `c(v)`
+  is the number of votes for key `v` and `a` the number of abstentions, so
+  `Σ_v c(v) = n − a`.
+  - `vote_margin = max_v c(v) / n` when at least one vote is not an abstention, else `0`.
+    Range `[0, 1]`. It is the winning key's share of all votes, abstentions included in the
+    denominator, not the gap between winner and runner-up. A tie does not change it. It is
+    the `margin` of RFC 0001 §3.8 (an empty or abstain-only vote gives `0`).
+  - `vote_agreement = (n − a) / n` when at least one vote is not an abstention, else `0`.
+    Range `[0, 1]`. Despite the name, it is the share of votes that are not abstentions,
+    not the share that agree with the winner. Always `vote_margin ≤ vote_agreement`.
+  - Which votes count (`n`): a cascade stage arm votes over its `k_i` samples; a sampling
+    ensemble over a stage votes over its `k` samples; a sampling ensemble over a nested
+    composite casts one vote per draw (the draw's output as key), and a draw whose result
+    is `no_accept` is left out of `n`; a committee casts one vote per arm that produced an
+    output. In a committee, a stage arm's vote is its comparator (identity by default)
+    applied to its majority winner over its own samples, so distinct outputs with one key
+    count as agreeing votes; a nested-composite arm's vote is the output that composite
+    selected. Committee arms with `no_accept` or no samples are left out of `n`. A `judge_max` ensemble takes no vote
+    and reports `0` for both, and an ensemble whose candidates were all excluded by
+    `no_accept` also reports `0` for both. These zeros are telemetry only; they are not an
+    acceptance statistic (an `accept` over `judge_max` has no vote to read). An `error`
+    result reports no measures.
+  - `gate_margin_pass_rate` applies to `placement: post` cascades only (a `pre` cascade
+    reports `gate_signal_adequate` instead). It is reported per item as a map from gate
+    index `i` (`0 ≤ i ≤ m − 2`) to `0` or `1`. Let `j` be the index of the last arm that
+    ran: the selected arm for an `output` result, and `m − 1` for a `no_accept` result.
+    The entry is `0` for each `i < j` (arm `i` did not stop the cascade: `margin < θ_i`,
+    or arm `i` returned `no_accept`), and `1` for `i = j` when the result is `output` and
+    `j < m − 1` (`margin ≥ θ_j`, so the cascade stopped there). Gates after `j` have no
+    entry, and an `error` result reports no map. Over a set of items, the rate for gate
+    `i` is the mean of the entries reported for it, skipping items with no entry, so it
+    lies in `[0, 1]` and is not reported when no item reports an entry for gate `i`. The
+    reference runtime omits the map for one kind of `no_accept`: a cascade whose last arm
+    is a nested composite returning `no_accept`, on the path without gated nested arms.
+    Such items therefore drop out of the rate.
+  - All three are §3.10 telemetry, i.e. informative measures that change no validity,
+    selection or certificate result. Separately, `margin_below` (`margin < θ`) and
+    `stat_at_least` (`stat ≥ θ`) read `vote_margin` and `vote_agreement` as their inputs
+    (§3.2, item 11). This entry gives those quantities a formula and changes nothing about
+    how they are used.
+- **§3.8 unroll escalation (2026-10-24, corrected in place).** The accepted
+  `KChain(Loop(…))` formula escalated after stage `i` only when the
+  `signal_accept` stop had not fired (`σ(state₍ᵢ₎) < θ`). It now also escalates
+  when stage `i` yields `no_accept` (`result₍ᵢ₎ = no_accept ∨ ¬stop₍ᵢ₎`), and the
+  prose adds that an `error` from any stage fails the chain. The accepted formula
+  was wrong at acceptance: under the loop rules of §3.2.1 a `no_accept` body
+  continues the loop, so a chain that stopped there would not preserve the loop's
+  meaning.
+- **§8 prior art (2026-10-24, corrected in place).** The accepted text cited the
+  program's own margin-routing study, with a figure (vote-margin AUC 0.71), as the
+  source of the `accept` calibration recipe. That study is not published, so
+  readers cannot check it; the citation and the figure are removed and the entry
+  now states the design reason only. No rule changed.

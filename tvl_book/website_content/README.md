@@ -7,8 +7,8 @@ It is intentionally separated into:
 
 - `chapters/`: canonical MDX-authored interactive book content, organized by
   chapter slug with chapter and section frontmatter
-- `paths/`: guided reading paths consumed by the React book app
-- `concepts/`: concept graph metadata for glossary/prerequisite links
+- `paths/`: authored guided reading paths (metadata; the React book app does not read them today)
+- `concepts/`: authored concept graph metadata for glossary/prerequisite links (also not read by the app today)
 - `book/`: authored TVL chapter content and supporting book pages
 - `microsims/`: TVL-specific interactive assets
 - `images/`: TVL-specific artwork
@@ -17,4 +17,5 @@ It is intentionally separated into:
 
 The primary web-book authoring surface is `chapters/`, plus the `paths/` and
 `concepts/` metadata directories. This directory is a tracked source of truth
-for website content.
+for website content. The React book app builds its chapters from its own
+files in `website/client/src/book/chapters/`, not from this directory.

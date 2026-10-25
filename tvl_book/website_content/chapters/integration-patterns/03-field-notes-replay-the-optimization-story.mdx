@@ -2,9 +2,9 @@
 id: chapter-05-field-notes-replay-the-optimization-story
 slug: field-notes-replay-the-optimization-story
 title: Field Notes · Replay the Optimization Story
-summary: The Orientation RAG lab includes the same presets we evaluate in CI. Jump
-  between Baseline , Latency Spike , and Budget Shift to see how TVO trades objectives
-  while DVL enforces guardrails.
+summary: The Orientation RAG lab is a browser simulation that does not run TVO or DVL.
+  Move its sliders to see the kind of trade-offs an optimizer weighs and the guardrails
+  a validation step checks.
 chapter: integration-patterns
 estimated_minutes: 6
 interactive: true
@@ -17,14 +17,19 @@ example_refs:
 opal_bridge: false
 ---
 
-The Orientation RAG lab includes the same presets we evaluate in CI. Jump between **Baseline**, **Latency Spike**,
-and **Budget Shift** to see how TVO trades objectives while DVL enforces guardrails.
+The Orientation RAG lab is a simulation: it computes illustrative latency, cost, and quality numbers in the
+browser. It does not run TVO or DVL. Move the sliders to see the kind of trade-off an optimizer has to weigh and the
+kind of guardrail a data-validation step checks. Jump between the **Baseline**, **Latency Spike** and **Budget Shift**
+presets to see how the read-outs trade off as conditions change.
 
 <MicrosimEmbed title="Orientation RAG Circuit" src="/book-assets/microsims/orientation-rag-circuit/main.html#budget-shift" height={640} />
 
-- Compare the latency and cost read-outs before and after each preset.
-- Click **Copy YAML** to capture the snapshot TVO would export.
-- Note how the constraint badges align with promotion gates—green across the board before approving production.
+- Compare the latency and cost read-outs before and after each preset or slider move.
+- Click **Copy YAML** to capture a simulation snapshot of the slider values. It is not a schema-valid TVL
+  configuration or a TVO export.
+- The badges test simple latency, cost, and rerank thresholds. A real promotion gate also requires a valid
+  configuration, passing behavioral checks, and statistical evidence of improvement from real measurements,
+  followed by deployment review. Green badges are not that evidence.
 
 <ConceptCallout title="CI Recipe" tone="integration">
 
@@ -35,7 +40,7 @@ tvl-validate path/to/spec.tvl.yml
 # 2. Check constraints are satisfiable
 tvl-check-structural path/to/spec.tvl.yml
 
-# 3. Run optimization (Triagent)
+# 3. Run optimization (illustrative: Triagent is an external CLI, not part of this repository)
 triagent optimize --spec path/to/spec.tvl.yml --output results/
 
 # 4. Validate promotion candidate
@@ -44,7 +49,7 @@ tvl-measure-validate path/to/spec.tvl.yml results/config.yml results/measurement
 # 5. Run promotion gate (compare incumbent vs candidate)
 tvl-ci-gate path/to/spec.tvl.yml results/incumbent.yml results/candidate.yml --json
 
-# 6. Data quality check (DVL)
+# 6. Data quality check (illustrative: DVL is an external CLI, not part of this repository)
 dvl validate suites/faq-orientation.json
 ```
 

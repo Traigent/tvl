@@ -3,7 +3,7 @@ id: material-pattern-comparison-workshop
 slug: pattern-comparison-workshop
 title: Pattern Comparison Workshop
 summary: A facilitated exercise for comparing breadth, depth, and committee-style patterns on one shared evaluation plane.
-audience: Engineering teams deciding which agent scaffold deserves experimentation budget next.
+audience: Engineering teams deciding which agent workflow structure deserves experimentation budget next.
 material_type: Workshop
 sort_order: 7
 estimated_minutes: 60
@@ -22,9 +22,11 @@ related_sections:
 Your team wants to improve a support workflow that currently answers one request at a time with a single model pass.
 You have budget for only one serious next experiment. The choice is between:
 
-- a breadth pattern such as contextual batching
-- a depth pattern such as reflection
-- a committee pattern such as routed expertise plus judge
+- a breadth pattern (more views or parallel work per request) such as [contextual batching](/book/patterns/contextual-batching)
+- a depth pattern (more revision rounds) such as reflection, where the model critiques and revises its own draft
+  ([reflective refinement](/book/patterns/reflective-refinement))
+- a committee pattern (several candidates combined through evaluation by a judge) such as
+  [routed expertise plus judge](/book/patterns/routed-expertise-moe-judge)
 
 The goal of this workshop is not to pick the flashiest pattern. The goal is to choose the one that deserves evidence
 next.
@@ -32,13 +34,13 @@ next.
 ## Why This Workshop Matters
 
 Teams often argue about patterns by vibe, novelty, or whoever has the strongest opinion in the room. This workshop
-forces the discussion back onto one shared decision plane: governed TVARs, concrete failure modes, and evidence worth
-paying for.
+forces the discussion back onto one shared set of comparison criteria: the TVARs (tuned variables, the knobs a TVL
+module declares under `tvars`) each pattern would expose, concrete failure modes, and evidence worth paying for.
 
 ## Workshop Output
 
 - One comparison table covering at least three candidate patterns.
-- A ranked shortlist of which scaffolds deserve budget on the next study plane.
+- A ranked shortlist of which candidate workflow structures deserve budget in the next experiment.
 - A failure-mode note describing what would make the leading choice non-deployable.
 
 ## Before You Start
@@ -46,7 +48,7 @@ paying for.
 Pre-work:
 
 - skim the relevant pattern pages before the meeting if possible
-- keep one shared decision plane for the whole workshop
+- compare every pattern against the same goals and evaluation criteria for the whole workshop
 
 Suggested group size:
 
@@ -71,7 +73,7 @@ Create one table with these columns:
 | Pattern | Key TVARs (2-3) | Quality upside | Latency impact | Cost impact | Complexity | Explainability |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-Use at least three pattern pages from the atlas.
+Use at least three pattern pages from the pattern atlas (the set of pattern pages, for example [Contextual Batching](/book/patterns/contextual-batching), [Reflective Refinement](/book/patterns/reflective-refinement) and [Judge Committees / Debate](/book/patterns/judge-committees-debate)).
 
 To identify TVARs, list only the small set of variables the team would actually need to tune, not every field shown on
 the pattern page.
@@ -89,8 +91,8 @@ Examples:
 
 ### Checkpoint
 
-If two patterns are being compared on different goals, the workshop is drifting. Put them back on one shared decision
-plane before ranking them.
+If two patterns are being compared on different goals, the workshop is drifting. Compare them against the same goals
+and evaluation criteria before ranking them.
 
 ## Step 3: Rank The Next Experiment
 
@@ -114,7 +116,8 @@ If the discussion becomes abstract, force the group back to TVL language:
 
 - Which TVARs are we actually exposing?
 - Which structural rules would we need?
-- Which operational preconditions would block the study?
+- Which operational preconditions would block the study? (Conditions on the declared environment, such as provider
+  price or baseline latency, written under `constraints.derived`; structural rules constrain the TVARs instead.)
 - Which promotion evidence would justify rollout?
 
 ## Worked Example

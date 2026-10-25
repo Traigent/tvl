@@ -1,6 +1,6 @@
 # Getting Started with TVL
 
-This guide walks through a small but valid TVL module and the core CLI checks you should run before using a spec in optimization or CI.
+This guide walks through a small but valid TVL module and the core CLI (command-line interface) checks you should run before using a spec in optimization or CI (continuous integration).
 
 ## Install the CLI
 
@@ -89,7 +89,7 @@ This module already contains the minimum pieces most production-facing TVL specs
 *   a namespace under `tvl.module`
 *   an explicit `environment.snapshot_id`
 *   an `evaluation_set`
-*   typed TVAR declarations
+*   typed TVAR (tuned variable) declarations under `tvars`
 *   structural and optional derived checks
 *   objectives plus a promotion policy
 *   optional `metric_ref` identifiers so the evaluation harness knows which metric contract computes each objective
@@ -106,7 +106,7 @@ tvl-check-operational support-bot.tvl.yml --json
 
 What each step does:
 
-*   `tvl-parse` checks that the file is syntactically well-formed YAML with the expected TVL shape.
+*   `tvl-parse` checks that the file is well-formed YAML and prints the parsed document; it does not check the TVL shape (`tvl-validate` does).
 *   `tvl-lint` catches common policy and authoring issues.
 *   `tvl-validate` runs schema and semantic validation.
 *   `tvl-check-structural` checks the structural constraint set for satisfiability.
@@ -114,7 +114,7 @@ What each step does:
 
 ## Common first mistakes
 
-*   Writing CEL-like expressions such as `params.model == "gpt-4o"` instead of TVL formulas like `model = "gpt-4o"`.
+*   Writing expressions in the style of CEL (Common Expression Language), such as `params.model == "gpt-4o"`, instead of TVL formulas like `model = "gpt-4o"`: use bare variable names and a single `=` for equality.
 *   Using derived constraints for metric outputs. In TVL, derived constraints are over `env.context.*` symbols.
 *   Treating `metric_ref` as executable code. It should be a stable metric ID such as `metrics.quality_score.v1`, resolved by your evaluator.
 *   Forgetting `promotion_policy.min_effect` entries for standard objectives.

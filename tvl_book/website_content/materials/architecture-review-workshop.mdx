@@ -9,8 +9,8 @@ sort_order: 2
 estimated_minutes: 60
 objectives:
   - Review a TVL module as a system contract rather than only a config file.
-  - Pressure-test the chosen TVARs, constraints, and overlays against deployment reality.
-  - Record integration decisions for Triagent/TVO, DVL, and audit artifacts.
+  - Pressure-test the chosen tuned variables (TVARs), constraints, and overlays against deployment reality.
+  - Record integration decisions for Traigent/TVO (the TVL Optimizer), DVL (a data-validation layer), and audit artifacts.
 related_sections:
   - why-tvl-exists/running-example-campus-orientation-rag
   - getting-fluent-in-tvl/tvl-types-and-domains
@@ -22,12 +22,13 @@ related_sections:
 ## Workshop Output
 
 - A reviewed TVL contract with open questions captured.
-- An overlay strategy for staging, production, and hotfix use.
+- An overlay strategy for staging, production, and hotfix use. An overlay is a small file of overrides that
+  `tvl-compose` applies to a base module (see [Chapter 4](../book/chapter-04-patterns.md)).
 - A list of runtime and evidence artifacts required for promotion.
 
 ## Why This Workshop Matters
 
-Architecture reviews often stay abstract: teams talk about governance, overlays, and manifests without stress-testing one
+Architecture reviews often stay abstract: teams talk about governance, overlays, and manifests (records of the resolved spec, validation logs, the promotion decision, and rollback instructions) without stress-testing one
 real contract. This workshop forces that discussion onto a tangible TVL artifact so the review produces a usable
 decision record instead of a vague agreement that "the design seems fine."
 
@@ -36,14 +37,15 @@ decision record instead of a vague agreement that "the design seems fine."
 | Phase | Minutes | Activity |
 | :--- | :--- | :--- |
 | Setup | 5 | Read the scenario contract and circle the first thing that worries you. |
-| Contract review | 15 | Review TVARs and objectives. |
+| Contract review | 15 | Review TVARs (tuned variables) and objectives. |
 | Constraint and overlay review | 15 | Distinguish structural rules, operational preconditions, and safe narrowing behavior. |
-| Integration review | 15 | Decide what TVO, DVL, and manifest artifacts must exist downstream. |
+| Integration review | 15 | Decide what TVO (the TVL Optimizer in the Traigent platform), DVL (a data-validation layer that checks evaluation datasets), and manifest artifacts must exist downstream. |
 | Debrief | 10 | Compare the team record with the exemplar and capture open risks. |
 
 ## Scenario Contract
 
-Use this draft based on the campus-orientation RAG example. It is intentionally imperfect.
+Use this draft based on the campus-orientation retrieval-augmented generation (RAG)
+[running example](../chapters/why-tvl-exists/02-running-example-campus-orientation-rag.mdx). It is intentionally imperfect.
 
 ```yaml
 tvl:
@@ -118,7 +120,7 @@ Review goal:
 ### Runtime Boundary
 
 - Which checks belong in TVL itself?
-- Which checks belong in OPAL or runtime-side metadata?
+- Which checks belong in OPAL (a companion declarative language for assignments, domain bindings and guarded constraints, described in an appendix of the TVL paper manuscript) or runtime-side metadata?
 - Which measurements must appear in the promotion manifest for later audit?
 
 ## Decision Record Template
@@ -135,13 +137,14 @@ Review goal:
 Different scenario, same review standard.
 
 - **Accepted TVAR set**
-  `model`, `retrieval_top_k`, `response_tokens`
+  `model`, `retrieval_top_k`, `rerank_weight`, `response_tokens`
 - **Structural constraints to encode now**
   if `retrieval_top_k >= 40`, require `rerank_weight >= 0.3`
 - **Operational preconditions required from `env.context.*`**
   gateway baseline latency and provider price must stay inside the agreed preflight envelope
 - **Overlay policy**
-  staging may widen observation fields, but production and hotfix overlays may only narrow the search surface
+  every overlay, staging included, may only narrow the search surface: `tvl-compose` applies its narrowing checks
+  to all overlays unless `--no-validate` is used. A staging need for a wider surface is a base-module change
 - **Promotion evidence bundle**
   composed spec, overlay identifier, validation logs, evaluation-set hash, candidate configuration, measurement file,
   rollback note

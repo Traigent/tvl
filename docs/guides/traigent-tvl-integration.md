@@ -19,7 +19,7 @@ TVL is the requirements boundary between an AI agent specification and the tools
 3. Produce a candidate by any method: manual selection, enumeration, an optimizer, or an external agent platform.
 4. Validate the candidate configuration against the module.
 5. Run the pinned evaluation set with the named evaluator and metric versions.
-6. Produce canonical measurement bundles for the incumbent and candidate.
+6. Produce canonical measurement bundles (the evidence files defined by the [Promotion Evidence Contract](../../spec/promotion-evidence-contract.md)) for the incumbent (the currently accepted configuration, which the candidate would replace) and the candidate.
 7. Apply the TVL acceptance and promotion policy.
 8. Store the module, candidate, evaluator identifiers, evidence, and decision together.
 
@@ -31,16 +31,16 @@ An integration should fail closed when:
 - a module, candidate, or measurement bundle targets a different module identity;
 - an evaluation-set, environment, or metric binding required by the contract cannot be resolved;
 - required evidence is absent or statistically inconclusive;
-- a chance or band requirement fails; or
+- a chance requirement (a limit on the rate of an undesirable event, checked at a stated confidence) or a band requirement (an interval a metric must stay inside) fails; or
 - a strict certification requirement cannot be verified.
 
-Inconclusive evidence should produce `NoDecision`, not a claim of failure or success.
+Inconclusive comparisons, on-target bands without enough evidence, and inconclusive promotion monitors produce `NoDecision`, not a claim of failure or success, unless another check already rejects the candidate: any `Reject` wins. A TVL 1.2 chance constraint is the exception: it rejects on any non-pass, including inconclusive counts. A chance constraint with zero trials is not a `Reject`: its check is undefined, and the gate returns `Error` (`zero_trials`).
 
 ## Search remains replaceable
 
 TVL does not require grid search, evolutionary search, Bayesian optimization, successive halving, or any other candidate-selection method. An implementation may expose these features, but their settings and guarantees belong to that implementation or to a separately named profile.
 
-An algorithm-specific guarantee must state its assumptions and theorem. Merely accepting TVL fields such as `min_effect`, an exploration budget, or a confidence value does not establish a PAC or sample-efficiency guarantee.
+An algorithm-specific guarantee must state its assumptions and theorem. Merely accepting TVL fields such as `min_effect`, an exploration budget, or a confidence value does not establish a PAC (probably approximately correct) guarantee or a sample-efficiency guarantee (a bound on how many evaluations are needed).
 
 ## Evidence output
 

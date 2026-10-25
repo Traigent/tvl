@@ -27,7 +27,8 @@ with exactly one typed binding — **Tuned | Fixed | Calibrated** — and extend
 - a `cvars` block declaring **calibrated variables** (CVARs): parsed and governed,
   **excluded from structural SAT and from the optimizer search space**;
 - a `policies` block declaring named operational policies (first concrete strategy:
-  `cascade`), aligned with the effectuation knob-kind `policy`;
+  `cascade`), aligned with the effectuation knob-kind `policy` (a knob that selects or
+  parameterizes runtime behaviour instead of being searched; §3.8);
 - `promotion_policy.require_calibration` — a strict evidence mode whose certificate
   freshness is validated against a **hash-covered calibration context**;
 - formal **namespace/scope rules** replacing the current ambiguity where dotted names
@@ -37,8 +38,8 @@ with exactly one typed binding — **Tuned | Fixed | Calibrated** — and extend
 The bilevel-programming literature gives this the standard reading: tuned variables
 are **outer variables**, calibrated variables are **inner variables**, and the
 calibrator is the (memoized) **response function** (Franceschi et al., ICML 2018).
-No mainstream HPO framework models inner variables natively; TVL 1.1 makes them a
-first-class governed construct.
+We know of no mainstream hyperparameter optimization (HPO) framework that models inner variables natively (the
+tools surveyed are listed in §8); TVL 1.1 makes them a first-class governed construct.
 
 ## 2. Scope freeze (Phase 0)
 
@@ -64,7 +65,7 @@ first-class governed construct.
 - CVAR substitution-as-constant into structural constraints;
 - relative/implicitly-prefixed name resolution (v1 resolution is exact-match only);
 - workflow-ownership *semantics* for `scope` (v1 is metadata + one consistency lint);
-- FE/BE product views of cvars/policies/certificates.
+- frontend/backend (FE/BE) product views of cvars/policies/certificates.
 
 ## 3. Formal model (Phase 1)
 
@@ -96,8 +97,10 @@ of `N_F` from the declared names is checked **at resolution time**: a runtime fi
 assignment whose domain intersects `N_T ∪ N_C` is rejection **R3**
 (`duplicate_provider`, §3.4).
 
-**`Range.default` is unchanged**: a TVAR's `default` remains a *default candidate
-value* within its searched domain. It is NOT a Fixed binding.
+**A range default is not a Fixed binding.** TVL module syntax has no `default`
+field on a TVAR or on a `Range` (`spec/grammar/tvl.schema.json`, `$defs/TVarDecl` and
+`$defs/Range`). Where an SDK's own range API accepts a default value, that value is a
+*default candidate value* within the searched domain. It is NOT a Fixed binding.
 
 ### 3.2 TVAR projection (optimizer visibility)
 
@@ -110,8 +113,8 @@ The optimizer-visible search space is exactly the tuned projection:
 Every optimizer suggestion `t` satisfies `dom(t) = N_T`. CVARs, fixed values, policy
 internals, and certificates are **invisible** to the optimizer (Property P2). The
 typing context for structural constraints is unchanged: **Γ ranges over `N_T`
-only** — `cvars` do not enter Γ, `Config(Δ, E_τ)`, or `F^str` (Property P5; §3.8 has
-the lint that makes violations precise).
+only** — `cvars` do not enter Γ, `Config(Δ, E_τ)`, or `F^str` (Property P5; the lint
+`cvar_in_structural_constraint` makes violations precise).
 
 ### 3.3 CVAR declarations
 
@@ -119,7 +122,7 @@ Abstract syntax (extends §2 of the formal semantics):
 
 ```
 CVarDecl ::= ⟨ name : Ident,
-               type : Type,                      (* same Type grammar as TVarDecl *)
+               type : Type,                      (* same Type grammar as TVarDecl; since narrowed, see §11 *)
                domain? : ValidityDomain,         (* OPTIONAL, see below *)
                calibration : CalibrationSpec,
                governance? : ⟨ require_calibration : Bool ⟩,
@@ -149,8 +152,9 @@ forward-compatibility guard for the deferred CVAR→CVAR extension, and the Phas
 model checker proves *unreachability* of R1 in v1 rather than exhibiting it.
 
 **Dependencies are a freshness/validity relation, not search-space constraints**:
-`depends_on` never generates SAT clauses and never restricts `Σ`. Its only semantic
-effect is through the freshness context (§3.5).
+`depends_on` never generates SAT clauses and never restricts `Σ`. Its semantic
+effects are two: it fixes the tuned-parent values `t|π(n)` passed to the calibrator
+(§3.4), and it fixes the `t|π` entry of the freshness context (§3.5).
 
 ### 3.4 CVAR resolution
 
@@ -177,7 +181,7 @@ rejection conditions:
 
 | # | Rejection | Meaning |
 |---|---|---|
-| R1 | `cycle` | the dependency graph is not a DAG *(unreachable in v1 by construction; normative for the deferred CVAR→CVAR extension)* |
+| R1 | `cycle` | the dependency graph is not a directed acyclic graph (DAG) *(unreachable in v1 by construction; normative for the deferred CVAR→CVAR extension)* |
 | R2 | `missing_ref` | a `depends_on` entry resolves to no TVAR declaration |
 | R3 | `duplicate_provider` | two sources provide the same output name — including `dom(f) ∩ (N_T ∪ N_C) ≠ ∅` |
 | R4 | `phase_mismatch` | a value is consumed before the phase that produces it |
@@ -220,7 +224,8 @@ Certificate ::= ⟨ subject : ⟨ cvar : Ident,
 
 There is **no open `payload` field** in the v1 certificate: every field is one of
 the closed shapes above (identifiers, types, hashes, counts, enum) — this is what
-makes Property P8 checkable at the schema level. Implementations needing more
+makes Property P8 checkable at the schema level. (`TargetProperty` is left
+undefined here; §11 records that it is a closed identifier string.) Implementations needing more
 context attach it *outside* the certificate object.
 
 The decision vocabulary is shared with the per-config guarantee certificates already
@@ -327,7 +332,7 @@ with these TVL-specific restrictions on the value space:
    never hashed.
 2. Numeric serialization follows JCS/ECMAScript shortest-round-trip rules (JCS
    already fixes `1` vs `1.0`, exponent form, and `-0` → `0`).
-3. Strings are Unicode-NFC-normalized **before** JCS serialization.
+3. Strings are normalized to Unicode Normalization Form C (NFC) **before** JCS serialization.
 4. Objects with duplicate keys are rejected at parse time (loaders MUST error, not
    last-wins).
 5. `ctx_schema_version` is part of `ctx_core`, so any future change to the
@@ -345,7 +350,7 @@ holds (per-CVAR governance included):
 ```
 strict(M, c) ⟺ promotion_policy.require_calibration.enabled
              ∨ promotion_policy.chance_constraints ≠ ∅
-             ∨ guaranteed-selection target               (operational profile)
+             ∨ certified-selection target                (operational profile)
              ∨ ∃ n ∈ N_C consumed by c :
                    cvars[n].governance.require_calibration = true
              ∨ ∃ n ∈ N_C consumed by c with a certificate-backed TargetProperty
@@ -456,7 +461,8 @@ the gate-count invariant, not unresolved-name errors.
 - Each stage runs `k_i ≥ 1` samples (`k_i` is a per-stage **cardinality** tuned
   variable, not part of the policy), votes over caller-defined equivalence keys, and
   exposes content-free vote statistics. The v1 gate predicate is
-  `escalate ⟺ margin < θ_i`.
+  `escalate ⟺ margin < θ_i`, where `margin` is the winning key's share of all votes,
+  abstentions included (the `vote_margin` formula is in RFC 0002 §11).
 - **Totality and determinism**:
   - *Empty/abstain-only vote* (no valid keys): `margin = 0`, hence the gate
     escalates for any `θ_i > 0`; `θ_i = 0` means "never escalate" by the strict
@@ -476,7 +482,7 @@ the gate-count invariant, not unresolved-name errors.
 | Construct | What it is |
 |---|---|
 | `policies` (this RFC) | NEW top-level block of named operational policy declarations |
-| `promotion_policy` | Existing promotion gate parameters (§9) — unchanged |
+| `promotion_policy` | Existing promotion gate parameters (§9) — extended by this RFC with `require_calibration` (§3.5); otherwise unchanged |
 | `spec/policies/*.yml` | Existing repo convention: standalone *promotion-policy files* for `--policy` in the CI gate — unchanged, unrelated |
 
 ### 3.9 Surface syntax (draft normative for validator implementations)
@@ -525,8 +531,8 @@ module     = header, environment, evaluation_set, tvars, [ cvars ], constraints,
 scope_spec  = "scope", ":", "{", [ scope_field, { ",", scope_field } ], "}" ;
 scope_field = ( "node" | "agent" | "workflow" ), ":", ident ;
 
-(* AMENDED 1.0 production: tvar_decl gains the optional scope (the one
-   existing-production change; additive and optional) *)
+(* AMENDED 1.0 production: tvar_decl gains the optional scope (one of two
+   existing-production changes, with promotion_policy below; additive and optional) *)
 tvar_decl   = "{", "name", ":", ident, ",", "type", ":", type,
               ",", "domain", ":", domain_spec, [ ",", scope_spec ], "}" ;
 
@@ -562,17 +568,19 @@ gate_decl   = "{", "kind", ":", "margin_below", ",", "threshold", ":", ident, "}
 JSON-schema shape: `cvars`/`policies` added to `properties` (NOT `required`) of the
 module schema; `$defs.CVarDecl` / `$defs.PolicyDecl` / `$defs.GateDecl` /
 `$defs.Scope` mirroring the above; **`$defs.Scope` is also added as an optional
-property of the existing `TVarDecl`** (the one 1.0-shape modification — additive and
-optional, so every existing document remains valid); `promotion_policy.require_calibration` per §3.5 (extension-keys enum
-only); the shared `Ident` lexical `pattern` of §3.7(2) applied to all `name` fields
+property of the existing `TVarDecl`** (additive and optional, so every existing
+document remains valid); `promotion_policy.require_calibration` per §3.5 (extension-keys enum
+only; the second additive, optional change to an existing 1.0 shape); the shared `Ident` lexical `pattern` of §3.7(2) applied to all `name` fields
 of the new $defs.
 
 ## 4. Property claims (Phase 2)
 
-Each property is a named obligation stated as a checkable predicate; Phase 3
-model-checks it on finite instances (producing counterexample fixtures where the
+Each property is a named obligation stated as a checkable predicate; for each
+property whose row lists a Phase 3 obligation (P1–P7), Phase 3 model-checks it on
+finite instances (producing counterexample fixtures where the
 *negation* is satisfiable in a buggy variant), and Phase 4 carries the executable
-form. SDK-level obligations (marked →SDK) are tracked by the SDK features, not by
+form. P8 has no Phase 3 obligation: it is checked at Phase 4 and by the SDK.
+SDK-level obligations (marked →SDK) are tracked by the SDK features, not by
 TVL validators.
 
 | ID | Property | Claim (checkable form) | Verification obligation |
@@ -583,7 +591,7 @@ TVL validators.
 | **P4** | Resolver completeness | `¬(R1 ∨ … ∨ R8) ∧ all calibrators ≠ ⊥ ⟹ Accept` — exact converse of P3 by construction | Phase 3: completeness side of the resolver model (no implicit rejection) |
 | **P5** | SAT preservation | For any module M and its cvar/policy-stripped projection M⁻: `compile_constraints(M)` and `compile_constraints(M⁻)` produce identical variable sets (= `N_T`) and identical clause sets; satisfiability coincides | Phase 3: encoding-equality model; Phase 4: lock test asserting solver domain keys = tvar names on modules with cvars |
 | **P6** | Namespace uniqueness | Each namespace reference (`depends_on`, `gates[].threshold`) resolves to exactly one declaration of the required kind or errs; duplicate names across tvars ∪ cvars ∪ policies err; prefix collisions diagnosed per §3.7(5) | Phase 3: shadowing/collision/kind-mismatch model; Phase 4: lints `cvar_shadows_tvar`, `policy_name_conflict`, `namespace_prefix_collision`, `missing_ref`, `duplicate_stage` |
-| **P7** | Fail-closed strictness | Under `strict(M, c)`: each of {R6, R8, calibrator ⊥, gate exception (§3.6), gate no_decision} ⟹ no promotion ∧ no winner-by-objective fallback | Phase 3: promotion-verdict reachability model (all five verdicts reachable, none promotes); →SDK spy tests on the four leak sites |
+| **P7** | Fail-closed strictness | Under `strict(M, c)`: each of {R6, R8, calibrator ⊥, gate exception (§3.6), gate no_decision} ⟹ no promotion ∧ no winner-by-objective fallback | Phase 3: promotion-verdict reachability model (all five verdicts reachable, none promotes); →SDK spy tests on the four leak sites (the SDK code paths that could fall back to the best-scoring trial: gate no_decision, insufficient samples, gate exception, terminal selector) |
 | **P8** | Privacy | The certificate and `SignalObservation` shapes (both defined in §3.5) are closed: every field is an identifier, type, hash, finite number, count, split label, or enum — no raw-content-typed field exists to leak. `policies[].parameters` is explicitly outside the guarantee | Phase 4: schema-level closed-shape check over the §3.5 shapes; →SDK canary test in observation emission |
 
 ## 5. Documented assumptions
@@ -632,8 +640,9 @@ govern. `Promote` gains the `CalibrationPass` conjunct only under `strict(M, c)`
 
 1. Both new blocks are *optional* additions to `properties` of an
    `additionalProperties: false` schema — absent blocks ⇒ identical schema
-   acceptance. The only 1.0-shape change is the optional `scope` property on
-   `TVarDecl` — additive, so all existing documents remain valid.
+   acceptance. The only 1.0-shape changes are the optional `scope` property on
+   `TVarDecl` and the optional `promotion_policy.require_calibration` — both
+   additive, so all existing documents remain valid.
 2. Configuration documents (`tvl-configuration.schema.json`) are **untouched**;
    their `assignments` remain candidate TVAR assignments (N_F is a resolution-time
    concept, §3.1).
@@ -660,7 +669,8 @@ existing example/conformance corpus passes unchanged.
   basis of R7.
 - **Certified calibration** — Learn-then-Test (Angelopoulos et al.; empty accepted
   set = abstention ⇒ fail-closed `NO_DECISION` is literature-sanctioned), RCPS
-  (UCB scan over a monotone 1-D threshold family), Pareto Testing (fixed-sequence
+  (risk-controlling prediction sets, Bates et al.: an upper-confidence-bound (UCB)
+  scan over a monotone 1-D threshold family), Pareto Testing (fixed-sequence
   multiplicity control), Trust-or-Escalate (ICLR 2025: LTT-certified LLM cascade
   thresholds — direct prior art for certified gates). The `n ≥ ⌈1/ε⌉ − 1` floor
   (R8) is the split-conformal minimum-calibration-size bound.
@@ -726,3 +736,39 @@ Changes from Draft v1 to Draft v2:
     `parameters` explicitly outside the guarantee (§3.5, §3.8, P8).
 15. Properties not finite predicates → P-table restated as checkable
     predicates; →SDK obligations marked; "gate exception" defined (§3.6, §4).
+
+## 11. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-06-05; this
+section lists where the language as now specified differs from it. The grammar and
+schema named here are normative where they differ.
+
+- **CVAR types.** §3.3 says a CVAR uses the same `Type` grammar as a TVAR, and the
+  §3.9 EBNF gives `cvar_decl` the general `type` production. The validators that
+  implement this RFC accept only `bool`, `int`, `float` and `enum[…]` CVAR types;
+  tuple and callable CVARs are deferred. Now specified by `cvar_type` in
+  `spec/grammar/tvl.ebnf` and `$defs/CVarDecl.type` in `spec/grammar/tvl.schema.json`.
+- **`constraints` is optional.** The §3.9 `module` production lists `constraints`
+  as required, as the EBNF did at the time; the JSON Schema never required it. Since
+  TVL 1.3 the EBNF also marks it optional (RFC 0003 §4.1; `module` in
+  `spec/grammar/tvl.ebnf`). Later versions also add further optional blocks to the
+  `module` production.
+- **§3.9 surface syntax is no longer a draft.** The heading calls the syntax "draft
+  normative for validator implementations". The validators have since been
+  implemented; the normative surface syntax is `spec/grammar/tvl.ebnf` and
+  `spec/grammar/tvl.schema.json`.
+- **`target` (`TargetProperty`) is a closed identifier.** §3.5 types the certificate
+  field `target` and the `ctx_core` entry `target` as `TargetProperty` but never
+  defines that type. It is an opaque identifier string that names the target
+  property, with no nested fields and no payload. So the field is one of the closed
+  shapes of §3.5, and P8 covers it. This matches the Phase 3 model checker:
+  `FreshnessContext.target` and `Certificate.target` are plain strings
+  (`tests/model_checking/model.py:209`, `:256`). The `ctx_core` hash covers `target`
+  (`:231`), and validity requires `cert.target = ctx_now.target` by string equality
+  (`:274`). The model accepts any string; it applies no lexical pattern. The tests
+  use labels such as `"tgt"` (`tests/model_checking/test_certificate.py:36`). The
+  reference validators in `python/tvl/` never read a certificate, so they apply no
+  check to `target`. Instead they refuse promotion whenever a module is in a strict
+  mode that needs certificates (`python/tvl/measurement.py:323-336`). Any statistical
+  level or bound that a target names stays outside the certificate, as §3.5 already
+  requires for extra context.

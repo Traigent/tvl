@@ -1,16 +1,16 @@
 # TVL Formal Semantics
 
-**Version 1.0 — Formal Foundations**
+**Formal foundations — revised for TVL 1.5**
 
 **Authors**: Traigent Research
-**Date**: January 2026
-**Status**: Draft semantic reference. Sections 2–6 and 9 define the intended core semantics; Sections 7–8 are informative formal foundations and a reference encoding; Section 10 states conformance requirements.
+**Date**: January 2026; last extended October 2026
+**Status**: Draft semantic reference. Sections 2–6 and 9 define the intended core semantics; Sections 7–8 are informative formal foundations and a reference encoding; Section 10 states conformance requirements; Sections 12–14 define the runtime extensions of TVL 1.3, 1.4 and 1.5.
 
 ---
 
 ## Abstract
 
-This document defines the mathematical meaning of the Tuned Variables Language (TVL), a requirements specification language for AI agents. A TVL module describes an admissible agent design space, the desired properties of candidates in that space, and the evidence conditions for acceptance or promotion. We define the abstract syntax, semantic domains, type system, denotational semantics, feasibility predicates, and promotion relation. The document also gives an informative SMT encoding and explicitly bounds the claims supported by the current formalization.
+This document defines the mathematical meaning of the Tuned Variables Language (TVL), a requirements specification language for AI agents. A TVL module describes an admissible agent design space, the desired properties of candidates in that space, and the evidence conditions for acceptance or promotion. We define the abstract syntax, semantic domains, type system, denotational semantics, feasibility predicates, and promotion relation. The document also gives an informative SMT (satisfiability modulo theories) encoding and explicitly bounds the claims supported by the current formalization.
 
 ---
 
@@ -19,6 +19,8 @@ This document defines the mathematical meaning of the Tuned Variables Language (
 ### 1.1 Specification Languages vs. Programming Languages
 
 TVL is a **domain-specific requirements language** for AI agents. Unlike a programming language or build recipe, it does not describe the steps for constructing one agent. It defines a set of allowed agent configurations and the properties and evidence that make a candidate acceptable.
+
+The table below uses two technical terms. A **Turing-complete** language can express any computation, so some questions about its programs, such as whether they terminate, have no general algorithm. A question is **decidable** when an algorithm always halts with the correct yes or no answer; TVL is restricted so that its validation questions are decidable.
 
 | Property | Programming Language | Specification Language (TVL) |
 |----------|---------------------|------------------------------|
@@ -31,7 +33,7 @@ TVL is a **domain-specific requirements language** for AI agents. Unlike a progr
 
 For TVL to serve as a trustworthy specification language, we must establish:
 
-1. **Well-defined syntax**: Unambiguous grammar with formal AST
+1. **Well-defined syntax**: Unambiguous grammar with a formal abstract syntax tree (AST)
 2. **Well-defined semantics**: Mathematical meaning for every construct
 3. **Type soundness**: Well-typed modules don't produce runtime type errors
 4. **Decidability**: All validation questions are decidable
@@ -51,8 +53,10 @@ For TVL to serve as a trustworthy specification language, we must establish:
 - **§10**: Conformance Requirements — behavior required of implementations
 - **§11**: Future Work — proposed extensions, not current requirements
 - **§12**: Runtime Semantics (TVL 1.3) — requirements, monitors, obligations, and governed responses
+- **§13**: Reactive Outcomes and Notification Guards (TVL 1.4) — run outcomes and guarded notifications
+- **§14**: Breach Persistence and Census Aggregates (TVL 1.5) — persistence conditions and exact aggregate verdicts
 
-Sections 2–6 and 9 specify **what** core TVL constructs mean; §12 specifies the optional TVL 1.3 runtime extension. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
+Sections 2–6 and 9 specify **what** core TVL constructs mean; §§12–14 specify the optional TVL 1.3–1.5 runtime extensions. Section 7 explains properties of that core and Section 8 describes one way a validator may implement structural checks; neither requires an implementation to expose its algorithms. Search algorithms, optimizer architecture, optimizer sample allocation, and candidate scheduling are outside this formal language contract. Monitor sampling and decision schedules are part of the §12 evidence contract.
 
 ### 1.4 Scope of Formal Guarantees
 
@@ -63,8 +67,8 @@ The formal semantics and soundness proofs in this document apply to the **core T
 | Registry domains (`domain: { registry: ... }`) | External state interaction | Future work |
 | Filter expressions in registry refs | Filter language not formalized | Future work |
 | Callable types (`type: callable[Protocol]`) | Protocol typing not defined | Future work |
-| `cvars`/`policies` (RFC 0001, landed 2026-06-05) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
-| `composites` (RFC 0002, landed 2026-06-06) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
+| `cvars`/`policies` ([RFC 0001](rfc-0001-knob-bindings-cvars-policies.md), landed 2026-06-05: calibrated variables and named operational policies) | Post-dates the Lean proof tree (machine-checked proofs in the Lean 4 theorem prover, `proofs/`); no formalization exists | Not yet formalized |
+| `composites` ([RFC 0002](rfc-0002-composite-knobs.md), landed 2026-06-06: composite knobs) | Post-dates the Lean proof tree; no formalization exists | Not yet formalized |
 
 **Implications**:
 
@@ -73,27 +77,28 @@ The formal semantics and soundness proofs in this document apply to the **core T
 2. **Warnings**: Conformant validators SHOULD emit warnings when excluded constructs are used:
    - `W6001: unverifiable_registry_domain` — "Module uses registry domain; formal soundness guarantees do not apply"
    - `W6002: unverifiable_callable_type` — "Module uses callable type; type safety is not formally verified"
-   - cvars/policies/composites (RFC 0001/0002) have **no lint warning implemented yet** (tracked as
-     follow-up work): `lint_module`'s existing conservative-extension guarantee
-     (`tests/model_checking/test_legacy_corpus.py`) locks identical diagnostics whether or not a
-     legacy module has `cvars`/`policies` injected, so adding a warning here needs that guarantee
-     re-scoped first — see the coverage note below instead for the disclosure in the meantime.
+   - `outside_proved_subset` (severity `info`) — "Module uses <construct>, which is outside the
+     machine-proved (Lean) subset". `lint_module` emits it once per declared family among
+     `cvars`, `policies` and `composites` (RFC 0001/0002); an absent or empty block emits nothing.
+     Info diagnostics are reported but never decide `ok` or the exit status of the CLI tools
+     (`blocking_issues` excludes them). Callable domains stay with `W6002`. See the coverage note
+     below.
 
 3. **Workaround**: For formal guarantees, resolve registry domains to explicit enum domains before validation, replace callable types with enum types listing known implementations, and restrict the module to the pre-RFC-0001/0002 subset (no `cvars`, `policies`, or `composites` blocks).
 
 **Rationale**: Registry domains require interaction with external state (registries), which introduces semantic complexity beyond the scope of this static specification. Callable types require a protocol typing system that would significantly expand the formalization. These features are valuable for practical use but are excluded from the formally verified core to keep the proofs tractable.
 
-**cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the Lean proof tree (`proofs/`) simply predates RFC 0001 and RFC 0002 and has never been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/*.lean` mentions `composite`, `cvar`, or `policy`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
+**cvars/policies/composites are a different case from the three constructs above**: they are not deliberately scoped out of a tractable core — the core Lean proof tree (`proofs/`) predates RFC 0001 and RFC 0002 and has not been extended to cover them. `proofs/TVL/Types.lean`'s `Atom`/`Formula` inductives model only `eq/neq/geq/leq/mem` atoms and `and/or/not/impl` connectives; nothing in `proofs/TVL/` models `composites`, `cvars`, or `policies`. Closing this gap is future work, not a permanent exclusion; see `proofs/PROOF_SUMMARY.md`'s coverage note.
 
 **Runtime extension scope (TVL 1.3, accepted 2026-10-21)**. Section 12 defines a separate runtime typing context, the meaning of runtime declarations on complete unit histories, the contract every verdict, episode, obligation state and response effect must satisfy, and conditional theorem statements about the language and about exact binomial tests. These are claimed obligations for mechanization, not a report of completed Lean proofs or deployed enforcement. Verdicts are produced by evaluator profiles outside TVL; their decision procedures, and the proofs that they meet the contract, are not part of this document. Statistical claims apply only to `clopper_pearson_rational_v2` under the stated sampling and latent-count model. The hosted platform's floating-point `clopper_pearson_exact_v1` is a distinct computation, with no theorem. Checker claims are relative to the declared checker's labels; agent-scoped evidence does not establish per-configuration behavior without verified configuration attribution. No episode false-closure bound, sampled prevention guarantee, repair efficacy, or universal agent guarantee follows.
 
 ### 1.5 Field Categorization and Semantic Layers
 
-TVL module fields fall into three categories based on their role in the formal semantics:
+The core TVL module fields fall into three categories based on their role in the formal semantics. TVL 1.1 adds a fourth category, governed-but-not-searched declarations (§1.5.5); the runtime blocks of TVL 1.3–1.5 have their own typing context (§12).
 
 #### 1.5.1 Semantic Fields (Under Formal Semantics)
 
-These fields have precise mathematical meaning and are subject to the theorems in this document:
+These fields have precise mathematical meaning and are subject to the theorems in this document. The table uses notation defined later: `E_τ` is the environment snapshot (§3.2), `𝒟⟦d⟧` the domain interpretation (§3.3), `F^str` the structural-feasibility predicate (§6.1) and `≻_ε` ε-Pareto dominance (§9.3).
 
 | Category | Field | Semantic Role |
 |----------|-------|---------------|
@@ -103,9 +108,8 @@ These fields have precise mathematical meaning and are subject to the theorems i
 | **Static Validity** | `constraints.structural` | Formula φ in F^str(c, Φ^str) |
 | **Static Validity** | `constraints.derived` | Environment-scoped operational preconditions evaluated on E_τ |
 | **Promotion** | `objectives[].name` | Component index in objective vector y |
-| **Operational Metadata** | `objectives[].metric_ref` | Declarative identifier for the evaluator metric contract |
 | **Promotion** | `objectives[].direction` | Direction sign σ(·) |
-| **Promotion** | `objectives[].band` | TOST equivalence band [L, U] |
+| **Promotion** | `objectives[].band` | TOST (two one-sided tests) equivalence band [L, U] |
 | **Promotion** | `promotion_policy.dominance` | Dominance relation ≻_ε |
 | **Promotion** | `promotion_policy.min_effect` | Epsilon map ε : Objective → ℝ⁺ |
 | **Promotion** | `promotion_policy.alpha` | Significance level α |
@@ -124,10 +128,11 @@ These fields control tooling behavior but do not affect the mathematical meaning
 | `exploration.convergence` | Early stopping heuristics |
 | `exploration.initial_sampling` | Search initialization |
 | `promotion_policy.tie_breakers` | Deterministic ordering for equal configs |
+| `objectives[].metric_ref` | Declarative identifier for the evaluator metric contract |
 
-#### 1.5.3 Metadata Fields (Informational Only)
+#### 1.5.3 Metadata Fields (No Static Semantic Content)
 
-These fields are for identification and reproducibility, with no semantic content:
+These fields are for identification and reproducibility. They carry no meaning in the static core semantics (§§2–9). `evaluation_set` binds evidence to a named population: promotion monitors evaluate the candidate on that evaluation set (§12.7, Definition 12.15).
 
 | Field | Purpose |
 |-------|---------|
@@ -136,7 +141,6 @@ These fields are for identification and reproducibility, with no semantic conten
 | `tvl_version` | Language version for compatibility |
 | `environment.snapshot_id` | Timestamp labeling E_τ |
 | `environment.bindings` | Implementation-defined deployment identifiers |
-| `environment.components` | Deprecated alias for `environment.bindings` |
 | `evaluation_set.dataset` | Evidence-binding identifier for the evaluated task set |
 | `evaluation_set.seed` | Evidence-binding seed for repeatable evaluation |
 
@@ -152,7 +156,7 @@ Determines which configurations are *structurally valid* before any evaluation:
 Valid(c, M) ⟺ c ∈ Config(Δ, E_τ) ∧ F^str(c, Φ^str) ∧ F^op(E_τ, Φ^der)
 ```
 
-- **Structural constraints** (`constraints.structural`): Boolean formulas over TVARs
+- **Structural constraints** (`constraints.structural`): Boolean formulas over TVARs (tuned variables, declared in `tvars`, §2.5)
 - **Operational preconditions** (`constraints.derived`): Linear predicates over environment
 
 These are checked *statically* — no evaluation of the configuration is required.
@@ -168,7 +172,7 @@ Acceptable(c, Y_c, M) ⟺ ChancePass(c, Y_c, M) ∧ BandPass(c, Y_c, M)
 Where:
 - `Y_c` is the evaluation result (observed objective values, chance outcomes)
 - `ChancePass` checks that all chance constraints are satisfied
-- `BandPass` checks that all banded objectives fall within their equivalence bands
+- `BandPass` checks that every banded objective passes the TOST equivalence test of §9.5: its confidence interval lies strictly inside the band, which a point estimate inside the band does not by itself establish
 
 These require *evaluation* — the configuration must be run to observe outcomes.
 
@@ -206,7 +210,7 @@ These fields affect *how* optimization is performed, not *what* constitutes a va
 
 TVL 1.1 introduces a fourth field category: declarations that are **parsed, typed,
 and governed but absent from the search semantics** — they never enter Γ,
-`Config(Δ, E_τ)`, or `F^str`, so Theorem 8.1 (SAT soundness) and the §9 promotion
+`Config(Δ, E_τ)`, or `F^str`, so Theorem 8.1 (Encoding Soundness: a model of the SMT encoding of the structural constraints decodes to a configuration that satisfies them, and conversely) and the §9 promotion
 theorems are preserved by construction: the existing results still hold for the
 core language. The new constructs themselves are not yet covered by the mechanized
 proofs (§1.4).
@@ -245,7 +249,8 @@ We use the following notational conventions:
 ### 2.2 Identifiers and Literals
 
 ```
-Ident    ::= [a-zA-Z_][a-zA-Z0-9_.]*     (* Identifiers *)
+Ident    ::= Seg ('.' Seg)*              (* Identifiers: nonempty dot-separated segments *)
+Seg      ::= [A-Za-z_][A-Za-z0-9_]*       (* RFC 0001 §3.7(2); matches spec/grammar *)
 IntLit   ::= ℤ                           (* Integer literals *)
 FloatLit ::= ℚ                           (* Rational literals, representing floats *)
 StrLit   ::= String                      (* String literals *)
@@ -295,18 +300,18 @@ DomainSpec ::= EnumDomain
              | TupleDomain
 
 EnumDomain    ::= [Literal+]                          (* Explicit enumeration *)
-RangeDomain   ::= {range: [Number, Number], resolution: Number}
+RangeDomain   ::= {range: [Number, Number], resolution?: Number}
 SetDomain     ::= {set: [Literal+]}                   (* Wrapped enumeration *)
 RegistryDomain::= {registry: Ident, filter?: String, version?: String}
 TupleDomain   ::= {components: [DomainSpec+]}         (* Product domain *)
 TupleLit      ::= (Literal, ..., Literal)             (* Tuple literal *)
 ```
 
-**Well-formedness for RangeDomain**: A range domain `{range: [a, b], resolution: r}` is well-formed iff:
-- `r > 0` (positive resolution)
+**Well-formedness for RangeDomain**: `resolution` is optional (`spec/grammar/tvl.ebnf`). The **effective resolution** `r` is the given `resolution`, or, if it is omitted, `1` for int ranges and `0.001` for float ranges. A range domain `{range: [a, b]}` with effective resolution `r` is well-formed iff:
+- `r > 0` (positive resolution; a given `resolution` must be positive)
 - `a ≤ b` (non-empty range)
-- For float ranges: `resolution` MUST be specified (required field)
-- For int ranges: `resolution` defaults to `1` if omitted
+
+Below, `{range:[a,b], resolution:r}` always denotes the range with its effective resolution `r`.
 
 ### 2.5 TVAR Declarations
 
@@ -366,6 +371,8 @@ LinExpr ::= AffineTerm (+ AffineTerm | - AffineTerm)*
 
 DerivedAtom ::= LinExpr ≤ Number
               | LinExpr ≥ Number
+              | LinExpr < Number
+              | LinExpr > Number
               | LinExpr = Number
 
 DerivedClause ::= {require: DerivedAtom}
@@ -428,7 +435,8 @@ PromotionPolicy ::= {
 ```
 Environment ::= {
   snapshot_id: Timestamp,
-  components?: Ident → Value
+  bindings?: Ident → Value,              (* Opaque deployment references *)
+  context?: Ident → Number               (* Numeric facts for derived constraints *)
 }
 
 EvaluationSet ::= {
@@ -517,7 +525,7 @@ Given environment `E_τ`, the domain interpretation function maps domain specs t
 
 𝒟⟦[v₁,...,vₙ]⟧(E_τ)              = {v₁,...,vₙ}
 𝒟⟦{range:[a,b], resolution:r}⟧(E_τ) = {a + i·r | i ∈ {0,...,N}}
-    where N = ⌊(b-a)/r⌋
+    where N = ⌊(b-a)/r⌋ and r is the effective resolution (§2.4)
 𝒟⟦{set:[v₁,...,vₙ]}⟧(E_τ)        = {v₁,...,vₙ}
 𝒟⟦{registry:R, filter:f}⟧(E_τ)   = ⊥   (* Outside verified subset *)
 𝒟⟦{components:[d₁,...,dₙ]}⟧(E_τ) = 𝒟⟦d₁⟧(E_τ) × ... × 𝒟⟦dₙ⟧(E_τ)
@@ -567,7 +575,7 @@ This is the **theoretical** objective vector used for defining dominance relatio
 σ(minimize) = -1
 ```
 
-Normalized comparison: objective `i` improves when `σ(oᵢ.direction) · y[i]` increases.
+Normalized comparison: a standard (non-banded, Definition 3.11) objective `i` improves when `σ(oᵢ.direction) · y[i]` increases.
 
 **Definition 3.11 (Banded Objective Predicate)**.
 An objective `o` is **banded** iff `o.band ≠ ⊥` (i.e., it has a defined band specification). We write:
@@ -587,9 +595,9 @@ TVL uses a simple type system to ensure constraints are well-formed.
 ### 4.1 Typing Context
 
 **Definition 4.1 (Typing Context)**.
-A typing context `Γ` maps TVAR names to their declared types:
+A typing context `Γ` maps TVAR names to their declared types. It is a partial map, defined exactly on the declared names; `Γ(x)` is undefined for an undeclared `x`:
 ```
-Γ : Ident → Type
+Γ : Ident ⇀ Type
 ```
 
 Given declaration context `Δ`, we derive `Γ` by: `Γ(t.name) = t.type` for each `t ∈ Δ`.
@@ -726,14 +734,22 @@ Given environment typing context `Γ_env`:
 ────────────────────────────────── (T-Scale)
 Γ_env ⊢ n · x : float
 
-Γ_env ⊢ e₁ : τ₁    Γ_env ⊢ e₂ : τ₂
-────────────────────────────────── (T-Add)
+Γ_env ⊢ e : τ    τ ∈ {int, float}
+───────────────────────────────── (T-Num)
+Γ_env ⊢ e : num
+
+Γ_env ⊢ e₁ : num    Γ_env ⊢ e₂ : num
+──────────────────────────────────── (T-Add)
 Γ_env ⊢ e₁ + e₂ : num
+
+Γ_env ⊢ e₁ : num    Γ_env ⊢ e₂ : num
+──────────────────────────────────── (T-Sub)
+Γ_env ⊢ e₁ - e₂ : num
 
 Γ_env ⊢ e : num
 ────────────────────── (T-DerivedCmp)
 Γ_env ⊢ (e ≤ n) : prop
-(similarly for ≥, =)
+(similarly for ≥, <, >, =)
 ```
 
 **Definition 4.4 (Well-formed Derived Constraint)**.
@@ -752,7 +768,7 @@ If `Γ ⊢ φ : prop` and `c` is a configuration respecting `Γ` (i.e., `∀x �
 - Other atoms: Analogous reasoning.
 
 **Inductive cases (connectives)**:
-- (T-And): By IH, `⟦φ⟧(c), ⟦ψ⟧(c) ∈ 𝔹`. Conjunction is total on 𝔹, so `⟦φ ∧ ψ⟧(c) ∈ 𝔹`.
+- (T-And): By the induction hypothesis (IH), `⟦φ⟧(c), ⟦ψ⟧(c) ∈ 𝔹`. Conjunction is total on 𝔹, so `⟦φ ∧ ψ⟧(c) ∈ 𝔹`.
 - (T-Or), (T-Not), (T-Impl): Similar. □
 
 ---
@@ -847,8 +863,25 @@ Given well-formed environment `E_τ` with respect to `Γ_env`:
 ```
 ⟦e ≤ n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) ≤ n
 ⟦e ≥ n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) ≥ n
+⟦e < n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) < n
+⟦e > n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) > n
 ⟦e = n⟧(E_τ)     = true  iff  ⟦e⟧(E_τ) = n
 ```
+
+The strict atoms `<` and `>` are part of the derived-constraint grammar (`comparison_op` in
+`spec/grammar/tvl.ebnf`). They are strict over the numeric values: a derived atom `e < n` is false
+when `⟦e⟧(E_τ) = n`, and `e > n` likewise. Integer and float environment values are compared on
+the same numeric scale; no strict atom is rewritten to a non-strict one with an offset, because
+derived constraints are evaluated directly against `E_τ` and never pass through the scaled-integer
+SMT encoding of §8.
+
+**Remark 5.1 (Reference evaluation of derived constraints)**. The definitions above are exact
+over ℚ. The reference implementation (`python/tvl/operational.py`) folds the numeric constants of
+`e` into the bound `n`, evaluates `Σ kᵢ · E_τ(xᵢ)` in IEEE-754 double precision, and compares it
+with the folded bound with no tolerance; for `<` it reports a violation iff the sum is `≥` the
+bound, and for `>` iff the sum is `≤` the bound. Where rounding moves a value onto or across the
+bound, the floating-point result can differ from the exact denotation; this applies to every
+derived operator, strict or not, and to `=` most of all.
 
 ---
 
@@ -903,20 +936,20 @@ This section records formal results about the normative core under the stated as
 **Theorem 7.1 (Structural Constraint Evaluation)**.
 For any well-formed structural constraint set `Φ^str` and configuration `c`, determining `F^str(c, Φ^str)` is decidable in polynomial time.
 
-*Proof*: Each atom is a comparison that can be evaluated in O(1). Formula structure is finite. Total complexity is O(|Φ^str| · |atoms|). □
+*Proof*: Evaluate each atom once and combine the results bottom-up over the finite formula structure. A comparison or equality atom compares one value with one literal, or (T-TVarEq, T-TupleVarEq) two configuration values; a membership atom `x ∈ S` scans `S`; a tuple atom compares its components (Definition 5.2). So each atom takes time linear in its own size plus the size of the values it reads from `c`, counting set elements, tuple components and the length of the values compared. Atoms may read the same value of `c` repeatedly, so the total time is `O(|Φ^str| · (1 + |c|))`, which is polynomial. □
 
 **Theorem 7.2 (Satisfiability Decidability)**.
-For any well-formed structural constraint set `Φ^str` over finite domains, determining whether `∃c: F^str(c, Φ^str) = true` is decidable (in NP).
+For any well-formed structural constraint set `Φ^str` over finite domains, determining whether `∃c: F^str(c, Φ^str) = true` is decidable and in NP (the class of problems whose proposed solutions can be checked in polynomial time).
 
 *Proof sketch*:
 1. All TVAR domains are finite (Definition 3.6, Lemma 3.1)
 2. Therefore, the configuration space `Config(Δ, E_τ)` is finite
 3. Satisfiability can be decided by guess-and-check: guess configuration, verify in polynomial time (Theorem 7.1)
 4. This places satisfiability in NP
-5. It is NP-hard (reduction from SAT via boolean TVARs)
-6. Therefore, satisfiability is NP-complete
+5. It is NP-hard, that is, every problem in NP reduces to it in polynomial time (reduction from SAT, Boolean satisfiability, via boolean TVARs)
+6. Therefore, satisfiability is NP-complete (in NP and NP-hard)
 
-For practical implementation, TVL constraints compile to QF_LIA (quantifier-free linear integer arithmetic) which is handled efficiently by modern SMT solvers (§8). □
+For practical implementation, TVL constraints compile to QF_LIA (quantifier-free linear integer arithmetic) which modern SMT solvers decide (§8). Solver running time depends on the workload; this document gives no performance bound. □
 
 **Theorem 7.3 (Derived Constraint Decidability)**.
 For well-formed derived constraints `Φ^der` under well-formed environment `E_τ`, evaluation is decidable in polynomial time.
@@ -950,7 +983,7 @@ Both phases are decidable, so consistency is decidable. □
 
 This section is non-normative. It demonstrates one implementation strategy for deciding structural feasibility. A conforming validator may use another solver or a direct decision procedure if it preserves the judgments defined in Sections 2–6. Internal solver representation is not part of the TVL interchange contract.
 
-We define the compilation from TVL constraints to SMT-LIB format.
+We define the compilation from TVL constraints to SMT-LIB format, the standard input language of SMT solvers.
 
 ### 8.1 Encoding Function
 
@@ -1001,8 +1034,10 @@ encode_type(callable[P]) = ⊥          (* Outside verified subset; see §1.4 *)
 ```
 encode(t = (v₁,...,vₙ)) = (and (= t_1 (encode_value v₁)) ... (= t_n (encode_value vₙ)))
 encode(t ∈ S)           = (or (encode(t = s)) for each s ∈ S)
-encode(t = u)           = (and (= t_1 u_1) ... (= t_n u_n))  (* TVAR equality *)
+encode(t = u)           = (and (eqᵢ t_1 u_1) ... (eqᵢ t_n u_n))  (* TVAR equality *)
 ```
+
+For a component that is not index-encoded, `eqᵢ` is `=`. Enum components are encoded by indexes local to their own domains, so equal indexes need not mean equal values. Unless both components use the same domain and indexing, encode `(eqᵢ t_i u_i)` as `(or (and (= t_i idx_{D}(v)) (= u_i idx_{D'}(v))) for each v ∈ D ∩ D')`, which is false when `D ∩ D' = ∅`.
 
 ### 8.3 TVAR Encoding
 
@@ -1105,7 +1140,7 @@ A float domain D is **precision-aligned** to precision factor P iff:
 - Domain `{ range: [0.0001, 0.001], resolution: 0.0001 }` with P=1000 is **NOT aligned** because 0.0001 × 1000 = 0.1 ∉ ℤ
 
 **Lemma 8.2 (Precision Adequacy)**.
-For a precision-aligned domain D with precision P, the scaling function is bijective on D:
+For a precision-aligned domain D with precision P, the scaling function is injective on D (so it is a bijection from D onto scale(D)):
 
 ```
 ∀v₁, v₂ ∈ D: scale(v₁) = scale(v₂) ⟹ v₁ = v₂
@@ -1120,7 +1155,7 @@ For a precision-aligned domain D with precision P, the scaling function is bijec
 ```
 
 **Choosing an exact precision**.
-There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling needs a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is a power of ten at least as large as the maximum decimal scale after parsing the values exactly. The normative conformance requirement and required fallback behavior are stated in §10.4.
+There is no valid general rule `P = ⌈1/min_gap(D)⌉`: separating adjacent values does not guarantee that every decimal value is represented exactly. An implementation using integer scaling needs a positive integer `P` for which every finite domain value and every value reconstructed from a range is `P`-aligned. For decimal inputs, one sufficient construction is `P = 10^k`, where `k` is at least the largest number of decimal places among the values after parsing them exactly (for example, `0.001` needs `k ≥ 3`, so `P = 10` is not enough). The normative conformance requirement and required fallback behavior are stated in §10.4.
 
 ### 8.6 Formula Encoding
 
@@ -1150,6 +1185,8 @@ Where:
 - `P` is the precision factor used during encoding
 - `idx_{t.domain}⁻¹` is the inverse of the domain indexing function
 
+`decode` is partial: it is undefined when `m` gives an enum TVAR (or enum component) an index outside `{0,...,|D|-1}`. The domain assertions of §8.3 exclude such models, so `decode` is defined on every model of `encode(Δ, φ, P, idx)`.
+
 ### 8.8 Encoding Soundness
 
 **Theorem 8.1 (Encoding Soundness)**.
@@ -1158,22 +1195,24 @@ Where:
 2. Encoding uses index-variable encoding for range domains (§8.3)
 3. Encoding uses direction-aware rounding for comparison thresholds (§8.4)
 
-For all configurations `c ∈ Config(Δ, E_τ)` and structural formulas `φ`:
+Let `encode(Δ, φ, P, idx)` contain the domain assertions of §8.3 as well as the encoded formula (§8.1). For every structural formula `φ` and every SMT model `m` that assigns each declared SMT variable a value of its sort **and satisfies the domain assertions of §8.3** (so every enum index is in `{0,...,|D|-1}` and `decode(m, Δ, P, idx)` is defined, §8.7):
 
 ```
-m ⊨ encode(Δ, φ, P, idx) ⟺ ⟦φ⟧(decode(m, Δ, P, idx)) = true
+m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
 ```
+
+The restriction loses nothing: a model of `encode(Δ, φ, P, idx)` satisfies the domain assertions by definition, so Corollary 8.1 below quantifies over all models. A sort-correct model that breaks a domain assertion satisfies no `encode(Δ, φ, P, idx)`, and the theorem says nothing about it. Its decoding is undefined when an enum index is out of range; otherwise it can be defined but lie outside `Config(Δ, E_τ)`, as for an int range index past `N`, which decodes to an integer outside the declared range.
 
 *Proof*:
 
-**Encoding direction** (`⟦φ⟧(c) = true ⟹ encode(c) ⊨ encode(φ)`):
+**Encoding direction** (`⟦φ⟧(c) = true ⟹ m ⊨ encode(φ)` for the model `m` built from `c` below):
 
 Construct SMT model `m` from configuration `c` via `encode_value`. We show `m ⊨ encode(φ)`.
 
-1. **Domain constraints**: By construction, `encode_value(c(t)) ∈ {0,...,N}` for index variables, so domain assertions hold.
+1. **Domain constraints**: For an enum TVAR set `m(t) = idx_D(c(t))`. For a range TVAR set the index variable `m(t_idx) = (c(t) − a)/r`, not `encode_value(c(t))`; since `c(t) ∈ D`, this is an integer in `{0,...,N}`, and the defined `t` then equals `encode_value(c(t))`. So the domain assertions hold.
 
 2. **Atoms**:
-   - Equality: `c(x) = v` ⟺ `idx(c(x)) = idx(v)` ⟺ `m(x) = encode_value(v)` ✓
+   - Equality: `c(x) = v` ⟺ `encode_value(c(x)) = encode_value(v)` ⟺ `m(x) = encode_value(v)`, because `encode_value` is injective on each domain: the identity on bool and int values, `scale` on P-aligned float values (Lemma 8.2), `idx_D` on enum values, and componentwise on tuples ✓
    - Comparison (≥): `c(x) ≥ n` ⟹ `scale(c(x)) ≥ ⌈n·P⌉` by Lemma 8.1 ✓
    - Other comparisons: Analogous via Lemma 8.1
 
@@ -1181,9 +1220,9 @@ Construct SMT model `m` from configuration `c` via `encode_value`. We show `m �
 
 **Decoding direction** (`m ⊨ encode(φ) ⟹ ⟦φ⟧(decode(m)) = true`):
 
-Given `m ⊨ encode(φ)`, let `c = decode(m)`.
+Given `m ⊨ encode(Δ, φ, P, idx)`, including its domain assertions, let `c = decode(m)`.
 
-1. **Well-formedness**: Index-variable encoding ensures `m(t_idx) ∈ {0,...,N}`, so `decode(m)(t) ∈ D`. Thus `c ∈ Config(Δ, E_τ)`.
+1. **Well-formedness**: The domain assertions with index-variable encoding ensure `m(t_idx) ∈ {0,...,N}`, so `decode(m)(t) ∈ D`. Thus `c ∈ Config(Δ, E_τ)`.
 
 2. **Atoms**: By Lemma 8.1, comparison encodings preserve truth under decode.
 
@@ -1198,9 +1237,9 @@ Under the preconditions of Theorem 8.1:
 ### 8.9 Encoding Completeness
 
 **Theorem 8.2 (Encoding Completeness)**.
-If `⟦φ⟧(c) = true` for some `c ∈ Config(Δ, E_τ)`, then `encode(φ)` is satisfiable.
+Under the preconditions of Theorem 8.1 (precision alignment, index-variable range encoding, direction-aware threshold rounding): if `⟦φ⟧(c) = true` for some `c ∈ Config(Δ, E_τ)`, then `encode(Δ, φ, P, idx)` is satisfiable.
 
-*Proof*: Construct SMT model from `c` via `encode_value`. By soundness (Theorem 8.1), this model satisfies `encode(φ)`. □
+*Proof*: The preconditions hold by assumption. Construct an SMT model from `c` as in the encoding direction of Theorem 8.1. By that theorem, this model satisfies `encode(Δ, φ, P, idx)`. □
 
 ---
 
@@ -1258,23 +1297,24 @@ StatDominates(c, c', Y_c, Y_{c'}, M) ⟺
 For each standard objective `i` (non-banded), using normalized difference `δ_i`:
 
 1. **Non-inferiority test**: H₀: `δ_i ≤ -ε[i]` (candidate is worse by at least ε)
-   - If p-value < α, reject H₀ (evidence candidate is not worse)
+   - If p-value < α, reject H₀ (evidence candidate is not worse by ε[i] or more; a smaller regression is still allowed)
 2. **Superiority test**: H₀: `δ_i ≤ ε[i]` (candidate is not better by more than ε)
    - If p-value < α, reject H₀ (evidence candidate is strictly better)
 3. **Inferiority test**: H₀: `δ_i ≥ -ε[i]` (candidate is within the allowed regression margin)
    - If p-value < α, reject H₀ (evidence candidate regressed beyond the margin)
 
 **Statistical Test Specification**:
-- For continuous objectives with raw samples: Use **Welch's t-test** (unequal variance assumed)
+- For continuous objectives with raw unpaired samples: Use **Welch's t-test** (unequal variance assumed)
 - For continuous objectives with aggregated statistics (mean, std, n): Use **Welch's t-test** with Welch-Satterthwaite degrees of freedom
-- For paired samples (same evaluation instances): Use **paired t-test**
+- For paired samples (same evaluation instances): Use **paired t-test**; for matched observations it takes precedence over Welch's test
 - When variance equality is known: Student's t-test is permitted as an optimization
 
 Promotion requires:
 - All non-inferiority tests pass (p < α for each standard objective)
-- At least one superiority test passes (improvement > ε with p < α)
+- At least one superiority test passes (improvement > ε with p < α after the configured `adjust` method, Proposition 9.1)
+- No inferiority test rejects its null after adjustment, and the candidate is valid and acceptable (decision logic in §9.7)
 
-### 9.5 Banded Objectives (TOST)
+### 9.5 Banded Objectives (TOST: Two One-Sided Tests)
 
 **Definition 9.6 (TOST Equivalence)**.
 For banded objective with target `[L, U]` and significance `α`:
@@ -1284,9 +1324,11 @@ TOST_pass(μ̂, s, n, [L,U], α) ⟺
     (H₀: μ ≤ L rejected at α) ∧ (H₀: μ ≥ U rejected at α)
 ```
 
-Configuration passes the band constraint if the **(1 - 2α) confidence interval** for the mean falls entirely within `[L, U]`.
+Here `μ̂`, `s` and `n` are the sample mean, sample standard deviation and sample size of the objective's observations (Definition 9.7), and `μ` is the true mean.
 
-**Important**: TOST uses (1 - 2α) CI, not (1 - α). For α = 0.05, this means a **90% CI** must lie within [L, U], not a 95% CI. This is because TOST performs two one-sided tests, each at level α.
+Equivalently, a configuration passes the band constraint iff the **(1 - 2α) confidence interval** for the mean lies strictly inside the open interval `(L, U)`. With `s = 0` that interval is the single point `μ̂`, so a mean strictly inside the band passes and a mean exactly on `L` or `U` does not (the null for that edge is not rejected).
+
+**Important**: TOST uses (1 - 2α) CI, not (1 - α). For α = 0.05, this means a **90% CI** must lie inside (L, U), not a 95% CI. This is because TOST performs two one-sided tests, each at level α.
 
 **Banded objectives are Layer 2 only**: Banded objectives are **excluded** from ε-Pareto dominance comparison (Layer 3). They function purely as acceptability filters:
 - A configuration with a point estimate outside the declared band is rejected; an on-target result with insufficient evidence for TOST is inconclusive
@@ -1334,6 +1376,8 @@ For `k = n`, the upper bound is 1 by convention.
 
 **Precondition**: n ≥ 1. If n = 0 (no trials), the chance constraint check is undefined; implementations MUST report an error.
 
+The measurement schema (`spec/grammar/tvl-measurement.schema.json`) requires `trials` on every `chance_outcomes` entry with minimum 1, so a canonical bundle with zero or missing trials is refused at load with a schema error before any gate runs. The gate's own `zero_trials` error is reached when it is called on counts that did not pass through that check: a bundle handed to the gate directly (`python/tvl/promotion.py`), or a deprecated top-level `chance` summary converted to counts from `summary.trials`, which the schema does not constrain.
+
 **Edge case (k = 0)**: Zero observed violations can pass only when the one-sided upper bound for `n` trials is at or below `θ`; zero observed violations alone is not sufficient.
 
 **Definition 9.9 (Band Objective Satisfaction)**.
@@ -1372,11 +1416,11 @@ Where `BandedObjectives(M)` is defined in Definition 3.11.
    ChanceFail(c_cand) ∨ BandHardFail(c_cand) ⟹ Decision = Reject
    ```
 
-   An on-target band whose TOST is inconclusive produces `NoDecision`; it is neither acceptable enough to promote nor a demonstrated hard failure.
+   When no rejection condition applies first (another failed chance constraint, a hard band failure, or a demonstrated regression; see §9.7), an on-target band whose TOST is inconclusive produces `NoDecision`; it is neither acceptable enough to promote nor a demonstrated hard failure.
 
-3. **Separate error budgets**: Chance constraint confidence `γ` is distinct from promotion policy `α`. This allows different risk tolerances for behavioral guarantees vs. objective comparison.
+3. **Separate error budgets**: Chance constraint confidence `γ` is distinct from promotion policy `α`. This allows different risk tolerances for behavioral requirements vs. objective comparison.
 
-   **Note on risk tolerance**: A module MAY specify different values (e.g., `γ = 0.99` for safety-critical chance constraints, `α = 0.10` for exploratory objective comparison). This is permitted and meaningful: high confidence on behavioral guarantees with more lenient significance on dominance testing. The error budgets are independent; there is no required relationship between `γ` and `α`.
+   **Note on risk tolerance**: A module MAY specify different values (e.g., `γ = 0.99` for safety-critical chance constraints, `α = 0.10` for exploratory objective comparison). This is permitted and meaningful: high confidence on behavioral requirements with more lenient significance on dominance testing. The error budgets are independent; there is no required relationship between `γ` and `α`.
 
 **Lemma 9.1 (Acceptability Independence)**.
 Behavioral acceptability is independent of the incumbent:
@@ -1427,8 +1471,8 @@ return NoDecision("insufficient evidence")
 In the current promotion contract, non-inferiority is an intersection-union test: every per-objective non-inferiority test is evaluated at `α`. The configured `adjust` method applies separately to the superiority family used for the union claim that at least one objective improved beyond `ε` and the inferiority family used for the union claim that at least one objective regressed beyond `ε`.
 
 - `none` provides no family-level correction for either union family.
-- Bonferroni and Holm control family-wise error for each adjusted family under their standard conditions.
-- Benjamini-Hochberg controls false discovery rate under independence or positive regression dependency; it does not control family-wise error.
+- Bonferroni and Holm control family-wise error (the probability of at least one false rejection in the family) for each adjusted family under their standard conditions.
+- Benjamini-Hochberg controls false discovery rate (the expected share of false rejections among all rejections) under independence or positive regression dependency among the test statistics (Benjamini and Yekutieli, 2001); it does not control family-wise error.
 
 These results do not by themselves bound every route to an erroneous promotion. Such a bound also depends on test validity, data generation, selection effects, evaluator reliability, chance and band checks, and whether the evidence was collected independently of candidate selection. A certificate MUST state the tests and assumptions actually used rather than generalize this proposition into a universal agent guarantee.
 
@@ -1448,7 +1492,7 @@ Where weak dominance `c ≽_ε c'` means: `∀i: σ(O[i].direction) · (y[i] - y
 **Warning: Strict dominance does NOT compose.**
 If `c₁ ≻_ε c₂` (c₁ strictly better on *some* objective) and `c₂ ≻_ε c₃` (c₂ strictly better on *some* objective), we cannot conclude `c₁ ≻_{2ε} c₃`.
 
-*Counterexample*: Consider two objectives with `direction = maximize` for both, with `ε > 0` and any `δ > 0`. Let:
+*Counterexample*: Consider two objectives with `direction = maximize` for both, with `ε > 0` and any `δ` with `0 < δ ≤ 2ε`. Let:
 
 - y₁ = (0, 0)
 - y₂ = (-ε - δ, ε)
@@ -1470,6 +1514,8 @@ Strict ε-dominance can disappear under composition even when weak ε-dominance 
 
 For a TVL implementation to be **conformant**, it must satisfy:
 
+*Note (2026-10-24):* to align with the reference tools, `derived_env_undefined` (never emitted by the reference implementation) is replaced by `unknown_derived_symbol`, and `constraint_operator_type_mismatch` is now listed (`unknown_derived_symbol` in §10.3 and Appendix B; `constraint_operator_type_mismatch` in §10.2).
+
 ### 10.1 Parser Requirements
 
 1. Accept all syntactically valid modules per §2
@@ -1479,7 +1525,7 @@ For a TVL implementation to be **conformant**, it must satisfy:
 ### 10.2 Type Checker Requirements
 
 1. Implement all typing rules from §4 (including `elem()` for enum comparisons)
-2. Report `constraint_type_mismatch` for ill-typed formulas
+2. Report `constraint_type_mismatch` when a comparand's type does not match the TVAR, and `constraint_operator_type_mismatch` when the operator is not allowed for the TVAR's type
 3. Report `undeclared_tvar` for undefined references
 
 ### 10.3 Constraint Validator Requirements
@@ -1487,7 +1533,20 @@ For a TVL implementation to be **conformant**, it must satisfy:
 1. Check structural constraint satisfiability (Theorem 7.2)
 2. Report `unsatisfiable_constraints` if `Feasible(M) = ∅`
 3. Evaluate derived constraints against environment (Phase 1 of Theorem 7.4)
-4. Report `derived_env_undefined` if environment lookup fails
+4. Report a failed derived constraint with the diagnostic for its cause. All are errors. The
+   reference implementation emits these codes, from the lint (`lint_module`) and from the
+   operational check (`check_operational`, `tvl-check-operational`):
+
+   | Cause | Code | Emitted by |
+   |-------|------|------------|
+   | Non-linear operator (`/`, `^`) | `non_linear_derived` | lint |
+   | References a TVAR (Definition 4.4) | `derived_references_tvar` | lint |
+   | References `env.bindings.*` | `derived_references_bindings` | lint, operational check |
+   | References a symbol outside `env.context.*` | `derived_invalid_symbol_reference` | lint, operational check |
+   | Not of the form `LinExpr OP Number` with `OP` ∈ {`<=`, `>=`, `<`, `>`, `=`} | `unsupported_derived_expression` | operational check |
+   | Environment lookup fails (symbol not in `dom(E_τ)`) | `unknown_derived_symbol` | operational check |
+   | Environment value is not numeric | `non_numeric_derived_symbol` | operational check |
+   | `F^op(E_τ, Φ^der) = false` for this atom | `derived_constraint_violation` | operational check |
 
 ### 10.4 Structural Decision Procedure Requirements
 
@@ -1503,7 +1562,7 @@ An implementation MAY use the informative SMT encoding in §8, another solver en
 1. Implement ε-Pareto comparison per §9.3 with direction normalization (§9.4)
 2. Support statistical testing with direction-normalized differences (Definition 9.4)
 3. Apply the configured multiple-testing adjustment separately to the superiority and inferiority p-value families as specified in §9.8
-4. Verify evaluation results include sample size for proper df calculation
+4. Verify evaluation results include sample size for proper degrees-of-freedom (df) calculation
 5. Distinguish demonstrated failure (`Reject`) from insufficient evidence (`NoDecision`)
 
 ### 10.6 Runtime Monitor Requirements
@@ -1526,11 +1585,12 @@ An evaluator claiming to implement a TVL 1.3 evaluator profile MUST meet the con
 
 ### 11.1 Mechanization
 
-Priority areas for mechanized proofs (Coq/Lean/Isabelle):
+The Lean 4 proof tree in `proofs/` already mechanizes, for the core subset of §1.4, Theorem 4.1 (`type_soundness`), a formula-level form of Theorem 8.1 and Corollary 8.1 (`smt_encoding_soundness`, `satisfiability_preservation`: values and thresholds are taken as already scaled, and the §8.3 domain assertions are not modelled) and Lemma 9.2 (`normalized_diff_composition`). See `proofs/PROOF_SUMMARY.md` for the exact statements and their preconditions. The Lean atoms are `=`, `≠`, `≥`, `≤` and `∈` over non-tuple TVARs. Remaining areas:
 
-1. **Denotation totality** (Theorem 4.1)
-2. **SMT encoding soundness** (Theorem 8.1)
-3. **ε-dominance composition** (Lemma 9.2)
+1. **Decidability** (Theorems 7.1–7.4)
+2. **The atoms and types the Lean model omits**: strict comparisons, intervals, TVAR-to-TVAR equality and tuple atoms
+3. **Promotion** (Proposition 9.1 and the statistical tests of §9.4–9.5)
+4. **`cvars`, `policies` and `composites`** (§1.4)
 
 ### 11.2 Extensions
 
@@ -1587,12 +1647,13 @@ Surface syntax, syntax-level closed enums and lexical constraints are normative 
 
 | Requirement | Evidence source | Phase | Decision method |
 |---|---|---|---|
-| `rate_bound` | `backend_trace_metadata` with `backend_v1`; `customer_side`; `evaluation_set` | runtime, or promotion with `evaluation_set` | rational `_v2`, or float `_v1` only with `backend_v1` |
-| `zero_tolerance` | `customer_side`; `evaluation_set` | runtime, or promotion with `evaluation_set` | `exact_count_v1` |
+| `rate_bound` | runtime: `backend_trace_metadata` with `backend_v1`, or `customer_side`; promotion: `evaluation_set` | runtime or promotion; promotion iff the source is `evaluation_set` | rational `_v2`, or float `_v1` only with `backend_v1` |
+| `zero_tolerance` | runtime: `customer_side`; promotion: `evaluation_set` | runtime or promotion; promotion iff the source is `evaluation_set` | `exact_count_v1` |
 | `recovery_time` | `episodes` | runtime | `exact_count_v1` |
 | `evidence_liveness` | `windows` | runtime | `exact_count_v1` |
+| `aggregate_bound` (TVL 1.5) | `customer_side` | runtime | `exact_aggregate_v1` (§14.2–§14.3) |
 
-For a rate monitor, `0 < θ < 1`, `0 < α_w ≤ 1`, `0 ≤ c_conf ≤ 1`, `0 ≤ f ≤ 1`, and `min_samples ≥ 1`; a profile may impose narrower domains. `θ` is the maximum violation rate and `f` is `max_unresolved_fraction`. Episode parameters satisfy `K ≥ 1` and positive closure age. Recovery deadline `T` and liveness allowance `L` are positive integers in their declared units. Resource limits are positive and part of the compiled contract. Unsupported domains or missing evidence contracts are refused, never interpreted by an unspecified default.
+For a rate monitor, `0 < θ < 1`, `0 < α_w ≤ 1` (the per-window false-alarm allocation, §12.6), `0 ≤ c_conf ≤ 1`, `0 ≤ f ≤ 1`, and `min_samples ≥ 1`; a profile may impose narrower domains. `θ` is the maximum violation rate and `f` is `max_unresolved_fraction`. Episode parameters satisfy `K ≥ 1` (`K = closure_windows`, §12.8) and positive closure age. Recovery deadline `T` and liveness allowance `L` are positive integers in their declared units. Resource limits are positive and part of the compiled contract. Unsupported domains or missing evidence contracts are refused, never interpreted by an unspecified default.
 
 `zero_tolerance` restricts its violation predicate to `exact_pred`; `rate_bound` may use a metric, exact pattern, or checker predicate. `backend_v1` fixes `rate_bound`, `unit: trace`, metric `wall_clock_latency_ms`, `source: backend_trace_metadata`, `method: clopper_pearson_exact_v1`, `sampling: unverified`, and the hosted latency profile's parameter domains and defaults; it forbids `among` and `threshold_factor`. It is not a synonym for the rational profile. A checker runs customer-side, including when evaluating an evaluation set. `single_producer: true` declares that every event of a unit is emitted by one producer; a unit that contradicts the declaration is not classified on its strength. A protocol is a finite deterministic automaton with declared handling of unlisted transitions. `trigger.hours` is present iff the trigger is `episode_open_for`; the referenced monitor must emit the selected event.
 
@@ -1654,7 +1715,7 @@ A legal precedence assignment maps each matching `b` to a matching `a` of the sa
 
 A legal bounded-response assignment is an injective map from matching `a` events to matching `b` events of the same key, with `before_h(a,b)` and `0 ≤ t_b − t_a ≤ Δ`. A response exactly at the deadline counts. One response cannot discharge two obligations. Both predicates ask whether some assignment exists; neither depends on a particular matching order.
 
-For a DFA `(Q,Σ,δ,q₀,F,R)`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
+For a DFA (deterministic finite automaton) `(Q,Σ,δ,q₀,F,R)`, with states `Q`, alphabet `Σ` of declared event selectors, transition function `δ`, start state `q₀`, accepting states `F` and rejecting states `R`, project onto its declared alphabet in execution order and iterate `δ`. `R` is rejecting and absorbing for violation detection. For an unlisted `(state,event)` pair within the alphabet, extend `δ` to an implicit rejecting sink by default, or to the same state when `unlisted: ignore` is declared. Events outside the alphabet are not transitions. Overlapping selectors that make a transition ambiguous fail well-formedness.
 
 The population expression `among` is interpreted as a membership test `A_q(h)`. In 1.3 `among` is always a checker predicate (RFC 0003 §16.3 question 20; a metric or exact predicate there is `runtime_among_not_checker`): for a checker predicate in the `among` position, `A_q(h)` holds iff the label returned for that position belongs to its `label_in`. For example, `among: {checker: C, label_in: [must_refuse]}` selects that label, while a violation label `[complied]` is tested separately, in the `violation` position. Omitted `among` means `true`. A checker returns, for one unit and one position, exactly one label of its declared list or no result; with no result the predicate has no truth value on that unit, and an evaluator cannot classify it (Definition 12.8).
 
@@ -1689,7 +1750,7 @@ Hosted metadata monitors (`backend_v1`) read only unit metadata. Their violation
 2. `head_sampled_declared(r)`: each unit is selected or not at its start, before its outcome exists, with probability `r`, and the decision is recorded on the unit. A unit selected after its outcome is known (tail sampling) contradicts the declaration; a window containing one is `UNKNOWN(sampling_biased)`.
 3. `hash_bernoulli_committed_v1(r)`: each unit is selected with probability `r` by a selection that is committed before the window starts, depends on nothing about the unit's outcome, and can be checked after the window. The selection rule and its commitment belong to the evaluator profile; the mode is usable only where an evaluator profile supports it. Any secret input of the selection stays customer-side.
 
-An omitted `sampling` on `customer_side` means census: every unit in scope is selected. A sampling rate below one is never census evidence. Fixed-list strata are separate monitors with separate allocations; there is no implicit pooling. Sampling supports rate claims under the stated model, not “always” or “never” prevention. Customer reports are `client_attested`; metadata recount and verified configuration attribution are different evidence qualifications.
+An omitted `sampling` on `customer_side` means census: every unit in scope is selected. A sampling rate below one is never census evidence. Fixed-list strata (subpopulations named by tags from a fixed list) are separate monitors, each with its own false-alarm allocation (§12.6); there is no implicit pooling. Sampling supports rate claims under the stated model, not “always” or “never” prevention. Customer reports are `client_attested`: claims resting on them rely on the customer's own report rather than a hosted recount; metadata recount and verified configuration attribution are different evidence qualifications.
 
 **Definition 12.11 (Report counts)**. A customer-side window report (RFC §11.4.3) is bound to a contract digest, monitor reference, monitor revision and window, and states the counts
 
@@ -1730,9 +1791,9 @@ Empty upper tails are zero and lower tails at or above `N` are one. Endpoints us
 | `rate_bound`, `clopper_pearson_exact_v1` | the hosted latency profile's floating-point computation of the same tests (Definition 12.14); no probability bound is claimed | as for `BREACHED` |
 | `zero_tolerance`, `exact_count_v1` | at least one unit of the population violates (`V_q(h)` for some population unit) | the window's population was completely covered — census selection, every selected unit accounted for and classified, none unplaceable, every unit's history complete — it has at least `min_samples` units, and none violates |
 
-`UNKNOWN(r)` promises neither, with a closed reason `r`. The rate claims assume sound classifications, outcome-independent selection, and that each window's violation count is stochastically dominated by `Bin(N,θ)` when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`); IID Bernoulli units are a sufficient special case. `sampling: unverified` does not satisfy the selection assumption by its name. Units the evaluator could not classify never strengthen a verdict: the promises hold whatever their complete histories turn out to be.
+`UNKNOWN(r)` promises neither, with a closed reason `r`. The rate claims assume sound classifications, outcome-independent selection, and that each window's violation count is stochastically dominated by `Bin(N,θ)` (for the count `X`, `Pr[X≥j]≤Pr[Bin(N,θ)≥j]` for every `j`; §12.14) when `p_w ≤ θ` (and dominates it when `p_w ≥ θ`); IID Bernoulli units are a sufficient special case. `sampling: unverified` does not satisfy the selection assumption by its name. Units the evaluator could not classify never strengthen a verdict: the promises hold whatever their complete histories turn out to be.
 
-Each window reason names why a window carries no verdict:
+Each window reason names why a window's verdict is `UNKNOWN`, that is, why neither `MET` nor `BREACHED` is established:
 
 | Reason | Meaning |
 |---|---|
@@ -1779,7 +1840,7 @@ Promote₁₃ ⟺ Promote₁₂ ∧ ∀μ ∈ PromotionMonitors(M), verdict_μ=M
 
 Thus any rejection dominates any inconclusive monitor. Passing all monitors does not turn an existing `NoDecision` into promotion. A module without promotion monitors has exactly §9.7's meaning. Chance constraints retain Definition 9.8 and their existing failure behavior; no chance constraint is deleted or silently replaced by a monitor on the same quantity (`chance_constraint_shadowed` is a warning). Promotion monitors are acceptability evidence, not additions to the objective vector or the dominance relation.
 
-**Definition 12.16 (Release gate)**. The public release gate is the evaluator of TVL's own tools (`tvl-ci-gate`, `tvl-measure-validate`). It decides a promotion monitor only from complete counts, using the standard exact binomial tests, and defers everything else. For a valid outcome `{n,k,u,pl}` (natural numbers, `k ≤ n`; anything else is the readiness issue `missing_monitor_counts`), apply the first matching row:
+**Definition 12.16 (Release gate)**. The public release gate is the evaluator of TVL's own tools (`tvl-ci-gate`, `tvl-measure-validate`). It decides a promotion monitor only from complete counts, using the standard exact binomial tests, and defers everything else. For a valid outcome `{n,k,u,pl}` (natural numbers, `k ≤ n`; an absent outcome or `k > n` is the readiness issue `missing_monitor_counts`, and a value of the wrong type fails the measurement schema, RFC §6.11), apply the first matching row:
 
 | Order | Condition | Result |
 |---|---|---|
@@ -1822,7 +1883,7 @@ Thus any rejection dominates any inconclusive monitor. Passing all monitors does
 
 `RECOVERED`, `OVERDUE` and `CANCELLED` are terminal: once established, the obligation keeps that state. How an evaluator profile establishes these states from window and lifecycle records, and how it records later lifecycle changes beside a terminal state, are that profile's (Definition 12.7). `recovery_recovered`, `recovery_overdue` and `recovery_cancelled` mark the obligation reaching that state. Project `RECOVERED↦MET`, `OVERDUE↦BREACHED`, and `PENDING`, `CANCELLED` and lifecycle unavailability to `UNKNOWN` with their reasons (`pending`, `cancelled`, `lifecycle_unavailable`). The terminality of `OVERDUE` does not authorize effects forever: a service effect still needs its originating episode open (§12.10).
 
-Report `window_recovery_duration = closing_window.end−e₀` when resolution exists and, separately, `wall_clock_lifecycle_duration = closed_at−opened_at` when both timestamps exist. A cancelled episode has a withdrawal duration, not a recovery duration. Neither displayed duration substitutes for the state.
+Report `window_recovery_duration_ms = closing_window.end−e₀` when resolution exists and, separately, `wall_clock_lifecycle_duration_ms = closed_at−opened_at` when both timestamps exist (both in milliseconds, RFC §6.13). A cancelled episode has a withdrawal duration, not a recovery duration. Neither displayed duration substitutes for the state.
 
 **Definition 12.19 (Recovery feasibility)**. With the composed required closure count `K_close`, the earliest possible closing window after the opening window ends at `e₀+K_close·W`. Therefore `recovery_deadline_impossible` holds iff `T<K_close·W`; equality is feasible in window time. This is only an earliest separation: closure also needs its windows to be fresh at the closing evaluation (Definition 12.17), so delayed evaluations can postpone or prevent closure and yield `OVERDUE` although the windows were `MET` in time. When an episode has enough consecutive `MET` windows to close but they are too old at an evaluation, that fact is reported as `closure_blocked_by_lag` beside the state; it does not change the state.
 
@@ -1956,12 +2017,13 @@ A `tvl_pack` is a separate TVL 1.3 document containing pack identity, requiremen
 |---|---|
 | requirement/monitor/response/rule names, protocol states, module/pack module names, selector `ref` | opaque locally minted references |
 | suspend fallback | closed enum `static_unavailable` or `route_to_human` |
-| degrade fallback / rollback target | certified fingerprint or `last_certified` |
+| degrade fallback | certified fingerprint |
+| rollback target | certified fingerprint or `last_certified` |
 | customer labels in `label_in` / `among` | indices in the declared checker label list |
 | customer checker ID | keyed commitment `customer:<commitment>`; catalogue IDs retain their catalogue identity |
-| environment label | opaque environment reference, resolved only at the authorized read edge |
+| environment label | opaque environment reference; the hosted platform resolves it to its stored label in its own authorized store (RFC 0003 §8.2) |
 | selector tool names | validated code identifiers |
-| numbers, enums, event types, method/sampling names | closed values; exact parameters serialized as decimal strings |
+| numbers, enums, event types, method/sampling names | closed values; decimal parameters as minimal decimal strings, integer parameters, counts and durations as JSON integers (RFC 0003 §8.2) |
 
 Anything unlisted is not exported. Unit IDs in reports/commitments must be SDK-minted opaque IDs, not arbitrary supplied names. Digests over contracts are computed after projection/tokenization, never used as an excuse to hash and export arbitrary raw content. An unresolved alias or unavailable token map fails closed (`runtime_unresolved_alias`); errors are closed codes without echoing inputs. Reports carry only closed counts, references, method/version identities, and commitments. Customer content/checkers remain customer-side. Only metadata monitors read observability data, and observability carries no privacy guarantee. This is a required data boundary, not a claim that a particular wire implementation has passed its canaries.
 
@@ -1985,7 +2047,7 @@ The **conservative-extension claim** is equality of the legacy projection with `
 
 The numbered statements below are **claimed proof obligations** about the language and about exact binomial tests, not declarations that Lean files compile or that any implementation satisfies them. `proofs/PROOF_SUMMARY.md` is the authority for each statement's proof status. Obligations about how an evaluator profile meets the contracts of §§12.4–12.11 — the soundness of its classification and counting rules, its episode and obligation procedures, and its response execution — are stated with that profile, outside TVL. Every statement assumes the relevant `WF_rt` conditions.
 
-For statistical statements require `N∈ℕ`, `θ,α,c_conf∈ℚ`, `0<θ<1`, `0<α≤1`, `0≤c_conf≤1`. A true rate `p` may be real with `0≤p≤1`. Under a binomial model, a Lean representation uses the nonnegative real cast of `p` (e.g. `p_nn : NNReal` with real value `p`) and a proof `p_nn≤1` for `PMF.binomial`; rational thresholds/budgets are cast without rounding. Tail probabilities can then be expressed as finite sums of PMF masses, cast from `ENNReal` to real using finiteness. This describes the required mathematical types, not an unverified pinned-library API signature.
+For statistical statements require `N∈ℕ`, `θ,α,c_conf∈ℚ`, `0<θ<1`, `0<α≤1`, `0≤c_conf≤1`. A true rate `p` may be real with `0≤p≤1`. Under a binomial model, a Lean representation uses the nonnegative real cast of `p` (e.g. `p_nn : NNReal` with real value `p`) and a proof `p_nn≤1` for `PMF.binomial` (a PMF is a probability mass function: a distribution over a countable set); rational thresholds/budgets are cast without rounding. Tail probabilities can then be expressed as finite sums of PMF masses. Those masses live in `ENNReal`, the extended nonnegative reals `[0, ∞]`; because each sum is finite (not `∞`), it can be cast to an ordinary real number. This describes the required mathematical types, not an unverified pinned-library API signature.
 
 Write `X ≤st Y` for first-order stochastic domination on natural counts: `∀j, Pr[X≥j]≤Pr[Y≥j]`. A count `K` is a **good window** for `(N,θ)` when `K ≤st Bin(N,θ)` and a **bad window** when `Bin(N,θ) ≤st K`; IID Bernoulli units with `p≤θ` (respectively `p≥θ`) suffice. For random `N`, require these conditions for each conditional law given `N`, not just an unconditional marginal. No independence between different windows is required below.
 
@@ -2171,8 +2233,10 @@ See RFC 0004 §3 and its closed format decision in §7.2.
 
 ## 14. Breach Persistence and Census Aggregates (TVL 1.5)
 
-This section specifies the recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md), accepted on 2026-10-23 as TVL 1.5.0. These definitions do not establish parser support, runtime execution,
-conformance or mechanically checked properties. Sections 12–13 retain their existing meanings.
+This section specifies the recorded-history semantics of [RFC 0005](rfc-0005-persistence-and-census-aggregates.md), accepted on 2026-10-23 as TVL 1.5.0. These definitions do not establish parser support, runtime execution or
+conformance. Lean statements for the persistence completion results and exact mean comparison are in
+`proofs/TVL/Runtime/Persistence.lean`, with scope and build status in `proofs/PROOF_SUMMARY.md`; the other
+properties below are not mechanized. Sections 12–13 retain their existing meanings.
 
 ### 14.1 Persistence history and completion sets
 
@@ -2202,7 +2266,7 @@ leaving decided slots fixed. For h in Comp(H), let b(h) count its BREACHED slots
 
 If B and U count the BREACHED and UNKNOWN slots, the minimum and maximum completion counts
 are B and B+U. Thus the equivalent decision is BREACHED when B ≥ k, MET when B+U < k,
-and UNKNOWN otherwise. For k=2,n=3: BBU is BREACHED, MMU is MET and BMU is UNKNOWN.
+and UNKNOWN otherwise. For k=2,n=3, writing each history as its successive slot verdicts (B = BREACHED, M = MET, U = UNKNOWN): BBU is BREACHED, MMU is MET and BMU is UNKNOWN.
 The labels concern the historical condition, not current source satisfaction. Refining UNKNOWN
 slots shrinks Comp(H): either decided result remains that result under every refinement;
 UNKNOWN may become decided. This is information monotonicity, not an order on quality.
@@ -2423,13 +2487,21 @@ embedding are specification obligations here, not claims of checked runtime impl
 | `Feasible(M) = ∅` | `unsatisfiable_constraints` |
 | Non-linear term in structural | `non_linear_structural` |
 | TVAR in derived constraint | `derived_references_tvar` |
+| Non-linear term in derived | `non_linear_derived` |
+| Derived constraint references `env.bindings.*` | `derived_references_bindings` |
+| Derived constraint references a symbol outside `env.context.*` | `derived_invalid_symbol_reference` |
+| Derived constraint not of the form `LinExpr OP Number` | `unsupported_derived_expression` |
 | Float domain not precision-aligned | `inadequate_precision` |
-| Environment lookup fails | `derived_env_undefined` |
+| Environment lookup fails | `unknown_derived_symbol` |
+| Environment value used in derived constraint not numeric | `non_numeric_derived_symbol` |
+| `F^op(E_τ, Φ^der) = false` | `derived_constraint_violation` |
 | Range domain ill-formed (r ≤ 0 or a > b) | `invalid_range_domain` |
 
 ### B.2 Promotion Gate Errors
 
-| Formal Property Violated | Error Code |
+Apart from `zero_trials`, the names in this table label formal conditions; they are not diagnostic codes emitted by the reference implementation. The reference gate (`python/tvl/promotion.py`) reports these outcomes as the decisions `Reject` or `NoDecision` with a reason, and `zero_trials` as the decision `Error`. The measurement check (`python/tvl/measurement.py`) reports chance and band failures as `chance_violation` and `band_violation`.
+
+| Formal Property Violated | Condition Name |
 |-------------------------|------------|
 | `¬ChancePass(χ, k, n)` | `chance_constraint_failed` |
 | `BandHardFail(b, μ̂)` | `band_objective_failed` |
@@ -2445,6 +2517,7 @@ embedding are specification obligations here, not claims of checked runtime impl
 | Registry domain used | `unverifiable_registry_domain` |
 | Callable type used | `unverifiable_callable_type` |
 | Float precision inadequate | `inadequate_precision` |
+| `cvars`, `policies` or `composites` declared (RFC 0001/0002) | `outside_proved_subset` (severity `info`, once per declared family; never affects `ok` or exit status) |
 
 ### B.4 Runtime Validation and Lint Codes (TVL 1.3)
 
@@ -2467,13 +2540,14 @@ Verdict reasons such as `insufficient`, `incomplete`, `sampling_biased`, `awaiti
 ## Appendix C: References
 
 1. Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate: a practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society: Series B*, 57(1), 289-300.
-2. Bradley, A. R., & Manna, Z. (2007). *The Calculus of Computation*. Springer.
-3. Clopper, C. J., & Pearson, E. S. (1934). The use of confidence or fiducial limits illustrated in the case of the binomial. *Biometrika*, 26(4), 404-413.
-4. de Moura, L., & Bjørner, N. (2008). Z3: An Efficient SMT Solver. *TACAS*.
-5. Deb, K., et al. (2002). A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II. *IEEE TEC*.
-6. Holm, S. (1979). A simple sequentially rejective multiple test procedure. *Scandinavian Journal of Statistics*, 6(2), 65-70.
-7. Pierce, B. C. (2002). *Types and Programming Languages*. MIT Press.
-8. Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power approach for assessing the equivalence of average bioavailability. *Journal of Pharmacokinetics and Biopharmaceutics*, 15(6), 657-680.
+2. Benjamini, Y., & Yekutieli, D. (2001). The control of the false discovery rate in multiple testing under dependency. *The Annals of Statistics*, 29(4), 1165-1188.
+3. Bradley, A. R., & Manna, Z. (2007). *The Calculus of Computation*. Springer.
+4. Clopper, C. J., & Pearson, E. S. (1934). The use of confidence or fiducial limits illustrated in the case of the binomial. *Biometrika*, 26(4), 404-413.
+5. de Moura, L., & Bjørner, N. (2008). Z3: An Efficient SMT Solver. *TACAS*.
+6. Deb, K., et al. (2002). A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II. *IEEE TEC*.
+7. Holm, S. (1979). A simple sequentially rejective multiple test procedure. *Scandinavian Journal of Statistics*, 6(2), 65-70.
+8. Pierce, B. C. (2002). *Types and Programming Languages*. MIT Press.
+9. Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power approach for assessing the equivalence of average bioavailability. *Journal of Pharmacokinetics and Biopharmaceutics*, 15(6), 657-680.
 
 ---
 

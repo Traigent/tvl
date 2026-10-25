@@ -10,7 +10,7 @@ The TVL core schema defines standalone, self-contained modules. To support inher
 we use **preprocessing** rather than extending the core schema:
 
 ```text
-base.tvl.yml + staging.overlay.yml  →  tvl-compose  →  staging.tvl.yml (valid TVL)
+ch4_base_module.tvl.yml + ch4_staging.overlay.yml  →  tvl-compose  →  staging.tvl.yml (a TVL module)
 ```
 
 This keeps the core spec simple while enabling powerful composition patterns.
@@ -20,9 +20,9 @@ This keeps the core spec simple while enabling powerful composition patterns.
 **Base module** (valid TVL):
 
 ```yaml
-# base.tvl.yml - full TVL module
+# ch4_base_module.tvl.yml - full TVL module (file in tvl_book/examples/)
 tvl:
-  module: corp.support.rag_bot
+  module: book.overlays.base
 
 environment:
   snapshot_id: "2025-01-20T00:00:00Z"
@@ -73,6 +73,7 @@ promotion_policy:
     latency_p95_ms: 50
     cost_usd: 0.001
 
+# Legacy exploration hints: deprecated in the schema and not part of TVL semantics
 exploration:
   strategy:
     type: nsga2
@@ -84,7 +85,7 @@ exploration:
 **Staging overlay** (NOT a standalone TVL module):
 
 ```yaml
-# staging.overlay.yml - requires preprocessing
+# ch4_staging.overlay.yml - requires preprocessing (file in tvl_book/examples/)
 _tvl_overlay:
   extends: ch4_base_module.tvl.yml
 
@@ -105,36 +106,44 @@ overrides:
 **Compose to valid TVL:**
 
 ```bash
+cd tvl_book/examples
 tvl-compose ch4_staging.overlay.yml -o staging.tvl.yml
-tvl-validate staging.tvl.yml  # Passes!
+tvl-validate staging.tvl.yml  # Schema + lint checks passed.
 ```
 
 ## Visualizing Overlays
 
 ```mermaid
 graph TD
-    Base["base.tvl.yml<br/>(TVL)"] -->|tvl-compose| Staging["staging.tvl.yml<br/>(TVL)"]
+    Base["ch4_base_module.tvl.yml<br/>(TVL)"] -->|tvl-compose| Staging["staging.tvl.yml<br/>(TVL)"]
     Base -->|tvl-compose| Production["production.tvl.yml<br/>(TVL)"]
     Production -->|tvl-compose| Hotfix["hotfix.tvl.yml<br/>(TVL)"]
 ```
 
-Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process,
-not runtime artifacts.
+Each composed output is a standalone TVL module. Composition checks narrowing rules (below), not the schema:
+run `tvl-validate` on the output, or pass `tvl-compose --validate`, to confirm it is valid. Overlays are inputs to
+the composition process, not runtime artifacts.
 
 ## Override Rules
 
-`tvl-compose` validates safe narrowing for the following:
+By default `tvl-compose` checks a fixed list of narrowing rules. They do not prove that an overlay cannot loosen
+anything. The main rules (full list in the [language reference](../../../docs/reference/language.md#overlay-narrowing-checks)):
 
 | Override Type | Allowed | Not Allowed |
 |--------------|---------|-------------|
 | Enum domain | Remove values | Add new values |
 | Numeric range | Narrow bounds | Widen bounds |
-| Budget | Decrease | Increase beyond base |
+| Budget (`exploration.budgets`) | Decrease | Increase beyond base |
+| TVARs | Keep (domains may narrow as above) | Add new TVARs |
+| Objectives | Keep | Drop, flip direction, widen a band |
+| Chance constraints | Lower `threshold`, raise `confidence` | Drop, or loosen either value |
+| Structural / derived clauses | Keep, or replace with a strictly tighter bound | Drop, unless explicitly waived |
 
 !!! info "Current Validation Scope"
-    The current implementation validates enum narrowing, range narrowing, and budget decreases.
-    Resolution changes and constraint modifications are merged without validation—ensure your
-    overlays follow safe narrowing practices for these fields.
+    Some changes are not checked and need review by hand: domain-shape and resolution changes,
+    `promotion_policy.alpha`, `adjust` and `min_effect`, `evaluation_set.dataset` and `seed`,
+    `environment` values, and `objectives[].metric_ref`. Waivers allow explicit clause removal.
+    `--no-validate` skips the narrowing checks.
 
 ## Hotfix Playbook
 

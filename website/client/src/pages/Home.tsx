@@ -153,7 +153,7 @@ export default function Home() {
               </div>
               <p className="text-sm md:text-base text-foreground/80">
                 The same contract can be consumed by a human, optimizer,
-                evaluator, CI gate, or certification workflow without making
+                evaluator, continuous integration (CI) gate, or certification workflow without making
                 the search algorithm part of the language.
               </p>
               <CodeIDE
@@ -210,8 +210,9 @@ export default function Home() {
                 </div>
                 <CardTitle>Type-Safe Specifications</CardTitle>
                 <CardDescription>
-                  Typed TVARs and deterministic validation keep constraints and
-                  promotion gates reviewable before rollout.
+                  Typed tuned variables (TVARs: settings declared with a name, type, and allowed
+                  domain) and deterministic validation keep constraints and promotion gates
+                  reviewable before rollout.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -267,7 +268,7 @@ export default function Home() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4">Explore TVL</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Start with concrete examples, then go deeper into the
-              specification. Longer-form study materials are being prepared.
+              specification, or read the 13-chapter book.
             </p>
           </div>
 

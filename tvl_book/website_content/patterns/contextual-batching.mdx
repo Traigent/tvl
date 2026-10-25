@@ -49,8 +49,9 @@ This is the same engineering move TVL makes elsewhere. Turn a vague workflow cho
 knobs, then evaluate those knobs against quality, cost, and latency.
 
 <ConceptCallout title="Why This Matters" tone="info">
-  Batching is attractive precisely because it looks cheap. The danger is that attention dilution and
-  position sensitivity stay hidden until quality has already slipped.
+  Batching is attractive precisely because it looks cheap. The danger is that attention dilution (each
+  item gets less of the model's attention as more items compete for it) and position sensitivity
+  (results change with where an item sits in the prompt) stay hidden until quality has already slipped.
 </ConceptCallout>
 
 ## Tuned Variables Worth Sweeping

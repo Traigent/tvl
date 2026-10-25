@@ -24,27 +24,28 @@ tvl-check-structural my-spec.tvl.yml
 tvl-check-operational my-spec.tvl.yml --json
 ```
 
-- `tvl-check-structural` asks whether at least one valid configuration exists.
+- `tvl-check-structural` asks whether at least one configuration satisfies the declared domains and structural
+  constraints. That is structural feasibility only; operational preconditions are the next check.
 - `tvl-check-operational` asks whether the current `env.context.*` assumptions let the study proceed.
 
 If those pass, add targeted tests so future edits do not quietly break the contract. For unit testing
 in Python, use the TVL SDK:
 
 ```python
-from tvl import loader, structural_sat
+from tvl import configuration, loader, structural_sat
 
 def test_constraints_satisfiable():
     """Verify the spec has at least one valid configuration."""
     module = loader.load("my-spec.tvl.yml")
-    result = structural_sat.check(module)
-    assert result.satisfiable, f"UNSAT: {result.unsat_core}"
+    result = structural_sat.check_structural(module)
+    assert result.ok, f"Not shown satisfiable; UNSAT core: {result.unsat_core}"
 
 def test_specific_config_valid():
     """Verify a specific configuration passes constraints."""
     module = loader.load("my-spec.tvl.yml")
-    config = {"model": "gpt-4o-mini", "temperature": 0.3, "max_tokens": 512}
-    errors = structural_sat.validate_config(module, config)
-    assert not errors, f"Constraint violations: {errors}"
+    config = {"assignments": {"model": "gpt-4o-mini", "temperature": 0.3, "max_tokens": 512}}
+    report = configuration.validate_configuration(module, config)
+    assert report["ok"], f"Constraint violations: {report['constraints']}, domain issues: {report['domains']}"
 ```
 
 Run the tests:

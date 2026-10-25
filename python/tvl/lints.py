@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass, field as dataclass_field
 from fractions import Fraction
@@ -1620,6 +1621,21 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
                 continue
 
             domain_spec = decl.get("domain")
+            non_finite = _first_non_finite(domain_spec)
+            if non_finite is not None:
+                bad_path, bad_value = non_finite
+                issues.append(
+                    {
+                        "code": "non_finite_domain_value",
+                        "message": (
+                            f"TVAR '{name}' domain contains {bad_value!r}; numeric domains are "
+                            "rationals (formal semantics Definitions 3.1-3.2), so NaN and "
+                            "infinities are not admitted"
+                        ),
+                        "path": ["tvars", idx, "domain"] + bad_path,
+                        "severity": "error",
+                    }
+                )
             domain_values, minimum, maximum = _parse_domain(name, normalized, domain_spec, ["tvars", idx], issues)
             if domain_values is not None and len(domain_values) == 0:
                 issues.append(
@@ -1653,6 +1669,26 @@ def _build_type_context(doc: Dict[str, Any]) -> TypeContext:
         clause_ids={},
         cvar_names=cvar_names,
     )
+
+
+def _first_non_finite(node: Any) -> Optional[Tuple[List[Any], float]]:
+    """(relative path, value) of the first NaN/infinite float inside ``node``, else None."""
+    stack: List[Tuple[Any, List[Any]]] = [(node, [])]
+    # Containers already expanded, by identity, so an alias cycle (``&d [*d]``) terminates.
+    seen: set = set()
+    while stack:
+        current, path = stack.pop()
+        if isinstance(current, float) and not math.isfinite(current):
+            return path, current
+        if isinstance(current, (dict, list, tuple)):
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+        if isinstance(current, dict):
+            stack.extend((v, path + [k]) for k, v in current.items())
+        elif isinstance(current, (list, tuple)):
+            stack.extend((v, path + [i]) for i, v in enumerate(current))
+    return None
 
 
 def _normalize_kind(raw_type: str) -> Optional[str]:
@@ -2080,6 +2116,18 @@ def _lint_structural_constraints(doc: Dict[str, Any], issues: List[Issue], conte
             _check_structural_expression(expr, expr_path, context, issues)
 
 
+def _supports_ordering(type_info: "TypeInfo") -> bool:
+    """T-Cmp: ordering needs elem(tau) in {int, float}; numeric enums qualify, string/bool enums do not."""
+    if type_info.kind in {"int", "float"}:
+        return True
+    if type_info.kind == "enum":
+        values = type_info.domain_values
+        return bool(values) and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in values
+        )
+    return False
+
+
 def _check_structural_expression(expr: Any, path: List[Any], context: TypeContext, issues: List[Issue]) -> None:
     if expr is None:
         return
@@ -2185,7 +2233,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
                 }
             )
             return
-        if type_info.kind not in {"int", "float"}:
+        if not _supports_ordering(type_info):
             add(
                 {
                     "code": "constraint_operator_type_mismatch",
@@ -2255,7 +2303,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
                     add(
                         {
                             "code": "constraint_type_mismatch",
-                            "message": f"TVAR '{literal.ident}' ({type_info.kind}) is not compatible with '{rhs_raw}' ({other.kind})",
+                            "message": f"TVAR '{literal.ident}' ({type_info.raw_type}) is not compatible with '{rhs_raw}' ({other.raw_type})",
                             "path": path,
                             "severity": "error",
                         }
@@ -2275,7 +2323,7 @@ def _typecheck_literal(literal: Literal, path: List[Any], context: TypeContext, 
                 return
         else:
             value = _convert_literal_value(value_type, rhs_raw)
-        if op in {"<", "<=", ">", ">="} and type_info.kind not in {"int", "float"}:
+        if op in {"<", "<=", ">", ">="} and not _supports_ordering(type_info):
             add(
                 {
                     "code": "constraint_operator_type_mismatch",
@@ -2370,10 +2418,19 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
         try:
             numeric = _coerce_numeric(value, kind)
         except ValueError:
+            if kind == "int" and isinstance(value, float) and not isinstance(value, bool):
+                # T-Cmp requires the literal to have type elem(int) = int; a fractional
+                # literal has type float, so it is the fractionality that is wrong.
+                message = (
+                    f"Fractional literal {value!r} cannot be compared with int TVAR "
+                    f"'{type_info.name}' (T-Cmp requires an integer literal)"
+                )
+            else:
+                message = f"Expected numeric literal for TVAR '{type_info.name}', got {value!r}"
             issues.append(
                 {
                     "code": "constraint_type_mismatch",
-                    "message": f"Expected numeric literal for TVAR '{type_info.name}', got {value!r}",
+                    "message": message,
                     "path": path,
                     "severity": "error",
                 }
@@ -2409,12 +2466,78 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
         return issues
 
     return issues
+def _split_type_args(raw: str) -> Optional[List[str]]:
+    """Top-level comma-separated component types of ``tuple[...]``; None if not parseable."""
+    text = raw.strip()
+    if not text.startswith("tuple[") or not text.endswith("]"):
+        return None
+    inner = text[len("tuple["):-1]
+    parts: List[str] = []
+    depth = 0
+    cur = ""
+    for ch in inner:
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        parts.append(cur.strip())
+    return parts
+
+
+def _canonical_type(raw: str) -> Optional[str]:
+    """Whitespace-free spelling of a declared type, with tuple components canonicalised.
+
+    Returns None when a ``tuple[...]`` cannot be split into components.
+    """
+    text = "".join(raw.split())
+    if text.lower().startswith("tuple["):
+        parts = _split_type_args(text)
+        if parts is None:
+            return None
+        canon = [_canonical_type(part) for part in parts]
+        if any(part is None for part in canon):
+            return None
+        return "tuple[" + ",".join(canon) + "]"  # type: ignore[arg-type]
+    if text.lower().startswith("callable["):
+        return "callable[" + text[len("callable["):]  # the protocol identifier keeps its case
+    return text.lower()
+
+
+def _elem_type(raw: str) -> Optional[str]:
+    """Definition 4.2: elem(enum[τ]) = τ; every other type is its own element type."""
+    canon = _canonical_type(raw)
+    if canon is not None and canon.startswith("enum[") and canon.endswith("]"):
+        return canon[len("enum["):-1]
+    return canon
+
+
+def _component_types_compatible(left: str, right: str) -> bool:
+    """T-TupleVarEq: both tuples have the same type tuple[τ₁,...,τₙ] (same arity and τᵢ)."""
+    lc, rc = _canonical_type(left), _canonical_type(right)
+    if lc is None or rc is None:
+        return True  # unparseable tuple types are reported elsewhere
+    return lc == rc
+
+
 def _are_types_compatible(lhs: TypeInfo, rhs: TypeInfo) -> bool:
-    if lhs.kind == rhs.kind:
-        return True
-    if lhs.kind in {"int", "float"} and rhs.kind in {"int", "float"}:
-        return True
-    return False
+    """Whether ``x = y`` between two TVARs is well-typed (formal semantics §4.6-4.7).
+
+    Scalars follow T-TVarEq, elem(τ) = elem(τ'), so ``int = enum[int]`` is
+    well-typed while ``int = float`` and ``enum[str] = enum[int]`` are not: the
+    typing rules have no numeric widening. Tuples follow T-TupleVarEq.
+    """
+    if lhs.kind == "tuple" or rhs.kind == "tuple":
+        if lhs.kind != rhs.kind:
+            return False
+        return _component_types_compatible(lhs.raw_type, rhs.raw_type)
+    left, right = _elem_type(lhs.raw_type), _elem_type(rhs.raw_type)
+    return left is not None and left == right
 
 
 def _lint_derived_constraints(doc: Dict[str, Any], issues: List[Issue], context: TypeContext) -> None:
@@ -2894,6 +3017,7 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
     - W6001: Registry-backed domains (no formal semantics for resolve())
     - W6002: Callable types (protocol implementation not formally defined)
     - W6003: Inadequate float precision (SMT encoding may lose injectivity)
+    - outside_proved_subset: cvars / policies / composites declarations
 
     Args:
         doc: The TVL module document
@@ -2903,6 +3027,11 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
         List of warning issues
     """
     issues: List[Issue] = []
+
+    # outside_proved_subset: one warning per construct family that the Lean
+    # proof tree (proofs/TVL/*.lean) does not model. Callable domains are
+    # covered by unverifiable_callable_type below, so they are not repeated.
+    issues.extend(_outside_proved_subset_issues(doc))
 
     tvars = doc.get("tvars") or []
     if not isinstance(tvars, list):
@@ -2946,13 +3075,52 @@ def check_formal_verification_scope(doc: Dict[str, Any], precision: int = 1000) 
                 "formal_property": "'Implements protocol' is not formally defined",
             })
 
-        # W6003: Inadequate precision for float domains
-        if isinstance(raw_type, str) and raw_type.strip().lower() == "float":
+        # W6003: Inadequate precision for float domains (a non-finite domain is already an
+        # error, non_finite_domain_value; its grid has no precision to judge).
+        if (
+            isinstance(raw_type, str)
+            and raw_type.strip().lower() == "float"
+            and _first_non_finite(domain_spec) is None
+        ):
             precision_issue = _check_float_precision(name, domain_spec, precision, idx)
             if precision_issue is not None:
                 issues.append(precision_issue)
 
     return issues
+
+
+_OUTSIDE_PROVED_SUBSET_FAMILIES = (
+    ("cvars", "cvars (RFC 0001 calibrated variables)"),
+    ("policies", "policies (RFC 0001)"),
+    ("composites", "composites (RFC 0002)"),
+)
+
+
+def _outside_proved_subset_issues(doc: Dict[str, Any]) -> List[Issue]:
+    """Warn once per declared construct family absent from the Lean proofs.
+
+    Presence of at least one declaration triggers the warning; an empty or
+    absent section does not. See proofs/PROOF_SUMMARY.md (coverage note).
+    """
+    out: List[Issue] = []
+    for key, label in _OUTSIDE_PROVED_SUBSET_FAMILIES:
+        value = doc.get(key)
+        if not isinstance(value, list) or not value:
+            continue
+        out.append({
+            "code": "outside_proved_subset",
+            "severity": "info",
+            "message": (
+                f"Module uses {label}, which is outside the machine-proved "
+                "(Lean) subset. Proved guarantees (type soundness, SMT "
+                "encoding soundness) do not cover this construct. See "
+                "proofs/PROOF_SUMMARY.md."
+            ),
+            "path": [key],
+            "construct": key,
+            "formal_property": f"No Lean model of {key} exists in proofs/TVL",
+        })
+    return out
 
 
 def _check_float_precision(
@@ -2961,52 +3129,42 @@ def _check_float_precision(
     precision: int,
     idx: int,
 ) -> Optional[Issue]:
-    """Check if float domain values collide under the given precision.
+    """Check that a float domain is precision-aligned (formal semantics Definition 8.6).
 
-    A float domain is precision-aligned iff:
-        ∀v₁,v₂ ∈ domain: v₁ ≠ v₂ ⟹ scale(v₁,P) ≠ scale(v₂,P)
+    A float domain D is precision-aligned to P iff every value is an integer
+    after scaling, in exact arithmetic:
 
-    where scale(v, P) = round(v × P)
+        ∀v ∈ D: v · P ∈ ℤ
+
+    Values are read as the exact decimals they were written as (``str(v)``),
+    not as their binary floating-point approximations. A range domain's
+    values are ``a + k·r`` for its effective resolution ``r`` (semantics §2.4:
+    the given resolution, or 0.001 for a float range without one), so it is
+    aligned iff ``r·P`` and ``a·P`` are integers. Alignment implies that
+    scaling is injective (Lemma 8.2), so collisions are reported only as the
+    most specific form of a misalignment.
     """
     if domain_spec is None:
         return None
+    if isinstance(domain_spec, dict) and "range" in domain_spec:
+        return _check_range_alignment(domain_spec, precision, name, idx)
+    if isinstance(domain_spec, dict):
+        domain_spec = domain_spec.get("set", [])
+    return _check_values_alignment(_extract_numeric_list(domain_spec), precision, name, idx)
 
-    # Extract domain values and check resolution alignment
-    result = _extract_float_domain_values(domain_spec, precision, name, idx)
-    if isinstance(result, dict):
-        # Early return with resolution misalignment issue
-        return result
 
-    values = result
-    if len(values) < 2:
+def _exact_decimal(value: Any) -> Optional[Fraction]:
+    """The exact rational a YAML number was written as; None if it has none."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return Fraction(str(value))
+    except (ValueError, ZeroDivisionError, OverflowError):
         return None
 
-    # Check for collisions
-    return _check_value_collisions(values, precision, name, idx)
 
-
-def _extract_float_domain_values(
-    domain_spec: Any,
-    precision: int,
-    name: str,
-    idx: int,
-) -> List[float] | Issue:
-    """Extract float values from domain spec, or return issue if resolution misaligned."""
-    values: List[float] = []
-
-    if isinstance(domain_spec, list):
-        return _extract_numeric_list(domain_spec)
-
-    if not isinstance(domain_spec, dict):
-        return values
-
-    if "set" in domain_spec:
-        return _extract_numeric_list(domain_spec.get("set", []))
-
-    if "range" in domain_spec:
-        return _extract_range_values(domain_spec, precision, name, idx)
-
-    return values
+def _is_aligned(value: Fraction, precision: int) -> bool:
+    return (value * precision).denominator == 1
 
 
 def _extract_numeric_list(items: Any) -> List[float]:
@@ -3016,82 +3174,114 @@ def _extract_numeric_list(items: Any) -> List[float]:
         return values
     for v in items:
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            values.append(float(v))
+            values.append(v)
     return values
 
 
-def _extract_range_values(
-    domain_spec: Dict[str, Any],
-    precision: int,
-    name: str,
-    idx: int,
-) -> List[float] | Issue:
-    """Extract values from a range domain, checking resolution alignment."""
-    range_vals = domain_spec.get("range", [])
-    resolution = domain_spec.get("resolution")
-
-    if not isinstance(range_vals, list) or len(range_vals) != 2:
-        return []
-
-    try:
-        low = float(range_vals[0])
-        high = float(range_vals[1])
-    except (TypeError, ValueError):
-        return []
-
-    if resolution is None:
-        return [low, high]
-
-    try:
-        res = float(resolution)
-    except (TypeError, ValueError):
-        return []
-
-    if res <= 0:
-        return []
-
-    # Check resolution alignment with precision
-    issue = _check_resolution_alignment(res, precision, name, idx)
-    if issue is not None:
-        return issue
-
-    # Generate values at resolution steps
-    values: List[float] = []
-    current = low
-    while current <= high + res / 2:
-        values.append(current)
-        current += res
-    return values
-
-
-def _check_resolution_alignment(
-    resolution: float,
+def _check_values_alignment(
+    values: List[float],
     precision: int,
     name: str,
     idx: int,
 ) -> Optional[Issue]:
-    """Check if resolution is aligned with precision."""
-    scaled_res = resolution * precision
-    if abs(scaled_res - round(scaled_res)) <= 1e-9:
+    """Definition 8.6 on a finite set of values."""
+    misaligned = None
+    for v in values:
+        exact = _exact_decimal(v)
+        if exact is not None and not _is_aligned(exact, precision):
+            misaligned = (v, exact)
+            break
+    if misaligned is None:
         return None
 
-    exact_alignment_precision = _compute_exact_alignment_precision([resolution])
-    suggestion = (
-        f" Suggested exact-alignment precision: P={exact_alignment_precision}."
-        if exact_alignment_precision is not None
-        else " Use exact rational or index encoding because an aligned integer precision could not be established."
-    )
+    collision_issue = _check_value_collisions(values, precision, name, idx)
+    if collision_issue is not None:
+        return collision_issue
+
+    exact_alignment_precision = _compute_exact_alignment_precision(values)
+    value, exact = misaligned
     return {
         "code": "inadequate_precision",
         "severity": "warning",
         "message": (
-            f"TVAR '{name}' has resolution {resolution} which is not "
-            f"aligned to precision P={precision}. SMT encoding "
-            f"soundness (Theorem 8.1) may not hold."
-            f"{suggestion}"
+            f"TVAR '{name}' has domain value {value} which is not aligned to "
+            f"precision P={precision}: {value} × {precision} = {float(exact * precision)} "
+            f"is not an integer. SMT encoding soundness (Theorem 8.1) does not hold."
+            f"{_precision_suggestion(exact_alignment_precision)}"
         ),
         "path": ["tvars", idx, "domain"],
-        "formal_property": "Domain is not precision-aligned per Definition 8.5",
+        "formal_property": _PRECISION_ALIGNED_PROPERTY,
+        "current_precision": precision,
+        # Retained for diagnostic-output compatibility; see the resolution
+        # diagnostic below.
+        "minimum_precision": exact_alignment_precision,
+        "suggested_precision": exact_alignment_precision,
+        "misaligned_value": value,
+    }
+
+
+_PRECISION_ALIGNED_PROPERTY = "Domain is not precision-aligned per Definition 8.6"
+_DEFAULT_FLOAT_RESOLUTION = Fraction(1, 1000)  # formal semantics §2.4, effective resolution
+
+
+def _precision_suggestion(exact_alignment_precision: Optional[int]) -> str:
+    if exact_alignment_precision is not None:
+        return f" Suggested exact-alignment precision: P={exact_alignment_precision}."
+    return " Use exact rational or index encoding because an aligned integer precision could not be established."
+
+
+def _check_range_alignment(
+    domain_spec: Dict[str, Any],
+    precision: int,
+    name: str,
+    idx: int,
+) -> Optional[Issue]:
+    """Definition 8.6 on a range domain: its values are a + k·r for k ≥ 0 with a + k·r ≤ b."""
+    range_vals = domain_spec.get("range", [])
+    if not isinstance(range_vals, list) or len(range_vals) != 2:
+        return None
+    low, high = _exact_decimal(range_vals[0]), _exact_decimal(range_vals[1])
+    if low is None or high is None:
+        return None
+
+    raw_resolution = domain_spec.get("resolution")
+    if raw_resolution is None:
+        res: Optional[Fraction] = _DEFAULT_FLOAT_RESOLUTION
+    else:
+        res = _exact_decimal(raw_resolution)
+    if res is None or res <= 0:
+        return None
+
+    if high - low >= res and not _is_aligned(res, precision):
+        return _check_resolution_alignment(res, precision, name, idx, implicit=raw_resolution is None)
+    if not _is_aligned(low, precision):
+        return _check_values_alignment([range_vals[0]], precision, name, idx)
+    return None
+
+
+def _check_resolution_alignment(
+    resolution: Fraction,
+    precision: int,
+    name: str,
+    idx: int,
+    *,
+    implicit: bool = False,
+) -> Issue:
+    """Issue for a range whose (effective) resolution r has r·P ∉ ℤ."""
+    exact_alignment_precision = _compute_exact_alignment_precision([float(resolution)])
+    shown = float(resolution)
+    described = f"the default resolution {shown} for float ranges" if implicit else f"resolution {shown}"
+    return {
+        "code": "inadequate_precision",
+        "severity": "warning",
+        "message": (
+            f"TVAR '{name}' has {described} which is not "
+            f"aligned to precision P={precision}. SMT encoding "
+            f"soundness (Theorem 8.1) may not hold."
+            f"{_precision_suggestion(exact_alignment_precision)}"
+        ),
+        "path": ["tvars", idx, "domain"],
+        "formal_property": _PRECISION_ALIGNED_PROPERTY,
         "current_precision": precision,
         # Retained for diagnostic-output compatibility; the value now means the
         # least integer factor that exactly aligns the parsed decimal values.
@@ -3141,7 +3331,7 @@ def _check_value_collisions(
             f"{suggestion}"
         ),
         "path": ["tvars", idx, "domain"],
-        "formal_property": "Domain is not precision-aligned per Definition 8.5",
+        "formal_property": _PRECISION_ALIGNED_PROPERTY,
         "current_precision": precision,
         # Retained for diagnostic-output compatibility; see the resolution
         # diagnostic above.
@@ -5118,8 +5308,10 @@ def _lint_monitors(
                     issues.append(
                         {
                             "code": "runtime_invalid_profile",
+                            # RFC 0003 §5.10: a fixed message that echoes no input; the
+                            # path locates the monitor.
                             "message": (
-                                f"Monitor '{name}' uses clopper_pearson_exact_v1, "
+                                "Monitor uses clopper_pearson_exact_v1, "
                                 "whose power bounds could not be evaluated with scipy.stats.beta"
                             ),
                             "path": path + ["decision", "method"],

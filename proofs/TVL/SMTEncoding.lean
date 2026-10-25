@@ -29,9 +29,10 @@
   - Thresholds n in `Atom.geq x n` and `Atom.leq x n` are pre-scaled: n = threshold * P
 
   This design means the SMT encoding is "passthrough" - no additional scaling needed
-  during encoding. The rounding_soundness_nonneg theorem proves that the pre-scaling
-  step (performed at spec parse time) preserves comparison semantics:
-    v >= threshold ⟺ scale(v) >= ceiling(threshold * P)
+  during encoding. What `rounding_soundness_nonneg` actually proves is a statement about
+  natural numbers: for naturals v, n and P > 0,
+    v * P >= n ↔ v >= ⌈n / P⌉, computed as (n + P - 1) / P.
+  Semantics Lemma 8.1 (v ≥ n ⟺ scale(v) ≥ ⌈n·P⌉) is not mechanized in this file.
 -/
 
 import TVL.TypeSoundness
@@ -90,8 +91,10 @@ def encodeValForAtom (v : Val) (idx : Val -> Option Nat) : Option SMTVal :=
 /--
   **Lemma 5.4 (Rounding Soundness)**
 
-  For P-aligned domain value v and threshold n (both non-negative):
-    v ≥ n ⟺ scale(v) ≥ ⌈n/P⌉
+  For naturals v, n and P > 0 (this is exactly what `rounding_soundness_nonneg` proves):
+    v * P ≥ n ↔ v ≥ ⌈n / P⌉, computed as (n + P - 1) / P.
+
+  Semantics Lemma 8.1 (v ≥ n ⟺ scale(v) ≥ ⌈n·P⌉) is not mechanized here.
 
   Note: This lemma assumes non-negative values, which is the common case
   for comparison thresholds in TVL (quality scores, latencies, etc.).

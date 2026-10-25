@@ -1,6 +1,6 @@
 # Chapter 1 · Why TVL Exists
 
-TVL grew out of a simple observation: **LLM applications never sit still**. Model catalogs evolve, latency budgets
+TVL grew out of a simple observation: **large language model (LLM) applications never sit still**. Model catalogs evolve, latency budgets
 oscillate with traffic spikes, and cost ceilings reset when finance reviews the bill. Hard-coded configuration
 forces engineers to either over-provision permanently or ship blind during drift events. TVL reframes
 configuration as a tuned, governed artifact that evolves alongside the environment.
@@ -9,13 +9,21 @@ configuration as a tuned, governed artifact that evolves alongside the environme
 
 - **Type-safe tuning variables** separate categorical choice from continuous ranges.
 - **Deterministic exports** make generated files (such as `params.yaml`) reproducible in CI.
-- **Declarative constraints** (typed DNF compiled to SAT/SMT) capture business and safety rules next to the numbers.
-- **Governed promotion** requires proof—ε-Pareto dominance with statistical guarantees—before production changes roll out.
+- **Declarative constraints** capture business and safety rules next to the numbers. They are written in typed
+  disjunctive normal form (DNF, an OR of AND-groups of simple conditions), which tools can pass to a SAT/SMT solver
+  (a program that decides whether a set of logical conditions can all be true at once).
+- **Governed promotion** requires statistical evidence before production changes roll out: ε-Pareto dominance (a
+  candidate is at least as good on every objective within a tolerance ε and clearly better on at least one) tested at a
+  chosen significance level `alpha`, plus chance constraints (limits on a violation rate, checked at a stated
+  confidence). The error control holds only under the tests' assumptions (see
+  [formal semantics §9](../../../formalization/tvl-formal-semantics.md)).
 
 !!! example "Night-Before-Launch Scenario"
     The onboarding chatbot is hours away from orientation week. A new model release promises higher quality,
-    but GPU latency just doubled. With TVL you keep the guardrails, tweak temperature and model ranges, and
-    rerun TVO. The optimizer explores safely and promotes only when constraints hold—no frantic code edits.
+    but GPU latency just doubled. With TVL you keep the declared constraints, tweak temperature and model ranges,
+    and rerun your optimizer (here TVO, the TVL Optimizer in the Traigent platform). TVL does not govern how the
+    optimizer searches. It defines the promotion gate: a candidate that breaks a declared constraint, or lacks
+    statistical evidence that it beats the incumbent, is not promoted. No frantic code edits.
 
 ```mermaid
 timeline
@@ -28,9 +36,10 @@ timeline
 
 ## Running Example · Campus Orientation RAG
 
-We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is
-quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift
-over time. This TVL file is the baseline we will extend.
+We revisit a retrieval-augmented system that answers student questions throughout the book. Its operating
+environment is quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider
+prices drift over time. The `environment` block records those conditions at a point in time; the `evaluation_set` is
+the fixed dataset candidates are scored on. This TVL file is the baseline we will extend.
 
 ```yaml
 # Campus Orientation RAG - TVL Specification
@@ -100,7 +109,7 @@ objectives:
     metric_ref: metrics.token_cost_usd.v1
     direction: minimize
 
-# Promotion policy with statistical guarantees
+# Promotion policy: the statistical tests a candidate must pass to be promoted
 promotion_policy:
   dominance: epsilon_pareto
   alpha: 0.05
@@ -120,7 +129,8 @@ promotion_policy:
       threshold: 0.001
       confidence: 0.95
 
-# Exploration configuration
+# Legacy exploration hints: deprecated in the schema and not part of TVL semantics.
+# New specs should put search strategy and budgets in a separate run plan.
 exploration:
   strategy:
     type: nsga2
@@ -130,8 +140,11 @@ exploration:
 ```
 
 !!! info "Validate Your Spec"
-    Download `/examples/rag-support-bot.tvl.yml` and run `tvl-validate rag-support-bot.tvl.yml` to check the spec against the TVL schema.
-    The validator catches type mismatches, domain violations, and unsatisfiable constraints.
+    This uses a separate example spec, not the campus module above. Download `/examples/rag-support-bot.tvl.yml` from tvl-lang.org (source:
+    [`spec/examples/rag-support-bot.tvl.yml`](../../../spec/examples/rag-support-bot.tvl.yml)) and run
+    `tvl-validate rag-support-bot.tvl.yml` to check the spec against the TVL schema and the normative lints.
+    `tvl-validate` does not solve constraints: run `tvl-check-structural rag-support-bot.tvl.yml` to find
+    structural constraints that no configuration can satisfy.
 
 ## Field Notes Legend
 
@@ -139,4 +152,5 @@ Throughout the interactive book you will see three callouts:
 
 - **Hackathon Moves** — quick tips for rapid experimentation.
 - **Reliability Pitfalls** — gotchas that often surface in incident reviews.
-- **Integration Hints** — pointers linking a concept to Triagent (TVO) or DVL workflows.
+- **Integration Hints** — pointers linking a concept to tools that consume TVL: TVO (the TVL Optimizer in the
+  Traigent platform) and DVL (a data-validation layer that checks evaluation datasets). Neither is part of the language.

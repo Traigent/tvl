@@ -50,11 +50,11 @@ Bundles are outputs: CI writes them to an ignored folder and keeps them as build
 
 <h2 id="ch13-starter">A starter module</h2>
 
-Copy this file next to your agent's code and change three things: the module's name, the knob's values, and the objective, which must be a name your evaluator measures.
+Copy this file next to your agent's code and change three things: the module's name, the knob's values, and the objective, a name your evaluator measures, both under `objectives` and as the key in `promotion_policy.min_effect`.
 
 <Example file="ch13/starter.tvl.yml" checker="tvl-validate" title="A starter module" />
 
-It holds the six required parts, `tvl`, `environment`, `evaluation_set`, `tvars`, `objectives` and `promotion_policy`, and nothing else: one tuned variable, one objective, a 2-point margin. `snapshot_id` is the date and time your environment facts describe (<ChapterLink n={4} />); put the day you write the module. Leave the other values until the chapter that explains them. Grow it when you need each part: rules (<ChapterLink n={4} />), more objectives and bands (<ChapterLink n={5} />), chance constraints (<ChapterLink n={6} />) and, in TVL 1.3, requirements and monitors (chapters 9 and 10).
+It holds the six required parts, `tvl`, `environment`, `evaluation_set`, `tvars`, `objectives` and `promotion_policy`, and nothing else: one tuned variable, one objective, a 2-point margin. `snapshot_id` is when your environment facts were taken (<ChapterLink n={4} />); the starter records none yet, so use the day you write the module. Leave the other values until the chapter that explains them. Grow it when you need each part: rules (<ChapterLink n={4} />), more objectives and bands (<ChapterLink n={5} />), chance constraints (<ChapterLink n={6} />) and, in TVL 1.3, requirements and monitors (chapters 9 and 10).
 
 <TryIt>
 
@@ -114,13 +114,13 @@ A complete bundle, for ten examples:
 
 The fields, in the format of the <Ref to="promotion-evidence" section="“Canonical measurement bundle”">promotion evidence contract</Ref>:
 
-- `module_id` must equal the module's `tvl.module`, or the gate gives no decision. `config_id`, `bundle_id`: your labels.
+- `module_id`, optional: a nonempty value must equal the module's `tvl.module`, or the gate reports an input error, not a decision. `config_id`, `bundle_id`: your labels.
 - `objective_values.<name>`, one per objective: either `samples`, one value per example, or `mean`, `std`, the standard deviation of those values (not of the mean), and `n`, the number of examples (<ChapterLink n={6} />). Add `paired: true` only when both bundles hold the same examples in the same order.
 - `chance_outcomes.<name>`: `violations` and `trials`. `monitor_outcomes.<name>` in TVL 1.3: `n` resolved units and `k` of them violating; optionally `u` unresolved, `pl` unplaceable and `complete` (<ChapterLink n={10} />). `summary`: anything else.
 
 File names and identifiers are yours: `.synthetic.` in the book's names marks simulator output, no suffix is required, and TVL never assigns ids; of the ids it reads, it only checks that `module_id` names the module.
 
-**4. The first baseline.** The gate always compares two bundles: Promote is defined only against an incumbent (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). So on day one, the configuration in production is your incumbent; measure it with the same evaluator, on the same examples, as the candidate. Gated against itself (the same bundle file, or a deterministic evaluation) it shows no gain, and the gate says NoDecision. If nothing runs yet, there is nothing to promote over; `tvl-measure-validate` still checks one bundle against the bands and chance constraints, which never depend on an incumbent.
+**4. The first baseline.** The gate always compares two bundles: Promote is defined only against an incumbent (<Ref to="semantics" section="section 9.7">formal semantics</Ref>). So on day one, the configuration in production is your incumbent; measure it with the same evaluator, on the same examples, as the candidate. Gated against itself (the same bundle file, or a deterministic evaluation) it shows no gain: NoDecision, or Reject if the bundle fails a band or a chance constraint. If nothing runs yet, there is nothing to promote over; `tvl-measure-validate` still checks one bundle against the bands and chance constraints, which never depend on an incumbent.
 
 **5. Run it.** Copy the incumbent to `tvl/configs/candidate.yml`, change one value and its `config_id`, run `evaluate` on both, then:
 
@@ -132,7 +132,7 @@ tvl-ci-gate tvl/my-agent.tvl.yml out/incumbent.measure.yml out/candidate.measure
 
 <h2 id="ch13-ci">A CI job</h2>
 
-`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; its tests run the shell `run:` steps locally, except the installs, and check the rest's configuration, not hosted Actions. Copy it and change the paths in `env` and the `on` filters. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job; the three 2s differ only in the `decision` field of `gate.json`:
+`book/support-bot/ci-example.yml` is a complete GitHub Actions workflow for the book's support bot. It is not one of the TVL repository's own workflows; its tests run the shell `run:` steps locally (not the installs) and statically check the installs, triggers and job dependencies; `uses:` steps are not exercised, and nothing runs on hosted Actions. Copy it and change the paths in `env` and the `on` filters. Its `gate` job runs: the install; the module checks; `tvl-config-validate` on both configurations; the evaluator on both (here the book's `evaluate.py`); `tvl-measure-validate` on both bundles, which also checks the bands and chance constraints; the gate; and an upload of the evidence. Any gate exit but 0 fails the job. The exit-2 cases differ in `gate.json`: Reject and NoDecision carry a `decision` and evidence; an unusable input has only an `error` (a legacy zero-trial bundle gives decision `Error`):
 
 | Gate exit | `decision` in `gate.json` | Meaning | What to do |
 |---|---|---|---|
@@ -178,9 +178,9 @@ A short script, left out above, prints the decision. Pin a commit in your instal
 2. **Check.** `tvl-validate`, `tvl-check-structural` and `tvl-config-validate`, in seconds.
 3. **Evaluate.** Tune on the tuning set; judge on the evaluation set.
 4. **Gate.** `tvl-ci-gate … --json`: text mode prints an empty `Reason:` for 1.2 modules.
-5. **Deploy.** Your own step, only after Promote; the candidate becomes the incumbent. Each CI run pays for two evaluations. With identical evidence in both bundles, the gate says NoDecision and the job fails. Run the gate job only on changes under `tvl/`: filter `pull_request` and `push` by `paths: ['tvl/**']`; deploy changes to your agent's code your usual way.
+5. **Deploy.** Your own step, only after Promote; the candidate becomes the incumbent. Each CI run pays for two evaluations. Identical evidence in both bundles gives NoDecision (or Reject, if the candidate fails a band or a chance constraint) and fails the job. Gate only changes under `tvl/` (`paths: ['tvl/**']` on `pull_request` and `push`); deploy agent-code changes your usual way.
 
-On Reject or NoDecision, do not re-run until it passes: each re-run is another chance for a false Promote (<ChapterLink n={6} />). Fix the size of a new evaluation before you see results. For a production UNKNOWN in TVL 1.3, see <ChapterLink n={10} />.
+On Reject or NoDecision, do not re-sample until it passes: each fresh evaluation is another chance for a false Promote (<ChapterLink n={6} />). Fix a new evaluation's size before you see results. For a production UNKNOWN (TVL 1.3), see <ChapterLink n={10} />.
 
 <Misconception wrong="TVL will stop a bad deploy by itself.">
 <p>`tvl-ci-gate` prints a decision and exits; it stops a deploy only if your pipeline makes the deploy depend on that job. In TVL 1.3 production too, nothing happens on its own (<ChapterLink n={11} />).</p>

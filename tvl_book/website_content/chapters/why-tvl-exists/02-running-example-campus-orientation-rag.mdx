@@ -3,8 +3,9 @@ id: chapter-01-running-example-campus-orientation-rag
 slug: running-example-campus-orientation-rag
 title: Running Example · Campus Orientation RAG
 summary: 'We revisit a retrieval-augmented system that answers student questions throughout
-  the book. The evaluation set is quirky: traffic spikes during move-in, gateway latency
-  shifts during registration surges, and provider prices drift over time. This TVL
+  the book. The operating environment keeps changing: traffic spikes during move-in, gateway latency
+  shifts during registration surges, and provider prices drift over time. The evaluation set
+  (the fixed questions used to compare candidates) is declared separately. This TVL
   file is the baseline we will extend.'
 chapter: why-tvl-exists
 estimated_minutes: 8
@@ -18,9 +19,9 @@ example_refs:
 opal_bridge: false
 ---
 
-We revisit a retrieval-augmented system that answers student questions throughout the book. The evaluation set is
-quirky: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift
-over time. This TVL file is the baseline we will extend.
+We revisit a retrieval-augmented system that answers student questions throughout the book. The operating environment keeps
+changing: traffic spikes during move-in, gateway latency shifts during registration surges, and provider prices drift
+over time. The evaluation set (the fixed questions used to compare candidates) is declared separately. This TVL file is the baseline we will extend.
 
 ```yaml
 # Campus Orientation RAG - TVL Specification
@@ -90,7 +91,7 @@ objectives:
     metric_ref: metrics.token_cost_usd.v1
     direction: minimize
 
-# Promotion policy with statistical guarantees
+# Promotion policy: statistical evidence thresholds (bounds hold only under the tests' assumptions)
 promotion_policy:
   dominance: epsilon_pareto
   alpha: 0.05
@@ -122,7 +123,8 @@ exploration:
 <ConceptCallout title="Validate Your Spec" tone="info">
 
 Download [`/examples/rag-support-bot.tvl.yml`](/examples/rag-support-bot.tvl.yml) and run
-`tvl-validate rag-support-bot.tvl.yml` to check the spec against the TVL schema.
-The validator catches type mismatches, domain violations, and unsatisfiable constraints.
+`tvl-validate rag-support-bot.tvl.yml` to check the spec against the TVL schema and the normative lints.
+The validator catches type mismatches and domain violations. It does not check that the constraints can be
+satisfied together: run `tvl-check-structural rag-support-bot.tvl.yml` for that.
 
 </ConceptCallout>

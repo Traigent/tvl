@@ -5,7 +5,7 @@ export const glossary: Record<string, string> = {
   "contract-monitor": "Evaluates a requirement and reports MET, BREACHED or UNKNOWN. From runtime verification.",
   episode: "One stretch of trouble for a runtime monitor: it opens at a BREACHED window and resolves after enough MET windows in a row.",
   "evaluator-profile": "A named, versioned specification outside TVL of how evidence becomes verdicts, episodes and response directives. It must keep the promises TVL states.",
-  "response-policy": "Maps a monitor event to one action on the sealed response ladder (chapter 11). From event-condition-action rules.",
+  "response-policy": "A list of rules. Each rule maps one monitor event to one action on the sealed response ladder (chapter 11). From event-condition-action rules.",
   "standing-grant": "An owner-signed authority record, kept outside TVL, that permits an action without asking a person each time, within limits and for at most 30 days.",
   "approval-grant": "A recorded artifact authorizing one action and scope; declaring a response does not supply it. From access control.",
   selector: "In a TVL 1.3 event pattern, the description of the events it matches: an event type and, optionally, a tool, a status or an authorization ref. It reads no other field.",

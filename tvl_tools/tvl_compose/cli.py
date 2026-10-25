@@ -777,6 +777,7 @@ def main() -> None:
             from tvl.lints import lint_module, lint_pack
             from tvl.schema import pack_validator
             from tvl.yaml_safe import safe_load as parse_yaml_safely
+            from tvl_tools.cli_utils import blocking_issues
             from tvl_tools.tvl_validate.cli import _load_schema, _schema_issues
 
             raw_to_validate = args.output.read_text(encoding="utf-8") if args.output else emitted_yaml
@@ -789,11 +790,11 @@ def main() -> None:
                 issues = lint_pack(parsed_written) if is_pack else lint_module(parsed_written, floor_provenance=floor_provenance)
 
             result["validation"] = {
-                "ok": len(issues) == 0,
+                "ok": not blocking_issues(issues),
                 "issues": issues,
             }
 
-            if issues:
+            if blocking_issues(issues):
                 result["ok"] = False
 
         print_output(result, get_format(args), text_renderer)

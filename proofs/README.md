@@ -1,7 +1,13 @@
 # TVL + OPAL Lean Proofs
 
-This public library contains TVL core proofs (typing, SMT encoding and dominance),
-OPAL declarative-core proofs, and the **DRAFT TVL 1.3 language** development.
+This public library contains TVL core proofs (typing, the encoding for
+satisfiability modulo theories (SMT) solvers, and dominance),
+proofs for the declarative core of OPAL (the language of the OPAL appendix of the TVL
+paper manuscript; [OPALCORE_README.md](OPALCORE_README.md) defines what is modelled), and Lean models for the runtime extensions: TVL 1.3
+(RFC 0003), TVL 1.4 reactive guards (RFC 0004, `Guards.lean`) and TVL 1.5 persistence
+(RFC 0005, `Persistence.lean`). All three versions are accepted; TVL 1.5 is the latest.
+The Lean models cover only the statements listed in [PROOF_SUMMARY.md](PROOF_SUMMARY.md),
+some of which remain OPEN.
 
 The TVL 1.3 modules define complete-history predicate meaning, action/approval and
 severity vocabulary, static composition, conservative extension, the promotion
@@ -39,6 +45,8 @@ proofs/
         ├── Declarations.lean     # action, approval and severity vocabulary
         ├── Compose.lean          # static orders, numeric meet and OPEN full meet
         ├── Compiler.lean         # normalized declaration/projection OPEN target
+        ├── Guards.lean           # TVL 1.4 three-valued notification guards
+        ├── Persistence.lean      # TVL 1.5 breach persistence and exact mean comparison
         ├── Extension.lean        # erasure and abstract promotion refinement
         ├── Backend.lean          # representation round trip
         ├── BinomialGeneric.lean  # tails, domination and finite union bound
@@ -82,7 +90,7 @@ rg -n '^import' Main.lean TVL --glob '*.lean'
 
 CI enforcement:
 
-- `.github/workflows/lean-proofs.yml` builds the proofs with `lake build` on every change under `proofs/`, and fails if any Lean source contains `sorry`, `admit` or an `axiom` declaration.
+- `.github/workflows/lean-proofs.yml` builds the proofs with `lake build` on every change under `proofs/`, and fails if any Lean source contains the word `sorry` or `admit`, or a line that starts with `axiom`. This is a text check: it misses an axiom declared after a modifier or an attribute (for example `private axiom` or `@[simp] axiom`).
 
 Focused builds include `lake build TVL.Runtime.BinomialGeneric` and
 `lake build TVL.OPALCore`. The existing proof CI enforces a strict source policy.

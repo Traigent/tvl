@@ -558,3 +558,51 @@ run_runtime_conformance_case(safe_load(Path(sys.argv[1]).read_text()))
     result = subprocess.run([sys.executable, "-c", script, str(case)], cwd=tmp_path,
                             env=env, text=True, capture_output=True, check=False)
     _must(result.returncode == 0, result.stdout + result.stderr)
+
+
+def _numbers_case() -> dict:
+    return _load_fixture("projection/numbers-enums-and-methods.yml")
+
+
+def test_local_program_tokens_drop_unused_entries() -> None:
+    case = _numbers_case()
+    token_map = list(case["input"]["token_map"])
+    extra = {"namespace": "requirement", "local": "never_used_zz", "hosted": "tok_unused_zz"}
+    _contract, base, _ = compile_runtime_document(
+        case["module"], token_map_doc={"format": "tvl-token-map/1", "tokens": token_map}
+    )
+    _contract2, with_extra, _ = compile_runtime_document(
+        case["module"], token_map_doc={"format": "tvl-token-map/1", "tokens": [*token_map, extra]}
+    )
+    assert extra not in with_extra["tokens"]
+    assert with_extra["tokens"] == base["tokens"]
+    assert base["tokens"]  # used entries are kept
+    assert all(t in token_map for t in base["tokens"])
+
+
+def test_local_program_tokens_empty_map_is_unresolved() -> None:
+    case = _numbers_case()
+    with pytest.raises(RuntimeClosedError) as exc:
+        compile_runtime_document(case["module"], token_map_doc={"format": "tvl-token-map/1", "tokens": []})
+    assert exc.value.code == "runtime_unresolved_alias"
+
+
+def test_compile_cli_schema_error_precedes_unreadable_token_map(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.yml"
+    bad.write_text("tvl:\n  module: x.y\nunknown_top_level_key: 1\n", encoding="utf-8")
+    code, result = run_compile_cli(
+        [str(bad), "--token-map", str(tmp_path / "missing.json"), "--out-dir", str(tmp_path / "o"), "--format", "json"]
+    )
+    assert code == 2
+    assert result["issues"][0]["code"] != "runtime_unresolved_alias"
+
+
+def test_compile_cli_unreadable_token_map_still_reported_for_valid_module(tmp_path: Path) -> None:
+    case = _numbers_case()
+    module_path = tmp_path / "m.yml"
+    module_path.write_text(json.dumps(case["module"]), encoding="utf-8")
+    code, result = run_compile_cli(
+        [str(module_path), "--token-map", str(tmp_path / "missing.json"), "--out-dir", str(tmp_path / "o"), "--format", "json"]
+    )
+    assert code == 2
+    assert result["issues"][0]["code"] == "runtime_unresolved_alias"

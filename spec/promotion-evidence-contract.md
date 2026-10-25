@@ -1,6 +1,6 @@
 # TVL Promotion Evidence Contract
 
-This note locks the current pre-submission contract for promotion evidence and chance semantics.
+This note fixes the current contract for promotion evidence: the measurement bundle that `tvl-measure-validate` and `tvl-ci-gate` read, and how TVL evaluates chance constraints from it.
 
 ## Canonical semantics
 
@@ -32,7 +32,7 @@ chance_outcomes:
 Canonical rules:
 
 - `objective_values.<name>` must provide either `samples` or `mean/std/n`.
-- `chance_outcomes.<name>` must provide `violations` and `trials`.
+- `chance_outcomes.<name>` must provide `violations` and `trials`, with `trials` at least 1; a file with `trials: 0` or no `trials` here is a schema error at load (exit 2). A deprecated top-level `chance` summary with `summary.trials: 0` passes the schema and reaches the gate, which returns the decision `Error` (`zero_trials`, exit 2).
 - Quantile metrics use batch-level quantile observations, not raw per-request latencies.
 
 ## CLI contract
@@ -51,12 +51,12 @@ tvl-ci-gate <module> <incumbent-bundle> <candidate-bundle> --json
 Temporary compatibility remains for:
 
 - top-level legacy `objectives` summaries,
-- top-level legacy `chance` summaries,
-- bare derived environment symbols such as `cost_usd <= 5`.
+- top-level legacy `chance` summaries.
+
+Bare symbols in operational preconditions (`derived` constraints), such as `cost_usd <= 5`, are not a compatibility shim: they are rejected with `derived_invalid_symbol_reference`. Write them as `env.context.cost_usd <= 5`; only `env.context.<name>` symbols are allowed.
 
 Compatibility behavior:
 
 - legacy inputs emit deprecation warnings,
 - legacy chance summaries are converted to canonical counts only when `violations` can be reconstructed exactly,
-- summary-only objective bundles are not considered promotion-ready,
-- canonical `env.<symbol>` references are preferred; bare symbols remain a migration-only alias.
+- summary-only objective bundles are not considered promotion-ready.

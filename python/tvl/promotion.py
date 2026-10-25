@@ -90,8 +90,9 @@ class ChanceResult:
     ci_upper: float
     threshold: float
     confidence: float
-    verdict: str  # "pass" or "fail"
+    verdict: str  # "pass", "fail", or "error" (undefined check, e.g. zero_trials)
     reason: str = ""
+    code: str = ""  # error code when verdict == "error"
 
 
 @dataclass
@@ -105,6 +106,7 @@ class PromotionEvidence:
     all_bands_pass: bool = True
     any_band_out_of_band: bool = False
     all_chance_pass: bool = True
+    chance_error_codes: List[str] = field(default_factory=list)
     adjustment_method: str = "none"
     fdr_controlled_at: Optional[float] = None
     decision_reason: str = ""
@@ -129,6 +131,8 @@ class PromotionEvidence:
                 "decision_reason": self.decision_reason,
             },
         }
+        if self.chance_error_codes:
+            out["summary"]["chance_error_codes"] = list(self.chance_error_codes)
         if self.promotion_monitors:
             out["promotion_monitors"] = dict(self.promotion_monitors)
         return out
@@ -173,7 +177,7 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
 
 def _chance_to_dict(c: ChanceResult) -> Dict[str, Any]:
     """Convert ChanceResult to dict."""
-    return {
+    out = {
         "violations": c.violations,
         "trials": c.trials,
         "observed_rate": c.observed_rate,
@@ -184,6 +188,9 @@ def _chance_to_dict(c: ChanceResult) -> Dict[str, Any]:
         "verdict": c.verdict,
         "reason": c.reason,
     }
+    if c.code:
+        out["code"] = c.code
+    return out
 
 
 def epsilon_pareto_gate(
@@ -208,6 +215,7 @@ def epsilon_pareto_gate(
         - "Promote": Candidate passes all non-inferiority tests and at least one superiority
         - "Reject": Evidence demonstrates regression beyond the allowed margin
         - "NoDecision": Insufficient evidence to promote or reject
+        - "Error": A check is undefined (e.g. ``zero_trials``); neither Reject nor NoDecision
     """
     require_scipy()
 
@@ -358,6 +366,8 @@ def _test_all_chance_constraints(
         evidence.chance_constraints[name] = result
         if result.verdict != "pass":
             evidence.all_chance_pass = False
+        if result.verdict == "error":
+            evidence.chance_error_codes.append(result.code)
 
 
 def _test_promotion_monitors(
@@ -835,7 +845,26 @@ def _test_banded_objective(
     band_lower, band_upper = bounds
 
     mean, std, n = _band_candidate_stats(cand_data)
+    # Fail closed on malformed statistics: NaN/inf mean, non-integer or negative
+    # n, or (below) a NaN/negative/infinite std never become evidence.
+    if not _is_real(mean) or not math.isfinite(mean) or not _is_count(n):
+        return BandedResult(name=spec.name, verdict="inconclusive")
     if n < 2:
+        # Formal semantics §9.5: a point estimate outside the declared band is
+        # rejected; an on-target result without the evidence TOST needs is
+        # inconclusive. With n = 0 there is no point estimate.
+        if n >= 1 and (mean < band_lower or mean > band_upper):
+            return BandedResult(
+                name=spec.name,
+                n=n,
+                mean=mean,
+                band_lower=band_lower,
+                band_upper=band_upper,
+                verdict="out_of_band",
+            )
+        return BandedResult(name=spec.name, verdict="inconclusive")
+
+    if not _is_real(std) or not math.isfinite(std) or std < 0:
         return BandedResult(name=spec.name, verdict="inconclusive")
 
     se = std / math.sqrt(n)
@@ -844,8 +873,11 @@ def _test_banded_objective(
     # TOST: Two one-sided tests
     # H01: μ <= L, reject at α → t1 = (mean - L) / SE
     # H02: μ >= U, reject at α → t2 = (U - mean) / SE
-    t1 = (mean - band_lower) / se if se > 0 else 0
-    t2 = (band_upper - mean) / se if se > 0 else 0
+    # With se = 0 (zero sample variance) each statistic is ±∞ by the sign of
+    # its numerator, so a mean strictly inside [L, U] rejects both nulls
+    # (Definition 9.6); a mean on a band edge rejects neither (t = 0).
+    t1 = _t_statistic(mean - band_lower, se)
+    t2 = _t_statistic(band_upper - mean, se)
 
     p1 = 1.0 - scipy_stats.t.cdf(t1, df)
     p2 = 1.0 - scipy_stats.t.cdf(t2, df)
@@ -871,6 +903,28 @@ def _test_banded_objective(
     )
 
 
+def _t_statistic(numerator: float, se: float) -> float:
+    """``numerator / se``, taking its limit ±∞ (or 0 for a zero numerator) when se = 0."""
+    if se > 0:
+        return numerator / se
+    if se != 0:
+        raise ValueError("standard error must be a non-negative number")
+    if numerator == 0:
+        return 0.0
+    return math.copysign(math.inf, numerator)
+
+
+def _is_real(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _is_count(n: Any) -> bool:
+    """A non-negative integer count (integral floats such as 10.0 are accepted)."""
+    if not _is_real(n) or not math.isfinite(n):
+        return False
+    return n >= 0 and n == int(n)
+
+
 def _band_target_bounds(target: Any) -> Optional[Tuple[Any, Any]]:
     """Band bounds from ``[low, high]`` or ``{center, tol}``; None if neither form."""
     if isinstance(target, list) and len(target) == 2:
@@ -890,6 +944,10 @@ def _band_candidate_stats(cand_data: Dict[str, Any]) -> Tuple[Any, Any, Any]:
         mean = sum(samples) / n
         var = sum((x - mean) ** 2 for x in samples) / (n - 1)
         return mean, math.sqrt(var), n
+    if samples is not None and len(samples) == 1 and cand_data.get("mean") is None:
+        # A lone sample is the point estimate unless a full aggregated mean/std/n
+        # set is supplied; a stray n alone never fabricates mean=0.
+        return samples[0], 0.0, 1
     return cand_data.get("mean", 0.0), cand_data.get("std", 0.0), cand_data.get("n", 0)
 
 
@@ -924,9 +982,11 @@ def _test_chance_constraint(
     ci_upper <= threshold.
     """
     violations = outcome.get("violations", 0)
-    trials = outcome.get("trials", 0)
+    trials = outcome.get("trials")
 
-    if trials <= 0:
+    # Definition 9.8 precondition: n = 0 (or no trial count at all) makes the
+    # chance check undefined. That is an error outcome, neither Reject nor NoDecision.
+    if trials is None or trials <= 0:
         return ChanceResult(
             name=name,
             violations=0,
@@ -936,8 +996,9 @@ def _test_chance_constraint(
             ci_upper=1.0,
             threshold=threshold,
             confidence=confidence,
-            verdict="fail",
-            reason="No trials available",
+            verdict="error",
+            reason="zero_trials: chance constraint check is undefined with no trials",
+            code="zero_trials",
         )
 
     if violations < 0 or violations > trials:
@@ -1059,6 +1120,11 @@ def _adjust_pvalues(p_values: List[float], method: str) -> List[float]:
 
 def _make_legacy_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
     """Make the TVL 1.2 promotion decision based on legacy evidence."""
+    # Validation errors come first (spec §9.7 Error branch): not Reject, not NoDecision.
+    if evidence.chance_error_codes:
+        failing = [n for n, r in evidence.chance_constraints.items() if r.verdict == "error"]
+        return ("Error", f"zero_trials: no trials for chance constraints: {', '.join(failing)}")
+
     # Hard acceptability failures take precedence over inconclusive comparisons.
     if not evidence.all_chance_pass:
         failing = [
@@ -1117,7 +1183,7 @@ def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
 def _make_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
     """Make final promotion decision based on evidence, joining promotion monitors when present."""
     legacy_dec, legacy_reason = _make_legacy_decision(evidence)
-    if not evidence.promotion_monitors:
+    if legacy_dec == "Error" or not evidence.promotion_monitors:
         return (legacy_dec, legacy_reason)
     decision = join_promotion_decisions(
         legacy_dec, [result.get("verdict") for result in evidence.promotion_monitors.values()],

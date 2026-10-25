@@ -30,13 +30,13 @@ You may combine patterns, but every added controller must earn its place.
 
 ## Scenario Constraints
 
-Use these numbers when justifying your scaffold choice, TVAR ranges, and narrowing plan:
+Use these numbers when justifying your scaffold choice, tuned variable (TVAR) ranges, and narrowing plan:
 
 | Dimension | Value |
 | :--- | :--- |
 | daily ticket volume | ~2,000 requests |
 | FAQ fraction | ~70% answerable from a known knowledge base |
-| FAQ latency ceiling | `p95 <= 4 seconds` |
+| FAQ latency ceiling | `p95 <= 4 seconds` (p95 is the 95th percentile: 95% of requests are at least this fast) |
 | escalation latency ceiling | `p95 <= 12 seconds` |
 | monthly model budget | $800 |
 | escalation fallback | human review within 30 minutes when the agent is uncertain |
@@ -124,7 +124,10 @@ Different domain, same reasoning pattern. Do not copy it directly.
 1. **Base scaffold:** routed expertise. Fast reviews go to a cheaper model; hard logic reviews go to a stronger one.
 2. **Added controller:** confidence-gated escalation to human review when the strong model is uncertain.
 3. **TVARs:** `routing_threshold`, `confidence_gate`, `fast_model_id`, `strong_model_id`.
-   **Structural rule:** `confidence_gate` must be `>= routing_threshold`.
+   **Structural rule:** `confidence_gate` must be at least `routing_threshold`. TVL constraints can test two TVARs for
+   equality or inequality (`=`, `!=`), but ordering (`<=`, `>=`) compares a TVAR only with a number, so give both thresholds the same small grid (for example
+   `range: [0.6, 0.8]` with `resolution: 0.1`) and write one clause per grid value above the lowest: `when: routing_threshold >= 0.7` / `then: confidence_gate >= 0.7`,
+   and the same for `0.8`.
    **Operational precondition:** the evaluation slice must contain at least 50 logic-review samples.
 4. **Narrowing:** exploratory exposes all four TVARs; staging locks model IDs and narrows `routing_threshold`;
    production locks `confidence_gate`; rollback returns to the last promoted staging snapshot.

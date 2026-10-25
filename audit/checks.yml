@@ -1,0 +1,68 @@
+checks:
+  - id: TVL-C01
+    version: 1
+    kind: model
+    meta_sample_mod: 2
+    applies_to: [prose, code, table, heading]
+    title: Accuracy
+    instructions: >-
+      Every factual statement about TVL (syntax, semantics, defaults, tools and CLI behaviour,
+      versions, proofs, guarantees) must agree with the authority at this commit:
+      formalization/tvl-formal-semantics.md, the accepted RFCs, spec/grammar/*, python/tvl/
+      implementation, proofs/ and PROOF_SUMMARY.md. Cite the authority file:line as evidence.
+      A pass needs evidence; for units without a factual claim write evidence such as "no factual claim".
+  - id: TVL-C02
+    version: 1
+    kind: model
+    meta_sample_mod: 2
+    applies_to: [prose, code, table, heading]
+    title: Consistency
+    instructions: >-
+      The unit must not contradict other TVL material in this corpus (version numbers, sealed
+      lists, names, defaults, numbers, examples).
+  - id: TVL-C03
+    version: 1
+    kind: model
+    meta_sample_mod: 3
+    applies_to: [prose, code, table, heading]
+    title: Claim strength
+    instructions: >-
+      No overclaim. Guarantees state their assumptions and scope. No banned words: guaranteed,
+      provably safe, shield, self-healing, kill switch, autonomous, runtime enforcement,
+      circuit breaker. Heuristics are not presented as guarantees.
+  - id: TVL-C04
+    version: 1
+    kind: model
+    meta_sample_mod: 5
+    applies_to: [prose, code, table, heading]
+    title: Currency
+    instructions: >-
+      Content is current for the latest accepted TVL version (1.5) or explicitly labelled with
+      the version it describes. No stale "current version" statements. Historical sections (for
+      example CHANGELOG release entries) are correct when they describe their own release.
+  - id: TVL-C05
+    version: 1
+    kind: model
+    meta_sample_mod: 5
+    applies_to: [prose, table, heading]
+    title: Clarity
+    exclude_paths: [CHANGELOG.md, vscode-tvl/CHANGELOG.md]
+    instructions: >-
+      Publication-quality English. Terms are defined or linked on first use in the document.
+      Examples explain what they show.
+  - id: TVL-S01
+    version: 1
+    kind: script
+    applies_to: [prose, table, heading]
+    title: Links
+    instructions: >-
+      Relative Markdown links and #anchors in the unit resolve to tracked files and headings
+      (anchors use GitHub slug rules).
+  - id: TVL-S02
+    version: 2
+    kind: script
+    applies_to: [prose, code, table, heading]
+    title: Banned words
+    instructions: >-
+      Case-insensitive match of the C03 banned list. A match is an issue unless the unit quotes
+      the list itself in a style or vocabulary rule (contains "banned", "never use" or "avoid").

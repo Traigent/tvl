@@ -22,26 +22,27 @@ TVL separates constraints into two categories:
 <PredictionPrompt prompt="Before reading the table, decide which rule belongs in the operational-precondition field (`constraints.derived`): `temperature <= 0.8` or `env.context.provider_input_price_usd_per_1k_tokens <= 0.05`.">
 
 The `env.context.*` rule belongs in `constraints.derived` because it depends on the execution environment. `temperature <= 0.8`
-is a structural rule because it is a formula over TVARs and can be checked before any trials run.
+is a structural rule because it is a formula over tuned variables (TVARs, the settings the optimizer may
+choose) and can be checked before any trials run.
 
 </PredictionPrompt>
 
 | Category | Evaluated When | Purpose |
 |----------|---------------|---------|
 | **Structural Rules** | Before trials run | Constraints between design choices that define the valid search space |
-| **Operational Preconditions** | Before or during a study, against `env.context.*` | Feasibility checks over the declared operating assumptions such as provider price, baseline latency, and request headroom |
+| **Operational Preconditions** | Before trials run, against the supplied `env.context.*` snapshot | Feasibility checks over the declared operating assumptions such as provider price, baseline latency, and request headroom |
 
 ```yaml
 # Fragment: constraints section only (embed in full TVL module)
 constraints:
   structural:
-    # Checked statically - compiles to SAT/SMT
+    # Checked statically; a validator may compile these to SAT/SMT
     - expr: "temperature <= 0.8"
     - when: model = "gpt-4o"
       then: max_tokens >= 1000
 
   derived:
-    # Checked at runtime against environment symbols
+    # Also checked statically, against the supplied environment snapshot
     - require: env.context.gateway_baseline_latency_ms <= 250
     - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
     - require: env.context.rpm_limit - env.context.rpm_current_load >= 50

@@ -17,5 +17,6 @@ opal_bridge: false
 
 <MermaidDiagram chart={"graph TD\n    Base[\"base.tvl.yml<br/>(TVL)\"] -->|tvl-compose| Staging[\"staging.tvl.yml<br/>(TVL)\"]\n    Base -->|tvl-compose| Production[\"production.tvl.yml<br/>(TVL)\"]\n    Production -->|tvl-compose| Hotfix[\"hotfix.tvl.yml<br/>(TVL)\"]"} />
 
-Each composed output is a valid, standalone TVL module. Overlays are inputs to the composition process,
+Each composed output is a standalone TVL module. Check it with `tvl-compose --validate` or a following
+`tvl-validate` run before you treat it as valid. Overlays are inputs to the composition process,
 not runtime artifacts.

@@ -1,8 +1,10 @@
 # Requirements, Monitors and Responses (TVL 1.3)
 
 !!! note "TVL 1.3"
-    This guide describes TVL 1.3, accepted on 2026-10-21. Every snippet below was checked with the reference tools
-    in this repository (`tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`, `tvl-ci-gate`).
+    This guide describes TVL 1.3, accepted on 2026-10-21. Every marked YAML snippet below is checked by
+    `tests/test_runtime_doc_snippets.py`, which runs `tvl-validate` and `tvl-lint` on it (overlay snippets, which
+    change parts of a base module as described in [section 9](#tightening-a-module-with-an-overlay), are composed
+    with `tvl-compose` first).
 
 **TVL Reactive Contracts** names the runtime layer: requirements, monitors, responses, the promotion gate and approvals. Its tagline is **“monitor requirements, govern adaptation.”** This vocabulary combines event-condition-action (ECA) rules from active databases, runtime verification, the MAPE-K monitor-analyze-plan-execute loop over shared knowledge (Kephart & Chess, 2003), canary promotion and statistical process control.
 
@@ -29,7 +31,7 @@ A TVL 1.3 module may carry three new optional blocks next to the 1.2 ones.
 
 | Block | It says | Typical fields | It never has |
 |---|---|---|---|
-| `requirements` | what must hold for one *unit* of behaviour (a trace or an invocation) | `kind`, `unit`, `violation`, `max_rate` | where the evidence comes from, schedules, statistics, actions |
+| `requirements` | what must hold for one *unit* of behaviour (a trace or an invocation; for the two obligation kinds, an episode or a window) | `kind`, `unit`, `violation`, `max_rate` | where the evidence comes from, schedules, statistics, actions |
 | `monitors` | which evidence checks one requirement, how often, and with what statistics | `requirement`, `phase`, `evidence`, `window`, `decision`, `episode` | its own predicate, actions |
 | `responses` | what happens when a monitor reports an event | `rules` of `trigger` and `do` | statistics, predicates |
 
@@ -46,7 +48,7 @@ monitor can emit. Two requirement kinds (`recovery_time`, `evidence_liveness`) a
 monitor*: they point at a monitor with `of`.
 
 Requirement, monitor and response names are plain identifiers (`[A-Za-z_][A-Za-z0-9_]*`, no dots). They live
-in their own three namespaces, and a runtime name equal to a tvar, cvar, policy or composite name is rejected
+in their own three namespaces, and a runtime name equal to a tvar (tuned variable), cvar (calibrated variable), policy or composite name is rejected
 (`runtime_name_collision`).
 
 !!! pitfall "Write the version as a string"
@@ -134,7 +136,7 @@ tvl-validate support-latency.tvl.yml
 Delete the `fast_enough_evidence` requirement and its monitor and the same command prints:
 
 ```text
-[runtime_liveness_missing] monitors.0.name: Primary runtime monitor 'fast_enough_prod' is not covered by an evidence_liveness requirement
+[runtime_liveness_missing] monitors.0.name: Primary runtime monitor is not covered by an evidence_liveness requirement
 ```
 
 and exits 2.
@@ -250,7 +252,8 @@ In words:
    an `UNKNOWN` result becomes `NoDecision`, a `MET` result passes. Without promotion monitors the gate is
    exactly the 1.2 gate.
 2. **In production** the monitor `fast_enough_prod` evaluates one 6-hour window at a time (section 6).
-   A `BREACHED` window opens an *episode*; two clean windows in a row close it (section 7).
+   A `BREACHED` window opens an *episode*; two `MET` windows in a row close it, if both ended within 24 hours
+   of the evaluation that closes it (`closure_max_age_hours`, section 7).
 3. **If the breach lasts**, the response ladder escalates: warn and issue a next step at once; after the
    episode has been open for 6 hours, ask for a rollback to the last certified configuration under a standing
    grant; if the recovery promise (back to normal within 48 hours) is overdue, ask for the agent to be suspended,
@@ -293,7 +296,7 @@ Assuming the legacy gate passes and all other monitors pass:
 !!! info "NoDecision is not a failure of the candidate"
     8 violations in 100 traces is *neither* clearly good nor clearly bad at 95% confidence. The monitor says so
     (`NoDecision`) instead of guessing. Note that a 1.2 `chance_constraints` entry on the same counts would
-    reject, because a 1.2 chance constraint passes only when its upper confidence bound is under the limit.
+    reject, because a 1.2 chance constraint passes only when its upper confidence bound is at or below the limit.
     Promotion monitors are opt-in, so adding them never changes a module that does not use them; if a chance constraint
     carries the same name as a promotion monitor or its requirement, the chance constraint's `Reject` still wins and `chance_constraint_shadowed` warns.
 
@@ -303,16 +306,21 @@ clean `k: 0` result is `NoDecision`.
 
 ## 4. What MET, BREACHED and UNKNOWN mean
 
-Every runtime verdict is one of three values.
+Every runtime verdict is one of three values. The confidence and false-alarm wording in the table is a probability
+claim only for `clopper_pearson_rational_v2`, under the assumptions in section 6 ("What the guarantee does and does not
+say"). The float method `clopper_pearson_exact_v1` runs the same tests but claims no probability bound, and
+zero-tolerance verdicts come from counting, not statistics.
 
 | Verdict | Meaning |
 |---|---|
-| `MET` | the evidence in the window was strong enough to say the requirement holds, at the confidence you asked for |
-| `BREACHED` | the evidence was strong enough to say the requirement is violated, within the false-alarm budget you set |
+| `MET` | the evidence in the window was strong enough to say the requirement holds (for the rational method, at the confidence you asked for) |
+| `BREACHED` | the evidence was strong enough to say the requirement is violated (for the rational method, within the false-alarm budget you set) |
 | `UNKNOWN(reason)` | the evidence could not support either statement |
 
-**Absence of evidence is never `MET`.** An empty window, a window with too few units or a window whose units could not
-be classified is `UNKNOWN`, never quietly fine. `UNKNOWN` always carries one reason from a closed list:
+**Absence of evidence is never `MET`.** An empty window, a window with too few units, or a window with more
+unclassifiable units than `max_unresolved_fraction` tolerates is never quietly fine: it is `UNKNOWN`, unless a
+zero-tolerance window has an established violation, which is `BREACHED` at any size. Units that could not be
+classified never strengthen a verdict, and a zero-tolerance `MET` needs every unit classified. `UNKNOWN` always carries one reason from a closed list:
 
 | Reason | Plain meaning | Fix |
 |---|---|---|
@@ -341,8 +349,8 @@ suspended agent has no traffic, and "no traffic" must not look like "no violatio
 
 ## 5. The pattern menu
 
-A requirement's `violation` says what counts as a bad unit. There are seven predicates: two measure a number, five
-describe event sequences.
+A requirement's `violation` says what counts as a bad unit. There are seven predicates: `metric` measures a number,
+`checker` asks a checker for a label, and five describe event sequences.
 
 | `violation` | Bad unit when... | Allowed under | Can a local guard stop it before it happens? |
 |---|---|---|---|
@@ -350,14 +358,14 @@ describe event sequences.
 | `checker` | a checker labels the unit with one of `label_in` | `rate_bound` | no (output is only checked) |
 | `pattern: absence` | the event ever happens | `zero_tolerance`, `rate_bound` | yes |
 | `pattern: bounded_existence` | the event happens more than `max_count` times | `zero_tolerance`, `rate_bound` | yes, at the (max_count+1)-th |
-| `pattern: precedence` | `b` happens with no unused `a` before it | `zero_tolerance`, `rate_bound` | yes, by suppressing `b` |
+| `pattern: precedence` | `b` happens with no earlier matching `a` (same correlation key, not revoked) to authorize it; under `single_use` (the default) each `a` authorizes one `b`, under `reusable` it stays valid until revoked | `zero_tolerance`, `rate_bound` | yes, by suppressing `b` |
 | `pattern: bounded_response` | an `a` is not followed by a `b` within `within_ms` | `zero_tolerance`, `rate_bound` | no (a missing event cannot be blocked) |
 | `pattern: protocol` | the unit's events drive a state machine into a rejecting state, or it ends in a non-accepting one | `zero_tolerance`, `rate_bound` | yes, on the rejecting event |
 
 A **unit** is the thing you count. A `trace` is the end-to-end handling of one request, including all model calls,
 tool calls and handoffs in contributing components. An `invocation` is one execution of the monitored agent itself;
 a trace can contain several invocations. An individual tool or model call is an event within a unit, not a unit by itself
-(RFC §6.2).
+([RFC 0003 §6.2](https://github.com/Traigent/tvl/blob/main/formalization/rfc-0003-runtime-requirements-monitors-responses.md#62-units-windows-attribution-and-populations)).
 
 Use `rate_bound` when a few bad units are acceptable ("at most 1% of invocations"). Use `zero_tolerance` when
 one is too many. `zero_tolerance` accepts only the five patterns (not a metric and not a checker), because a
@@ -513,10 +521,11 @@ entries (`runtime_protocol_nondeterministic`).
 
 !!! pitfall "State names are YAML too"
     TVL loads YAML 1.1, where unquoted `yes`, `no`, `on`, `off`, `true` and `false` are booleans. A state called
+    `no` without quotes becomes the boolean `false`, which is not a valid state name.
     Both `tvl-lint` and `tvl-validate` explain that state identifiers must be strings and recommend quoting YAML yes/no.
     Pick state names like `idle` or `done`, or quote them. Run `tvl-validate` for the full schema check.
 
-### Rates over events
+### Rates of units that contain an event
 
 `rate_bound` also takes an event pattern, which turns "never" into "rarely":
 
@@ -545,7 +554,7 @@ inside the unit, and `tool_call_id` for one tool call and its result. Neither is
 | `event` | always | one of `unit_start`, `unit_end`, `tool_call`, `tool_result`, `model_call`, `handoff`, `error`, `authorization_granted`, `authorization_revoked` |
 | `tool` | `tool_call`, `tool_result` | a function or qualified name such as `payments.charge`: letters, digits, `_`, dots, at most 128 characters. A list or a wildcard is rejected (`runtime_tool_not_code_identifier`). |
 | `status` | `unit_end`, `tool_result` | `running`, `completed`, `failed` or `rejected` |
-| `ref` | `authorization_granted`, `authorization_revoked` | a plain identifier naming which grant is meant |
+| `ref` | `authorization_granted`, `authorization_revoked` | a plain identifier naming the kind of authorization meant, not one grant |
 
 `{ event: error }` matches every error. You cannot select an error class.
 
@@ -573,7 +582,8 @@ only one component emits the unit's events; a unit that contradicts the declarat
 
 ## 6. Windows and confidence in plain words
 
-A runtime monitor does not judge a single unit; it judges a **window** of units.
+A runtime rate or zero-tolerance monitor does not judge a single unit; it judges a **window** of units. (Recovery
+monitors judge episodes instead, section 7.)
 
 * **Window.** `tumbling_hours` is the window length. Windows are back-to-back, never overlap, and line up with the UTC
   day, so the length must divide 24: 1, 2, 3, 4, 6, 8, 12 or 24 (under `backend_v1`: 1, 3, 6, 12, 24).
@@ -586,10 +596,10 @@ A runtime monitor does not judge a single unit; it judges a **window** of units.
 |---|---|---|---|
 | `max_rate` | requirement | the largest acceptable fraction of bad units, strictly between 0 and 1 | none |
 | `confidence` | monitor `decision` | how sure the data must make you before you say `MET`: "if the true rate were exactly `max_rate`, seeing this few bad units would happen at most `1 - confidence` of the time" | none (`backend_v1`: 0.95; allowed 0.90, 0.95, 0.99) |
-| `min_samples` | monitor `decision` | the fewest units a window needs before it can say anything | none (`backend_v1`: 200; zero tolerance and promotion: 1) |
+| `min_samples` | monitor `decision` | the fewest units a window needs before it can say `MET` or a rate `BREACHED`; a zero-tolerance `BREACHED` needs only one established violation | none (`backend_v1`: 200; zero tolerance and promotion: 1) |
 | `false_alarm_budget` | monitor `decision` | the chance you accept of *one or more* false `BREACHED` alarms over the whole horizon, assuming the true rate is within `max_rate`. Above 0, at most 0.5 | none (`backend_v1`: 0.05) |
 | `horizon_days` | monitor `decision` | the period the false-alarm budget is spread over (1 to 365) | none (`backend_v1`: 30) |
-| `max_unresolved_fraction` | monitor `decision` | how many units may be unclassifiable before the window gives up (0 to 0.5) | none (`backend_v1`: 0.05) |
+| `max_unresolved_fraction` | monitor `decision` | how many units may be unclassifiable before the window gives up (0 to 0.5) | none (`backend_v1`: 0.05; promotion `rate_bound`: 0) |
 | `closure_windows` | monitor `episode` | how many clean windows in a row close an episode (1 to 24) | none (`backend_v1`: 2) |
 | `closure_max_age_hours` | monitor `episode` | how fresh those clean windows must be when the episode closes (1 to 720) | none (`backend_v1`: 24) |
 
@@ -603,8 +613,8 @@ so each window gets one hundred-and-twentieth of the budget. More windows per ho
 make `BREACHED` slightly harder to reach in each window.
 
 !!! example "Where the lines fall"
-    For `max_rate: 0.05`, `confidence: 0.95`, `false_alarm_budget: 0.05`, `horizon_days: 30`, 6-hour windows and
-    no unresolved or unplaceable units and timely admissible evidence. Each row assumes `min_samples` is at most
+    The table assumes `max_rate: 0.05`, `confidence: 0.95`, `false_alarm_budget: 0.05`, `horizon_days: 30`, 6-hour
+    windows, no unresolved or unplaceable units, and timely admissible evidence. Each row assumes `min_samples` is at most
     that row's unit count; below `min_samples` the result is `UNKNOWN(insufficient)` instead:
 
     | Units in the window | `BREACHED` from this many bad units | `MET` up to this many bad units | In between |
@@ -620,8 +630,9 @@ make `BREACHED` slightly harder to reach in each window.
 
 ### How to choose
 
-1. **`max_rate`: the promise.** Take it from the business need ("at most 5% slower than 2 seconds"). The smaller it
-   is, the more traffic you need to *prove* it.
+1. **`max_rate`: the promise.** Take it from the business need ("at most 5% of traces take longer than 2 seconds"). The smaller it
+   is, the more traffic a window needs to reach `MET`, that is, an upper confidence bound on the bad-unit rate at or
+   below the promise. `MET` is a statistical test result at the chosen `confidence`, not proof.
 2. **`confidence`: leave it at 0.95** unless you have a reason. 0.99 needs about 50% more units to reach `MET`; 0.90 needs
    about a quarter fewer.
 3. **`min_samples`: no smaller than what lets `MET` be reached.** If a window of exactly that many units can never be
@@ -654,7 +665,7 @@ make `BREACHED` slightly harder to reach in each window.
    `closure_unreachable`.
 
 !!! tip "Do not retype the statistics"
-    Outside `backend_v1` every primary monitor repeats the same seven or eight numbers. YAML anchors and aliases (`&name`, `*name`) work in TVL files,
+    Outside `backend_v1` every primary `rate_bound` monitor repeats the same seven or eight numbers. YAML anchors and aliases (`&name`, `*name`) work in TVL files,
     so one block can serve several monitors, here production and staging:
 
     <!-- snippet: anchors kind=body -->
@@ -759,8 +770,9 @@ unreachable. `backend_trace_metadata` is always `unverified`: the platform's cen
 ### A faster alarm: burn monitors
 
 A *burn monitor* is a second `rate_bound` monitor on the same requirement with its own short window and a `threshold_factor` b
-(b > 1, with b times `max_rate` still below 1). It breaches when the rate is running at b times the allowed rate, so a severe
-problem pages quickly while the main monitor stays calm and statistical.
+(b > 1, with b times `max_rate` still below 1). Its breach test is the main monitor's test with b times `max_rate` as the limit, so it breaches only when the
+window's data make a rate of b times the allowed rate or lower very unlikely. A severe problem can then page quickly
+while the main monitor stays calm and statistical.
 
 <!-- snippet: burn kind=addmon -->
 ```yaml
@@ -779,8 +791,8 @@ problem pages quickly while the main monitor stays calm and statistical.
     threshold_factor: 5
 ```
 
-A burn monitor has no episode and no `confidence`, and it can never say `MET`: a window that does not breach is
-`UNKNOWN(inconclusive)`. It emits one event, `burn_breached`, on the first breached window of each run of breached windows.
+A burn monitor has no episode and no `confidence`, and it can never say `MET`: a window it decides without a breach is
+`UNKNOWN(inconclusive)`, and a window it cannot decide carries another reason, such as `insufficient`. It emits one event, `burn_breached`, on the first breached window of each run of breached windows.
 
 ## 7. Episodes, recovery and liveness
 
@@ -853,7 +865,7 @@ Events: `stale` when the monitor becomes `STALE`, `live_again` when it is `LIVE`
 | Monitor role | Events a response rule can trigger on |
 |---|---|
 | primary `rate_bound` or `zero_tolerance` | `episode_opened`, `episode_continued`, `episode_open_for`, `episode_resolved`, `episode_withdrawn` |
-| primary, `customer_side` | additionally `unit_violation` (a unit in the population established as violating a pattern fixed by a prefix) |
+| primary, `customer_side` | additionally `unit_violation` (a unit in the population established as violating a pattern fixed by a prefix: the events seen so far already violate it, and no later event can undo that) |
 | burn | `burn_breached` |
 | `recovery_time` obligation | `recovery_overdue`, `recovery_cancelled`, `recovery_recovered` |
 | `evidence_liveness` obligation | `stale`, `live_again` |
@@ -1224,7 +1236,8 @@ That is the whole map for the module in section 2. Two details that cost first-t
 * the default environment `production` needs an entry even though the module never writes it;
 * TVL never mints tokens for you. Any missing entry fails the whole compile with `runtime_unresolved_alias`, identifying the namespace
   and source field path without echoing the customer-chosen name.
-  Real references should be random, or a keyed commitment under a key you hold, never a plain hash of the name.
+  Real references should be random, or a keyed commitment under a key you hold (a value computed from the name with a secret
+  key, such as an HMAC, so nobody without the key can recover or recompute it), never a plain hash of the name.
 
 ```bash
 tvl-compile-runtime support-latency.tvl.yml --token-map tokens.json --out-dir out/
@@ -1242,7 +1255,7 @@ Add `--pack org-floors.pack.yml` (repeatable) to compile a module against its fl
 `--checkers registry.json` when you use your own checkers.
 
 What goes where: requirement, monitor, response and rule names, protocol states, selector `ref` names and environment labels are
-replaced by opaque references; checker ids become keyed commitments; **tool names are kept as written** (they are code identifiers);
+replaced by opaque references; customer checker ids become keyed commitments, while catalogue checker ids are kept; **tool names are kept as written** (they are code identifiers);
 numbers, enums and counts are kept. Opaque references hide names; they are not a promise about the data a platform records about your traces.
 
 **Your own checkers.** A checker you write is named `customer:<name>` and described in a registry that stays on your side:
@@ -1270,10 +1283,10 @@ not enabled, and with `response_action_unsupported` for an action it cannot carr
 
 | Tool | Reads | Exit 2 means |
 |---|---|---|
-| `tvl-validate` | module or pack | any issue, warnings included |
-| `tvl-lint` | module or pack | any issue (no schema check) |
-| `tvl-compose --pack` / `--meet` | module + pack(s) | any composition error |
-| `tvl-ci-gate module incumbent candidate` | module + two bundles | not `Promote` (including `NoDecision` and not ready) |
+| `tvl-validate` | module or pack | any warning or error (info-only diagnostics exit 0) |
+| `tvl-lint` | module or pack | any warning or error (no schema check; info-only diagnostics exit 0) |
+| `tvl-compose --pack` / `--meet` | module + pack(s); with `--meet`, module + one module or pack | any composition error |
+| `tvl-ci-gate module incumbent candidate` | module + two bundles | not `Promote` (including `NoDecision`, `Error` and not ready) |
 | `tvl-compile-runtime` | module or pack + token map | any error, or unreadable input |
 
 ## 11. What TVL 1.3 cannot express
@@ -1282,14 +1295,14 @@ These were tried against the validator and are rejected. Each has the closest wo
 
 | You want | Why not | Closest workaround |
 |---|---|---|
-| a percentile ("p95 under 2 s") | the metric list is closed to four numbers, and a requirement is a *rate over a threshold* | "at most 5% of traces over 2 s" says the same thing |
+| a percentile ("p95 under 2 s") | the metric list is closed to four numbers, and a requirement is a *rate over a threshold* | "at most 5% of traces over 2 s": the 95th percentile is then at most 2 s (a trace at exactly 2 s is not over), which is the closest form |
 | an average or a sum ("mean quality at least 0.8", "spend under 500 USD a day") | a rate of bad units is the only quantity bounded | a checker that labels each unit, then bound the rate of the bad label |
 | anything per user, per session or per day across traces | a unit is one trace or one invocation, with no state between units | keep such limits in the agent or platform |
 | a condition on what an event carries (refund over 500) | a selector has only event type, `tool`, `status`, `ref` | expose a separate tool name for the case |
 | a set or wildcard of tools | one tool per selector | one requirement per tool, or a two-state `protocol` with `unlisted: ignore` |
 | "A and B" or "A or B" in one violation | a violation is one predicate | encode it as a `protocol` |
 | the user's message or the receiver of a handoff | the event list is closed; `handoff` takes no `tool` | have the agent emit its own marker as a tool call |
-| two thresholds or two window lengths on one predicate | two monitors with the same predicate, source and environment collide (`runtime_duplicate_key`) | a burn monitor gives a second tier at a fixed multiple |
+| two thresholds or two window lengths on one predicate | two monitors with the same predicate, evidence source, environment, attribution and decision method (and no differing `threshold_factor`) collide (`runtime_duplicate_key`) | a burn monitor gives a second tier at a fixed multiple |
 | groups against each other, drift week over week, time of day | windows are independent and UTC-aligned | one requirement per group |
 | "never leak X" about content as a hard rule | content is judged by a checker, which is an estimate, and `zero_tolerance` needs a certain violation (`runtime_zero_tolerance_inexact`) | a `rate_bound` on the checker's bad label, with enough traffic |
 | sliding windows | reserved; any `window` key besides `tumbling_hours` and `grace_minutes` is a schema error | shorter tumbling windows |
@@ -1302,7 +1315,7 @@ the token map, the checker bodies and which constructs a platform has enabled. T
 
 * [Language reference: TVL 1.3 section](../reference/language.md#tvl-13-requirements-monitors-responses): every field, type, default and allowed value
 * [Error codes](../reference/error-codes.md#tvl-13-diagnostics): what each diagnostic means and what to do
-* The examples in [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3): 23 worked modules, from a latency promise to refund workflows and consent-gated exports
+* The examples in [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3): 23 worked examples (22 modules and one organisation pack), from a latency promise to refund workflows and consent-gated exports
 * [Chapter 6 of the book](https://github.com/Traigent/tvl/blob/main/tvl_book/website_content/book/chapter-06-requirements-in-production.md): the same ideas as stories
 
 
@@ -1319,7 +1332,8 @@ verdicts with usable evidence on a primary monitor (hours ≥ its tumbling durat
 
 Notifications can use `only_while: [{monitor: errors, state: episode_open}]` or
 `unless: [{monitor: provider, state: episode_open}, {rule: fix, state: attempt_open}]`.
-Only a known FALSE conjunction or known TRUE inhibition suppresses: UNDECIDED still delivers.
+`only_while` guards combine with AND and `unless` guards with OR; a guard is UNDECIDED when its state cannot be
+established. Only a known FALSE `only_while` conjunction or a known TRUE `unless` disjunction suppresses: UNDECIDED still delivers.
 Use `episode_continued` or repeats to recheck; a suppressed occurrence is not replayed later.
 Mutual/self monitor inhibition is rejected. Attempt guards do not add inhibition graph edges.
 Packs may use their own monitor guards, but no outcome triggers or attempt guards.

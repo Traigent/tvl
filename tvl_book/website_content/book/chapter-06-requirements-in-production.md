@@ -9,8 +9,14 @@ how sure we need to be. A **response** says what happens when a monitor reports 
 they are well formed; the platform that runs your agent does the watching and the acting. The release gate of `tvl-ci-gate`
 also evaluates promotion monitors from fully resolved counts (Story 3).
 
-!!! warning "TVL 1.3 is a draft"
-    Everything in this chapter was checked with the reference tools in this repository. Names and limits can still change before release.
+!!! info "Which TVL version this chapter describes"
+    This chapter uses the runtime blocks introduced in TVL 1.3 (accepted 2026-10-21). TVL 1.4 and TVL 1.5, the latest
+    accepted version, add four things this chapter does not cover. Reactive outcomes let a response report that a repair
+    failed, and notification guards add conditions to a `notify` rule
+    ([RFC 0004](../../../formalization/rfc-0004-reactive-outcomes-and-guards.md)). Breach persistence notifies only
+    after a requirement breached in a set number of recent windows, and census aggregates bound a sum or mean over every
+    unit in a window ([RFC 0005](../../../formalization/rfc-0005-persistence-and-census-aggregates.md)). The 1.3 constructs used here remain valid: the snippets are checked with the TVL 1.5
+    reference tools by `tests/test_runtime_doc_snippets.py`.
 
 ```mermaid
 flowchart LR
@@ -114,7 +120,7 @@ tvl-validate campus-latency.tvl.yml
 ### The monitor looks at windows, not at single answers
 
 `answers_in_two_seconds_prod` judges a 6-hour **window** at a time. Each window ends in one of three verdicts.
-The examples below assume all units are resolved and placeable, evidence is timely, and the declared statistical
+The examples below assume all units are resolved (classified as satisfying or violating) and placeable (assignable to a window by their start time), evidence is timely, and the declared statistical
 model and sampling assumptions hold.
 
 | Window (UTC) | What the monitor saw | Verdict |
@@ -122,7 +128,7 @@ model and sampling assumptions hold.
 | Sunday 00:00 to 06:00 | 40 answers, 3 slow | `UNKNOWN(insufficient)`: fewer than `min_samples` (200) |
 | Monday 06:00 to 12:00 | 3,000 answers, 90 slow (3%) | `MET`: comfortably under 5% |
 | Monday 12:00 to 18:00 | 3,000 answers, 160 slow (5.3%) | `UNKNOWN(inconclusive)`: over 5%, but not enough to be sure |
-| Tuesday 06:00 to 12:00 | 3,000 answers, 300 slow (10%) | `BREACHED`: 192 slow answers or more would already have been |
+| Tuesday 06:00 to 12:00 | 3,000 answers, 300 slow (10%) | `BREACHED`: 192 or more slow answers in this window would already be enough |
 
 The first row is the one to remember: **a quiet window is never "fine".** With too little traffic the honest answer is "unknown", and the
 `insufficient` reason says exactly why. The thresholds depend only on the numbers in the monitor. For 5%, 95% confidence, 6-hour windows and a
@@ -130,7 +136,7 @@ The first row is the one to remember: **a quiet window is never "fine".** With t
 
 !!! tip "Hackathon Move: pick `min_samples` from a table, not a guess"
     A window of N answers can only be `MET` if N is large enough to rule out the limit. For a 5% limit at 95% confidence that is 59 answers;
-    for 1%, it is 299; for 0.1%, it is 2,995. If you pick a smaller `min_samples`, `tvl-validate` tells you before production does:
+    for 1%, it is 299; for 0.1%, it is 2,995. These are best-case minimums: they assume none of the N answers violates the requirement. If you pick a smaller `min_samples`, `tvl-validate` tells you before production does:
     `runtime_met_unreachable_at_min_samples`.
 
 Three smaller knobs complete the picture. `grace_minutes` lets late evidence arrive before a window is decided. `false_alarm_budget` and
@@ -156,8 +162,9 @@ promise once overdue stays overdue.
 ### Who watches the watcher
 
 The third requirement, `latency_evidence_flows`, says: if the last five windows all produced no usable evidence, report `STALE`. Without it, a
-broken pipeline looks identical to a perfect week. The validator warns when it is missing (`runtime_liveness_missing`), and because `tvl-validate`
-exits 2 on any issue, the warning stops your CI. That is deliberate.
+broken pipeline only produces `UNKNOWN` windows: they never count as `MET`, but nothing in the module reports that the
+evidence has stopped. The validator warns when it is missing (`runtime_liveness_missing`), and because `tvl-validate`
+exits 2 on any warning or error (info diagnostics do not count), the warning stops your CI. That is deliberate.
 
 ## Story 2 · "Never charge without an authorization"
 
@@ -239,17 +246,20 @@ Three things are different from Story 1.
 * **`MET` is harder to earn.** A zero-tolerance window is `MET` only when the platform is sure it saw *everything*: every unit complete, every event
   producer accounted for. An empty window is `UNKNOWN(insufficient)`, never `MET`: an idle agent has no violations only because it has no traffic.
 * **A guard can act before the effect.** `block_action` suppresses the charge in your own process when the violation is certain. It is available only for
-  patterns that can be certain in advance (`absence`, `bounded_existence`, `precedence`, `protocol`).
+  patterns that can be certain in advance: `absence` (no event may match), `bounded_existence` (at most a set number of
+  events may match), `precedence` (an event needs an earlier one, as in this story) and `protocol` (events must follow
+  an allowed sequence).
 * **`on_check_error` has no default.** If the guard cannot decide at that moment (the evidence is incomplete, relevant events are unordered, a limit
   overflows), do we block or let it through? `block` fails closed. `allow` lets the call proceed and records the unit as unresolved. TVL makes you choose.
 
 !!! pitfall "Reliability Pitfall: guards need limits"
-    A rule that remembers across events (`precedence`, `bounded_response`, `protocol`) must declare `limits`. Delete the `limits` line above and
+    A rule that remembers across events (`precedence`, `bounded_response`, `protocol`) must declare `limits`.
+    (`bounded_response` requires every initiating event to get a matching, correlated response within a deadline.) Delete the `limits` line above and
     `tvl-validate` stops you (`runtime_invalid_profile`).
 
 ## Story 3 · Gate the release with the same requirement
 
-The groundedness rule, "at most 5% of answers may be ungrounded", should also decide whether a **candidate** is allowed to ship. Instead of
+The groundedness rule, "at most 5% of answers may be ungrounded" (an answer is grounded when the source documents the agent retrieved support it), should also decide whether a **candidate** is allowed to ship. Instead of
 copying the predicate, add a second monitor to the same requirement with `phase: promotion`. It reads counts from the evaluation set.
 
 <!-- snippet: campus-gate kind=body -->
@@ -305,7 +315,7 @@ monitors:
     decision: { method: exact_count_v1 }
 ```
 
-`customer:groundedness` is a checker you bind yourself. It runs on your side; TVL knows only its name and its list of labels.
+`customer:groundedness` is a checker you bind yourself. It runs on your side; TVL knows only its name and its list of labels. TVL has no built-in definition of groundedness: your checker decides which answers get the label `ungrounded`, and each answer with a label in `label_in` counts as a violation.
 
 The evaluation harness writes the candidate's measurement bundle with counts under `monitor_outcomes`, named after
 the **promotion monitors**. `n` counts resolved units and `k` those that violate; optional `u` and `pl` count
@@ -322,7 +332,7 @@ monitor_outcomes:
   no_crm_delete_gate: { n: 500, k: 0, complete: true }
 ```
 
-`tvl-ci-gate campus.tvl.yml incumbent.yml candidate.yml` joins those monitors with the gate you already had.
+To try the gate, save the header of Story 1's module (everything above its `requirements:` line) followed by the fragment above as `campus.tvl.yml`, and save the incumbent's measurement bundle, shaped like `candidate-7`, as `incumbent.yml` and the bundle above as `candidate.yml`. Then `tvl-ci-gate campus.tvl.yml incumbent.yml candidate.yml` joins those monitors with the gate you already had.
 Assuming the legacy gate passes and counts have no unresolved or unplaceable units:
 
 | `grounded_answers_gate` | `no_crm_delete_gate` | Gate result |
@@ -340,7 +350,8 @@ also needs `complete: true`; without it that monitor is `UNKNOWN(incomplete)`. A
 or the legacy gate still wins the combined decision.
 
 The third row is the useful one. 8 bad answers in 100 is not good enough to promote and not bad enough to reject, so the monitor says `NoDecision`
-instead of guessing. A 1.2 chance constraint on the same counts would have rejected, because it passes only when its confidence bound is under the limit.
+instead of guessing. A chance constraint (a `promotion_policy.chance_constraints` entry, the rate check that predates TVL 1.3
+monitors; see [formal semantics §9](../../../formalization/tvl-formal-semantics.md)) on the same counts would have rejected, because it passes only when its confidence bound is under the limit.
 Promotion monitors are opt-in, so a module without them keeps the gate it had.
 
 !!! info "Integration Hint"
@@ -468,11 +479,11 @@ TVL's 1.3 vocabulary is deliberately small and sealed. Things people ask for tha
 ## Before you ship: a checklist
 
 1. `tvl-validate` exits 0 on the module and on every pack (warnings included).
-2. Every primary monitor has an `evidence_liveness` partner.
+2. Every primary monitor (a runtime `rate_bound` or `zero_tolerance` monitor, as opposed to a burn monitor, a promotion monitor, or an obligation monitor that checks a `recovery_time` or `evidence_liveness` requirement) has an `evidence_liveness` partner.
 3. `min_samples` is no smaller than the table value for your `max_rate` and `confidence`, and your real traffic fills a window.
 4. Each recovery promise is at least `closure_windows * tumbling_hours` hours.
 5. Each guard has an `on_check_error` you chose on purpose.
-6. Each action above `notify` has an approval path that exists in your platform, and you know who signs the grant.
+6. Each action that needs approval (`optimize`, `rollback`, `throttle`, `degrade`, `suspend`) has an approval path that exists in your platform: a human approver, or, where you use `standing` approval, someone who signs the grant. (`notify`, `open_next_step` and the local guards need none.)
 7. You compose with your organization's packs before you compile, and the result still validates.
 
 ## Break it on purpose
@@ -490,4 +501,4 @@ Learn the diagnostics by causing them. Each edit is to Story 1's module.
 
 For the full field list see the [language reference](https://github.com/Traigent/tvl/blob/main/docs/reference/language.md#tvl-13-requirements-monitors-responses), and for what each code means see the
 [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md#tvl-13-diagnostics). The [guide](https://github.com/Traigent/tvl/blob/main/docs/guides/requirements-monitors-responses.md) goes deeper on
-windows, confidence and approvals, and [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3) has 23 worked modules to copy from.
+windows, confidence and approvals, and [`spec/examples/runtime-1.3/`](https://github.com/Traigent/tvl/tree/main/spec/examples/runtime-1.3) has 23 worked examples to copy from (22 modules and one organisation pack).

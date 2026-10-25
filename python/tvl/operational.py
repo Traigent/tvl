@@ -121,12 +121,12 @@ def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Opti
             }
         )
 
-    if budget.max_spend_usd is not None and budget.max_spend_usd <= 0:
+    if budget.max_spend_usd is not None and budget.max_spend_usd < 0:
         binding = binding or "max_spend_usd"
         issues.append(
             {
                 "code": "invalid_budget_max_spend",
-                "message": "exploration.budgets.max_spend_usd must be positive",
+                "message": "exploration.budgets.max_spend_usd must be >= 0",
                 "path": ["exploration", "budgets", "max_spend_usd"],
                 "severity": "error",
             }

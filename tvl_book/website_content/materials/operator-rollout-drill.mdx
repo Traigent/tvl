@@ -21,13 +21,14 @@ related_sections:
 
 ## Scenario
 
-Production latency spikes after a provider-side model change. A candidate hotfix overlay is available, but the team is unsure whether it is safe to promote immediately.
+Production latency spikes after a provider-side model change. A candidate hotfix overlay (an urgent, small file of overrides that `tvl-compose` applies to the base module) is available, but the team is unsure whether it is safe to promote immediately.
 
 Incident packet:
 
 - provider-side change happened 20 minutes ago
-- FAQ latency moved from p95 3.8 seconds to p95 7.2 seconds
-- the production budget and rollback manifest still exist
+- latency of the FAQ (frequently asked questions) flow moved from 3.8 to 7.2 seconds at p95 (the 95th percentile:
+  95% of answers are faster)
+- the production budget and rollback manifest (the record of which configuration to return to and how) still exist
 - a hotfix overlay was prepared under pressure and may or may not narrow the surface safely
 
 Base spec fragment:
@@ -52,6 +53,9 @@ constraints:
 Candidate hotfix overlay:
 
 ```yaml
+_tvl_overlay:
+  extends: base-spec.tvl.yml
+
 overrides:
   tvars:
     - name: model
@@ -78,8 +82,10 @@ Mock validation notes:
 ### Step 1. Triage the Failure (10 min)
 
 - Did parsing, linting, or schema validation fail?
-- Did structural satisfiability fail?
-- Did an operational precondition fail because the environment changed?
+- Did structural satisfiability fail? (Structural satisfiability asks whether any configuration the module allows meets all
+  of its structural constraints.)
+- Did an operational precondition fail because the environment changed? (Operational preconditions are checks of the
+  declared environment, such as budgets and context values, that must hold before a run.)
 
 <PredictionPrompt prompt="Before you inspect the overlay, predict the most likely failure class here: malformed overlay, structural contradiction, or operational precondition failure.">
 
@@ -97,7 +103,7 @@ change rather than with a spec edit. The overlay may still be unsafe, but the fi
 Run the operator checks:
 
 ```bash
-tvl-compose base-spec.tvl.yml hotfix.overlay.yml
+tvl-compose hotfix.overlay.yml -o composed-spec.tvl.yml   # the base comes from _tvl_overlay.extends
 tvl-validate composed-spec.tvl.yml
 tvl-check-structural composed-spec.tvl.yml --json
 ```
@@ -106,6 +112,8 @@ What to notice:
 
 - narrowing the model domain is a plausible hotfix move
 - widening `max_tokens` to `1024` is not a safe narrowing move
+- `tvl-compose` does not catch it: in TVL 1.5 its narrowing checks cover added values in list domains and widened
+  `range` endpoints, not values added to a `set` mapping, so this overlay composes without an error. Read the diff.
 - a hotfix overlay that silently widens exposure should not be promoted under pressure
 
 ### Step 3. Check the Audit Trail (10 min)
@@ -138,6 +146,8 @@ Strong debrief answers should distinguish three things clearly:
 - what failed in the environment
 - what the overlay changed
 - what artifact made the final decision auditable
+
+Then discuss:
 
 - What signal should have prevented this surprise earlier?
 - Which artifact saved the most time during the drill?

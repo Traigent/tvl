@@ -4,17 +4,17 @@ These examples are aligned to the current TVL schema and mirror the canonical mo
 
 ## Suggested Walkthrough Order
 
-### 1. RAG Support Bot
+### 1. RAG (Retrieval-Augmented Generation) Support Bot
 
 Source: [rag-support-bot.tvl.yml](https://github.com/Traigent/tvl/blob/main/spec/examples/rag-support-bot.tvl.yml)
 
 Use this first. It is the best compact baseline for a real TVL module because it includes:
 
 *   `environment` and `evaluation_set`
-*   multiple typed TVARs
-*   structural and derived constraints
+*   multiple typed TVARs (tuned variables: the choices the module lets vary, each with a type and a domain of allowed values)
+*   structural constraints (rules over the TVARs that every allowed configuration must satisfy) and derived constraints (preconditions on the `environment`)
 *   multi-objective optimization
-*   a promotion policy with chance constraints
+*   a promotion policy with chance constraints (limits on how often a failure such as a timeout may occur, checked at a stated confidence)
 
 ### 2. Agent Router
 
@@ -24,8 +24,8 @@ This example highlights routing trade-offs and operational governance:
 
 *   routing-model implications
 *   latency-oriented objectives
-*   chance constraints for timeout SLOs
-*   `nsga2` plus convergence hints
+*   chance constraints for timeout SLOs (service-level objectives)
+*   the `nsga2` search strategy (the NSGA-II multi-objective genetic algorithm) plus convergence hints
 
 ### 3. Tool-Use Agent
 
@@ -33,8 +33,8 @@ Source: [tool-use.yml](https://github.com/Traigent/tvl/blob/main/spec/examples/t
 
 Use this when you want the current statistical features:
 
-*   banded objective with `TOST`
-*   `adjust: holm`
+*   banded objective with `TOST` (two one-sided tests, which check that a metric stays inside a target band)
+*   `adjust: holm` (the Holm correction for testing several objectives at once)
 *   fairness-oriented chance constraints
 *   finite domains suitable for grid-style search
 
@@ -44,9 +44,9 @@ Source: [text-to-sql.yml](https://github.com/Traigent/tvl/blob/main/spec/example
 
 This is a good example of a tighter single-pipeline evaluation set:
 
-*   banded token-budget objective
-*   standard quality objective
-*   `tpe` exploration
+*   quality, cost, and latency objectives
+*   a promotion policy with `adjust: holm` and a timeout chance constraint
+*   no `exploration` block, so the search strategy is left to the implementation
 *   explicit dataset anchoring
 
 ### 5. Multi-Tenant Router
@@ -72,7 +72,7 @@ Use this to study trade-offs where cost pressure is primary:
 
 ## Validation-Focused Fixtures
 
-The `validation-phase*` examples are important if you are building tooling, CI, or editor support rather than just authoring one spec.
+The `validation-phase*` examples are important if you are building tooling, CI (continuous integration), or editor support rather than just authoring one spec.
 
 Useful starting points:
 
@@ -87,9 +87,9 @@ These fixtures exercise:
 *   satisfiable vs. contradictory structural clauses
 *   banded objective validation
 *   chance-constraint policy validation
-*   callable TVARs and registry-backed domains
+*   callable TVARs (values that name an implementation, treated as opaque identifiers) and registry-backed domains (allowed values looked up in a named external registry)
 
-## Recommended CLI Sequence
+## Recommended CLI (Command-Line Interface) Sequence
 
 Run this sequence for each example you inspect:
 
@@ -101,7 +101,7 @@ tvl-check-structural <module> --json
 tvl-check-operational <module> --json
 ```
 
-If you are working with composed overlays or runtime artifacts, extend the flow with:
+If you are working with overlays (files that change parts of a base module, merged by `tvl-compose`) or runtime artifacts (a chosen configuration file and the measurement bundle recorded for it), extend the flow with:
 
 ```bash
 tvl-compose staging.overlay.yml -o merged.tvl.yml

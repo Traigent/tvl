@@ -1,0 +1,17 @@
+review:
+  reviewer: sonnet
+  checks: [TVL-C01, TVL-C02, TVL-C03, TVL-C04, TVL-C05]
+  max_words: 3500
+  command: ["claude", "-p", "--model", "sonnet", "--no-session-persistence", "--tools", "Read,Grep,Glob",
+            "--setting-sources", "user", "--disable-slash-commands", "--strict-mcp-config", "--output-format", "json"]
+  prompt_via: stdin
+  timeout_s: 1800
+meta:
+  reviewer: sol
+  every_n_review_batches: 4        # one meta batch covers the records of the last N review batches
+  command: ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-C", "{repo}", "-m", "gpt-6.1-sol",
+            "-c", "model_reasoning_effort=\"high\"", "-c", "approval_policy=\"never\"", "-s", "read-only", "{prompt}"]
+  prompt_via: arg
+  stdin_devnull: true
+  timeout_s: 2400
+wrapper: ["systemd-run", "--user", "--scope", "-q", "-p", "MemoryMax=5G"]

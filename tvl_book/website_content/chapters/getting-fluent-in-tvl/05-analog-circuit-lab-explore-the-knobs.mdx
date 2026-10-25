@@ -17,8 +17,9 @@ example_refs:
 opal_bridge: false
 ---
 
-Try the Orientation RAG micro simulation to feel each tuning variable. The sliders map directly to the spec above;
-latency, cost, and quality update in real time, and constraint warnings match the rules we enforce in Chapter 3.
+Try the Orientation RAG micro simulation to feel how tuned variables trade off. The lab is a separate, simplified
+model: its sliders (`retriever_top_k`, `rerank_weight`, `response_tokens`) are not the TVARs of the spec above.
+Latency, cost, and quality update in real time, and the rerank warning is the kind of structural rule Chapter 3 covers.
 
 <PredictionPrompt prompt="Before you touch the controls, predict which change will usually hurt latency fastest: broader retrieval, heavier reranking, or longer responses.">
 
@@ -42,7 +43,7 @@ together.
 
 <KnowledgeCheck prompt="What should this lab teach you before Chapter 3 formalizes the rule system?">
 
-It should make one idea concrete: TVARs are not abstract config fields. Each knob changes cost, latency, and quality,
+It should make one idea concrete: TVARs are not abstract config fields. Each knob can move cost, latency, or quality,
 and some combinations should be ruled out before the optimizer wastes trials on them.
 
 </KnowledgeCheck>

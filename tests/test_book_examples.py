@@ -102,7 +102,7 @@ def _codes(report: dict) -> set[str]:
     keys = ("issues", "failures", "warnings", "promotion_readiness", "operational", "chance")
     lists = [report[k] for k in keys if isinstance(report.get(k), list)]
     items = [i for lst in lists for i in lst if isinstance(i, dict)]
-    return {i["code"] for i in items if i.get("code")}
+    return {i["code"] for i in items if i.get("code") and i.get("severity") != "info"}
 
 
 @pytest.mark.parametrize(

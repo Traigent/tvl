@@ -4,9 +4,9 @@
 
 VS Code extension for [TVL (Tuned Variables Language)](https://tvl-lang.org), a typed, machine-checkable language for specifying what an AI agent must achieve, which parts of its design may vary, and what evidence is required before a candidate may be accepted.
 
-The extension is not published to the VS Code Marketplace or Open VSX. Build it from this repository and install the resulting `.vsix` file (see [Installation](#installation-from-source)).
+No workflow in this repository publishes the extension to the VS Code Marketplace or Open VSX, so the supported route is to build it from this repository and install the resulting `.vsix` file (see [Installation](#installation-from-source)).
 
-> **TVL 1.3 (draft) support:** Includes syntax highlighting, snippets, bundled JSON Schemas, and field-addressed diagnostics for TVL 1.3 draft runtime blocks (`requirements`, `monitors`, `responses`) and organisation floor packs (`tvl_pack`, RFC 0003 draft).
+> **TVL 1.3 support:** Includes syntax highlighting, snippets, bundled JSON Schemas, and field-addressed diagnostics for the TVL 1.3 runtime blocks (`requirements`, `monitors`, `responses`) and organisation floor packs (`tvl_pack`: a separate document holding an organisation's minimum requirements and monitors, which individual modules are then composed with; see section 9.4 of [RFC 0003](../formalization/rfc-0003-runtime-requirements-monitors-responses.md)), as accepted in RFC 0003 (TVL 1.3.0). The bundled JSON Schemas are copies of the repository's schemas, which also cover TVL 1.4 and 1.5. The syntax highlighting and snippets cover the TVL 1.3 constructs only, not the constructs added in 1.4 and 1.5.
 
 ## Scope note
 
@@ -53,7 +53,7 @@ Full syntax highlighting for `.tvl.yml`, `.tvl.yaml`, `.pack.tvl.yml`, and `.pac
 - **TVL 1.3 response actions & approvals**: `notify`, `open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`, `block_action`, `halt_unit`, `none`, `standing`, `human`
 - **Types & operators**: `enum[str]`, `float`, `int`, `bool`, `when`, `then`, `require`, `maximize`, `minimize`
 
-### Snippets (TVL 1.3 Draft)
+### Snippets (TVL 1.3)
 
 Built-in snippets for authoring TVL 1.3 runtime blocks and packs:
 
@@ -104,7 +104,7 @@ tvl-validate --help
 |---------|---------|-------------|
 | `tvl.validation.enable` | `true` | Enable/disable TVL validation |
 | `tvl.validation.onSave` | `true` | Validate TVL files on save |
-| `tvl.cli.path` | `tvl-validate` | Path to tvl-validate CLI tool |
+| `tvl.cli.path` | `tvl-validate` | Path to tvl-validate CLI tool. The lint command runs the same path with `validate` replaced by `lint`. |
 
 ## Commands
 
@@ -113,9 +113,9 @@ tvl-validate --help
 | `TVL: Validate Current File` | Validate the current TVL file |
 | `TVL: Lint Current File` | Lint the current TVL file |
 
-## Example TVL 1.3 File (Draft)
+## Example TVL 1.3 File
 
-This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`:
+This module passes `tvl-validate`, `tvl-lint`, `tvl-check-structural`, and `tvl-check-operational`. It lets the optimizer choose between two models (`gpt-4o` and `gpt-4o-mini`) for quality. It requires that at most 5% of traces take longer than 2000 ms (`latency_2s`). It adds an evidence-liveness check that fails when more than 4 consecutive reporting windows have no usable latency evidence (`latency_2s_live`). It declares a response (`latency_alerts`) that asks for a warning notification when a breach of the latency requirement begins; the notification is sent only by a platform that registers the compiled contract, not by this extension or the CLI tools.
 
 ```yaml
 tvl:

@@ -16,7 +16,7 @@ The TVL core schema defines standalone, self-contained modules. To support inher
 we use **preprocessing** rather than extending the core schema:
 
 ```text
-base.tvl.yml + staging.overlay.yml  →  tvl-compose  →  staging.tvl.yml (valid TVL)
+base.tvl.yml + staging.overlay.yml  →  tvl-compose  →  staging.tvl.yml (one module; check it with --validate or tvl-validate)
 ```
 
 This keeps the core spec simple while enabling powerful composition patterns.

@@ -162,13 +162,15 @@ def test_encode_condition_enum_enum_empty_values(op: str, value: int) -> None:
     assert _truth_table(domains, cond) == _const(domains, value)
 
 
-def test_encode_condition_enum_enum_bool_int_hash_alias() -> None:
-    # True and 1 hash equal, so they count as a shared value.
+def test_encode_condition_enum_enum_bool_is_not_int() -> None:
+    # True and 1 hash equal in Python, but bool and int are distinct base domains (formal
+    # semantics Definition 3.1) and the evaluator keeps them apart, so they share no value.
+    # (Previously pinned as a shared value: an encoder/evaluator disagreement, review 3.)
     left = Domain(path="l", kind="enum", values=[True, "x"])
     right = Domain(path="r", kind="enum", values=[1, "y"])
     domains = {"l": left, "r": right}
     cond = Condition("l", "==", None, rhs_ident="r")
-    assert _truth_table(domains, cond) == _expected(domains, lambda i, j: (i, j) == (0, 0))
+    assert _truth_table(domains, cond) == _const(domains, 0)
 
 
 @pytest.mark.parametrize("op", ["==", "!="])
@@ -251,9 +253,10 @@ def test_encode_condition_unknown_operator_is_false() -> None:
 
 
 # Float domain: precision 10 over [0, 1] -> encoded 0..10.
-# Strict operators currently apply the strictness offset AND a strict
-# comparison, so `t > 0.3` admits only encoded >= 5 and `t < 0.3` only <= 1.
-# Pinned as-is; whether that is intended is outside a refactor's remit.
+# Strict operators: the literal bound is moved to the nearest admissible grid index and
+# compared non-strictly, so `t > 0.3` admits encoded >= 4 and `t < 0.3` admits <= 2.
+# (Previously the offset was applied twice, which wrongly excluded satisfying points:
+# review finding 2026-10-24.)
 @pytest.mark.parametrize(
     "op,value,predicate",
     [
@@ -263,12 +266,12 @@ def test_encode_condition_unknown_operator_is_false() -> None:
         ("!=", 0.35, lambda e: True),
         (">=", 0.3, lambda e: e >= 3),
         (">=", 0.35, lambda e: e >= 4),
-        (">", 0.3, lambda e: e > 4),
-        (">", 0.35, lambda e: e > 4),
+        (">", 0.3, lambda e: e > 3),
+        (">", 0.35, lambda e: e > 3),
         ("<=", 0.3, lambda e: e <= 3),
         ("<=", 0.35, lambda e: e <= 3),
-        ("<", 0.3, lambda e: e < 2),
-        ("<", 0.35, lambda e: e < 3),
+        ("<", 0.3, lambda e: e < 3),
+        ("<", 0.35, lambda e: e < 4),
         ("==", 1, lambda e: e == 10),
         (">=", 0, lambda e: True),
     ],
@@ -313,7 +316,9 @@ def test_encode_condition_bool_literal_unencodable_is_false() -> None:
         ("==", "b", lambda i: i == 1),
         ("!=", "b", lambda i: i != 1),
         ("==", "zz", lambda i: False),
-        ("!=", "zz", lambda i: False),
+        # A literal absent from the domain: == is false, != is TRUE on every member
+        # (T-Neq; previously pinned as false, which made `x != 'zz'` UNSAT: review 3).
+        ("!=", "zz", lambda i: True),
         # Ordering on an enum literal compares indices.
         ("<", "b", lambda i: i < 1),
         (">=", "c", lambda i: i >= 2),
@@ -401,20 +406,22 @@ def test_candidate_values_float_domain() -> None:
     domains = {"t": Domain(path="t", kind="float", minimum=0.0, maximum=1.0, precision=10)}
     exprs = [_expr([Condition("t", ">", 0.3), Condition("t", "<", 0.35)])]
     result = _candidate_values(domains, exprs)
-    assert result == {"t": [0.0, 0.3, 1.0]}
-    assert all(isinstance(v, float) for v in result["t"])
+    # Float candidates are exact grid points (Fraction): evaluation never sees binary64 rounding
+    # (code-review-2 finding 2). Same points as before: 0.0, 0.3, 1.0.
+    assert result == {"t": [Fraction(0), Fraction(3, 10), Fraction(1)]}
+    assert all(isinstance(v, Fraction) for v in result["t"])
 
 
 def test_candidate_values_unbounded_float_without_conditions() -> None:
     assert _candidate_values({"t": Domain(path="t", kind="float")}, []) == {"t": [0.0]}
 
 
-def test_candidate_values_float_int_condition_values_become_floats() -> None:
+def test_candidate_values_float_int_condition_values_become_exact_grid_points() -> None:
     domains = {"t": Domain(path="t", kind="float", minimum=0, maximum=10, precision=1)}
     exprs = [_expr([Condition("t", "==", 4)])]
     result = _candidate_values(domains, exprs)
-    assert result == {"t": [0.0, 3.0, 4.0, 5.0, 10.0]}
-    assert all(isinstance(v, float) for v in result["t"])
+    assert result == {"t": [Fraction(v) for v in (0, 3, 4, 5, 10)]}
+    assert all(isinstance(v, Fraction) for v in result["t"])
 
 
 def test_candidate_values_unknown_kind_uses_condition_values_or_none() -> None:

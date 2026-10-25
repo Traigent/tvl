@@ -93,7 +93,7 @@ def _qualify_issues(source: str, issues: list[dict[str, Any]]) -> list[dict[str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Offline CI gate dry-run using a TVL module as the source of objectives and promotion policy."
+        description="Offline run of the promotion gate: prints the decision (Promote, Reject, NoDecision or Error) and exits 0 only for Promote."
     )
     parser.add_argument(
         "inputs",
@@ -165,6 +165,23 @@ def main() -> None:
             requirements=module.get("requirements"),
             monitors=module.get("monitors"),
         )
+
+        if decision == "Error":
+            # Undefined check (e.g. zero_trials): an error, not Reject/NoDecision.
+            diag = {
+                "ok": False,
+                "decision": "Error",
+                "error": evidence.get("summary", {}).get("decision_reason", "Error"),
+                "codes": evidence.get("summary", {}).get("chance_error_codes", []),
+                "warnings": warnings,
+                "evidence": evidence,
+            }
+            if args.json:
+                print(json.dumps(diag, indent=2))
+            else:
+                print("Decision: Error")
+                print(f"Reason: {diag['error']}")
+            raise SystemExit(2)
 
         result = {
             "ok": decision == "Promote",

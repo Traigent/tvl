@@ -1,0 +1,23 @@
+include:
+  - docs/**/*.md
+  - formalization/*.md
+  - spec/*.md
+  - proofs/*.md
+  - README.md
+  - CONTRIBUTING.md
+  - GOVERNANCE.md
+  - SECURITY.md
+  - SUPPORT.md
+  - CHANGELOG.md
+  - tvl_tools/**/README.md
+  - vscode-tvl/README.md
+  - tvl_book/website_content/**/*.md
+  - tvl_book/website_content/**/*.mdx
+  - website/client/src/book/chapters/**/*.mdx
+  - website/client/src/book/chapters/**/*.md
+  - website/client/src/pages/*.tsx
+exclude:
+  - formalization/rfc-template.md
+  - spec/archive/**
+  - website/client/public/docs/**
+  - "**/node_modules/**"

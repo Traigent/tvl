@@ -275,8 +275,8 @@ class StructuralSatTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.assignment["mixed"], (0.2, 20))
 
-    def test_tuple_float_range_no_resolution_raises(self) -> None:
-        """Float range without resolution on tuple component raises ValueError."""
+    def test_tuple_float_range_no_resolution_defaults_to_0_001(self) -> None:
+        """Float range without resolution on a tuple component uses the default 0.001 (semantics 2.4)."""
         doc = _base_module()
         doc["tvars"] = [
             {
@@ -290,9 +290,8 @@ class StructuralSatTests(unittest.TestCase):
                 },
             },
         ]
-        with self.assertRaises(ValueError) as ctx:
-            check_structural(doc)
-        self.assertIn("resolution", str(ctx.exception))
+        result = check_structural(doc)
+        self.assertTrue(result.ok)
 
     def test_tuple_string_true_not_coerced_to_bool(self) -> None:
         """Quoted string 'true' in a tuple stays a string, not boolean True."""
@@ -450,7 +449,8 @@ class StructuralSatTests(unittest.TestCase):
         self.assertEqual(result.assignment["cfg"], ((2, 10), 5))
 
     def test_tuple_registry_component_placeholder_value(self) -> None:
-        """Registry-backed tuple components remain representable via placeholders."""
+        """An atom over a registry-backed (unresolved) component is undecided, never decided
+        from the placeholder values (review 3: `m == 'gpt-4'` on a registry enum was UNSAT)."""
         doc = _base_module()
         doc["tvars"] = [
             {
@@ -471,8 +471,9 @@ class StructuralSatTests(unittest.TestCase):
         }
 
         result = check_structural(doc)
-        self.assertTrue(result.ok)
-        self.assertEqual(result.assignment["cfg"], ("__registry_unresolved_0__", 1))
+        self.assertFalse(result.ok)
+        self.assertTrue(getattr(result, "undecided", False))
+        self.assertEqual([i["code"] for i in result.issues], ["structural_unresolved_domain"])
 
 
 class MalformedStructuralConstraintTests(unittest.TestCase):
@@ -544,3 +545,41 @@ class PartialOverlapShapeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BareNumericListDomainTests(unittest.TestCase):
+    """A bare list of numbers is a finite value set (schema EnumVals)."""
+
+    def _doc(self, a, b, dtype="int"):
+        doc = _base_module()
+        doc["tvars"] = [
+            {"name": "a", "type": dtype, "domain": a},
+            {"name": "b", "type": dtype, "domain": b},
+        ]
+        doc["constraints"] = {"structural": [{"expr": "a == b"}]}
+        return doc
+
+    def _run(self, doc, backend):
+        if backend == "bruteforce":
+            saved = module.cp_model
+            module.cp_model = None
+            try:
+                return check_structural(doc)
+            finally:
+                module.cp_model = saved
+        return check_structural(doc)
+
+    def test_disjoint_lists_unsat_both_backends(self) -> None:
+        for backend in ("cpsat", "bruteforce"):
+            for dtype in ("int", "float"):
+                with self.subTest(backend=backend, dtype=dtype):
+                    r = self._run(self._doc([1, 2], [3, 4], dtype), backend)
+                    self.assertFalse(r.ok)
+
+    def test_overlapping_lists_sat_with_witness_inside(self) -> None:
+        for backend in ("cpsat", "bruteforce"):
+            with self.subTest(backend=backend):
+                r = self._run(self._doc([1, 2], [2, 3]), backend)
+                self.assertTrue(r.ok)
+                self.assertEqual(r.assignment["a"], 2)
+                self.assertEqual(r.assignment["b"], 2)

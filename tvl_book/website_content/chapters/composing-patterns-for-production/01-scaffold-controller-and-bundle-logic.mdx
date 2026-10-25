@@ -20,8 +20,9 @@ The simplest way to reason about a pattern bundle is to split it into two layers
 - scaffold: the stable workflow structure that already works on its own
 - controller: the extra mechanism that adds search, reflection, judging, or another adaptive policy
 
-This matches the way many effective systems are built. A narrow-waist base does the core work, and
-one bounded controller is allowed to change the operating point.
+This matches the way many effective systems are built. A stable base workflow does the core task, and
+one bounded controller is allowed to adjust its behavior or resource budget (for example, how many
+extra candidates it tries).
 
 <ConceptCallout title="Production Heuristic" tone="integration">
 
@@ -30,7 +31,7 @@ Prefer one clear scaffold plus one clear controller before trying several intera
 
 </ConceptCallout>
 
-This is also how you keep the study plane interpretable. If the scaffold and controller are both
+This is also how you keep the experiment interpretable. If the scaffold and controller are both
 changing at the same time, it becomes harder to explain where the gains came from or why the bundle
 failed.
 

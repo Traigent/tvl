@@ -30,7 +30,7 @@ It adds no response action. The response policy and its approval rules remain th
 
 ## 2. Design
 
-### 2.1 Proposed grammar and version
+### 2.1 Grammar and version
 
 Productions not shown retain RFC 0003/0004 meanings. `rec` is closed; `number` follows `R3:258–262`.
 
@@ -78,7 +78,8 @@ Let B be the number of BREACHED slots and U the number of UNKNOWN slots. The per
 | otherwise | `UNKNOWN(inconclusive)` |
 
 These labels describe only the historical condition, not present quality or source MET.
-For k=2, n=3, `BBU → BREACHED`, `MMU → MET`, `BMU → UNKNOWN`. A startup or missing slot can therefore coexist
+For k=2, n=3, writing a history as its slot verdicts from oldest to current (B = BREACHED, M = MET,
+U = UNKNOWN): `BBU → BREACHED`, `MMU → MET`, `BMU → UNKNOWN`. A startup or missing slot can therefore coexist
 with a definite result. `BBM` also satisfies the historical condition, but its current MET window emits
 neither allowed breach event (`S:1805`), so it produces no persistence notification.
 k=n requires consecutive breaches; k=n=1 leaves eligibility at an allowed trigger unchanged.
@@ -216,14 +217,14 @@ Both coordinates of `persist`, and its presence, are immutable under overlay/mee
 tightening order. Packs rewrite `trigger.monitor` to its canonical monitor as before (`R3:1460–1461`).
 Persistence adds no monitor identity, floor requirement or episode lifecycle.
 
-New projected constructs select proposed `tvl-runtime-contract/3` and `tvl-runtime-local/3`, version
+New projected constructs select `tvl-runtime-contract/3` and `tvl-runtime-local/3`, version
 `"1.5"`. A version declaration alone does not select `/3`; without a 1.5 construct keep the existing
 construct-based `/1` or `/2` selection (`R4:264–283`). Refuse `/3` without a 1.5 construct. Freeze the old
 schemas; refuse unknown format tags rather than dropping fields. Count reports remain `/1`.
 
-Aggregate reports use proposed `tvl-runtime-report/2`, a closed record with exactly these fields:
+Aggregate reports use `tvl-runtime-report/2`, a closed record with exactly these fields:
 
-| Field | Proposed content |
+| Field | Content |
 |---|---|
 | `format` | `tvl-runtime-report/2` |
 | `contract_digest`, `monitor_ref`, `monitor_revision` | existing binding types (`R3:1723–1725`) |
@@ -266,16 +267,16 @@ These are projection rules, not additional report fields:
 | Authored `persist` integers | JSON integers in the contract allowlist |
 | Persistence result, slot identities and constituent UNKNOWN reasons | none; customer-side only |
 
-A summary can itself be sensitive: this proposal makes no anonymization or observability privacy claim.
-Customer attestations are not independently verified population or source correctness.
+A summary can itself be sensitive: this RFC makes no anonymization or observability privacy claim.
+Customer attestations do not independently verify population or source correctness.
 
 ### 2.6 Schemas and diagnostics
 
-Proposed authored schemas extend `RequirementDecl` with `aggregate`/`bound`, and `RuleDecl` with `persist`;
+The authored schemas extend `RequirementDecl` with `aggregate`/`bound`, and `RuleDecl` with `persist`;
 extend the kind/method registries. Follow the existing flat union of variant keys (`J:851–866`) and the
 shape-versus-lint split (`R3:520–531`): schemas check closed keys, primitive types and common required keys;
 lints check enums, variant presence/absence, domains and references. Every nested record is closed.
-Exactly one bound key is a variant rule. The following codes are proposed or explicitly reused:
+Exactly one bound key is a variant rule. The following codes are new or explicitly reused:
 
 | Code | Severity | Condition |
 |---|---|---|
@@ -297,7 +298,8 @@ for undecided persistence (`S:1741,1745`). Extend `incomplete` beyond zero toler
 incomplete aggregate, including invalid raw contributions. Add only `persistence_history_gap` for a
 placeholder slot, `aggregate_pending` before due and `aggregate_precision_limit` for arithmetic limits;
 the existing reasons have no equivalent for these conditions. Malformed exchanged summaries are refused.
-Codes echo no input. Complete schemas, compilation, registration and verifiers remain acceptance work.
+Codes echo no input. Schemas, lints, compilation and reference conformance relations exist; source profiles,
+registration verifiers and an evaluator are not established (§7, question 3).
 
 ## 3. Compatibility
 
@@ -333,17 +335,20 @@ Return MET iff the declared comparison holds, BREACHED otherwise. UNKNOWN precon
 precedence. This is a deterministic statement about recorded observed values, not a hypothesis test,
 expected future quality, a new false-alarm allocation or proof that an attested source reported honestly.
 
-Proposed formal semantics §14 and Lean work must state: completion soundness; notification-subset and
+Formal semantics §14 and the Lean work must state: completion soundness; notification-subset and
 no-new-look properties under those hypotheses; exact aggregate comparison equivalence; and conservative
-1.4 embedding preserving TVAR, structural, promotion and runtime denotations. These are proof obligations,
-not claims of mechanization, passing conformance, controller execution or production enablement.
+1.4 embedding preserving tuned-variable (TVAR), structural, promotion and runtime denotations. Lean statements for completion
+soundness and exact mean comparison are in `proofs/TVL/Runtime/Persistence.lean`, with scope and build status in
+`proofs/PROOF_SUMMARY.md`; the other properties remain proof obligations. None of this claims passing
+conformance, controller execution or production enablement.
 
 ## 5. Conformance
 
-The following are proposed case names only. Expected outcomes are normative if this RFC is accepted.
-Semantic cases record histories and expected decisions; they do not imply an evaluator exists.
+The following case names and expected outcomes are normative; the case files are under
+`conformance/cases/runtime/`. Semantic cases record histories and expected decisions; they do not imply an
+evaluator exists.
 
-| Proposed case name(s) | Expected diagnostic or semantic outcome |
+| Case name(s) | Expected diagnostic or semantic outcome |
 |---|---|
 | `persist-k1-n1-valid.yml`; `persist-consecutive-valid.yml` | accepted; identity at breach events; k=n requires n breaches |
 | `persist-bbu.yml`; `persist-mmu.yml`; `persist-bmu.yml` | k=2,n=3: BREACHED; MET; UNKNOWN(inconclusive) |
@@ -377,7 +382,7 @@ Semantic cases record histories and expected decisions; they do not imply an eva
 | `aggregate-deploy-if-promoted.yml` | response_deploy_without_promotion_monitor |
 | `persist-pack-ref-rewrite.yml`; `aggregate-pack-tightening.yml` | canonical trigger reference; lte decreases/gte increases |
 | `version-15-missing.yml`; `version-14-new-construct.yml` | runtime_version_required; declared_version_below_constructs |
-| `old-reader-new-construct.yml`; `format-v3-without-new-construct.yml` | schema_error or unsupported_construct by entrypoint; schema_error |
+| `old-reader-new-construct.yml`; `format-v3-without-new-construct.yml` | schema_error or unsupported_construct by entrypoint; runtime_unsafe_egress (the projected contract fails its format schema) |
 | `legacy-14-meaning.yml`; `legacy-artifact-bytes.yml`; `version-15-alone.yml` | unchanged 1.4 outcomes/bytes at fixed toolchain; prior format selection |
 
 ## 6. Alternatives considered
@@ -400,7 +405,20 @@ This RFC borrows those ideas, not their syntax, algorithms, sliding windows or c
 3. Which concrete local source profiles and registration verifiers will support these contracts? Their
    implementation and complete document schemas must be reviewed before enablement; none is established here.
 
-Out of scope: maintenance/external events (await a closed event catalogue in a later RFC); sliding windows and SRE
+Out of scope: maintenance/external events (await a closed event catalogue in a later RFC); sliding windows and site reliability engineering (SRE)
 multi-burn alerts (1.6, with full statistical-look accounting); baseline-relative regression; headroom
-proposals; shield synthesis; change-point detection; any general LTL/STL language; learned anomaly alerts;
+proposals; synthesis of action-blocking monitors from temporal specifications; change-point detection; any
+general linear or signal temporal logic (LTL/STL) language; learned anomaly alerts;
 auto-tightening. None is implied by the two additions above.
+
+## 8. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-10-23 (TVL 1.5.0), with the error below
+corrected in place.
+
+- **§5 expected outcome of `format-v3-without-new-construct.yml` (corrected in place).** The accepted table gave
+  `schema_error`. That was wrong at acceptance: the case file
+  (`conformance/cases/runtime/projection/format-v3-without-new-construct.yml`) already expected
+  `runtime_unsafe_egress`, because a projected contract that claims `tvl-runtime-contract/3` without a 1.5 construct
+  fails its format schema at the egress check. The table now gives `runtime_unsafe_egress`, matching the case file.
+

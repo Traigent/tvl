@@ -47,7 +47,7 @@ export default function Specification() {
             </p>
             <p className="text-base text-muted-foreground mb-8 max-w-3xl leading-7">
               That gives product and engineering one shared artifact: product can state goals, evaluation sets, desired
-              properties, and release expectations; engineering can wire tuning, CI, and runtime checks against the
+              properties, and release expectations; engineering can wire tuning, continuous integration (CI), and runtime checks against the
               same definition. For software engineers, the key mindset shift is that agent quality is not explained by
               code alone: changing models, quotas, latency budgets, and tool behavior are exactly why tuning and
               repeated evaluation matter. TVL then lets teams declare the tunable variables, the shared evaluation set,
@@ -151,7 +151,7 @@ export default function Specification() {
                 </CardTitle>
                 <CardDescription className="text-sm leading-6">
                   Constraints, evaluation sets, and promotion rules stop being copied across notebooks, docs, and CI.
-                  The same definition can drive validation, gating, and safer-by-construction rollout checks.
+                  The same definition can drive validation, gating, and rollout checks against the declared requirements; what those checks show depends on the evidence and evaluator behind them.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -163,7 +163,7 @@ export default function Specification() {
                 </CardTitle>
                 <CardDescription className="text-sm leading-6">
                   As models, tools, quotas, costs, and product priorities change, teams can revisit the same spec:
-                  observe the new world state, retune the declared TVARs, and keep the same checks attached.
+                  observe the new world state, retune the declared tuned variables (TVARs), and keep the same checks attached.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -312,7 +312,7 @@ export default function Specification() {
                 <CardHeader>
                   <CardTitle>Schema Quick Guide</CardTitle>
                   <CardDescription>
-                    Use this when you need to know which schema validates which TVL artifact and which CLI checks to run.
+                    Use this when you need to know which schema validates which TVL artifact and which command-line interface (CLI) checks to run.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

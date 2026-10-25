@@ -1,296 +1,221 @@
-# TVL Formal Foundations: Gap Analysis & Roadmap
+# TVL Formal Foundations: Status and Roadmap
 
-**Purpose**: Actionable guide for achieving formal rigor in TVL  
-**Audience**: Traigent engineering, academic collaborators, enterprise due diligence
-
----
-
-## Executive Summary
-
-TVL is positioned as a **specification language** for AI agent configuration. To credibly claim this status—especially for enterprise adoption and academic publication—we need to close several formal gaps.
-
-### Current State Assessment
-
-| Requirement | Status | Gap |
-|-------------|--------|-----|
-| **Formal syntax** | ✅ Complete | EBNF + JSON Schema defined |
-| **Abstract syntax** | ⚠️ Partial | Need AST separate from concrete syntax |
-| **Denotational semantics** | 🔴 Missing | No formal meaning functions |
-| **Type soundness** | 🔴 Missing | No proof of progress/preservation |
-| **Decidability proof** | ⚠️ Informal | Claimed but not proven |
-| **SMT encoding soundness** | 🔴 Missing | No bijection proof |
-| **Promotion correctness** | ⚠️ Informal | Statistical properties stated informally |
-| **Mechanized proofs** | 🔴 None | No Coq/Lean formalization |
+**Purpose**: What is formalized in TVL, where each result lives, and what remains
+**Audience**: Traigent engineering, academic collaborators, technical due diligence
 
 ---
 
-## Priority 1: Minimum Viable Formalization (CAIN 2026)
+## Summary
 
-For the accepted paper, add a "Formal Foundations" section covering:
+TVL is a **specification language** for AI agent configuration. This page was first written in January 2026 as a
+plan for its formal foundations. Most of the core items it planned now exist: a formal semantics, paper proofs of the
+core results, and Lean 4 proofs of several of them. This revision records that state for TVL 1.5 and lists the work
+that remains. No dates are set for the remaining work.
 
-### 1.1 Semantic Domains (1-2 paragraphs)
+The authority for meaning is [`tvl-formal-semantics.md`](tvl-formal-semantics.md) (the formal semantics). The
+mechanized results and their exact statements are in [`../proofs/PROOF_SUMMARY.md`](../proofs/PROOF_SUMMARY.md).
+Where this page and those documents differ, they win.
 
-```
-Configuration Space:
-  Config(Γ, E_τ) = ∏_{t ∈ Γ} Domain(t, E_τ)
+### Current state
 
-Constraint Satisfaction:
-  c ⊨ Φ ⟺ ∀φ ∈ Φ: ⟦φ⟧(c) = true
-```
+| Item | Status | Where |
+|------|--------|-------|
+| **Concrete syntax** | Done | `spec/grammar/tvl.ebnf` (EBNF grammar) and `spec/grammar/tvl.schema.json` (JSON Schema) |
+| **Abstract syntax** | Done | Formal semantics §2 |
+| **Denotational semantics** | Done for the core; runtime extensions in §§12–14 | Formal semantics §§3–6 and §9 |
+| **Type soundness** (denotation totality) | Paper proof; Lean proof for the core subset | Theorem 4.1; `type_soundness` in `proofs/TVL/TypeSoundness.lean` |
+| **Decidability** | Paper proofs for finite-domain structural constraints; not mechanized | Theorems 7.1–7.4 |
+| **Encoding soundness** | Paper theorem; Lean proof of a formula-level form | Theorem 8.1, Corollary 8.1; `smt_encoding_soundness`, `satisfiability_preservation` in `proofs/TVL/SMTEncoding.lean` |
+| **ε-dominance composition** | Paper proof; Lean proof | Lemma 9.2; `normalized_diff_composition` in `proofs/TVL/Dominance.lean` |
+| **Promotion correctness** | Scoped statement; not mechanized | Proposition 9.1; listed as future work in `PROOF_SUMMARY.md` |
+| **Runtime extensions** (TVL 1.3–1.5) | Lean results, each classed by strength; two statements are OPEN (not proved) | `PROOF_SUMMARY.md`, sections "Runtime (TVL 1.3)", "RFC 0004" and "RFC 0005"; `proofs/TVL/Gate.lean`, `proofs/TVL/Runtime/` |
+| **`cvars`, `policies`, `composites`** (RFC 0001, RFC 0002) | Not formalized | Formal semantics §1.4 |
 
-### 1.2 Decidability Claim (1 theorem statement)
+**Scope of the Lean results for the core.** They cover the core subset as it stood on 2026-02-01: `tvars`,
+`constraints`, `objectives` and `promotion_policy`. The Lean atoms are `=`, `≠`, `≥`, `≤` and `∈` over non-tuple
+tuned variables (TVARs, declared in `tvars`; semantics §1.5.4), with `and`, `or`, `not` and implication. Float values and thresholds are taken as already scaled to integers,
+and comparison thresholds may be any integer; only the separate rounding lemma `rounding_soundness_nonneg` needs a
+non-negative threshold. The encoding theorem is stated over the encoded formula; it does not model
+the domain assertions of semantics §8.3. See `PROOF_SUMMARY.md` §2 and §8.
 
-> **Theorem (Decidability)**: Satisfiability of TVL structural constraints is decidable. Specifically, for module M with constraints Φ, determining whether Feasible(M) ≠ ∅ is in NP.
->
-> *Sketch*: TVL constraints compile to QF_LIA (quantifier-free linear integer arithmetic), which is decidable [Bradley & Manna 2007].
-
-### 1.3 Type Safety Claim (1 theorem statement)
-
-> **Theorem (Type Safety)**: Well-typed TVL modules do not produce runtime type errors during constraint evaluation.
->
-> *Sketch*: By construction, type checking ensures operand compatibility before evaluation.
-
----
-
-## Priority 2: Full Formal Semantics Document
-
-The document I've created (`tvl-formal-semantics.md`) provides:
-
-- **Section 2**: Complete abstract syntax
-- **Section 3**: Semantic domains
-- **Section 4**: Type system with inference rules
-- **Section 5**: Denotational semantics
-- **Section 6**: Feasibility predicates
-- **Section 7**: Metatheory (soundness, decidability)
-- **Section 8**: SMT encoding
-- **Section 9**: Promotion semantics
-
-### Validation Checklist
-
-- [ ] Review all definitions for precision
-- [ ] Verify theorem statements are provable
-- [ ] Cross-reference with implementation
-- [ ] Technical review by formal methods expert
+**Build status.** `PROOF_SUMMARY.md` records that all modules compiled on 2026-02-01. The latest full `lake build`
+recorded there stopped while fetching dependencies; the new RFC 0005 module was checked on its own.
 
 ---
 
-## Priority 3: Key Proof Obligations
+## Core statements
 
-These are the theorems that MUST be proven for full rigor:
+These are the precise forms of the core results. The notation is defined in the formal semantics:
 
-### 3.1 Type Soundness
+- `Δ` is the list of TVAR declarations, and `Γ` the typing context derived from it, which maps each TVAR name to its
+  declared type (§4.1).
+- `Γ ⊢ φ : prop` means the formula `φ` is well typed under `Γ` (§4.2–4.8).
+- `⟦φ⟧(c)` is the truth value of `φ` under configuration `c` (§5).
+- A configuration `c` **respects** `Γ` when every declared TVAR has a value of its declared type:
+  `∀x ∈ dom(Γ): c(x) ∈ ⦃Γ(x)⦄` (Theorem 4.1).
 
-**Statement**: If `Γ ⊢ φ : prop` and `c` respects `Γ`, then `⟦φ⟧(c) ∈ {true, false}`.
+### Configuration space and satisfaction (§3.4, Definition 5.5)
 
-**Proof technique**: Structural induction on typing derivation.
-
-**Effort**: 2-3 pages of proof, straightforward.
-
-### 3.2 SMT Encoding Soundness
-
-**Statement**: 
 ```
-∀c ∈ Config, φ ∈ Constraint:
-  SAT(encode(φ))[c] = true ⟺ ⟦φ⟧(c) = true
+Config(Δ, E_τ) = ∏_{t ∈ Δ} 𝒟⟦t.domain⟧(E_τ)
+
+c ⊨ Φ ⟺ ∀φ ∈ Φ: ⟦φ⟧(c) = true
 ```
 
-**Proof technique**: 
-1. Define encoding formally
-2. Show encode/decode are inverses
-3. Prove truth preservation for each construct
+`𝒟⟦t.domain⟧(E_τ)` is the finite set of values that the domain of `t` denotes under environment `E_τ`
+(Definition 3.6).
 
-**Effort**: 4-5 pages, requires care with float scaling.
+### Type soundness (Theorem 4.1)
 
-**Critical subtlety**: Float scaling must be shown to preserve inequality ordering within precision bounds.
+If `Γ ⊢ φ : prop` and `c` respects `Γ`, then `⟦φ⟧(c)` is defined and is `true` or `false`. This holds for core
+formulas; modules that use the constructs listed in semantics §1.4 are outside it. The Lean proof covers the Lean atom
+set above.
 
-### 3.3 Decidability
+### Encoding soundness (Theorem 8.1)
 
-**Statement**: SAT(encode(Φ)) is decidable for any well-formed Φ.
+The informative reference encoding (§8) translates structural constraints to a solver problem. SMT means
+Satisfiability Modulo Theories: deciding whether a formula has a model in a background theory, here linear integer
+arithmetic. Under the preconditions of Theorem 8.1 (every float domain is precision-aligned to the precision factor
+`P`, ranges use index variables, and thresholds are rounded by direction), for every solver model `m` and structural
+formula `φ`:
 
-**Proof technique**: 
-1. Show TVL compiles to QF_LIA fragment
-2. Cite decidability of QF_LIA
-3. Bound complexity (NP for SAT component)
+```
+m ⊨ encode(Δ, φ, P, idx) ⟺ decode(m, Δ, P, idx) ∈ Config(Δ, E_τ) ∧ ⟦φ⟧(decode(m, Δ, P, idx)) = true
+```
 
-**Effort**: 1-2 pages, mostly citation.
+Corollary 8.1 follows: a satisfying configuration exists if and only if the encoding is satisfiable.
 
-### 3.4 Promotion Correctness
+### Decidability (Theorems 7.1–7.4)
 
-**Statement**: If `promote(c, c', α) = true`, then with probability ≥ 1-α:
-- c does not regress on any objective by more than ε
-- c improves on at least one objective by more than ε
+For a well-formed set of structural constraints over finite domains, checking one configuration takes polynomial
+time (Theorem 7.1), and deciding whether any configuration satisfies the set is decidable. That problem is in NP
+(nondeterministic polynomial time: a proposed configuration can be checked in polynomial time) and is NP-complete,
+because Boolean satisfiability (SAT) reduces to it through boolean TVARs (Theorem 7.2). Derived constraints are
+evaluated directly against the environment (Theorem 7.3), so deciding whether a module has any feasible configuration
+is decidable (Theorem 7.4). Compiling to quantifier-free linear integer arithmetic (QF_LIA) is one implementation
+strategy, not part of the result. Registry domains and the other constructs of §1.4 are outside it.
 
-**Proof technique**: Statistical hypothesis testing theory.
+### Promotion (Proposition 9.1)
 
-**Effort**: 2-3 pages, standard stats.
+Promotion requires static validity, acceptability (chance constraints and banded objectives) and statistical
+ε-dominance on the standard objectives (§9.7). The statistical result is scoped to the tests used:
+
+- Each non-inferiority test runs at level `α`; the configured `adjust` method applies separately to the superiority
+  and inferiority families.
+- `none` gives no family-level correction. Bonferroni and Holm control the family-wise error rate of each adjusted
+  family. Benjamini-Hochberg controls the false discovery rate under independence or positive regression dependency;
+  it does not control the family-wise error rate.
+- These results do not bound every route to a wrong promotion. That also depends on test validity, data generation,
+  selection effects, evaluator reliability and how the evidence was collected (§9.8).
 
 ---
 
-## Priority 4: Mechanization (Post-Publication)
+## Remaining work
 
-### Option A: Coq (Recommended for Maximum Rigor)
+None of these items has a date.
 
-```coq
-(* Core definitions *)
-Inductive Type : Set :=
-  | TBool : Type
-  | TInt : Type
-  | TFloat : Type
-  | TEnum : ElemType -> Type
-  | TTuple : list Type -> Type.
-
-Inductive Atom : Set :=
-  | AEq : Ident -> Value -> Atom
-  | ACmp : Ident -> CmpOp -> Number -> Atom
-  | AInterval : Number -> Ident -> Number -> Atom
-  | AMem : Ident -> list Value -> Atom.
-
-(* Type soundness theorem *)
-Theorem type_soundness : forall Γ φ c,
-  well_typed Γ φ ->
-  respects c Γ ->
-  exists b : bool, eval φ c = Some b.
-```
-
-**Effort**: 2-4 weeks for core type soundness.
-
-### Option B: Lean 4 (Better tooling, growing community)
-
-```lean
-inductive TVLType where
-  | bool : TVLType
-  | int : TVLType
-  | float : TVLType
-  | enum : ElemType → TVLType
-  | tuple : List TVLType → TVLType
-
-theorem type_soundness (Γ : Context) (φ : Formula) (c : Config)
-  (h1 : WellTyped Γ φ) (h2 : Respects c Γ) :
-  ∃ b : Bool, eval φ c = some b := by
-  induction φ <;> simp [eval] <;> ...
-```
-
-**Effort**: 2-3 weeks (Lean 4 is more ergonomic).
-
-### Option C: Isabelle/HOL (Best for publication)
-
-Most journals in formal methods prefer Isabelle. Archive of Formal Proofs (AFP) acceptance is prestigious.
-
-**Effort**: 3-4 weeks.
+1. **Mechanize decidability** (Theorems 7.1–7.4).
+2. **Extend the Lean core model** to strict comparisons, intervals, TVAR-to-TVAR equality, tuple atoms and negative
+   thresholds, and to the domain assertions of the reference encoding.
+3. **Formalize promotion correctness**, including properties of Welch's t-test and sequential testing error bounds
+   (`PROOF_SUMMARY.md`, "Future Extensions").
+4. **Formalize `cvars`/`policies` (RFC 0001) and `composites` (RFC 0002)** (semantics §1.4).
+5. **Close the OPEN runtime statements** `compiled_contract_correct_statement` (`proofs/TVL/Runtime/Compiler.lean`)
+   and `compose_partial_statement` (`proofs/TVL/Runtime/Compose.lean`).
+6. **Re-run the full `lake build`** at the pinned Lean toolchain and Mathlib revision and record the result in
+   `PROOF_SUMMARY.md`.
+7. **Cross-check the reference implementation** in `python/tvl/` against the typing rules (§4) and the conformance
+   requirements (§10), and record differences as issues.
 
 ---
 
-## Priority 5: Enterprise Due Diligence Package
+## What can be claimed
 
-For design partner technical reviews, prepare:
+For technical reviews, state results with their scope:
 
-### 5.1 One-Pager: "TVL Formal Guarantees"
+1. **Decidable structural checking**: for finite-domain structural constraints in the core subset, satisfiability is
+   decidable (Theorem 7.2). Registry domains and the constructs of §1.4 are outside this.
+2. **Type soundness**: well-typed core formulas evaluate to `true` or `false` under any configuration that respects
+   the typing context (Theorem 4.1).
+3. **Promotion**: a promotion decision rests on the tests and assumptions recorded for it (Proposition 9.1). There is
+   no proof that a promoted configuration is better in general.
+4. **Same inputs, same feasible set**: the feasible set is a function of the module and the pinned environment
+   (Definition 6.3).
 
-> **What TVL Guarantees**:
-> 1. **Decidable validation**: Every TVL module can be checked for consistency in finite time
-> 2. **Type safety**: Well-formed constraints evaluate without errors
-> 3. **Sound optimization**: Promoted configurations provably satisfy dominance criteria
-> 4. **Reproducible**: Same module + environment = same feasible space
-
-### 5.2 Comparison Table
-
-| Property | TVL | Ad-hoc Prompts | NVIDIA NeMo | LangSmith |
-|----------|-----|----------------|-------------|-----------|
-| Formal semantics | ✅ | ❌ | ❌ | ❌ |
-| Decidable validation | ✅ | N/A | ❌ | ❌ |
-| Proven type safety | ✅ | ❌ | ❌ | ❌ |
-| Statistical promotion | ✅ | ❌ | ⚠️ Partial | ❌ |
-
-### 5.3 FAQ for Technical Due Diligence
+### FAQ for technical review
 
 **Q: How do you know constraints are satisfiable?**
-> A: TVL compiles to SMT (Satisfiability Modulo Theories). We use Z3/CVC5 to check satisfiability. This is a decidable problem with sound solvers.
+> A: The reference checker (`python/tvl/structural_sat.py`) uses OR-Tools CP-SAT when it is installed. Without it, a
+> fallback search reports satisfiable when it finds a witness, unsatisfiable only when it has tried every value of
+> every domain, and otherwise the error `structural_undecided_without_solver`. The formal semantics allows any solver
+> or direct procedure that preserves its judgments (§10.4).
 
 **Q: What if floats cause precision issues?**
-> A: TVL scales floats to integers with configurable precision (default 1000x). This eliminates floating-point comparison issues while preserving practical accuracy.
+> A: The informative reference encoding (§8.3–8.4) represents float values as integers scaled by a precision factor
+> `P`. Comparisons stay exact when every domain value lies on the scaled grid (precision-aligned, §8.5) and thresholds
+> are rounded by direction (§8.4). Otherwise an implementation must use an exact encoding or report that the reference
+> encoding is unavailable (§10.4). The reference checker uses such an exact encoding: it parses each float range's
+> endpoints and effective resolution as exact rationals (the default resolution is 0.001, §2.4), encodes a value as
+> its integer grid index `(value − origin) / step`, and compares values and thresholds in exact rational arithmetic.
+> It does not multiply by a fixed factor.
 
 **Q: How do you ensure promotion decisions are correct?**
-> A: Promotion uses ε-Pareto dominance with statistical hypothesis testing. We control family-wise error rate via Benjamini-Hochberg adjustment when configured.
+> A: Promotion uses ε-Pareto dominance with statistical hypothesis tests (§9.4). The `adjust` setting selects the
+> multiple-testing correction: Holm (the reference default), Bonferroni, Benjamini-Hochberg (false discovery rate) or
+> none. What each one controls is stated in Proposition 9.1; none of them alone makes a promotion correct.
 
 ---
 
-## Timeline
+## Tools
 
-| Phase | Deliverable | Timeline | Effort |
-|-------|-------------|----------|--------|
-| **CAIN 2026** | Add formal foundations section | 1 week | 4-8 hours |
-| **Q1 2026** | Complete formal semantics doc | 2-3 weeks | 40-60 hours |
-| **Q2 2026** | Key proofs (type safety, SMT soundness) | 4-6 weeks | 80-120 hours |
-| **Q3 2026** | Mechanization (Lean 4) | 6-8 weeks | 120-160 hours |
-| **Q4 2026** | AFP/CPP submission | 4-6 weeks | 60-80 hours |
+- **OR-Tools CP-SAT**: optional dependency of the reference structural checker (`python/tvl/structural_sat.py`).
+- **Lean 4 with Mathlib**: the proof tree in `proofs/`; versions are pinned in `proofs/lean-toolchain` and
+  `proofs/lakefile.lean`.
 
 ---
 
-## Resource Requirements
+## Appendix: Quick reference for implementers
 
-### Internal
-- 1 engineer with PL/formal methods background (part-time)
-- Review cycles with a domain expert for accuracy
+### Encoding rules
 
-### External (Optional)
-- Academic collaborator with Coq/Lean expertise
-- Formal methods consulting firm for review
-
-### Tools
-- Z3 (SMT solver) - already in use
-- Lean 4 or Coq - new setup required
-- LaTeX for paper/proof documents
-
----
-
-## Risk Mitigation
-
-| Risk | Mitigation |
-|------|------------|
-| Proofs reveal bugs in semantics | Better to find now than after deployment |
-| Formalization takes too long | Start with informal proofs, mechanize later |
-| Academic collaborator unavailable | Internal team can do informal proofs |
-| Competitors claim formal methods | Our head start is significant |
-
----
-
-## Appendix: Quick Reference for Implementation
-
-### Encoding Rules (Implementer Reference)
+This sketch follows the informative scaled encoding of semantics §8.3–8.4; the reference checker uses exact grid
+indices instead (see the FAQ above). Integer values stay unscaled; only float values and float thresholds are scaled
+by `P`. Compute `n · P` in exact rational arithmetic: in binary64, `0.07 * 100` is `7.000000000000001`, whose ceiling
+is 8, not 7.
 
 ```python
-def encode_type(t: TVLType) -> SMTSort:
-    match t:
-        case Bool(): return z3.BoolSort()
-        case Int(): return z3.IntSort()
-        case Float(): return z3.IntSort()  # Scaled!
-        case Enum(vals): return z3.IntSort()  # 0..|vals|-1
+import math
+from fractions import Fraction
 
-def encode_atom(a: Atom, ctx: Context) -> z3.ExprRef:
-    match a:
-        case Eq(var, val):
-            return ctx[var] == encode_value(val, ctx.type(var))
-        case Cmp(var, op, n):
-            scaled = scale(n) if ctx.type(var) == Float() else n
-            return op_to_z3(op)(ctx[var], scaled)
-        case Interval(lo, var, hi):
-            return z3.And(ctx[var] >= scale(lo), ctx[var] <= scale(hi))
-        case Mem(var, vals):
-            return z3.Or([ctx[var] == encode_value(v) for v in vals])
+def encode_threshold(op: str, n: str, P: int) -> int:
+    # Float TVAR compared with a constant n (semantics Definition 8.5).
+    # n is the threshold's decimal text, parsed exactly.
+    q = Fraction(n) * P
+    if op == ">=":
+        return math.ceil(q)
+    if op == ">":
+        return math.floor(q) + 1
+    if op == "<=":
+        return math.floor(q)
+    if op == "<":
+        return math.ceil(q) - 1
+    raise ValueError(op)
 
-def scale(n: float, precision: int = 1000) -> int:
-    return int(n * precision)
+# Interval a <= x <= b on a float TVAR:  ceil(a * P) <= x_scaled <= floor(b * P)
+# Equality x = v on a float TVAR: v * P must be an integer; otherwise the atom is false.
+# Enum TVARs are encoded by index 0..|D|-1; membership x in S is a disjunction of index equalities.
 ```
 
-### Verification Checklist (QA Reference)
+### Verification checklist
 
-- [ ] All error codes from `error-codes.md` map to formal properties
-- [ ] Type checker implements all rules from §4
-- [ ] SMT encoding matches §8 exactly
-- [ ] Promotion gate implements §9.3-9.4
-- [ ] Float scaling uses consistent precision throughout
+- [ ] Every error code in `docs/reference/error-codes.md` that maps to a formal judgment cites it (Appendix B of the
+      semantics)
+- [ ] The type checker implements the rules of §4
+- [ ] The structural checker preserves the judgments of §§5–6 (§10.4); the §8 encoding is one permitted way
+- [ ] The promotion gate implements §9.3–9.8 and §10.5
+- [ ] Float scaling is precision-aligned, or the checker uses an exact encoding or refuses (§10.4)
 
 ---
 
-*Document version: 1.0*  
-*Last updated: January 2026*
+*Document version: 2.0*
+*Last updated: October 2026 (TVL 1.5)*

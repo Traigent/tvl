@@ -28,17 +28,24 @@ pip install -e .
   ```
 - Note how adaptive variables (model, temperature, retrieval depth) map directly to Chapter 2’s configuration space.
 
-### 2. Zero-Code-Change Integration
-- Inspect the decorator pattern in the walkthrough and compare it with your existing code.
+### 2. Decorator Integration
+- Inspect the decorator pattern in the walkthrough: you wrap an existing function instead of rewriting it.
+  Compare it with your existing code.
 - Create a sample evaluation dataset (e.g., `questions.jsonl`) and run the optimization snippet provided.
 
 ### 3. Seamless vs Parameter Modes
-- Experiment with `injection_mode="seamless"` vs `"parameter"` by editing the walkthrough sample.
-- Observe how TVL specs capture the same ranges when you translate these modes into static files.
+- Experiment with `injection_mode="seamless"` vs `"parameter"` by editing the walkthrough sample. These are the two ways
+  the Traigent SDK hands a tuned configuration to your function. In `"seamless"` mode it overrides the values of
+  matching variables assigned inside the function (for example `model = "gpt-3.5"`). In `"parameter"` mode it passes the
+  configuration in as an explicit function argument (for example `config.model`).
+- Observe how TVL specs capture the same ranges when you translate these modes into static files. Either way, the range
+  of values to try becomes a TVAR (a tuned variable): for example `model` as `type: enum[str]` with
+  `domain: ["gpt-3.5", "gpt-4o"]` in the `tvars` list.
 
 ### 4. Multi-Objective Runs
 - Reuse the walkthrough’s multi-objective example or jump to Lab 2 for the full multi-objective tradeoff script.
-- Compare results with Triagent’s output manifests described in Chapter 5.
+- Compare results with the manifests described in Chapter 5 (an integration such as Traigent, whose optimizer
+  TVO reads TVL, can emit them; see [Chapter 5](chapter-05-integration.md)).
 
 ### 5. Privacy Modes and Execution
 - Toggle `execution_mode="edge_analytics"` to experience local-only runs.

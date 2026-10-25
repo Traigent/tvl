@@ -16,12 +16,14 @@ example_refs:
 opal_bridge: false
 ---
 
-Composition rules deserve the same skepticism as overlays. A new bundle should not silently widen
+Composition rules deserve the same skepticism as overlays (inputs that narrow or adapt a base TVL
+module for one environment, such as staging). A new bundle should not silently widen
 risk just because it combines individually attractive components.
 
 In practice, safe composition often means:
 
-- fewer active controllers in production than in experimentation
+- fewer active controllers (extra mechanisms that add adaptive behavior such as search, reflection,
+  or judging) in production than in experimentation
 - tighter retry or branch budgets in staging and rollout
 - manifest evidence that records exactly which bundle shape was promoted
 
@@ -33,13 +35,13 @@ production composition more constrained and easier to audit than the exploratory
 </ConceptCallout>
 
 The right default is conservative. If a bundle increases uncertainty about who made the decision,
-what evidence was used, or how to roll back, it is probably not ready for the production plane.
+what evidence was used, or how to roll back, it is probably not ready for the production environment.
 
 <PitfallCard title="Bundle Without Provenance">
 
 The most dangerous multi-pattern systems are not always the most complex. They are the ones that
-cannot explain, after the fact, which controller fired, which judge won, or which shard output
-actually drove the release decision.
+cannot explain, after the fact, which controller fired, which judge's verdict was selected, or which
+shard's partial result (a shard is one partition of the work) actually drove the release decision.
 
 </PitfallCard>
 

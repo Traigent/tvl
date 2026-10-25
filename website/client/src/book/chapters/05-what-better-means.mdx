@@ -22,7 +22,7 @@ Each directed objective has a `name` and a `direction`: `maximize` for the share
 
 Two objectives can conflict. A large model may solve more tickets but cost more per ticket. Then neither design is simply better, and TVL does not add the objectives into one score to force a winner. It compares them one at a time. A design beats another only when it is at least as good on every objective and better on at least one. This is called <Term id="pareto">Pareto dominance</Term> (<Ref to="semantics" section="section 9.2">formal semantics</Ref>). The designs that nothing beats form the Pareto front: the best trade-offs on offer.
 
-For this illustration, treat every number in this chapter as an exact objective value. "Better" then means the margin rule of this chapter, ε-dominance of those values, not permission to promote. <ChapterLink n={6}>Chapter 6</ChapterLink> adds the evidence tests.
+For this illustration, treat every number in this chapter as an exact objective value. "Better" then means the margin rule of this chapter, ε-dominance of those values (Pareto dominance in which differences smaller than a margin ε count as ties; <Ref to="semantics" section="section 9.3">formal semantics</Ref>), not permission to promote. <ChapterLink n={6}>Chapter 6</ChapterLink> adds the evidence tests. The strip under the figure's plot shows a band (a target range, explained at the end of this chapter). A confidence bar is the range in which a candidate's mean probably lies. A bar wholly inside the band is acceptable. A bar that crosses a band edge leaves acceptability unestablished, and TVL reports that as NoDecision (no decision yet).
 
 <Figure
   base="/book/media/better_with_margins"
@@ -38,7 +38,7 @@ For this illustration, treat every number in this chapter as an exact objective 
 
 <h2 id="ch5-incumbent">Incumbent and candidate</h2>
 
-Today the bot runs a medium model with a limit of two tool calls. That running configuration is the <Term id="incumbent">incumbent</Term>. You propose a change, a candidate configuration. TVL does not rank all designs. It asks one question at a time: should this candidate replace the incumbent? The <Term id="promotion-policy">promotion policy</Term>, `promotion_policy`, says how that comparison is made (<Ref to="language" section="“Promotion Policy”">language reference</Ref>).
+Today the bot runs a medium model with a limit of two tool calls. (This is the chapter's illustration; the runnable project in chapter 6 starts from a large model with one tool call.) That running configuration is the <Term id="incumbent">incumbent</Term>. You propose a change, a candidate configuration. TVL does not rank all designs. It asks one question at a time: should this candidate replace the incumbent? The <Term id="promotion-policy">promotion policy</Term>, `promotion_policy`, says how that comparison is made (<Ref to="language" section="“Promotion Policy”">language reference</Ref>).
 
 <h2 id="ch5-margins">Margins</h2>
 

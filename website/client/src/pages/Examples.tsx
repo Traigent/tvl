@@ -522,7 +522,7 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
             <div className="space-y-2 text-sm leading-7 text-muted-foreground">
               <p>
                 Read one small file first. Then learn structural checks, operational checks, release decisions,
-                overlays, and CI artifacts in that order.
+                and overlays, in that order.
               </p>
               <p>
                 TVL still spells operational preconditions as <code>constraints.derived</code> in YAML. This page uses

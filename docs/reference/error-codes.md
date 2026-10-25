@@ -1,17 +1,22 @@
 # TVL Error Code Catalog
 
-This document provides a normative catalog of all diagnostic codes emitted by TVL tooling. Each code follows the pattern `{category}_{description}` and includes severity level, explanation, and remediation guidance.
+This document catalogs the diagnostic codes of the module and pack linter (`tvl.lints`, run by `tvl-lint`, `tvl-validate`, `tvl-compose --validate`, `tvl-ci-gate` and `tvl-compile-runtime`), the operational checker, the composition and compilation tools, and the gate readiness codes listed below. Each entry gives the severity, an explanation and remediation guidance. Not yet listed: the codes of `tvl-config-validate` and the configuration constraint evaluator (`tvl.constraints`, `tvl.configuration`), and most measurement-bundle and gate-evidence codes (`tvl.measurement`, `tvl-ci-gate`).
+
+A pack (`tvl_pack`) is a separate document, introduced in TVL 1.3 and declaring `tvl_version` 1.3, 1.4 or 1.5, that carries organisation floors (requirements, monitors and optional responses) that modules can only tighten; see the [runtime guide](../guides/requirements-monitors-responses.md#9-organisation-floors-with-packs).
 
 ## Error Severity Levels
 
 | Severity | Meaning | Effect |
 |----------|---------|--------|
 | `error` | Fatal validation failure | Blocks execution; module is rejected |
-| `warning` | Suspicious but valid pattern | Module accepted; user should review |
+| `warning` | Suspicious but valid pattern | The module is not invalid, but `tvl-validate`, `tvl-lint` and `tvl-compose --validate` still report `ok: false` and exit 2; `tvl-compile-runtime` allows warnings |
+| `info` | Information only | Included in JSON output, and printed in the text output of `tvl-validate` and `tvl-lint`; never affects `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate` |
 
 ---
 
 ## Declaration Errors (TVARs)
+
+A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module lets vary, declared with a `name`, a `type` and a `domain` of allowed values.
 
 ### `duplicate_tvar`
 - **Severity**: error
@@ -29,13 +34,13 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Severity**: error
 - **Description**: TVAR declaration lacks a `type` field.
 - **Example**: `{ name: x, domain: [1,2,3] }` (missing type)
-- **Remediation**: Add `type: int|float|bool|enum[str]|tuple[...]|callable[ProtoId]`.
+- **Remediation**: Add one supported type, for example `type: int`. The choices are `int`, `float`, `bool`, `enum[T]` with `T` one of `str`, `int` or `float`, `tuple[...]` and `callable[ProtoId]`, where `ProtoId` is a protocol identifier such as `RerankerProto`.
 
 ### `unsupported_tvar_type`
 - **Severity**: error
 - **Description**: TVAR uses an unrecognized type string.
 - **Example**: `type: string` (should be `enum[str]`)
-- **Remediation**: Use a supported type: `bool`, `int`, `float`, `enum[T]`, `tuple[T*]`, `callable[ProtoId]`.
+- **Remediation**: Use a supported type: `bool`, `int`, `float`, `enum[T]` with `T` one of `str`, `int` or `float` (for example `enum[str]`), `tuple[T1, T2, ...]` with one or more component types (for example `tuple[enum[str], float]`), or `callable[ProtoId]` with a protocol identifier (for example `callable[RerankerProto]`). See formal semantics §2.3 for the type grammar.
 
 ---
 
@@ -43,7 +48,7 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ### `empty_domain`
 - **Severity**: error
-- **Description**: TVAR domain resolves to an empty set after specialization.
+- **Description**: TVAR domain resolves to an empty set after specialization (turning the declared domain, such as a list, set or range, into its finite set of values; formal semantics Definition 3.6). Registry domains are resolved outside TVL, so the linter does not check them for emptiness.
 - **Example**: `domain: []` for an enum TVAR
 - **Remediation**: Ensure domain contains at least one valid value.
 
@@ -73,15 +78,23 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ### `unsupported_domain_registry`
 - **Severity**: error
-- **Description**: Registry-backed domain used but not yet supported by linter.
-- **Example**: `domain: { registry: model_catalog }`
-- **Remediation**: Use explicit enumeration until registry support is available.
+- **Description**: A numeric (`int` or `float`) TVAR uses a registry-backed domain (`domain: { registry: ... }`, whose values come from a named external registry; formal semantics §2.4), which the linter does not support. Registry domains on `enum`, `tuple` and `callable` TVARs are accepted and resolved later, at specialization time.
+- **Example**: `{ name: max_tokens, type: int, domain: { registry: model_catalog } }`
+- **Remediation**: Give the numeric TVAR an explicit `range` or value list.
 
 ### `duplicate_domain_value`
 - **Severity**: error
-- **Description**: An enumerated TVAR domain lists the same member more than once. Repeated members silently collapse into one choice, which inflates the apparent domain size and makes encoding ambiguous.
+- **Description**: An enumerated TVAR domain lists the same member more than once. Without this error, repeated members would collapse into one choice, which inflates the apparent domain size and makes encoding ambiguous.
 - **Example**: `domain: ["gpt-4o", "gpt-4o"]`
 - **Remediation**: Remove the repeated value.
+- **Note**: The domain is a set (formal semantics Definition 3.6). `tvl-check-structural` does not report this code: it removes repeated members and checks the remaining set.
+
+### `non_finite_domain_value`
+- **Severity**: error
+- **Reported by**: `tvl-validate`, `tvl-lint`
+- **Description**: A TVAR domain contains NaN (not a number) or an infinity. TVL numeric domains are rationals (formal semantics Definitions 3.1-3.2), so these values are not admitted. The message names the TVAR and the value, and the path points at it. `tvl-check-structural` reports the same input as `structural_non_finite_domain`.
+- **Example**: `domain: { range: [0.0, .inf] }` gives `TVAR 't' domain contains inf; ...`
+- **Remediation**: Use finite bounds and values.
 
 ### `invalid_tuple_domain`
 - **Severity**: error
@@ -92,6 +105,8 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 ---
 
 ## Structural Constraint Errors
+
+`tvl-check-structural` decides whether the structural constraints can all hold at once. SAT (satisfiable) means at least one configuration in the declared domains meets them all; the checker then returns one such configuration, called a witness (a satisfying assignment). UNSAT (unsatisfiable) means no configuration does. The checker uses CP-SAT, the constraint solver in Google's optional OR-Tools library, when it is installed, and otherwise searches the domains itself.
 
 ### `undeclared_tvar`
 - **Severity**: error
@@ -121,7 +136,7 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Severity**: error
 - **Description**: Structural constraint expression cannot be parsed.
 - **Example**: `expr: "x ==="` (malformed syntax)
-- **Remediation**: Fix the expression syntax per DNF grammar.
+- **Remediation**: Fix the expression syntax; see the structural formula grammar in [`tvl.ebnf`](../../spec/grammar/tvl.ebnf).
 
 ### `invalid_constraint_expression`
 - **Severity**: error
@@ -133,25 +148,24 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Severity**: error
 - **Description**: Structural constraint contains non-linear operators.
 - **Example**: `expr: "x * y = 10"` (multiplication not allowed)
-- **Remediation**: Remove `*`, `/`, `^` operators; use only linear arithmetic.
+- **Remediation**: Remove `*`, `/`, `^` operators. Structural constraints have no arithmetic: write them with equality, comparison with a number, interval and `in` membership atoms, combined with `and`, `or`, `not` and `=>`.
 
 ### `unsupported_structural_literal`
 - **Severity**: error
-- **Description**: Constraint literal uses unsupported syntax.
-- **Example**: Complex nested expressions not in DNF form
-- **Remediation**: Simplify to supported atom forms (equality, comparison, range, membership).
+- **Description**: A parsed literal could not be analysed. This is an internal fallback: the parser itself converts supported formulas, including nested `and`/`or`/`not`, to disjunctive normal form (DNF, an `or` of `and`-clauses), and a formula that does not parse is reported as `invalid_structural_expression`.
+- **Example**: No well-formed input is known to reach it.
+- **Remediation**: Rewrite the literal as one of the supported atom forms (equality, comparison, interval, membership); if the formula looks valid, report it as a toolchain bug.
 
 ### `invalid_interval`
 - **Severity**: error
-- **Description**: Interval bounds are not valid numbers.
-- **Example**: `expr: "'a' <= x <= 'b'"`
+- **Description**: An interval bound token does not convert to a number. This is a defensive check: an interval must start with a number token, so a quoted or other non-numeric bound such as `"'a' <= x <= 'b'"` is reported as `invalid_structural_expression` instead.
 - **Remediation**: Use numeric bounds for intervals.
 
 ### `unsupported_strict_interval`
 - **Severity**: error
-- **Description**: Strict inequality (`<`) used in interval for integer TVAR.
-- **Example**: `expr: "1 < int_var <= 5"` (use `>=` for integers)
-- **Remediation**: Use non-strict bounds (`<=`, `>=`) for integer TVARs.
+- **Description**: Strict lower bound (`<` before the TVAR) used in an interval for an integer TVAR. A strict upper bound does not trigger this code.
+- **Example**: `expr: "1 < int_var <= 5"`
+- **Remediation**: Use non-strict bounds for integer TVARs: write `"2 <= int_var <= 5"`, which admits the same integers.
 
 ### `float_equality`
 - **Severity**: warning
@@ -161,9 +175,90 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ### `malformed_structural_constraint`
 - **Severity**: error
-- **Description**: A `constraints.structural` entry does not have the required shape. Each entry must be an object holding either `when` and `then`, or a single `expr`. A non-object entry, an entry with only one of `when`/`then`, and an entry with unrecognised keys are rejected, because the constraint would otherwise be silently ignored. An entry that mixes an incomplete `when`/`then` with `expr` is rejected by the JSON Schema; the lint does not yet flag that form.
+- **Description**: A `constraints.structural` entry does not have the required shape. Each entry must be an object holding either `when` and `then`, or a single `expr`. A non-object entry, an entry with only one of `when`/`then`, and an entry with unrecognised keys are rejected, because the constraint would otherwise be silently ignored. An entry that has both a complete `when`/`then` pair and `expr` is rejected. An entry that mixes `expr` with only one of `when` or `then` is not flagged today, by this lint or by the JSON Schema (its `oneOf` accepts the `expr` branch).
 - **Example**: `structural: ["model = 'gpt-4o'"]` (a bare string) or `{ when: "zero_shot = true" }` (no `then`)
 - **Remediation**: Write each entry as `{ when: ..., then: ... }` or `{ expr: ... }`.
+
+### `structural_undecided_without_solver`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: OR-Tools is not installed, and the fallback search neither found a satisfying assignment nor tried every value of every domain (for example, the module has a float TVAR). Satisfiability is undecided. The checker does not report this as UNSAT. It exits 2; with `--json` the result has `status: "undecided"` and an `issues` list holding this code.
+- **Example**: a module whose structural constraints involve a float TVAR, checked without OR-Tools, where the sampled values find no witness
+- **Remediation**: Install OR-Tools (`pip install ortools`) and run the check again.
+
+### Other undecided results of `tvl-check-structural`
+
+The codes below are also reported by `tvl-check-structural` when it cannot decide a module. Each one is severity `error`. The checker does not report the module as SAT or UNSAT. It exits 2; with `--json` the result has `status: "undecided"`, `ok: false`, `assignment` and `exact_assignment` set to `null`, and an `issues` list holding the code. Every message starts with `Structural satisfiability could not be decided:`.
+
+### `structural_encoding_overflow`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The exact integer encoding of a numeric TVAR (its grid index range, or a coefficient times a bound) would leave the range the solver handles safely (about ±2^62). The message names the variable.
+- **Example**: `{ name: t, type: float, domain: { range: [0.0, 1.0e+30], resolution: 1.0e-30 } }`
+- **Remediation**: Narrow the range or use a coarser `resolution`.
+
+### `structural_solver_inconclusive`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: OR-Tools CP-SAT returned a status other than a solution or `INFEASIBLE` (for example `MODEL_INVALID` or `UNKNOWN`). Only `INFEASIBLE` proves UNSAT, so the result is undecided. The message names the status.
+- **Example**: no small module is known to reach it; it guards against solver limits and encoding errors.
+- **Remediation**: Simplify the constraints or narrow the domains and run the check again; if it persists on a small module, report it as a toolchain bug.
+
+### `structural_witness_unverified`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The solver found an assignment, but the checker re-evaluates every witness exactly before it reports SAT, and this one failed: a value is not an exact member of its declared domain, or the assignment does not satisfy every constraint under exact evaluation.
+- **Example**: no well-formed input is known to reach it; it is a final check on the encoding.
+- **Remediation**: Report it as a toolchain bug, with the module.
+
+### `structural_witness_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The witness has a value whose exact text would need more than 2000 digits in its numerator or denominator, so it cannot be reported exactly.
+- **Example**: a float grid whose origin or step has very many digits
+- **Remediation**: Use literals with fewer digits or smaller exponents.
+
+### `structural_ill_typed_atom`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: An atom has no well-defined truth value under the typing rules T-Eq, T-Neq, T-Cmp and T-TVarEq ([formal semantics §4.6](../../formalization/tvl-formal-semantics.md#46-scalar-atom-typing-rules)), so the checker does not decide the module. Cases: the identifier is not a declared TVAR; an unsupported operator; ordering (`<`, `<=`, `>`, `>=`) two TVARs; comparing TVARs of different element classes (numeric, `bool`, non-numeric enum); ordering a non-numeric operand; comparing a numeric TVAR with a non-numeric literal; comparing a `bool` TVAR with a non-bool literal. `tvl-validate` reports most of these first as `undeclared_tvar` or `constraint_type_mismatch`. The element-class check is coarser than T-TVarEq, which requires equal element types: the checker treats `int` and `float` as one numeric class, so `int_var = float_var` is decided here rather than reported (`tvl-validate` rejects it as `constraint_type_mismatch`), and it accepts any two enum-domain TVARs here, leaving tuple arity to the lint's `constraint_type_mismatch`.
+- **Example**: `expr: "use_cot = 1"` where `use_cot` is `bool` (a bool never equals the number 1). The message is `atom 'use_cot == 1' in 'use_cot = 1' compares a bool TVAR with a non-bool literal (T-Eq/T-Neq).`
+- **Remediation**: Fix the atom: declare the TVAR, or compare it with a literal of its own type (`use_cot = true`).
+
+### `structural_non_finite_domain`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: A TVAR declaration contains NaN or an infinity (`.nan`, `.inf`, `-.inf`). TVL numeric domains are rationals (formal semantics Definitions 3.1-3.2), so these values are not admitted. The message gives the path of the value. `tvl-validate` reports the same input as `non_finite_domain_value`.
+- **Example**: `domain: { range: [0.0, .inf] }`
+- **Remediation**: Use finite bounds and values.
+
+### `structural_unresolved_domain`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: An atom references a TVAR whose domain comes from a registry (or a tuple with a registry component). The registry is not resolved during the check, so the atom has no values to decide over.
+- **Example**: `domain: { registry: model_catalog }` with `expr: "model = 'gpt-4o'"`
+- **Remediation**: Resolve the registry to an explicit list of values before the structural check.
+
+### `structural_pair_table_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: An equality or inequality between two enum TVARs needs a table of equal-value pairs larger than 1,000,000 rows. Repeated members are removed first, so the table has at most as many rows as the smaller domain has members. The message names both TVARs and the row count.
+- **Example**: `expr: "a = b"` where `a` and `b` are enum domains that share more than a million values
+- **Remediation**: Narrow one or both domains.
+
+### `structural_expansion_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: Expanding one expression's `in` sets and negated intervals into clauses gives more than 10,000 clauses (the parser's DNF clause limit). Each `in` set multiplies the count. The message gives the path of the expression.
+- **Example** (schematic; `...` stands for the omitted members and conjuncts, it is not valid syntax): `expr: "v0 in {0,...,9} and v1 in {0,...,9} and ... and v4 in {0,...,9}"`, that is five TVARs `v0` to `v4`, each tested against the ten values 0 to 9 (10^5 clauses)
+- **Remediation**: Split the expression into several constraints or simplify it.
+
+### `structural_value_too_large`
+- **Severity**: error
+- **Reported by**: `tvl-check-structural`
+- **Description**: The members of one enum or tuple domain expand to more than 1,000,000 nested nodes in total, or nest deeper than 100 levels. YAML aliases can make a small file stand for a very large value; the checker counts the expanded size before it compares values.
+- **Example**: a tuple member built by repeating an alias inside itself many times
+- **Remediation**: Flatten or shrink the values.
 
 ---
 
@@ -177,14 +272,14 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ### `non_linear_derived`
 - **Severity**: error
-- **Description**: Derived constraint contains non-linear operators.
-- **Example**: `require: "cost * quantity <= 100"`
+- **Description**: Derived constraint contains a non-linear operator: `/` or `^`. A product such as `cost * quantity` is not reported by this code: the lint reports bare names there as `derived_invalid_symbol_reference`, and `tvl-check-operational` reports a product of symbols as `unsupported_derived_expression`.
+- **Example**: `require: "env.context.cost / env.context.quantity <= 100"`
 - **Remediation**: Use only linear arithmetic (affine expressions).
 
 ### `derived_invalid_symbol_reference`
 - **Severity**: error
 - **Description**: Operational precondition references something other than `env.context.*`.
-- **Example**: `require: "daily_budget_remaining >= 10"` or `require: "env.context.service_price_usd <= 1.5"`
+- **Example**: `require: "daily_budget_remaining >= 10"` (a bare name; `env.context.daily_budget_remaining` is the valid form, and an `env.context` name missing from the environment is `unknown_derived_symbol`)
 - **Remediation**: Put numeric operational symbols under `environment.context` and reference them as `env.context.<name>`.
 
 ### `derived_references_bindings`
@@ -195,17 +290,65 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ---
 
+## Operational Check Errors
+
+`tvl-check-operational` reports these codes when it evaluates derived constraints against `environment.context` and checks exploration budgets. Each makes the check fail (exit 2). A budget error stops the check before derived constraints are evaluated.
+
+### `invalid_budget_max_trials`
+- **Severity**: error
+- **Description**: `exploration.budgets.max_trials` is not positive.
+- **Example**: `budgets: { max_trials: 0 }`
+- **Remediation**: Set `max_trials` to a positive integer.
+
+### `invalid_budget_max_spend`
+- **Severity**: error
+- **Description**: `exploration.budgets.max_spend_usd` is negative.
+- **Example**: `budgets: { max_spend_usd: -1 }`
+- **Remediation**: Set `max_spend_usd` to 0 or a positive number; 0 means no paid spending is allowed.
+
+### `invalid_budget_max_wallclock`
+- **Severity**: error
+- **Description**: `exploration.budgets.max_wallclock_s` is not positive. (The schema separately requires a whole number of seconds, at least 1.)
+- **Example**: `budgets: { max_wallclock_s: -1 }`
+- **Remediation**: Set `max_wallclock_s` to a whole number of seconds, at least 1 (for example `3600`); fractions such as `0.5` are rejected.
+
+### `unsupported_derived_expression`
+- **Severity**: error
+- **Description**: A derived constraint is not of the form `LinExpr OP Number`, where `LinExpr` is a sum or difference of terms such as `env.context.a` or `2 * env.context.b` (and plain numbers), and OP is `<=`, `>=`, `<`, `>` or `=`.
+- **Example**: `require: "env.context.a"`
+- **Remediation**: Write the constraint as a linear expression over `env.context.*` symbols compared with a number.
+
+### `unknown_derived_symbol`
+- **Severity**: error
+- **Description**: A derived constraint references an `env.context` symbol that the environment does not define.
+- **Example**: `require: "env.context.daily_budget_remaining >= 10"` with no `daily_budget_remaining` under `environment.context`
+- **Remediation**: Add the symbol to `environment.context`, or fix its name.
+
+### `non_numeric_derived_symbol`
+- **Severity**: error
+- **Description**: An `env.context` symbol used in a derived constraint does not have a numeric value.
+- **Example**: `environment.context.region: eu` with `require: "env.context.region <= 1"`
+- **Remediation**: Give the symbol a numeric value, or remove it from the constraint.
+
+### `derived_constraint_violation`
+- **Severity**: error
+- **Description**: A derived constraint evaluates to false for the values in `environment.context`.
+- **Example**: `require: "env.context.price_usd <= 1.5"` with `environment.context.price_usd: 2`
+- **Remediation**: Change the environment values or the constraint bound.
+
+---
+
 ## Objective Errors
 
 ### `legacy_objective_epsilon`
 - **Severity**: warning
-- **Description**: Objective uses deprecated `epsilon` field.
+- **Description**: Objective uses deprecated `epsilon` field. Epsilon is the per-objective comparison tolerance (formal semantics §9.3); it now lives in `promotion_policy.min_effect`.
 - **Example**: `{ name: quality, metric_ref: metrics.quality.v1, direction: maximize, epsilon: 0.01 }`
 - **Remediation**: Move epsilon to `promotion_policy.min_effect.quality`.
 
 ### `invalid_band_target`
 - **Severity**: error
-- **Description**: Banded objective target has invalid format.
+- **Description**: Banded objective target has invalid format. A banded objective declares an acceptable range instead of a direction: `target: [low, high]`, or `{ center, tol }`, where `tol` is the tolerance radius around `center` and must be greater than 0.
 - **Example**: `band: { target: [1, "high"] }`
 - **Remediation**: Use `target: [low, high]` with numeric values or `{ center: num, tol: num }`.
 
@@ -230,7 +373,7 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 ### `missing_band_target`
 - **Severity**: error
 - **Description**: Banded objective lacks target specification.
-- **Example**: `{ name: length, band: { test: TOST, alpha: 0.05 } }`
+- **Example**: `{ name: length, band: { test: TOST, alpha: 0.05 } }` (`TOST`, two one-sided tests, is the band test; `alpha` is its significance level; formal semantics §9.5)
 - **Remediation**: Add `target: [low, high]` or `target: { center: num, tol: num }`.
 
 ### `invalid_band_alpha`
@@ -267,11 +410,13 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ## Promotion Policy Errors
 
+The promotion policy compares a candidate with the incumbent. Under `dominance: epsilon_pareto` (formal semantics §9.3) the candidate must be no worse than the incumbent on every objective within that objective's tolerance in `min_effect`, and better on at least one by more than it. `chance_constraints` add limits on the rate of an undesirable event, each checked at a stated confidence (formal semantics Definition 9.8).
+
 ### `invalid_alpha`
 - **Severity**: error
-- **Description**: Policy alpha is not a positive number.
-- **Example**: `alpha: -0.05` or `alpha: "five percent"`
-- **Remediation**: Set alpha to a positive number (typically 0.05).
+- **Description**: Policy alpha is not a number strictly between 0 and 1. An omitted alpha takes the default 0.05; an explicit `null` is rejected.
+- **Example**: `alpha: -0.05`, `alpha: 1` or `alpha: "five percent"`
+- **Remediation**: Set alpha to a number in (0, 1), typically 0.05.
 
 ### `invalid_dominance`
 - **Severity**: error
@@ -281,9 +426,9 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ### `missing_min_effect`
 - **Severity**: error
-- **Description**: Objective lacks entry in `min_effect` map.
-- **Example**: `min_effect: { quality: 0.01 }` when `latency` objective exists
-- **Remediation**: Add epsilon entry for every declared objective.
+- **Description**: A directional objective (one with `direction: maximize` or `minimize`) lacks an entry in the `min_effect` map. Banded objectives need no entry.
+- **Example**: `min_effect: { quality: 0.01 }` when a `latency` objective with a direction exists
+- **Remediation**: Add a `min_effect` entry for every directional objective.
 
 ### `invalid_min_effect`
 - **Severity**: error
@@ -314,6 +459,14 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 - **Example**: `threshold: 1.5`
 - **Remediation**: Set `threshold` to a violation-rate bound between 0 and 1.
 
+
+### `zero_trials`
+- **Severity**: error
+- **Reported by**: `tvl-ci-gate`, the `chance` report of `tvl-measure-validate`, and the promotion gate (`epsilon_pareto_gate`) in the Python package
+- **Description**: A chance constraint has `trials: 0`, or no trial count. The chance check is undefined without trials (precondition of Definition 9.8 in the formal semantics), so the gate returns the decision `Error`, which is neither `Reject` nor `NoDecision`. This is checked before any other decision branch. When the gate returns `Error`, `tvl-ci-gate` prints `Decision: Error` and exits 2; with `--json` it prints `{ "ok": false, "decision": "Error", "error": ..., "codes": ["zero_trials"], "warnings": ..., "evidence": ... }`. Which you see depends on the bundle form. With canonical `chance_outcomes`, a `trials` of 0 or a missing `trials` is a schema error when the file is loaded (exit 2, no `decision`). With the deprecated top-level `chance` summary, `summary.trials: 0` passes the schema and reaches the gate, which returns `Error` with `zero_trials` (exit 2). A bundle passed to the gate in Python, without the schema check, also gets `Error`.
+- **Example**: the legacy bundle `{ "chance": { "safety": { "observed": 0.0 } }, "summary": { "trials": 0 } }`
+- **Remediation**: Provide at least one trial for every chance constraint.
+
 ---
 
 ## Exploration Errors
@@ -338,7 +491,7 @@ This document provides a normative catalog of all diagnostic codes emitted by TV
 
 ### `invalid_convergence_threshold`
 - **Severity**: error
-- **Description**: Hypervolume convergence threshold is not positive.
+- **Description**: Hypervolume convergence threshold is not positive. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
 - **Example**: `convergence: { metric: hypervolume_improvement, threshold: 0 }`
 - **Remediation**: Set threshold > 0.
 
@@ -418,7 +571,7 @@ These codes come from the `cvars` block introduced by RFC 0001 (`formalization/r
 
 ## Operational Policy Errors (TVL 1.1)
 
-These codes come from the `policies` block introduced by RFC 0001. Policies are operational declarations; the first supported strategy is `cascade`. Several of these codes are shared with composite cascades (see below).
+These codes come from the `policies` block introduced by RFC 0001. Policies are operational declarations; the first supported strategy is `cascade`: stages run in order, and a gate after each stage except the last decides whether to stop there or escalate to the next, so `m` stages have `m − 1` gates (RFC 0001 §3.8). Several of these codes are shared with composite cascades (see below).
 
 ### `invalid_policies`
 - **Severity**: error
@@ -488,7 +641,7 @@ RFC 0001 gives TVARs, CVARs, and policies one shared declaration namespace and a
 
 ### `invalid_scope`
 - **Severity**: error
-- **Description**: A declaration `scope` is not an object, has a field other than `node`, `agent`, or `workflow`, or has a value that is not a valid identifier.
+- **Description**: A declaration `scope` is not an object, has a field other than `node`, `agent`, or `workflow`, or has a value that is not a valid identifier. A `scope: null` is treated as absent and gets no diagnostic.
 - **Example**: `scope: { team: router }`
 - **Remediation**: Use only `node`, `agent`, and `workflow`, each set to an identifier string.
 
@@ -512,15 +665,22 @@ These codes validate `promotion_policy.require_calibration`, the strict evidence
 
 ### `invalid_require_calibration`
 - **Severity**: error
-- **Description**: `promotion_policy.require_calibration` is not an object with a boolean `enabled` field.
+- **Description**: `promotion_policy.require_calibration` is not an object with a boolean `enabled` field. A `null` value is treated as absent by the lint (the JSON Schema still requires an object).
 - **Example**: `require_calibration: { enabled: "yes" }`
 - **Remediation**: Set `enabled: true` or `enabled: false`.
 
 ### `invalid_calibration_context`
 - **Severity**: error
-- **Description**: `hash_covered_context` is not a list, names a key that is not a freshness-context extension key, or repeats a key. The mandatory core of the context is implicit and cannot be configured. The extension keys are `stage_versions`, `model_versions`, `budget_assumptions`, `cost_assumptions`, and `signal_inputs`.
+- **Description**: `hash_covered_context` is present and not `null` but is not a list, names a key that is not a freshness-context extension key, or repeats a key. The freshness context is the set of inputs hashed into a calibration certificate, so that a change to any of them makes the certificate stale (RFC 0001 §3.5). Its mandatory core is always hashed and cannot be configured. The extension keys are `stage_versions`, `model_versions`, `budget_assumptions`, `cost_assumptions`, and `signal_inputs`.
 - **Example**: `hash_covered_context: [dataset_version]`
 - **Remediation**: List each extension key at most once, using only the keys above.
+
+### `calibration_evidence_unsupported`
+- **Severity**: readiness issue (exit 2)
+- **Reported by**: `tvl-ci-gate` (and the promotion readiness report of `tvl-measure-validate`)
+- **Description**: The module is in a strict calibration evidence mode (RFC 0001 §3.6, RFC 0002 §5), but the measurement bundle and the `tvl-ci-gate` contract cannot validate calibration certificates, so promotion is refused. The gate checks the triggers it can see in the module: `require_calibration.enabled`, a cvar with `governance.require_calibration`, any declared cvar, a calibrated composite member, and non-empty `chance_constraints` when there is a cvar or calibrated composite member to certify. The operational-profile trigger of RFC 0001 §3.6 is not checked, because the gate does not receive the operational profile.
+- **Example**: `promotion_policy: { require_calibration: { enabled: true } }`
+- **Remediation**: None within the current tools; this module cannot be promoted by `tvl-ci-gate` until calibration certificates are supported.
 
 ---
 
@@ -532,7 +692,7 @@ These codes come from the `composites` block introduced by RFC 0002 (`formalizat
 
 ### `invalid_composites`
 - **Severity**: error
-- **Description**: `composites` is present but is not a list of declarations.
+- **Description**: `composites` is present, not `null`, and not a list of declarations. A `composites: null` is treated as absent.
 - **Example**: `composites: { name: answerer }`
 - **Remediation**: Declare `composites` as a list of declaration objects.
 
@@ -662,15 +822,15 @@ These codes come from the `composites` block introduced by RFC 0002 (`formalizat
 
 ### `unbound_signal_inputs`
 - **Severity**: error
-- **Description**: A signal use declares `inputs`, but they are not freshness-bound. `promotion_policy.require_calibration.hash_covered_context` must include `signal_inputs`, and `promotion_policy.require_calibration.signal_inputs` must equal the use-site input list.
+- **Description**: A signal use of a composite-bound threshold declares non-empty `inputs`, but they are not freshness-bound (`inputs: []` needs no coverage). `promotion_policy.require_calibration.hash_covered_context` must include `signal_inputs`, and `promotion_policy.require_calibration.signal_inputs` must equal the use-site input list.
 - **Example**: A stop signal with `inputs: [draft]` and `hash_covered_context: [model_versions]`
 - **Remediation**: Add `signal_inputs` to `hash_covered_context` and set the matching `signal_inputs` list.
 
 ### `missing_composite_parent`
 - **Severity**: error
-- **Description**: A threshold CVAR's `calibration.depends_on` omits a TVAR that parameterizes the arm the gate observes, so the threshold would not go stale when that TVAR changes.
+- **Description**: A threshold CVAR's `calibration.depends_on` omits a TVAR its threshold depends on, so the threshold would not go stale when that TVAR changes. The required set (RFC 0002 §3.5) is: for a post-cascade gate, every TVAR of the observed arm and of all earlier arms; for a pre-cascade gate, the TVARs of the arm it admits; for an ensemble `accept` threshold, the TVARs of every arm, of the judge if present, and the ensemble's own cardinality if it is a TVAR; for a loop stop threshold, the TVARs of the body.
 - **Example**: A post-cascade whose cheap arm is tuned by `cheap_model` and `temperature`, with a threshold CVAR that depends only on `cheap_model`
-- **Remediation**: Add every TVAR that parameterizes the observed arm to `depends_on`.
+- **Remediation**: Add every TVAR of the required set to `depends_on`.
 
 **Ensembles**
 
@@ -740,19 +900,60 @@ These codes come from the `composites` block introduced by RFC 0002 (`formalizat
 
 ## Schema Validation Errors
 
+### `duplicate_key`
+- **Severity**: error (at parse time)
+- **Description**: A YAML mapping repeats a key (RFC 0001 §3.5(4)). The file is rejected as it is read, before any other check. The message names the key, its line and its column, for example `duplicate_key: duplicate mapping key 'tvl' (line 3, column 1)`. A key written explicitly next to a `<<` merge, overriding the key it would inherit, is not a duplicate.
+- **Example**: a module with two top-level `tvars:` keys
+- **Remediation**: Keep one copy of the key and merge the values into it.
+
+### `complex_mapping_key`
+- **Severity**: error (at parse time)
+- **Description**: A YAML mapping key is itself a mapping or a sequence. TVL keys are scalars. Such a key is rejected rather than skipped, because a tagged collection key can construct to a plain string and silently replace an explicit key without tripping the duplicate-key check. The message names the kind of node and its line and column, for example `complex_mapping_key: a mapping key must be a scalar, found a sequence (line 2, column 3)`.
+- **Example**: `? [a, b]` followed by `: 1`
+- **Remediation**: Use a plain string key.
+
+### YAML loading limits (`YAMLLimitError`)
+
+Every TVL tool reads YAML through one hardened loader. A document that exceeds one of its limits is rejected as a YAML parse error before any other check. These failures have no diagnostic code: `tvl-validate` prints `Error: YAML syntax error: <message>` and exits 2, and `tvl-check-structural --json` returns `status: "error"` with the message in `error`.
+
+| Limit | Message |
+|-------|---------|
+| Input larger than 5 MiB | `YAML input too large (<size> bytes > 5242880 byte limit)` |
+| More than 5000 resolved aliases | `YAML alias-expansion budget exceeded (5000); possible entity-expansion DoS` |
+| Merge keys (`<<`) copy more than 100,000 key/value pairs in total | `YAML merge-key expansion budget exceeded (100000 inherited key/value pairs, line <n>); possible merge-expansion DoS` |
+| A float literal with more than 400 digits | `numeric literal has <n> digits (limit 400) (line <n>, column <n>)` |
+| A float literal whose exponent is beyond ±400 | `numeric literal exponent exceeds +-400 (line <n>, column <n>)` |
+| Nesting too deep for the parser | `YAML nesting too deep to parse safely` |
+
+Every finite binary64 number (the IEEE 754 double-precision floating-point format) can be written within the literal limits. The merge budget is charged before each copy, so a document whose merges double at each level fails fast instead of hanging. Numeric literals inside structural constraint expressions have the same 400-digit limit; `tvl-check-structural` reports a longer one as `invalid structural constraint: numeric literal out of bounds: ...` and exits 2.
+
 ### `schema_error`
 - **Severity**: error
 - **Description**: Module fails JSON Schema validation.
 - **Example**: Missing required field `tvl.module`
 - **Remediation**: Ensure module conforms to `tvl.schema.json`.
 
+### `invalid_document`
+- **Severity**: error
+- **Reported by**: `tvl-lint`
+- **Description**: The file is not a mapping at the top level (for example a YAML list, a bare scalar or an empty file), so it is not a TVL module.
+- **Example**: a file containing only `- a`
+- **Remediation**: Write the module as a YAML mapping with `tvl`, `tvars` and the other top-level keys.
+
 ---
 
 ## Formal Verification Warnings
 
-These warnings indicate that the module uses features outside the formally verified TVL subset. The module may still be valid and functional, but the formal soundness guarantees (Theorem 8.1, etc.) do not apply.
+These diagnostics indicate that the module uses features outside the formally verified TVL subset. The module may still be valid and functional, but the proved results, such as Encoding Soundness ([formal semantics §8.8](../../formalization/tvl-formal-semantics.md#88-encoding-soundness), Theorem 8.1), do not cover those features.
 
-`cvars`, `policies` (RFC 0001), and `composites` (RFC 0002) are also outside the formally verified subset today: the Lean proof tree (`proofs/`) predates both RFCs and has not yet been extended to cover them. There is no lint warning for this gap yet (tracked as follow-up work); see `formalization/tvl-formal-semantics.md` §1.4 for the full disclosure.
+`cvars`, `policies` (RFC 0001), and `composites` (RFC 0002) are also outside the formally verified subset today: the Lean proof tree (machine-checked proofs in the Lean 4 theorem prover, `proofs/`) does not model them. The info diagnostic `outside_proved_subset` below reports this; see `formalization/tvl-formal-semantics.md` §1.4 for the full disclosure.
+
+### `outside_proved_subset`
+- **Severity**: info
+- **Description**: The module declares a construct family that the Lean proofs do not model. It is emitted once per family present: `cvars`, `policies`, `composites` (an empty or absent section emits nothing). Callable domains are reported by `unverifiable_callable_type` instead.
+- **Example**: a module with a non-empty `cvars` list
+- **Impact**: The proved results (type soundness, and soundness of the SMT (satisfiability modulo theories) encoding) do not cover this construct. Info diagnostics are included in JSON output and printed in the text output of `tvl-validate` and `tvl-lint` (a successful `tvl-compose --validate` prints only the composed module in text mode). They never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
+- **Remediation**: None required.
 
 ### `unverifiable_registry_domain`
 - **Severity**: warning
@@ -760,7 +961,7 @@ These warnings indicate that the module uses features outside the formally verif
 - **Description**: Module uses a registry domain, which is outside the formally verified subset.
 - **Example**: `domain: { registry: model_catalog, filter: "version >= 2.0" }`
 - **Impact**: SMT encoding soundness (Theorem 8.1) does not apply to this module.
-- **Formal Property**: Registry domains have undefined `resolve(E_τ, R)` semantics.
+- **Formal Property**: The meaning of a registry domain is undefined in the formal semantics, because it depends on external state (the registry contents); see formal semantics Definition 3.6.
 - **Remediation**: For formal guarantees, resolve the registry to an explicit enum domain before validation.
 
 ### `unverifiable_callable_type`
@@ -775,11 +976,11 @@ These warnings indicate that the module uses features outside the formally verif
 ### `inadequate_precision`
 - **Severity**: warning
 - **Code**: W6003
-- **Description**: Float domain has values that collide under the current precision factor.
+- **Description**: A float domain is not precision-aligned to the current precision factor P (Definition 8.6): some value `v` of the domain has `v·P` not an integer. A range has the values `a + k·r`, so it is checked through its lower bound `a` and its resolution `r` (0.001 when omitted); when two values also collide after scaling, the message names them.
 - **Example**: `domain: { range: [0.0001, 0.001], resolution: 0.0001 }` with precision P=1000
-- **Impact**: SMT encoding soundness (Theorem 8.1) does not hold; constraint checking may be incorrect.
-- **Formal Property**: Domain is not precision-aligned per Definition 8.5.
-- **Remediation**: Choose a precision factor that exactly aligns every declared decimal value and range step; the diagnostic reports one exact-alignment factor when it can derive one. Otherwise use an exact rational or index encoding. A factor based only on the smallest gap between values is not sufficient.
+- **Impact**: The preconditions of SMT encoding soundness (Theorem 8.1) are not met, so the theorem does not cover this module; constraint checking may be incorrect.
+- **Formal Property**: Domain is not precision-aligned per Definition 8.6.
+- **Remediation**: Choose a precision factor P for which every declared value has `v·P` an integer; for a range, both the lower bound `a` and the resolution `r` must scale to integers. When it can, the message ends with `Suggested exact-alignment precision: P=N.` (also in `suggested_precision`); otherwise it ends with `Use exact rational or index encoding because an aligned integer precision could not be established.` For a set domain the suggested P aligns every value. For a range it is derived from the misaligned resolution alone (or, when the resolution is aligned, from the lower bound alone), so it may still leave the other one misaligned: for `{range: [0.00001, 0.001], resolution: 0.0003}` with P=1000 the suggestion is P=10000, but `0.00001·10000 = 0.1`. Check the suggested P against both `a` and `r` and re-run `tvl-lint`, or use an exact rational or index encoding. A factor based only on the smallest gap between values is not sufficient.
 
 ---
 
@@ -790,7 +991,7 @@ These warnings indicate that the module uses features outside the formally verif
 | 0 | Success under the tool's contract (see the 1.3 tool table below) |
 | 2 | A reported issue, validation or parse failure, or an unsuccessful gate decision, as specified by the tool |
 
-TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diagnostic outcome.
+TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`, which exits 5 when validation fails or it refuses a construct. Exit 1 is not a defined diagnostic outcome. Diagnostics with severity `info` never change the exit status.
 
 ---
 
@@ -821,6 +1022,7 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 | `float_equality` | warning | Structural | Float equality |
 | `derived_references_tvar` | error | Derived | TVAR in derived |
 | `non_linear_derived` | error | Derived | Non-linear derived |
+| `derived_invalid_symbol_reference` | error | Derived | Symbol other than `env.context.*` in derived |
 | `legacy_objective_epsilon` | warning | Objective | Deprecated epsilon |
 | `invalid_band_target` | error | Objective | Bad band target |
 | `invalid_band_bounds` | error | Objective | Bad band bounds |
@@ -840,15 +1042,35 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 | `invalid_parallelism` | error | Exploration | Bad parallelism |
 | `invalid_convergence_threshold` | error | Exploration | Bad threshold |
 | `invalid_convergence_window` | error | Exploration | Bad window |
+| `invalid_budget_max_trials` | error | Operational | max_trials not positive |
+| `invalid_budget_max_spend` | error | Operational | max_spend_usd negative |
+| `invalid_budget_max_wallclock` | error | Operational | max_wallclock_s not positive |
+| `unsupported_derived_expression` | error | Operational | Derived constraint not `LinExpr OP Number` (a linear expression compared with a number) |
+| `unknown_derived_symbol` | error | Operational | env.context symbol not defined |
+| `non_numeric_derived_symbol` | error | Operational | env.context symbol not numeric |
+| `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
 | `duplicate_domain_value` | error | Domain | Repeated enum member |
+| `non_finite_domain_value` | error | Domain | NaN or infinity in a domain |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
+| `structural_undecided_without_solver` | error | Structural | No OR-Tools; fallback could not decide |
+| `structural_encoding_overflow` | error | Structural | Exact encoding too large for the solver |
+| `structural_solver_inconclusive` | error | Structural | Solver status not OPTIMAL, FEASIBLE or INFEASIBLE; undecided |
+| `structural_witness_unverified` | error | Structural | Witness failed the exact re-check |
+| `structural_witness_too_large` | error | Structural | Witness value too large to print exactly |
+| `structural_ill_typed_atom` | error | Structural | Atom has no typed truth value |
+| `structural_non_finite_domain` | error | Structural | NaN or infinity in a TVAR declaration |
+| `structural_unresolved_domain` | error | Structural | Atom over an unresolved registry domain |
+| `structural_pair_table_too_large` | error | Structural | TVAR equality table over 1,000,000 rows |
+| `structural_expansion_too_large` | error | Structural | Expression expands past 10,000 clauses |
+| `structural_value_too_large` | error | Structural | Enum members too large or too deep |
 | `derived_references_bindings` | error | Derived | Bindings in derived |
 | `empty_objectives` | error | Objective | No objectives |
 | `duplicate_objective` | error | Objective | Duplicate objective name |
 | `invalid_direction` | error | Objective | Bad direction |
 | `unknown_min_effect_objective` | error | Policy | min_effect key not an objective |
 | `invalid_chance_threshold` | error | Policy | Bad chance threshold |
+| `zero_trials` | error | Policy | Chance constraint with no trials; gate decision Error |
 | `invalid_cvars` | error | CVAR (1.1) | cvars not a list |
 | `invalid_cvar_decl` | error | CVAR (1.1) | CVAR entry not an object |
 | `invalid_cvar_name` | error | CVAR (1.1) | Bad CVAR name |
@@ -874,6 +1096,7 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 | `namespace_prefix_collision` | error/warning | Namespace (1.1) | Name is a prefix of another |
 | `invalid_require_calibration` | error | Calibration (1.1) | Bad require_calibration |
 | `invalid_calibration_context` | error | Calibration (1.1) | Bad hash_covered_context |
+| `calibration_evidence_unsupported` | readiness issue | Calibration (1.1) | Strict calibration mode; gate refuses promotion |
 | `invalid_composites` | error | Composite (1.2) | composites not a list |
 | `invalid_composite_decl` | error | Composite (1.2) | Composite entry not an object |
 | `invalid_composite_name` | error | Composite (1.2) | Bad composite name |
@@ -907,10 +1130,14 @@ TVL tools use 0 and 2 for their documented results; exit 1 is not a defined diag
 | `missing_stop_signal` | error | Composite (1.2) | signal_accept without signal |
 | `missing_stop_predicate` | error | Composite (1.2) | external_accept without predicate |
 | `stop_signal_outside_state` | error | Composite (1.2) | Stop input not in state_keys |
+| `duplicate_key` | error | Schema | Repeated YAML mapping key (parse time) |
+| `complex_mapping_key` | error | Schema | Mapping or sequence used as a YAML key (parse time) |
 | `schema_error` | error | Schema | JSON Schema violation |
+| `invalid_document` | error | Schema | Top level is not a mapping |
 | `unverifiable_registry_domain` | warning | Formal | Registry domain used |
 | `unverifiable_callable_type` | warning | Formal | Callable type used |
-| `inadequate_precision` | warning | Formal | Float precision too low |
+| `outside_proved_subset` | info | Formal | cvars, policies or composites used (not in the Lean proofs) |
+| `inadequate_precision` | warning | Formal | Float domain not aligned to precision P (Definition 8.6) |
 
 ---
 
@@ -921,29 +1148,29 @@ These codes belong to the TVL 1.3 requirements, monitors and responses (see the
 [language reference](language.md#tvl-13-requirements-monitors-responses)). TVL 1.3 was accepted on 2026-10-21; a change to these codes is a language revision.
 
 Every diagnostic has the same shape as the codes above: `{ code, message, path, severity }`. In text mode a line looks like
-`[runtime_window_out_of_range] monitors.0.window.tumbling_hours: tumbling_hours 5 is outside its allowed domain`, and `path` points at the key to fix. Severity is
-`error` unless marked `warning`. Warnings still make `tvl-validate` and `tvl-lint` exit 2.
+`[runtime_window_out_of_range] monitors.0.window.tumbling_hours: tumbling_hours is outside its allowed domain`, and `path` points at the key to fix. Severity is
+`error` unless marked `warning`. Warnings still make `tvl-validate` and `tvl-lint` exit 2; `info` diagnostics never do.
 
 **Reported by** says which tool in this repository can produce the code:
 
 | Value | Tool |
 |---|---|
-| lint | `tvl-validate`, `tvl-lint` (and `tvl-ci-gate`, which runs the runtime lints first) |
+| lint | `tvl-validate`, `tvl-lint`, `tvl-ci-gate` (which runs the runtime lints first) and `tvl-compile-runtime` (which runs the same lints before compiling and stops at the first lint error; lint warnings do not stop it). So `tvl-compile-runtime` can report every error code marked lint. |
 | compose | `tvl-compose` with `--pack`, `--meet` or an overlay |
-| compile | `tvl-compile-runtime` |
+| compile | `tvl-compile-runtime`, from its own compile steps: customer checker bindings; the token map (a customer-side file that maps each customer-chosen name to its hosted reference); projection (rewriting the contract so only those hosted references leave the customer side); and the self-check. See [RFC 0003](../../formalization/rfc-0003-runtime-requirements-monitors-responses.md) §8.2, §11.4.6 and §11.5. A code marked `lint, compile` comes from both the lints and those steps. |
 | gate | `tvl-measure-validate`, `tvl-ci-gate` |
 | platform | defined by RFC 0003 for the platform that registers or evaluates your contract; no tool in this repository produces it |
 
 !!! note "Message text"
-    Some tools print only the code, for example `Error: requirement_weaker_than_floor`, with no path. The code, not the wording, is the stable part.
+    `tvl-compose` prints a composition error on one line as `Error: <code> at <path>: <message>`, for example `Error: requirement_weaker_than_floor at ...`. The code, not the wording, is the stable part.
 
 ### Version and readers
 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
 | `unsupported_construct` | error | various tools | a tool met a 1.3 construct it does not implement (`requirements`, `monitors`, `responses`, `tvl_pack`, `monitor_outcomes`, `runtime_report`) and refused instead of ignoring it. The first construct found is named. | use a tool that supports the construct (for a pack: `tvl-validate`, `tvl-lint`, `tvl-compose`, `tvl-compile-runtime`), or remove the construct for that tool |
-| `runtime_version_required` | error | lint | the document uses `requirements`, `monitors` or `responses`, or is a `tvl_pack`, and has no `tvl_version` | add `tvl_version: "1.4"` for reactive constructs, otherwise "1.3" or "1.4" |
-| `declared_version_below_constructs` | error | lint | `tvl_version` is not a supported quoted runtime version, or reactive constructs use "1.3"; unquoted versions are numbers | use "1.4" for reactive constructs, otherwise "1.3" or "1.4", quoted |
+| `runtime_version_required` | error | lint | the document uses `requirements`, `monitors` or `responses`, or is a `tvl_pack`, and has no `tvl_version` | add `tvl_version: "1.5"` for breach persistence or census aggregates ([RFC 0005](../../formalization/rfc-0005-persistence-and-census-aggregates.md)); at least "1.4" for reactive outcomes and notification guards ([RFC 0004](../../formalization/rfc-0004-reactive-outcomes-and-guards.md)); otherwise "1.3", "1.4" or "1.5" |
+| `declared_version_below_constructs` | error | lint | `tvl_version` is not a supported quoted runtime version ("1.3", "1.4" or "1.5"; unquoted versions are numbers), reactive outcomes or guards use "1.3", or breach persistence or census aggregates use "1.3" or "1.4" | use "1.5" for RFC 0005 constructs, at least "1.4" for RFC 0004 constructs, otherwise "1.3", "1.4" or "1.5", quoted |
 | `runtime_unsupported_capability` | error | platform | the target platform has not enabled the monitor's kind, source, method or predicate class | change the declaration to something the platform supports, or ask the platform to enable it |
 | `response_action_unsupported` | error | platform | the target platform cannot carry out a rule's action | remove the rule or pick an action the platform supports |
 
@@ -967,7 +1194,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | `runtime_legacy_profile_override` | error | lint | under `profile: backend_v1`, a field or value other than the frozen ones | remove the field, or drop `profile: backend_v1` and declare the monitor in full |
 | `runtime_rate_out_of_range` | error | lint | `max_rate` is not strictly between 0 and 1 | use a value such as `0.05` |
 | `runtime_confidence_out_of_range` | error | lint | `confidence` is not strictly between 0 and 1; under `backend_v1` it is not 0.90, 0.95 or 0.99 | pick an allowed value |
-| `runtime_window_out_of_range` | error | lint | `tumbling_hours` does not divide 24; under `backend_v1` it is not 1, 3, 6, 12 or 24 | use 1, 2, 3, 4, 6, 8, 12 or 24 |
+| `runtime_window_out_of_range` | error | lint | `tumbling_hours` does not divide 24; under `backend_v1` it is not 1, 3, 6, 12 or 24 | use 1, 2, 3, 4, 6, 8, 12 or 24 (under `backend_v1`: 1, 3, 6, 12 or 24) |
 | `runtime_grace_out_of_range` | error | lint | `grace_minutes` is outside 0 to 360 | use 0 to 360 |
 | `runtime_min_samples_out_of_range` | error | lint | `min_samples` is outside 1 to 10,000,000 | use a value in range |
 | `runtime_unresolved_fraction_out_of_range` | error | lint | `max_unresolved_fraction` is outside 0 to 0.5 | use a value in range |
@@ -987,7 +1214,7 @@ Every diagnostic has the same shape as the codes above: `{ code, message, path, 
 | `runtime_max_repeats_out_of_range` | error | lint | `max_repeats` is below 1 | use an integer >= 1 |
 | `runtime_max_active_obligations_out_of_range` | error | lint | `limits.max_active_obligations` is below 1 | use an integer >= 1 |
 | `runtime_max_tracked_correlations_out_of_range` | error | lint | `limits.max_tracked_correlations` is below 1 | use an integer >= 1 |
-| `runtime_burn_out_of_range` | error | lint | a burn monitor with `threshold_factor` <= 1, or with b times `max_rate` >= 1, or that can never breach at `min_samples` | choose b > 1 with b times `max_rate` < 1 and a `min_samples` that can breach |
+| `runtime_burn_out_of_range` | error | lint | a burn monitor whose `threshold_factor`, written b here, is <= 1, or with b times `max_rate` >= 1, or that can never breach at `min_samples` | choose b > 1 with b times `max_rate` < 1 and a `min_samples` that can breach |
 | `runtime_zero_tolerance_inexact` | error | lint | a `zero_tolerance` violation that is a metric or a checker rather than an exact pattern | use an exact pattern, or switch to `rate_bound` |
 | `runtime_among_not_checker` | error | lint | an `among` that is a metric or an exact pattern; 1.3 defines population membership only for checker labels | select the population with a checker, or drop `among` |
 | `runtime_zero_tolerance_incomplete` | error | lint | a `zero_tolerance` monitor declares `sampling`; a sampled window can never be complete, so `MET` would be unreachable | remove `sampling` |
@@ -1013,9 +1240,9 @@ A value of the wrong JSON type, for example a string where an integer is require
 | `closure_unreachable` | error | lint, compose | `closure_max_age_hours * 60` is less than `closure_windows * tumbling_hours * 60 + grace_minutes + 60`, so clean windows can never be fresh enough to close an episode (also checked on the composed result) | raise `closure_max_age_hours`, or shorten the window, grace or `closure_windows` |
 | `evaluation_schedule_mismatch` | error | compose | a module monitor and its floor, an overlay and its base, or two meet inputs differ in window length, grace, horizon or false-alarm budget | make the schedules identical |
 | `requirement_weaker_than_floor` | error | compose | the module's monitor or obligation bound is weaker than the pack floor on a composed field (higher `max_rate`, lower `confidence`, ...) | tighten your numbers to the floor or better |
-| `runtime_duplicate_key` | error | lint | two monitors have the same effective key (same predicate, source, environment, attribution, method and `threshold_factor`), or two monitors serve one obligation | keep one, or change what they measure; use a burn monitor for a second tier |
+| `runtime_duplicate_key` | error | lint | two monitors have the same effective key (same requirement identity: kind, unit, population and predicate; and same source, environment, attribution, method and `threshold_factor`), or two monitors serve one obligation | keep one, or change what they measure; use a burn monitor for a second tier |
 | `recovery_deadline_impossible` | error | lint, compose | `within_hours` is less than `closure_windows * tumbling_hours`, so an episode could never close in time (equal is fine; also checked on the composed result) | raise `within_hours` or shorten the window or `closure_windows` |
-| `tenant_floor_outside_pack` | error | lint | a module monitor declares `applies_to: tenant_floor`, which only a pack may do | remove `applies_to`, or move the monitor into a `tvl_pack` |
+| `tenant_floor_outside_pack` | error | lint | a module monitor declares `applies_to: tenant_floor`, which only a pack may do; a composed module passes when it is validated with the floor provenance record of `tvl-compose --validate` | remove `applies_to`, or move the monitor into a `tvl_pack` |
 | `runtime_incompatible_replacement` | error | compose | an overlay, pack or meet changed an immutable part: predicate, population, source, environment, method, sampling, `threshold_factor`, `single_producer`, `limits`, an outcome trigger, `only_while` set or `unless` set | change only tightenable numbers, or declare a new requirement |
 | `runtime_overlay_weakens` | error | compose | an overlay drops a base declaration or rule, loosens a number, lowers a notification severity, weakens an approval, or widens a repeat bound; the same for a module response against a same-named pack response | keep every base item and only tighten |
 
@@ -1031,11 +1258,11 @@ A value of the wrong JSON type, for example a string where an integer is require
 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
-| `runtime_invalid_ladder` | error | lint | RFC 0004: deploy outcome without if_promoted, repeats on an outcome, outcome or attempt guard in a pack, unknown_for on a non-primary monitor;  an action parameter is missing, not allowed for the action or ill-typed (`target` only on `rollback`, `fallback` only on `suspend` and `degrade`, `rate_floor` only on `throttle`, `severity` only on `notify`, `on_check_error` only on the guards, `deploy` only on `optimize`, `max_repeats` without `repeat_after_hours`, a fingerprint that is not 64 lowercase hex characters); `trigger.hours` present unless `episode_open_for` or `unknown_for`, or missing with either; `deploy: if_promoted` on an event other than `episode_opened`, `episode_continued` or `episode_open_for`; an approval the action does not allow; or a remote service action on a terminal-scope event or `unit_violation` | compare the rule with the action and trigger tables in the reference; terminal events can notify, but cannot authorize a remote service action |
+| `runtime_invalid_ladder` | error | lint | a response rule breaks one of the ladder rules listed below this table | compare the rule with the action and trigger tables in the reference; terminal events can notify, but cannot authorize a remote service action |
 | `response_suspend_without_human` | error | lint | `suspend` without an explicit `approval: human`, including an omitted approval | write `approval: human` explicitly |
 | `response_suspend_unconfirmed` | error | lint | `suspend` triggered by an event other than `episode_continued`, `episode_open_for` or `recovery_overdue` | trigger on one of those three events |
 | `response_irreversible_without_approval` | error | lint | `optimize`, `rollback`, `throttle` or `degrade` with `approval: none` | use `standing` or `human` |
-| `response_rollback_target_uncertified` | error | platform | a rollback `target` or degrade `fallback` fingerprint has no valid configuration-attributed certificate | use `last_certified` or a fingerprint that is certified |
+| `response_rollback_target_uncertified` | error | platform | a rollback `target` or degrade `fallback` fingerprint has no valid configuration-attributed certificate | for rollback, use `last_certified` or a certified fingerprint; for degrade, use a certified fingerprint (64 lowercase hex characters; `last_certified` is not accepted there) |
 | `response_guard_not_enforceable` | error | lint | `block_action` or `halt_unit` on a monitor whose violation is not fixed by a prefix (`bounded_response`, metric, checker), whose source is not `customer_side`, or triggered by an event other than `unit_violation` | use a guard only on `absence`, `bounded_existence`, `precedence` or `protocol`, on `unit_violation` |
 | `response_on_check_error_missing` | error | lint | a guard without `on_check_error` | choose `block` (fail closed) or `allow` |
 | `response_rule_repeat_unbounded` | error | lint | an action other than `notify` repeats without `max_repeats` | add `max_repeats` |
@@ -1044,7 +1271,16 @@ A value of the wrong JSON type, for example a string where an integer is require
 | `runtime_guard_cycle` | error | lint | cycle (including self-loop) in the unless monitor graph, using the referenced optimize rule's source for outcome rules; attempts add no edge | remove mutual/self inhibition |
 | `runtime_guard_redundant` | warning | lint | only_while names the rule's own source monitor | omit the redundant guard |
 
-Reactive constructs require the quoted version "1.4"; using "1.3" yields
+`runtime_invalid_ladder` is reported when a rule:
+
+- has an action parameter that is missing, not allowed for the action, or ill-typed: `target` only on `rollback`; `fallback` only on `suspend` and `degrade`; `rate_floor` only on `throttle`; `severity` only on `notify`; `on_check_error` only on the guards; `deploy` only on `optimize`; `max_repeats` without `repeat_after_hours`; a fingerprint that is not 64 lowercase hex characters;
+- has `trigger.hours` with an event other than `episode_open_for` or `unknown_for`, or lacks it with either;
+- has `deploy: if_promoted` on an event other than `episode_opened`, `episode_continued` or `episode_open_for`;
+- has an approval the action does not allow;
+- authorizes a remote service action on a terminal-scope event or on `unit_violation`;
+- (RFC 0004) has a deploy outcome trigger whose optimize rule lacks `deploy: if_promoted`, repeat coordinates on an outcome-triggered rule, an outcome trigger or `attempt_open` guard in a pack, or `unknown_for` on a non-primary monitor.
+
+Reactive constructs require quoted `tvl_version` "1.4" or later ("1.5" is also accepted); using "1.3" yields
 `declared_version_below_constructs`. Unknown outcome events/guard states use `runtime_unknown_kind`
 (the compiled schemas reject them too). Guards have sealed reference/state shapes.
 
@@ -1052,17 +1288,17 @@ Reactive constructs require the quoted version "1.4"; using "1.3" yields
 
 | Code | Severity | Reported by | What it means | What to do |
 |---|---|---|---|---|
-| `missing_monitor_counts` | readiness issue (exit 2) | gate | a promotion monitor has no `monitor_outcomes.<monitor name>` in the candidate bundle, or its `k` is greater than `n` | supply `{ n, k }` (and `complete: true` for a zero-tolerance monitor) |
+| `missing_monitor_counts` | readiness issue (exit 2) | gate | a promotion monitor has no `monitor_outcomes.<monitor name>` in the candidate bundle, or its `k` is greater than `n` | supply `{ n, k }`, where `n` counts the resolved evaluation-set units in the monitor's population and `k` the violating ones (and `complete: true` for a zero-tolerance monitor) |
 | `runtime_report_conservation` | error | platform | a window report breaks count conservation, or does not match its contract, the window grid or the sampling commitment | fix the producer of the report; the error repeats no input |
 
 ### Exit codes of the 1.3 tools
 
 | Tool | 0 | 2 |
 |---|---|---|
-| `tvl-validate`, `tvl-lint` | no issue | any issue, warnings included |
+| `tvl-validate`, `tvl-lint` | no issue, or only `info` issues | any `error` or `warning` issue |
 | `tvl-compose` | composed | any composition error or unreadable input |
 | `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
-| `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, not ready, or any error |
+| `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, `Error` (an undefined check such as `zero_trials`), not ready, or any error |
 
 ## TVL 1.5 diagnostics
 
@@ -1070,9 +1306,9 @@ These diagnostics are specified by [RFC 0005 §2.6](../../formalization/rfc-0005
 All rows below have severity error.
 Old diagnostic meanings remain unchanged for documents without the new constructs.
 
-| Code | Proposed condition |
+| Code | Condition |
 |---|---|
-| `runtime_persistence_out_of_range` | integer k/n violates `1 ≤ k ≤ n ≤ 168` |
+| `runtime_persistence_out_of_range` | with k = `persist.breached_in` and n = `persist.of_last`, the integers violate `1 ≤ k ≤ n ≤ 168` |
 | `runtime_invalid_persistence` | ineligible source role/event, or either repeat coordinate with persistence |
 | `runtime_aggregate_bound_out_of_range` | negative bound, or mean-score bound above 1 |
 | `runtime_report_numeric` | malformed, noncanonical or out-of-domain aggregate report sum; nonzero sum for zero members; missing sum for complete nonempty evidence without `unknown_reason: "aggregate_precision_limit"` |
@@ -1091,15 +1327,15 @@ enums, numeric domains and references. Every nested record is closed. Malformed 
 summaries are refused; diagnostics echo no input.
 The entire report sum string must match the minimal decimal encoding; trailing characters,
 including a newline after `12.5`, are `runtime_report_numeric`. With zero members, only an absent
-sum or `"0"` is valid. Report/2 permits optional `unknown_reason` with the closed, single-value
+sum or `"0"` is valid. The aggregate window report format `tvl-runtime-report/2` ([RFC 0005 §2.5](../../formalization/rfc-0005-persistence-and-census-aggregates.md#25-composition-and-exchanged-documents)) permits optional `unknown_reason` with the closed, single-value
 enum `aggregate_precision_limit`; omitting a complete nonempty sum with that reason yields
 UNKNOWN(aggregate_precision_limit).
 
-Verdict reasons are separate from error codes. Proposed additions are `persistence_history_gap`
+Verdict reasons are separate from error codes. TVL 1.5 adds `persistence_history_gap`
 (missing, unavailable or incompatible history slot, including missing identity fields or absent
 `available`), `aggregate_pending` (before due), and `aggregate_precision_limit`
-(exact arithmetic exceeds declared limits). Reuse `inconclusive` for undecided persistence,
-`insufficient` for complete empty aggregates, and extend `incomplete` to incomplete aggregates,
+(exact arithmetic exceeds declared limits). It reuses `inconclusive` for undecided persistence and
+`insufficient` for complete empty aggregates, and extends `incomplete` to incomplete aggregates,
 including invalid raw contributions. An invalid raw value is not a zero contribution.
 Missing or null coverage, invalid membership (anything other than boolean `true`, boolean `false`
 or the string `"unknown"`), and late units without coverage attesting completeness yield

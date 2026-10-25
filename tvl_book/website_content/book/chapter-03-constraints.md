@@ -1,8 +1,10 @@
 # Chapter 3 · Constraints and Safety Nets
 
-TVL uses a **typed Disjunctive Normal Form (DNF)** constraint language that compiles to SAT/SMT solvers
-for formal verification. This chapter shows how to write structural and derived constraints, and test them
-before TVO wastes a single trial.
+TVL uses a **typed Disjunctive Normal Form (DNF)** constraint language. Tools can hand these formulas to a
+SAT/SMT solver (a program that decides whether a set of logical formulas can all be true at once) to check that
+the constraints are satisfiable, that is, that at least one configuration meets them. This chapter shows how to
+write structural and derived constraints, and how to test them before an optimizer (such as TVO, the TVL
+Optimizer in the Traigent platform) spends trials on configurations the constraints rule out.
 
 ## Two Kinds of Constraints
 
@@ -10,8 +12,8 @@ TVL separates constraints into two categories:
 
 | Category | Evaluated When | Purpose |
 |----------|---------------|---------|
-| **Structural** | Before trials run (static) | Rules over TVARs that define valid configuration space |
-| **Operational Preconditions** | At runtime (dynamic) | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom |
+| **Structural** | Before trials run (static) | Rules over TVARs (tuned variables) that define the valid configuration space |
+| **Operational Preconditions** | Before trials run (static), against the declared environment snapshot | Feasibility checks over environment symbols such as provider price, baseline latency, and request headroom |
 
 ```yaml
 # Fragment: constraints section only (embed in full TVL module)
@@ -23,7 +25,7 @@ constraints:
       then: max_tokens >= 1000
 
   derived:
-    # Checked at runtime against environment symbols
+    # Checked statically against the declared environment snapshot (env.context)
     - require: env.context.gateway_baseline_latency_ms <= 250
     - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05
     - require: env.context.rpm_limit - env.context.rpm_current_load >= 50
@@ -31,16 +33,19 @@ constraints:
 
 ## Structural Constraint Syntax
 
-Structural constraints use typed DNF formulas over TVARs. The syntax differs from general-purpose languages:
+Structural constraints use typed DNF formulas over TVARs (the tuned variables declared in `tvars`). The canonical
+syntax, from the [grammar](../../../spec/grammar/tvl.ebnf), differs from general-purpose languages:
 
-| TVL Syntax | Meaning | NOT This |
+| Canonical TVL | Meaning | Avoid |
 |----------------|---------|----------|
-| `model = "gpt-4o"` | Equality | `model == "gpt-4o"` |
-| `temperature <= 0.5` | Comparison | `params.temperature <= 0.5` |
+| `model = "gpt-4o"` | Equality | `model == "gpt-4o"` (accepted by the reference parser, but not canonical) |
+| `temperature <= 0.5` | Comparison, using the declared TVAR name | `params.temperature <= 0.5` (unless a TVAR is declared with that dotted name) |
 | `A and B` | Conjunction | `A && B` |
 | `A or B` | Disjunction | `A \|\| B` |
 | `not A` | Negation | `!A` |
-| `x in {"a", "b"}` | Set membership | `x in ["a", "b"]` |
+| `x in {"a", "b"}` | Set membership | `x in ["a", "b"]` (accepted by the reference parser, but not canonical) |
+
+The reference parser rejects `&&`, `||`, and `!`.
 
 ### Expression Form vs Implication Form
 
@@ -56,7 +61,7 @@ constraints:
       then: temperature <= 0.5
 ```
 
-### Complete Example
+### Structural Constraint Fragment
 
 ```yaml
 # Fragment: structural constraints showcasing all syntax forms
@@ -83,13 +88,15 @@ constraints:
 
 !!! reliability "Debugging Constraint Failures"
     Run `tvl-check-structural spec.yml` to see which constraints are unsatisfiable.
-    The tool reports an UNSAT core when available, showing the minimal conflicting subset.
+    The tool reports an UNSAT core when available: a subset of constraints that conflict with each other.
+    The core may be approximate and is not necessarily minimal.
     Use `--json` for machine-readable output.
 
 ## Operational Preconditions
 
-Operational preconditions are linear inequalities over **environment symbols** (not TVARs). They're evaluated at
-runtime against the current environment snapshot.
+Operational preconditions are linear comparisons (inequalities or equalities) over **environment symbols** (not
+TVARs). They are checked statically, before any trial, against the environment snapshot declared in the module
+(`environment.context`). Run `tvl-check-operational spec.yml` to check them.
 
 ```yaml
 # Fragment: derived constraints over environment symbols
@@ -113,9 +120,13 @@ constraints:
 
 Load the Orientation RAG lab (Latency Spike preset) to see constraint feedback the moment a slider moves.
 
-<iframe src="../../sims/orientation-rag-circuit/main.html#latency-spike" height="640px" scrolling="no" style="width: 100%; border: none;"></iframe>
+<iframe src="../microsims/orientation-rag-circuit/main.html#latency-spike" height="640px" scrolling="no" style="width: 100%; border: none;"></iframe>
 
-Each warning mirrors a structural constraint:
+The lab shows three warnings. Only the rerank rule has the shape of a TVL structural constraint (an implication over
+knobs). The latency and cost warnings check simulated outcomes; in TVL, limits on measured outcomes belong in
+`objectives` or promotion-policy chance constraints (caps on a violation rate, checked against evaluation results at a
+stated confidence; see [formal semantics Definition 9.8](../../../formalization/tvl-formal-semantics.md)), not in
+structural constraints:
 
 - **Latency under 800 ms** — raises amber/red when the simulated configuration breaches the ceiling.
 - **Cost under $0.12** — highlights the response-token capacitor if the API budget slips.
@@ -138,21 +149,26 @@ tvl-check-structural my-spec.tvl.yml --json
 For unit testing in Python, use the TVL SDK:
 
 ```python
-from tvl import loader, structural_sat
+from tvl import load, validate_configuration
+from tvl.structural_sat import check_structural
 
 def test_constraints_satisfiable():
     """Verify the spec has at least one valid configuration."""
-    module = loader.load("my-spec.tvl.yml")
-    result = structural_sat.check(module)
-    assert result.satisfiable, f"UNSAT: {result.unsat_core}"
+    module = load("my-spec.tvl.yml")
+    result = check_structural(module)
+    assert result.ok, f"UNSAT or undecided: {result.unsat_core}"
 
 def test_specific_config_valid():
-    """Verify a specific configuration passes constraints."""
-    module = loader.load("my-spec.tvl.yml")
-    config = {"model": "gpt-4o-mini", "temperature": 0.3, "max_tokens": 512}
-    errors = structural_sat.validate_config(module, config)
-    assert not errors, f"Constraint violations: {errors}"
+    """Verify a specific configuration passes domains and constraints."""
+    module = load("my-spec.tvl.yml")
+    config = {"assignments": {"model": "gpt-4o-mini", "temperature": 0.3, "max_tokens": 512}}
+    report = validate_configuration(module, config)
+    assert report["ok"], f"Violations: {report['domains'] + report['constraints']}"
 ```
+
+`validate_configuration` expects a value for every TVAR. Its constraint evaluator is narrower than
+`tvl-check-structural`: in TVL 1.5 it reports `not`, interval forms such as `0.0 <= temperature <= 1.0`, and
+`in {...}` membership as unsupported, and fails closed. Use `check_structural` for those forms.
 
 Run the tests:
 

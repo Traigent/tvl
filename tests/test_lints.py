@@ -299,6 +299,49 @@ class FormalVerificationScopeTests(unittest.TestCase):
         self.assertEqual("warning", callable_warnings[0]["severity"])
         self.assertIn("callable", callable_warnings[0]["message"])
 
+    def _outside(self, doc):
+        return [i for i in lint_module(doc) if i["code"] == "outside_proved_subset"]
+
+    def test_outside_proved_subset_one_warning_per_family(self) -> None:
+        for key, decl in (
+            ("cvars", {"name": "c1", "type": "float"}),
+            ("policies", {"name": "p1", "kind": "cascade"}),
+            ("composites", {"name": "k1", "kind": "ensemble"}),
+        ):
+            doc = _base_module()
+            doc[key] = [dict(decl), dict(decl, name=decl["name"] + "b")]
+            warns = self._outside(doc)
+            self.assertEqual(1, len(warns), key)
+            self.assertEqual("info", warns[0]["severity"])
+            self.assertEqual(key, warns[0]["construct"])
+            self.assertIn(key, warns[0]["message"])
+            self.assertIn("proofs/PROOF_SUMMARY.md", warns[0]["message"])
+
+    def test_outside_proved_subset_all_families_three_warnings(self) -> None:
+        doc = _base_module()
+        doc["cvars"] = [{"name": "c1"}]
+        doc["policies"] = [{"name": "p1"}]
+        doc["composites"] = [{"name": "k1"}]
+        warns = self._outside(doc)
+        self.assertEqual(["cvars", "policies", "composites"], [w["construct"] for w in warns])
+
+    def test_outside_proved_subset_not_emitted_for_proved_subset(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "t", "type": "enum[str]", "domain": ["a", "b"]}]
+        self.assertEqual([], self._outside(doc))
+        # Empty sections declare no constructs.
+        doc["cvars"] = []
+        doc["policies"] = []
+        doc["composites"] = []
+        self.assertEqual([], self._outside(doc))
+
+    def test_callable_domain_not_double_warned(self) -> None:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "s", "type": "callable[Scorer]", "domain": ["a"]}]
+        issues = lint_module(doc)
+        self.assertEqual([], [i for i in issues if i["code"] == "outside_proved_subset"])
+        self.assertEqual(1, len([i for i in issues if i["code"] == "unverifiable_callable_type"]))
+
     def test_inadequate_precision_with_colliding_values(self) -> None:
         """W6003: Float values that collide at default precision."""
         doc = _base_module()
@@ -399,6 +442,37 @@ class FormalVerificationScopeTests(unittest.TestCase):
         issues = lint_module(doc, precision=1000)
         precision_warnings = [i for i in issues if i["code"] == "inadequate_precision"]
         self.assertEqual(0, len(precision_warnings))
+
+    def _precision_warnings(self, domain: Any, precision: int) -> list[Dict[str, Any]]:
+        doc = _base_module()
+        doc["tvars"] = [{"name": "x", "type": "float", "domain": domain}]
+        return [i for i in lint_module(doc, precision=precision) if i["code"] == "inadequate_precision"]
+
+    def test_single_unaligned_value_warns_per_definition_8_6(self) -> None:
+        """Definition 8.6: aligned iff v·P ∈ ℤ for every v; 0.0001·1000 = 0.1 is not."""
+        warnings = self._precision_warnings([0.0001], 1000)
+        self.assertEqual(1, len(warnings))
+        self.assertIn("Definition 8.6", warnings[0]["formal_property"])
+        self.assertEqual(10000, warnings[0]["suggested_precision"])
+
+    def test_collision_free_but_unaligned_set_warns(self) -> None:
+        """{0.1, 0.25} at P=10 scales to {1, 2.5}: no collision, but 2.5 ∉ ℤ."""
+        self.assertEqual(1, len(self._precision_warnings({"set": [0.1, 0.25]}, 10)))
+
+    def test_alignment_uses_exact_decimal_arithmetic(self) -> None:
+        """0.3·10 is 3.0000000000000004 in binary floating point but 3 exactly."""
+        self.assertEqual([], self._precision_warnings([0.1, 0.2, 0.3], 10))
+        self.assertEqual([], self._precision_warnings({"range": [0.0, 0.9], "resolution": 0.3}, 10))
+
+    def test_range_with_unaligned_lower_bound_warns(self) -> None:
+        """Range values are a + k·r; an aligned r does not align an unaligned a."""
+        warnings = self._precision_warnings({"range": [0.05, 1.0], "resolution": 0.1}, 10)
+        self.assertEqual(1, len(warnings))
+
+    def test_range_without_resolution_uses_effective_resolution(self) -> None:
+        """Semantics §2.4: an omitted float resolution is 0.001, which P=100 does not align."""
+        self.assertEqual(1, len(self._precision_warnings({"range": [0.0, 1.0]}, 100)))
+        self.assertEqual([], self._precision_warnings({"range": [0.0, 1.0]}, 1000))
 
 
 if __name__ == "__main__":

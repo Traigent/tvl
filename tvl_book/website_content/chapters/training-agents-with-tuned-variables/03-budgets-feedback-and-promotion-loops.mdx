@@ -39,7 +39,7 @@ For agent systems this usually means answering:
 - what metric or rubric can reject a superficially impressive but risky pattern?
 - what artifact will explain later why a specific workflow was promoted?
 
-The final answer is usually a manifest-backed promotion loop, not just a better prompt.
+The final answer is usually a promotion loop backed by a promotion manifest, not just a better prompt. The manifest is the audit bundle that holds the spec, validation results, measurements, and rollout decision.
 
 <PredictionPrompt prompt="A tuned workflow looks stronger in a one-off run but the review team cannot replay the evidence. Is that a promotable win?">
 
@@ -52,6 +52,7 @@ change is interesting but not ready for rollout.
 
 Because they define one release loop. The budget controls how much exploration is allowed, the
 feedback determines what counts as improvement, and the promotion rule determines whether the result
-is safe enough to ship.
+meets the declared evidence requirements for release. Whether it is safe also depends on the
+quality of that evidence: valid tests, independent data, and a reliable evaluator.
 
 </KnowledgeCheck>

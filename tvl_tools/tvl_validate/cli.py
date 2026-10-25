@@ -7,7 +7,7 @@ from jsonschema import Draft202012Validator
 
 from tvl.lints import lint_module, lint_pack
 from tvl.loader import is_pack_document
-from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output
+from tvl_tools.cli_utils import blocking_issues, add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output
 
 
 def _load_schema(tool_file: Path, schema_name: str = "tvl.schema.json") -> dict[str, Any]:
@@ -72,7 +72,7 @@ def main() -> None:
             issues = lint_pack(doc) if is_pack else lint_module(doc)
 
         result: dict[str, Any] = {
-            "ok": len(issues) == 0,
+            "ok": not blocking_issues(issues),
             "file": str(args.file),
             "schema_ok": all(issue.get("code") != "schema_error" for issue in issues),
             "issues": issues,
@@ -82,7 +82,7 @@ def main() -> None:
 
         print_output(result, get_format(args), text_renderer)
 
-        if issues:
+        if blocking_issues(issues):
             sys.exit(2)
 
     except Exception as exc:  # noqa: BLE001

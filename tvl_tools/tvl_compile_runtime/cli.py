@@ -125,17 +125,20 @@ def run_cli(
                 raise RuntimeClosedError("schema_error")
             pack_docs.append(p_doc)
 
+        # RFC 0003 §11.5 steps in order: schema validation and lints come before the
+        # token map and checker registry are read.
+        for document in [doc, *pack_docs]:
+            is_pack = "pack" in document and "tvl" not in document
+            v = pack_validator() if is_pack else validator()
+            issues = runtime_syntax_issues(document) or closed_schema_issues(v.iter_errors(document))
+            if not issues:
+                issues = lint_pack(document) if is_pack else lint_module(document)
+            errors = [issue for issue in issues if issue.get("severity") == "error"]
+            if errors:
+                issue = closed_lint_issue(errors[0])
+                raise RuntimeClosedError(issue["code"], path=issue["path"], message=issue["message"])
+
         if args.emit_token_map_template:
-            for document in [doc, *pack_docs]:
-                is_pack = "pack" in document and "tvl" not in document
-                v = pack_validator() if is_pack else validator()
-                issues = runtime_syntax_issues(document) or closed_schema_issues(v.iter_errors(document))
-                if not issues:
-                    issues = lint_pack(document) if is_pack else lint_module(document)
-                errors = [issue for issue in issues if issue.get("severity") == "error"]
-                if errors:
-                    issue = closed_lint_issue(errors[0])
-                    raise RuntimeClosedError(issue["code"], path=issue["path"], message=issue["message"])
             result = token_map_template([doc, *pack_docs])
             print(json.dumps(result, indent=2))
             return 0, result

@@ -16,6 +16,7 @@ import yaml
 
 from tvl.errors import TVLError
 from tvl.loader import load
+from tvl.model import InvalidDomainError
 from tvl.structural_parser import StructuralParseError
 from tvl.structural_sat import check_structural
 
@@ -166,6 +167,12 @@ def _write_temp_file(content: str, suffix: str = "") -> Path:
         return Path(tmp.name)
 
 
+def _witness(result: Any) -> Optional[dict[str, Any]]:
+    """The exact witness when the result carries one, else the float assignment."""
+    exact = getattr(result, "exact_assignment", None)
+    return exact if isinstance(exact, dict) else result.assignment
+
+
 def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
     if not isinstance(assignment, dict):
         return None
@@ -254,13 +261,15 @@ def _check_module_or_exit(
     start_time = time.perf_counter()
     try:
         result = check_structural(module)
-    except StructuralParseError as exc:
+    except (StructuralParseError, InvalidDomainError) as exc:
+        # A malformed domain (e.g. a reversed range) is reported the same way.
         # A well-shaped structural entry whose expression string is malformed (a
         # user typo) or over-complex (deep nesting / DNF blowup). Mirror the
         # graceful degradation the lint sibling already provides: emit a
         # structured diagnostic and exit 2, never a raw traceback.
         duration_ms = int((time.perf_counter() - start_time) * 1000)
         _remove_temp_file(temp_file)
+        what = "invalid domain" if isinstance(exc, InvalidDomainError) else "invalid structural constraint"
         if args.json:
             payload = {
                 "schemaVersion": "1.0",
@@ -268,7 +277,7 @@ def _check_module_or_exit(
                 "phase": "structural",
                 "ok": False,
                 "status": "error",
-                "error": f"invalid structural constraint: {exc}",
+                "error": f"{what}: {exc}",
                 "assignment": None,
                 "unsat_core": None,
                 "repair_candidates": [],
@@ -277,7 +286,7 @@ def _check_module_or_exit(
             }
             print(json.dumps(payload, indent=2))
         else:
-            print(f"Error: invalid structural constraint: {exc}", file=sys.stderr)
+            print(f"Error: {what}: {exc}", file=sys.stderr)
         raise SystemExit(2)
     duration_ms = int((time.perf_counter() - start_time) * 1000)
     _remove_temp_file(temp_file)
@@ -301,14 +310,14 @@ def _emit_repair_candidates(result: Any, file_path: Path) -> list[dict[str, Any]
 
 
 def _emit_candidate_validation(result: Any, candidate_payload: dict[str, Any], duration_ms: int) -> None:
-    status = "sat" if result.ok else "unsat"
+    status = "sat" if result.ok else ("undecided" if getattr(result, "undecided", False) else "unsat")
     validation_event = {
         "schemaVersion": "1.0",
         "kind": "RepairCandidateValidated",
         "candidateId": candidate_payload.get("id") or "candidate",
         "status": status,
         "durationMs": duration_ms,
-        "witnessId": _build_witness_id(result.assignment) if result.ok else None,
+        "witnessId": _build_witness_id(_witness(result)) if result.ok else None,
         "timestamp": _current_timestamp(),
     }
     _emit_event(validation_event)
@@ -331,13 +340,18 @@ def _report_json(
         "kind": "PhaseResult",
         "phase": "structural",
         "ok": result.ok,
-        "status": "passed" if result.ok else "unsat",
+        "status": "passed" if result.ok else ("undecided" if getattr(result, "undecided", False) else "unsat"),
         "assignment": result.assignment,
+        # Exact witness (numeric values as exact decimal or "p/q" strings): grid points that
+        # round to the same binary64 float in "assignment" stay distinct here.
+        "exact_assignment": getattr(result, "exact_assignment", None),
         "unsat_core": result.unsat_core,
         "repair_candidates": candidates,
         "timestamp": _current_timestamp(),
         "durationMs": duration_ms,
     }
+    if getattr(result, "undecided", False):
+        payload["issues"] = result.issues or []
     print(json.dumps(payload, indent=2))
     raise SystemExit(0 if result.ok else 2)
 
@@ -345,9 +359,14 @@ def _report_json(
 def _report_text(result: Any) -> None:
     if result.ok:
         print("Structural constraints satisfiable.")
-        for name, value in sorted((result.assignment or {}).items()):
+        for name, value in sorted((_witness(result) or {}).items()):
             print(f"  {name}: {value}")
         raise SystemExit(0)
+
+    if getattr(result, "undecided", False):
+        for issue in result.issues or []:
+            print(f"Error: {issue['code']}: {issue['message']}", file=sys.stderr)
+        raise SystemExit(2)
 
     print("Structural constraints UNSAT.")
     for entry in result.unsat_core or []:

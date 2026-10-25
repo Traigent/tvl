@@ -8,7 +8,7 @@ Ask questions in [GitHub Discussions](https://github.com/Traigent/tvl/discussion
 
 Open an issue at <https://github.com/Traigent/tvl/issues> and choose the form that fits:
 
-- **Bug report** for a wrong result, crash or confusing diagnostic from a TVL tool.
+- **Bug report** for a wrong result, crash or confusing diagnostic from a tool for TVL, the Tuned Variables Language.
 - **Spec change** for a gap, ambiguity or proposed change in the language. Larger changes follow the [RFC process](formalization/README.md).
 - **Documentation** for something missing, unclear or wrong in the docs.
 
@@ -26,4 +26,4 @@ Report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md). Do
 
 ## What is not offered
 
-There is no chat channel. Maintainers answer on a best-effort basis; there is no support-level agreement.
+There is no chat channel. Maintainers answer on a best-effort basis; there is no service-level agreement and no promised response time.

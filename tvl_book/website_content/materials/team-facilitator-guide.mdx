@@ -53,7 +53,9 @@ Facilitator action:
 
 Learner action:
 
-- predict whether the mistake is structural, operational, or outside TVL
+- predict whether the mistake is structural (a rule over the tuned variables, under `constraints.structural`),
+  operational (a precondition on the declared environment, under `constraints.derived`), or outside TVL
+  (see [Chapter 3](../book/chapter-03-constraints.md))
 
 Success signal:
 
@@ -64,7 +66,8 @@ Success signal:
 Facilitator action:
 
 - split the room into groups
-- give each group one constraint or overlay scenario
+- give each group one constraint or overlay scenario (an overlay is a small file of overrides that `tvl-compose`
+  applies to a base module; see [Chapter 4](../book/chapter-04-patterns.md) for the composition rules)
 
 Learner action:
 
@@ -114,10 +117,10 @@ Success signal:
 ## Recommended Follow-Up
 
 - New individual contributors: Quickstart Lab Pack
-  Use this when the learner still needs one end-to-end pass from minimal spec to validation and microsim intuition.
+  Use this when the learner still needs one end-to-end pass from minimal spec to validation and microsim (small interactive simulation) intuition.
 - Technical leads: Architecture Review Workshop
   Use this when the learner is reviewing contracts, overlays, and evidence bundles across teams.
-- Operators and SREs: Operator Rollout Drill
+- Operators and site reliability engineers (SREs): Operator Rollout Drill
   Use this when the learner owns rollout safety, hotfix review, and rollback judgment.
 - Mixed cohort finishing the book: Capstone Governed Adaptation Challenge
   Use this when the cohort is ready to defend one full governed design rather than discuss isolated concepts.

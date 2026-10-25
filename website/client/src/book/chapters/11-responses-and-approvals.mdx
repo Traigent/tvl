@@ -13,7 +13,7 @@ summary: "The response ladder and who must approve each step; declaring an actio
 
 <h2 id="ch11-ladder">The ladder</h2>
 
-A <Term id="response-policy">response policy</Term> maps a monitor event to one action from TVL's sealed response ladder, subject to that action's authority rules.
+A <Term id="response-policy">response policy</Term> is a list of rules, each mapping a monitor event to one action from TVL's sealed response ladder, subject to that action's authority rules.
 
 On a slow-reply breach the team wants to warn, open a next step, roll back after six hours, and stop taking tickets if recovery is overdue. A response is a named list of rules, each with an `id`, a `trigger` (a monitor and one of its events) and one action, `do`, from a sealed ladder ordered by impact on production (<Ref to="semantics" section="section 12.10">formal semantics</Ref>):
 
@@ -53,7 +53,7 @@ The triggering monitor's requirement must also have a promotion monitor (`respon
 
 At deployment, the contract and authority must still be current, the episode still open, and the deployed configuration unchanged from the recorded precondition. A configuration that breached in an open episode is ineligible.
 
-`deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`. Recovery, burn, liveness and unit triggers cannot use it.
+`deploy: if_promoted` is allowed only on `episode_opened`, `episode_continued` and `episode_open_for`. Recovery, burn, liveness and unit triggers cannot use it. (A burn trigger comes from a burn monitor: a separate monitor on the same requirement whose statistical breach test uses a set multiple of the limit. Its `burn_breached` event fires on the first `BREACHED` window of each run of adjacent `BREACHED` windows.)
 
 If authority or the gate record cannot be reached, the deploy waits. A refused or failed deploy changes nothing in production and is not retried with another candidate. No rollback follows automatically.
 
@@ -73,7 +73,7 @@ Suspend, the top rung, needs `approval: human` per episode, even under a standin
 
 <KeyTakeaways>
   <ul>
-    <li>One monitor event, one action from a sealed ladder. Repairs need a standing grant at least; suspend needs a person, and only a human resume lifts it. Declaring is not permitting.</li>
+    <li>Each rule maps one monitor event to one action from a sealed ladder; several rules may react to the same event. Repairs need a standing grant at least; suspend needs a person, and only a human resume lifts it. Declaring is not permitting.</li>
     <li>An optimization and its deploy need separate authority. Only a promoted candidate may deploy; only production evidence can establish recovery.</li>
   </ul>
 </KeyTakeaways>
