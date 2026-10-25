@@ -2315,9 +2315,29 @@ reason; in each case this RFC's choice stands.
 
 ## Errata and later changes
 
-Recorded 2026-10-24. The body above is the design as accepted on 2026-10-21 (TVL 1.3.0), with errors in that text
-corrected in place; this section lists clarifications, and where the language as now specified, or its reference
-tools, differ from it.
+Recorded 2026-10-24. The body above is the design as accepted on 2026-10-21 (TVL 1.3.0), with the errors listed
+below under "Corrected in place", and the §16.3 heading, fixed in the body; this section also lists clarifications, and where the language as
+now specified, or its reference tools, differ from it.
+
+Corrected in place (each was wrong at acceptance):
+
+- **§4.2 exact literals.** The accepted text said every literal with at most 15 significant digits equals the shortest
+  decimal of its double. That holds only for zero and the normal binary64 range: a subnormal double carries fewer
+  significant bits, so a 15-digit subnormal literal need not round-trip. The guarantee now excludes subnormal (and
+  out-of-range) literals; the acceptance rule itself, accept only a literal that equals that decimal, is unchanged.
+- **§7.2 escalation events for `suspend`.** The accepted text said that `episode_continued`, `episode_open_for` and
+  `recovery_overdue` each imply an open episode. `recovery_overdue` does not show that the episode is still open, so
+  the text now requires the episode to be open at the time of the effect (§7.4), as the effect-authority rules
+  already did.
+- **§8.2 hosted form of `degrade` `fallback`.** The accepted table allowed `last_certified` for both `degrade`
+  `fallback` and `rollback` `target`. Only `rollback` `target` may be `last_certified`; `degrade` `fallback` is a
+  certified configuration fingerprint (§7.2 Parameters; `fallback` in `spec/grammar/tvl.ebnf`). The table now matches
+  the grammar.
+- **§10.3 round trip.** The accepted properties composed `from_backend_revision(to_backend_profile(R, M))` directly
+  and said the profile carries the scope. The scope (`applies_to`) is not one of the 13 profile keys, and the
+  reference functions (`python/tvl/backend_profile_codec.py`) return pairs and take the scope as a separate
+  `applies_to` argument (default `agent`). The properties are now restated with that separate argument; without it a
+  `tenant_floor` monitor would come back as `agent`.
 
 - **§4.3 phase and source (clarification).** The Phase column reads "runtime; promotion only with `evaluation_set`",
   which leaves open whether `evaluation_set` may also be a runtime source. It may not: as §3.2 states and the reference

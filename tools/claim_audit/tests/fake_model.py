@@ -1,5 +1,8 @@
 """Fake model for runner tests. argv: mode [prompt]. Prompt comes from stdin or argv[2]."""
-import json, os, re, sys
+import json
+import os
+import re
+import sys
 
 mode = sys.argv[1]
 prompt = sys.argv[2] if len(sys.argv) > 2 else sys.stdin.read()
@@ -28,7 +31,8 @@ retry = "previous output was rejected" in prompt
 if mode == "bad" or (mode == "bad_then_ok" and not retry):
     out = bad
 if mode == "garbage":
-    print("I cannot do this"); sys.exit(0)
+    print("I cannot do this")
+    sys.exit(0)
 text = "Here you go:\n```json\n" + json.dumps(out) + "\n```\n"
 if mode == "claudejson":
     print(json.dumps({"result": text, "usage": {"input_tokens": 10, "output_tokens": 5}, "total_cost_usd": 0.01}))

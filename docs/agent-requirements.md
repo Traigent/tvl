@@ -6,7 +6,7 @@ An AI agent is rarely defined by one prompt or one model. Its behavior depends o
 
 Today these decisions are commonly split across code, configuration, evaluation notebooks, dashboards, and release procedures. The result is an under-specified system: reviewers can see how one candidate was built, but cannot reliably recover the full set of allowed designs or the conditions that make a candidate acceptable.
 
-TVL, the Tuned Variables Language (see the [language reference](reference/language.md)), provides that missing contract.
+TVL, the Tuned Variables Language (see the [language reference](https://github.com/Traigent/tvl/blob/main/docs/reference/language.md)), provides that missing contract.
 
 ## TVL specifies a space of agents
 

@@ -1043,9 +1043,9 @@ increment (§2).
   pipelines: the post-cascade with calibrated acceptance is the productized
   core of RFC 0001's cascade policy; this RFC generalizes arity and nesting.
 - **Self-consistency** (Wang et al. 2022), best-of-n / judge selection: the
-  ensemble constructor with `majority_vote`/`judge_max`; an internal,
-  unpublished margin-routing study informed the calibration recipe shape for
-  `accept` gates.
+  ensemble constructor with `majority_vote`/`judge_max`. Agreement among
+  samples as a signal of correctness is why `accept` gates calibrate a
+  threshold on a vote statistic (`vote_margin` or `vote_agreement`).
 - **Self-Refine** (Madaan et al. 2023), **Reflexion** (Shinn et al. 2023),
   **CRITIC** (Gou et al., ICLR 2024): the loop constructor; "self-debug as a 2-step knob" is
   `self_debug` at `max_iters = 1..K`.
@@ -1167,3 +1167,16 @@ differ from it.
     `stat_at_least` (`stat ≥ θ`) read `vote_margin` and `vote_agreement` as their inputs
     (§3.2, item 11). This entry gives those quantities a formula and changes nothing about
     how they are used.
+- **§3.8 unroll escalation (2026-10-24, corrected in place).** The accepted
+  `KChain(Loop(…))` formula escalated after stage `i` only when the
+  `signal_accept` stop had not fired (`σ(state₍ᵢ₎) < θ`). It now also escalates
+  when stage `i` yields `no_accept` (`result₍ᵢ₎ = no_accept ∨ ¬stop₍ᵢ₎`), and the
+  prose adds that an `error` from any stage fails the chain. The accepted formula
+  was wrong at acceptance: under the loop rules of §3.2.1 a `no_accept` body
+  continues the loop, so a chain that stopped there would not preserve the loop's
+  meaning.
+- **§8 prior art (2026-10-24, corrected in place).** The accepted text cited the
+  program's own margin-routing study, with a figure (vote-margin AUC 0.71), as the
+  source of the `accept` calibration recipe. That study is not published, so
+  readers cannot check it; the citation and the figure are removed and the entry
+  now states the design reason only. No rule changed.

@@ -678,7 +678,7 @@ One rule decides which source governs, across the whole repository:
 
 Any disagreement between these sources is a defect to report and fix, not a choice for the reader.
 
-RFC 0003's split fits this rule: formal semantics §12 holds runtime meaning, and the RFC holds syntax, closed enums, diagnostic codes, schemas and CLI contracts. Its syntax is the one the grammar and schemas encode, and the formal semantics is silent on diagnostic codes and CLI contracts. `proofs/PROOF_SUMMARY.md` records machine-proof scope and verification status, not whole-toolchain certification.
+RFC 0003's split fits this rule: formal semantics §12 holds runtime meaning, and the RFC holds syntax, closed enums, diagnostic codes, schemas and CLI contracts. Its syntax is the one the grammar and schemas encode, and the formal semantics lists diagnostic codes in its conformance requirements (§10) and in Appendix B (Error Code Mapping), and names some runtime codes in §§12–14, but does not define CLI contracts; the full code catalogue is the RFC's tables and the [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md). `proofs/PROOF_SUMMARY.md` records machine-proof scope and verification status, not whole-toolchain certification.
 </details>
 
 ## TVL 1.3: requirements, monitors, responses
@@ -686,7 +686,7 @@ RFC 0003's split fits this rule: formal semantics §12 holds runtime meaning, an
 !!! note "TVL 1.3"
     TVL 1.3 was accepted on 2026-10-21. This section is a reference for the fields of the three new optional blocks, the `tvl_pack` document, and the
     values they accept. For a guided introduction read
-    [Requirements, Monitors and Responses](../guides/requirements-monitors-responses.md). See [Authority and proof status](#authority-and-proof-status)
+    [Requirements, Monitors and Responses](https://github.com/Traigent/tvl/blob/main/docs/guides/requirements-monitors-responses.md). See [Authority and proof status](#authority-and-proof-status)
     for the meaning/syntax division between formal semantics §12 and `formalization/rfc-0003-runtime-requirements-monitors-responses.md`. The machine-readable shape is
     `spec/grammar/tvl.schema.json` and `spec/grammar/tvl-pack.schema.json`.
 

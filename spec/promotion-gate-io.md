@@ -1,8 +1,10 @@
 # Promotion Gate I/O Specification
 
-**Version**: 1.1
+**Version**: 1.2
 **Status**: Draft
-**Date**: September 2026
+**Date**: October 2026
+
+**Change in 1.2 (2026-10-24)**: adds a fourth decision, `Error` (§5.0), returned when a check is undefined; today that is a chance constraint with zero trials or no trial count, code `zero_trials`.
 
 This document specifies the input/output format for the TVL promotion gate, the statistical testing procedures, and the decision logic.
 

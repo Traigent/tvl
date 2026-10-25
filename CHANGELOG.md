@@ -68,7 +68,7 @@ Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 releas
 
 ## [1.5.0] - 2026-10-23
 
-TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantics §14 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.5.0; authored modules using the new constructs declare `tvl_version: "1.5"`. Not published to a package registry.
+TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantics §14 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.5.0; authored modules using the new constructs declare `tvl_version: "1.5"`. Published to PyPI as `tvl-spec` 1.5.0 on 2026-10-23.
 
 ### Added
 
@@ -81,7 +81,7 @@ TVL 1.5 (RFC 0005, breach persistence and census aggregates) and formal semantic
 
 ## [1.4.0] - 2026-10-21
 
-TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semantics §13 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.4.0; authored modules using the new constructs declare `tvl_version: "1.4"`. Projected constructs select `/1` or `/2` as described below. Not published to a package registry.
+TVL 1.4 (RFC 0004, reactive outcomes and notification guards) and formal semantics §13 are accepted. Package, citation, `tvl.__version__` and the compiler's default toolchain version report 1.4.0; authored modules using the new constructs declare `tvl_version: "1.4"`. Projected constructs select `/1` or `/2` as described below. Published to PyPI as `tvl-spec` 1.4.0 on 2026-10-22.
 
 ### Added
 

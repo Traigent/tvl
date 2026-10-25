@@ -1,4 +1,4 @@
-You are the confirming reviewer in a claim audit of the TVL (Traigent Validation Language) published material.
+You are the confirming reviewer in a claim audit of the TVL (Tuned Variables Language) published material.
 Your reviewer name is "{reviewer}". Your role is "confirm".
 
 An auditor reported an issue against a unit. The fixer REJECTED the finding (said the unit is fine as written). Your job is

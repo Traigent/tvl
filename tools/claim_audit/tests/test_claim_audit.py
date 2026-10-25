@@ -309,7 +309,9 @@ def _beta_cdf_numeric(x, a, b, steps=20000):
     if x <= 0:
         return 0.0
     c = lgamma(a + b) - lgamma(a) - lgamma(b)
-    f = lambda t: exp(c + (a - 1) * log(t) + (b - 1) * log(1 - t)) if 0 < t < 1 else 0.0
+    def f(t):
+        return exp(c + (a - 1) * log(t) + (b - 1) * log(1 - t)) if 0 < t < 1 else 0.0
+
     h = x / steps
     tot = f(1e-300 if a < 1 else 0) + f(x)
     for i in range(1, steps):
@@ -342,7 +344,7 @@ def test_clopper_pearson_known_values():
 
 def test_per_check_sampling_mod_auto_record_and_exclusions(tmp_path):
     files = {"CHANGELOG.md": "Changelog entry with plenty of words.\n", "a.md": "Alpha paragraph has plenty of words.\n\nBeta paragraph has plenty of words.\n"}
-    au = make_repo(tmp_path, files)
+    make_repo(tmp_path, files)
     cfg = yaml.safe_load((tmp_path / "audit" / "checks.yml").read_text())
     for c in cfg["checks"]:
         if c["id"] == "TVL-C05":
@@ -389,7 +391,7 @@ def test_coverage_overturn_and_json(tmp_path, capsys):
 
 
 def test_batch_ids_never_reused(tmp_path):
-    au = make_repo(tmp_path, FILES_V2 := {"a.md": "Alpha paragraph has plenty of words.\n"})
+    au = make_repo(tmp_path, {"a.md": "Alpha paragraph has plenty of words.\n"})
     ids = []
     for _ in range(5):
         bid = ca.next_batch_id(au, "review")
@@ -611,7 +613,9 @@ def test_strict_gate_needs_no_open_issues(tmp_path, capsys):
     meta = ca.make_record(unit_id=u["unit_id"], text_hash=u["text_hash"], check_id="TVL-C01", check_version=1, verdict="issue",
                           role="meta", reviewer="sol", batch_id="m", finding="agree: " + ISSUE_F, evidence="x:1", corrects=rev["record_id"])
     ca.append_jsonl(tmp_path / "audit" / "ledger.jsonl", [rev, meta])
-    run = lambda: ca.main(["--root", str(tmp_path), "coverage", "--strict"], tracked=sorted(files))
+    def run():
+        return ca.main(["--root", str(tmp_path), "coverage", "--strict"], tracked=sorted(files))
+
     assert run() == 1
     f = tmp_path / "d.json"
     f.write_text(json.dumps([{"unit_id": u["unit_id"], "check_id": "TVL-C01", "path": "a.md", "disposition": "owner_decision", "note": "owner picks", "evidence": "e"}]))

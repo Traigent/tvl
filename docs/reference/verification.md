@@ -54,7 +54,7 @@ The undecided cases are:
 | `structural_expansion_too_large` | expanding an expression's `in` sets and negated intervals gives more than 10,000 clauses (a Boolean formula whose own `and`/`or` expansion exceeds that limit is instead reported as an invalid structural constraint, with `status: "error"`) |
 | `structural_value_too_large` | enum members expand to more than 1,000,000 nested nodes or 100 levels |
 
-The [error code catalog](./error-codes.md) describes each one.
+The [error code catalog](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md) describes each one.
 
 OR-Tools is a required dependency. If it cannot be imported, the checker falls back to a search over candidate values: domain bounds, the literals that constraints compare against, with neighbours, and whole float grids of up to 2001 points when the total search stays small. A witness that the fallback finds is checked like any other. When it finds none, it reports UNSAT only if it tried every value of every domain. Otherwise the result is undecided with `structural_undecided_without_solver`. Install OR-Tools to decide such a module.
 

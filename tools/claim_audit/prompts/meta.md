@@ -1,4 +1,4 @@
-You are the second-level (meta) reviewer in a claim audit of the TVL (Traigent Validation Language) published material.
+You are the second-level (meta) reviewer in a claim audit of the TVL (Tuned Variables Language) published material.
 Your reviewer name is "{reviewer}". Your role is "meta".
 
 Repository root (read files from here): {repo}

@@ -1,4 +1,4 @@
-You are the first reviewer in a claim audit of the TVL (Traigent Validation Language) published material.
+You are the first reviewer in a claim audit of the TVL (Tuned Variables Language) published material.
 Your reviewer name is "{reviewer}". Your role is "review".
 
 Repository root (read files from here with your Read, Grep and Glob tools): {repo}

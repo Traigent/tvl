@@ -372,3 +372,19 @@ notifications only and documents the mutual-inhibition trap.
 3. **Guards in packs over module monitors.** Disallowed in 1.4; pack guards may name only pack monitors.
 4. **`attempt_open` for `deploy: never`.** The attempt closes when a promoted candidate exists; the candidate's later
    manual deployment is outside the response and untracked in 1.4.
+
+## 8. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-10-21 (TVL 1.4.0), with the errors below
+corrected in place.
+
+- **§2.2 `optimize_failed` (corrected in place).** The accepted table defined `optimize_failed` as "the optimization
+  will not reach a gate decision". That was wrong at acceptance: formal semantics Definition 13.3 records
+  `optimize_failed` whenever no candidate was promoted and the run did not complete normally or had a candidate with
+  invalid promotion evidence, even if other candidates already received `Reject` or `NoDecision`. The row now states
+  that condition, matching Definition 13.3.
+- **§2.4 guard cycles (corrected in place).** The accepted text said that "a page silenced by its own episode never
+  fires". That was wrong at acceptance: an `unless: episode_open` guard on the rule's own monitor suppresses the page
+  only while that episode is open, which is what the guard semantics of §2.4 give. The sentence now says the page is
+  suppressed for as long as that episode is open; the cycle is still an error (`runtime_guard_cycle`).
+

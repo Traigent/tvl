@@ -1514,6 +1514,8 @@ Strict ε-dominance can disappear under composition even when weak ε-dominance 
 
 For a TVL implementation to be **conformant**, it must satisfy:
 
+*Note (2026-10-24):* to align with the reference tools, `derived_env_undefined` (never emitted by the reference implementation) is replaced by `unknown_derived_symbol`, and `constraint_operator_type_mismatch` is now listed (`unknown_derived_symbol` in §10.3 and Appendix B; `constraint_operator_type_mismatch` in §10.2).
+
 ### 10.1 Parser Requirements
 
 1. Accept all syntactically valid modules per §2

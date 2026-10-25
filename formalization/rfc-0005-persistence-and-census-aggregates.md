@@ -410,3 +410,15 @@ multi-burn alerts (1.6, with full statistical-look accounting); baseline-relativ
 proposals; synthesis of action-blocking monitors from temporal specifications; change-point detection; any
 general linear or signal temporal logic (LTL/STL) language; learned anomaly alerts;
 auto-tightening. None is implied by the two additions above.
+
+## 8. Errata and later changes
+
+Recorded 2026-10-24. The body above is the design as accepted on 2026-10-23 (TVL 1.5.0), with the error below
+corrected in place.
+
+- **§5 expected outcome of `format-v3-without-new-construct.yml` (corrected in place).** The accepted table gave
+  `schema_error`. That was wrong at acceptance: the case file
+  (`conformance/cases/runtime/projection/format-v3-without-new-construct.yml`) already expected
+  `runtime_unsafe_egress`, because a projected contract that claims `tvl-runtime-contract/3` without a 1.5 construct
+  fails its format schema at the egress check. The table now gives `runtime_unsafe_egress`, matching the case file.
+

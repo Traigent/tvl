@@ -294,7 +294,7 @@ tvl-check-operational module.tvl.yml --json
 
 ## Error Codes Reference
 
-See [error-codes.md](./error-codes.md) for the linter's constraint-related codes. The configuration constraint evaluator used by `tvl-config-validate` also reports `constraint_failed` and `unknown_reference`, which that catalog does not list yet. Linter codes:
+See [error-codes.md](https://github.com/Traigent/tvl/blob/main/docs/reference/error-codes.md) for the linter's constraint-related codes. The configuration constraint evaluator used by `tvl-config-validate` also reports `constraint_failed` and `unknown_reference`, which that catalog does not list yet. Linter codes:
 
 - `undeclared_tvar`: Unknown TVAR in constraint
 - `constraint_value_out_of_domain`: Literal outside domain

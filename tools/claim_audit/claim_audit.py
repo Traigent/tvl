@@ -15,7 +15,6 @@ import subprocess
 import sys
 from collections import Counter, OrderedDict
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -142,7 +141,7 @@ def parse_markdown(text: str) -> list[dict]:
     def flush():
         nonlocal para
         if para:
-            units.append(_mk("prose", para[0][0], para[-1][0], [l for _, l in para], hp()))
+            units.append(_mk("prose", para[0][0], para[-1][0], [line for _, line in para], hp()))
             para = []
 
     while i < n:
@@ -767,7 +766,7 @@ def validate_confirm(au: Audit, data: dict, batch: dict) -> tuple[list[dict], li
     errs: list[str] = []
     if not str(data["reviewer"]).strip():
         errs.append("empty reviewer")
-    checks = au.checks()
+    au.checks()  # validates checks.yml (raises SystemExit on a bad config)
     states = {(s["unit"]["unit_id"], s["check"]["id"]): s for s in au.pair_states()}
     pairs = {tuple(p) for p in batch.get("pairs", [])}
     batch_adj = {r["record_id"] for r in batch.get("reviews", [])}
