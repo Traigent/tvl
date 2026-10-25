@@ -151,7 +151,6 @@ def test_strict_float_comparison_keeps_satisfying_points():
 # Regressions for the second independent review (code-review-2, findings R2-1..R2-5).
 # ---------------------------------------------------------------------------------
 import json  # noqa: E402
-import time  # noqa: E402
 
 import yaml  # noqa: E402
 
@@ -253,10 +252,12 @@ def test_r2_3_recursive_merge_alias_terminates_fast():
         "print(time.monotonic() - t)"
     )
     python_dir = str(Path(__file__).resolve().parents[1] / "python")
+    proc = None
     try:
         proc = subprocess.run([sys.executable, "-c", code, python_dir], capture_output=True, text=True, timeout=20)
     except subprocess.TimeoutExpired:
         pytest.fail("recursive merge alias did not terminate within 20 s")
+    assert proc is not None
     assert proc.returncode == 0, proc.stderr
     assert float(proc.stdout.strip()) < 2.0
 

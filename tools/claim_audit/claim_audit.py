@@ -118,7 +118,7 @@ HEAD_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 ADMON_RE = re.compile(r"^(!!!|\?\?\?\+?)\s")
 LIST_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 INDENT_RE = re.compile(r"^(?: {2,}|\t)\S")
-JSX_STRIP_RE = re.compile(r"<[^>]*>")
+JSX_STRIP_RE = re.compile(r"""<(?:[^>"']|"[^"]*"|'[^']*')*>""")
 
 
 def parse_markdown(text: str) -> list[dict]:
@@ -222,7 +222,7 @@ def parse_markdown(text: str) -> list[dict]:
             units.append(_mk("prose", ln, end, lines[i:end], hp()))
             i = j
             continue
-        if re.match(r"^(import|export)\s", line) or re.match(r"^\s*<!--.*-->\s*$", line):
+        if re.match(r"^(import|export)\s", line) or re.match(r"^\s*<!--.*?--!?>\s*$", line, re.S):
             flush()
             i += 1
             continue
@@ -551,7 +551,7 @@ def check_links(au: Audit, u: dict) -> tuple[str, str, str]:
 
 _URL_MD_TARGET_RE = re.compile(r"\]\([^)\s]*(?:\s+\"[^\"]*\")?\)")
 _URL_BARE_RE = re.compile(r"https?://[^\s<>)\"']+")
-_URL_ATTR_RE = re.compile(r"\b(?:src|href)\s*=\s*(?:\"[^\"]*\"|'[^']*')", re.I)
+_URL_ATTR_RE = re.compile(r"""\b(?:src|href)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>=`]+)""", re.I)
 
 
 def strip_urls(text: str) -> str:

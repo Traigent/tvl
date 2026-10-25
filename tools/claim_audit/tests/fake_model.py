@@ -7,10 +7,15 @@ import sys
 mode = sys.argv[1]
 prompt = sys.argv[2] if len(sys.argv) > 2 else sys.stdin.read()
 m = re.search(r"Batch file \(absolute path, read it first\): (\S+)", prompt)
-batch = json.load(open(m.group(1)))
+with open(m.group(1)) as fh:
+    batch = json.load(fh)
 state = os.environ["FAKE_STATE"]
-n = int(open(state).read()) if os.path.exists(state) else 0
-open(state, "w").write(str(n + 1))
+n = 0
+if os.path.exists(state):
+    with open(state) as fh:
+        n = int(fh.read())
+with open(state, "w") as fh:
+    fh.write(str(n + 1))
 role = batch["role"]
 results = []
 if role == "review":

@@ -82,20 +82,20 @@ Quote `tvl_version: "1.3"`: unquoted, YAML reads a number (`declared_version_bel
 
 <h2 id="ch9-episodes">Episodes, recovery and liveness</h2>
 
-Monitors check window by window. A breached window opens an <Term id="episode">episode</Term>, one stretch of trouble; it resolves after a set number of MET windows in a row (`closure_windows`), none older than `closure_max_age_hours`. Two more kinds are promises about a monitor, named with `of`, so they arrive in version 9 (<Ref to="semantics" section="sections 12.8 and 12.9">formal semantics</Ref>):
+Monitors check window by window. A breached window opens an <Term id="episode">episode</Term>, one stretch of trouble, resolved after `closure_windows` MET windows in a row, none older than `closure_max_age_hours`. Two more kinds are promises about a monitor, named with `of`, so they arrive in version 9 (<Ref to="semantics" section="sections 12.8 and 12.9">formal semantics</Ref>):
 
-- **`recovery_time`**: after a breach, met again within `within_hours`, in window time: the window that closes the episode must end within that many hours of the end of the window that opened it. With 6-hour windows and two MET windows to close, the promise needs at least 12 hours (`recovery_deadline_impossible`); version 9 promises 48, and its monitor is `recovery_check`.
+- **`recovery_time`**: after a breach, met again within `within_hours`, in window time: the closing window must end within that many hours of the opening one's end. With 6-hour windows and two MET windows to close, that is at least 12 (`recovery_deadline_impossible`); version 9 promises 48, via `recovery_check`.
 - **`evidence_liveness`**: usable evidence keeps arriving. If `max_stale_windows` + 1 due windows in a row bring none, the monitor is stale. Otherwise silently lost traces would look healthy.
 
 <TryIt>
 
-Run `tvl-validate spec/examples/book/ch09/support-bot.tvl.yml`. It exits 0 and prints two `outside_proved_subset` info lines, one for the module's cvars and one for its composites: they note that the Lean proofs do not cover those constructs, and they do not change the exit status. The runtime blocks themselves raise no diagnostic.
+Run `tvl-validate spec/examples/book/ch09/support-bot.tvl.yml`. It exits 0 with two `outside_proved_subset` info lines (the Lean proofs do not cover cvars or composites); the runtime blocks raise no diagnostic.
 
 </TryIt>
 
 <KeyTakeaways>
   <ul>
     <li>`rate_bound` allows a share of bad units; `zero_tolerance` allows none, takes only event patterns and is never sampled.</li>
-    <li>Seven sealed predicates. Selectors match only an event's type and its declared `tool`, `status` and `ref` fields, never other payload fields; correlation ids and `ref`s tie approvals to actions. Recovery deadlines run in window time.</li>
+    <li>Seven sealed predicates. Selectors match only type, `tool`, `status` and `ref`; correlation ids and `ref`s tie approvals to actions; recovery uses window time.</li>
   </ul>
 </KeyTakeaways>

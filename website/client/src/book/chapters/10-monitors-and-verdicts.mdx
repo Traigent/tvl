@@ -9,17 +9,17 @@ summary: "What the three verdicts MET, BREACHED and UNKNOWN each promise, how wi
 <h2 id="ch10-learn">What you'll learn</h2>
 
 - How a monitor binds a requirement to evidence, and what MET, BREACHED and UNKNOWN(reason) each promise.
-- How the release gate decides promotion monitors, on real runs, and how they differ from chance constraints.
+- How the release gate decides promotion monitors, and how they differ from chance constraints.
 
 <h2 id="ch10-monitor">A monitor binds evidence</h2>
 
-The <Term id="contract-monitor">contract monitor</Term> evaluates requirements against evidence and reports MET, BREACHED or UNKNOWN.
+The <Term id="contract-monitor">contract monitor</Term> evaluates requirements against evidence: MET, BREACHED or UNKNOWN.
 
 TVL defines what each verdict promises. Production verdicts come from an <Term id="evaluator-profile">evaluator profile</Term> outside TVL, which must keep those promises; TVL's own tools decide only promotion monitors, from complete counts. A <Term id="monitor">monitor</Term> says which evidence checks one requirement, and how (<Ref to="rfc-0003" section="sections 3.2 and 4.5">RFC 0003</Ref>). Version 9 gives `slow_replies` two: `slow_replies_gate` judges the candidate once on the evaluation set (`phase: promotion`), and `slow_replies_prod` judges live traffic (`phase: runtime`):
 
 <Example file="ch10/support-bot.tvl.yml" checker="tvl-validate" title="The support bot, version 9: the runtime monitor" lines="178-190" />
 
-A runtime monitor judges <Term id="window">windows</Term>: back-to-back, never-overlapping ("tumbling") stretches of `tumbling_hours`, aligned to UTC midnight; evidence arriving within `grace_minutes` after a window ends still counts.
+A runtime monitor judges <Term id="window">windows</Term>: back-to-back, never-overlapping ("tumbling") stretches of `tumbling_hours`, aligned to UTC midnight; evidence up to `grace_minutes` late still counts.
 
 `confidence` is how sure the counts must make you before saying MET; `false_alarm_budget` is the chance you accept of even one false BREACHED in `horizon_days`; `min_samples` is the fewest units a rate verdict needs; `max_unresolved_fraction` is the largest share you tolerate as unclassifiable. This monitor is outside the frozen hosted profile. All five fields are required: leave one out, and the validator says `runtime_invalid_profile`. Promotion and zero-tolerance monitors have some defaults (<Ref to="rfc-0003" section="section 4.5">RFC 0003</Ref>). Version 9 also monitors refunds (zero tolerance), the recovery promise and liveness; escalation and refusal are stated but not monitored.
 

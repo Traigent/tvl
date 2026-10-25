@@ -130,6 +130,7 @@ def last_batch(tmp_path):
         p = tmp_path / "audit" / "batches" / f"{bid}.json"
         if p.exists():
             return p
+    return None
 
 
 def test_plan_respects_max_words_and_pending_only(tmp_path):
@@ -634,3 +635,12 @@ def test_s02_ignores_urls_but_flags_prose():
     assert _s02(badge) == "pass"
     assert _s02("TVL is a shield for your specs.") == "issue"
     assert _s02("See [the shield page](https://example.com/p) for more.") == "issue"
+
+
+@pytest.mark.parametrize(
+    "src",
+    ["<img src='https://x.test/a.png'>", '<img SRC="https://x.test/a.png">', "<a HREF = 'https://x.test'>", "<img src=https://x.test/a.png>"],
+)
+def test_strip_urls_attribute_variants(src):
+    out = ca.strip_urls(src + " visible text")
+    assert "x.test" not in out and "visible text" in out

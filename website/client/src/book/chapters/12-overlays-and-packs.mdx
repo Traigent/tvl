@@ -8,7 +8,7 @@ summary: "Ordinary overlays first, then organisation packs: how a stricter bound
 
 <h2 id="ch12-learn">What you'll learn</h2>
 
-- How an ordinary overlay tightens a module's production requirements, and never loosens them.
+- How an ordinary overlay tightens a module's production requirements, never loosening them.
 - How a company states floors for every agent in a pack; what the tools refuse; what parsing or compiling a pack does not do.
 
 <h2 id="ch12-overlay">Overlays tighten</h2>
@@ -33,13 +33,13 @@ The company's rules for all its agents live in a <Term id="pack">pack</Term>: a 
 
 <Example file="ch12/company-floors.pack.yml" checker="tvl-validate" title="The company's floors (a pack)" lines="7-16" />
 
-Composing with a pack pairs each floor monitor with the module monitor that checks the same thing: same predicate, unit, evidence source, environment and method. The module must already be at least as strict (`requirement_weaker_than_floor` otherwise); composition never tightens it for you. A floor with no counterpart is carried on its own, "floor-only". A module may add rules to a floor's response, never drop or weaken one. The three ways to combine bounds, side by side (the meet's refusal is conformance case `composition/individually-reachable-meet-unreachable.yml`):
+Composing with a pack pairs each floor monitor with the module monitor that checks the same thing: same predicate, unit, evidence source, environment and method. The module must already be at least as strict (`requirement_weaker_than_floor` otherwise); composition never tightens it for you. A floor with no counterpart is carried on its own, "floor-only". A module may add rules to a floor's response, never drop or weaken one. A meet is refused if the two sides are incompatible (different fields or schedules) or the result fails a required check, for example it could no longer close an episode (conformance case `composition/individually-reachable-meet-unreachable.yml`). The three ways to combine bounds:
 
 | | Overlay | Pack (`--pack`) | `tvl-compose --meet` |
 |---|---|---|---|
 | Who sets the bound | the overlay's author | the module; the pack is a floor under it | neither side: the stricter of the two |
 | A stricter bound | replaces the base | must already be in the module | wins |
-| A looser bound | refused | refused | loses; the meet is still refused if the two sides are incompatible (different fields or schedules), or the result fails a required check, for example it could no longer close an episode |
+| A looser bound | refused | refused | loses, unless the meet is refused (above) |
 | Example | 5% becomes 3% | 3% passes a 4% floor; 5% is refused | version 10 with the pack gives `max_rate: 0.04` |
 
 <TryIt>
@@ -74,7 +74,7 @@ The first exits with status 2 and writes nothing; the second exits with 0. With 
 
 <h2 id="ch12-compile">Compiling turns nothing on</h2>
 
-`tvl-compile-runtime` checks a module, composes it with its packs and writes two closed files: `runtime-contract.json`, in which your requirement, monitor and rule names are replaced by references from a token map you keep (the contract carries references, not your names), and `runtime-local.json`, which stays with you. Tool names are kept, because they are code identifiers. It installs, enables or runs nothing (<Ref to="rfc-0003" section="section 11.5">RFC 0003</Ref>):
+`tvl-compile-runtime` checks a module, composes it with its packs and writes two closed files: `runtime-contract.json`, in which your requirement, monitor and rule names are replaced by references from a token map you keep, and `runtime-local.json`, which stays with you. Tool names are kept, because they are code identifiers. It installs, enables or runs nothing (<Ref to="rfc-0003" section="section 11.5">RFC 0003</Ref>):
 
 ```bash
 tvl-compile-runtime spec/examples/book/ch12/support-bot.tvl.yml \
