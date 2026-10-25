@@ -91,6 +91,7 @@ EXPECTED: dict[str, set[str]] = {
     "cardinality_arity_mismatch-committee-has-cardinality.tvl.yml": {"cardinality_arity_mismatch"},
     "invalid_cardinality_type-float-cardinality.tvl.yml": {"invalid_cardinality_type"},
     "missing_judge-judge-max-without-judge.tvl.yml": {"missing_judge"},
+    "accept_over_judge_max-accept-on-judge-max.tvl.yml": {"accept_over_judge_max"},
     "unknown_aggregate_kind-weighted-vote.tvl.yml": {"unknown_aggregate_kind"},
     "unknown_stop_kind-unregistered.tvl.yml": {"unknown_stop_kind"},
     "missing_stop_threshold-signal-accept-no-threshold.tvl.yml": {"missing_stop_threshold"},
@@ -230,3 +231,26 @@ def test_schema_keeps_signal_inputs_extension_key():
     # Composite envelope and the arm/signal surfaces are open (lints own those).
     for shape in ("CompositeGateDecl", "AggregateDecl", "AcceptDecl", "StopDecl"):
         assert schema["$defs"][shape].get("additionalProperties") is False, shape
+
+
+def _ensemble_doc(kind: str, with_accept: bool, with_judge: bool) -> dict:
+    doc = _load("composite-knobs-happy-committee-majority.tvl.yml")
+    agg = {"kind": kind}
+    if with_judge:
+        agg["judge"] = {"stage": "s1"}
+    if with_accept:
+        agg["accept"] = {"kind": "stat_at_least", "stat": "vote_margin", "threshold": 0.5}
+    doc["composites"][0]["aggregate"] = agg
+    return doc
+
+
+def test_accept_over_judge_max_is_an_error():
+    assert "accept_over_judge_max" in _codes(_ensemble_doc("judge_max", True, True), "error")
+
+
+def test_judge_max_without_accept_has_no_accept_error():
+    assert "accept_over_judge_max" not in _codes(_ensemble_doc("judge_max", False, True), "error")
+
+
+def test_majority_vote_with_accept_has_no_accept_over_judge_max_error():
+    assert "accept_over_judge_max" not in _codes(_ensemble_doc("majority_vote", True, False), "error")

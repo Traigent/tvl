@@ -858,6 +858,12 @@ These codes come from the `composites` block introduced by RFC 0002 (`formalizat
 - **Example**: `aggregate: { kind: judge_max }`
 - **Remediation**: Add a `judge` arm.
 
+### `accept_over_judge_max`
+- **Severity**: error
+- **Description**: A `judge_max` aggregate carries an `accept` block. A `judge_max` ensemble takes no vote, so there is no vote statistic for `accept` to read. Added by an RFC 0002 errata (2026-10-25).
+- **Example**: `aggregate: { kind: judge_max, judge: { stage: j }, accept: { kind: stat_at_least, stat: vote_margin, threshold: vote.accept_threshold } }`
+- **Remediation**: Remove the `accept` block, or use `majority_vote`.
+
 **Loops**
 
 ### `invalid_max_iters`
@@ -1124,6 +1130,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `invalid_cardinality_type` | error | Composite (1.2) | Cardinality is not int |
 | `unknown_aggregate_kind` | error | Composite (1.2) | Unknown aggregate/stat |
 | `missing_judge` | error | Composite (1.2) | judge_max without judge |
+| `accept_over_judge_max` | error | Composite (1.2) | accept block on a judge_max aggregate |
 | `invalid_max_iters` | error | Composite (1.2) | max_iters < 1 |
 | `unknown_stop_kind` | error | Composite (1.2) | Unknown stop kind |
 | `missing_stop_threshold` | error | Composite (1.2) | signal_accept without threshold |

@@ -55,6 +55,7 @@ criterion 3.
 | `cardinality_arity_mismatch-committee-has-cardinality.tvl.yml` | `cardinality_arity_mismatch` (§3.2 item 7) |
 | `invalid_cardinality_type-float-cardinality.tvl.yml` | `invalid_cardinality_type` (§3.2 item 7) |
 | `missing_judge-judge-max-without-judge.tvl.yml` | `missing_judge` (AggregateDecl) |
+| `accept_over_judge_max-accept-on-judge-max.tvl.yml` | `accept_over_judge_max` (AggregateDecl, RFC 0002 errata 2026-10-25) |
 | `unknown_aggregate_kind-weighted-vote.tvl.yml` | `unknown_aggregate_kind` (AggregateDecl) |
 | `unknown_stop_kind-unregistered.tvl.yml` | `unknown_stop_kind` (StopDecl) |
 | `missing_stop_threshold-signal-accept-no-threshold.tvl.yml` | `missing_stop_threshold` (StopDecl) |

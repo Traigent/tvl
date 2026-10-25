@@ -288,7 +288,7 @@ The set of all valid TVL types is:
     ∪ {callable[P] | P ∈ Ident}
 ```
 
-**Note**: While `str` is a base type, there is no `str`-typed TVAR domain in the core language. String values appear only within `enum[str]` domains. The `str` type exists to give string literals a proper type in the type system, enabling well-typed equality comparisons like `model = "gpt-4"` where `model : enum[str]`.
+**Note**: While `str` is a base type, there is no `str`-typed TVAR domain in the core language. A top-level string TVAR uses an `enum[str]` domain; `str` may also be a tuple component type, as in `tuple[int, str]`. The `str` type exists to give string literals a proper type in the type system, enabling well-typed equality comparisons like `model = "gpt-4"` where `model : enum[str]`.
 
 ### 2.4 Domain Specifications
 
