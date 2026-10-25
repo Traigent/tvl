@@ -636,6 +636,19 @@ def _element_class(domain: Domain) -> str:
     return "num" if _is_numeric_enum(domain) else "enum"
 
 
+def _numeric_type(domain: Domain) -> Optional[str]:
+    """``int`` or ``float`` for a numeric domain, else None.
+
+    A range domain has its declared kind. A numeric enum is ``float`` iff some member is a
+    float and ``int`` otherwise (the domain does not keep the declared ``enum[...]`` type).
+    """
+    if domain.kind in _NUMERIC_KINDS:
+        return domain.kind
+    if domain.kind == "enum" and _is_numeric_enum(domain):
+        return "float" if any(isinstance(v, float) for v in domain.values or []) else "int"
+    return None
+
+
 def _typing_problem(domains: Dict[str, Domain], expressions: List[Expression]) -> Optional[Tuple[str, str]]:
     """``(code, message)`` for the first atom the checker must not decide, else None.
 
@@ -680,14 +693,24 @@ def _atom_problem(cond: Condition, domains: Dict[str, Domain]) -> Optional[Tuple
             return ILL_TYPED_CODE, "orders two TVARs, which T-TVarEq does not type"
         if cls != rhs_cls and not (domain.kind == "enum" and rhs.kind == "enum"):
             return ILL_TYPED_CODE, "compares TVARs of different element types (T-TVarEq)"
+        left_num, right_num = _numeric_type(domain), _numeric_type(rhs)
+        if left_num is not None and right_num is not None and left_num != right_num:
+            # elem(int) != elem(float): the typing rules have no numeric widening, and the
+            # linter (lints._are_types_compatible) rejects the same equality.
+            return ILL_TYPED_CODE, "compares an int TVAR with a float TVAR (T-TVarEq has no numeric widening)"
         return None
     value = cond.value
     if op in _ORDERING_OPS:
         if cls != "num" or not _is_plain_number(value):
             return ILL_TYPED_CODE, "orders a non-numeric operand (T-Cmp requires int or float)"
+        if _numeric_type(domain) == "int" and cond.exact is not None and cond.exact.denominator != 1:
+            return ILL_TYPED_CODE, "compares an int TVAR with a fractional literal (T-Eq/T-Cmp need an int literal)"
         return None
     if cls == "num" and not _is_plain_number(value):
         return ILL_TYPED_CODE, "compares a numeric TVAR with a non-numeric literal (T-Eq/T-Neq)"
+    if cls == "num" and _numeric_type(domain) == "int" and cond.exact is not None and cond.exact.denominator != 1:
+        # T-Eq/T-Cmp need n : elem(int) = int; a fractional literal has type float.
+        return ILL_TYPED_CODE, "compares an int TVAR with a fractional literal (T-Eq/T-Cmp need an int literal)"
     if cls == "bool" and not isinstance(value, bool):
         return ILL_TYPED_CODE, "compares a bool TVAR with a non-bool literal (T-Eq/T-Neq)"
     return None

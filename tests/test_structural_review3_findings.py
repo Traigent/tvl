@@ -86,7 +86,9 @@ def test_enum_pair_distinct_exact_values_equality_is_unsat(solver):
     assert not getattr(result, "undecided", False)
 
 
-def test_enum_pair_int_and_float_members_compare_by_value(solver):
+def test_enum_pair_int_and_float_members_are_ill_typed(solver):
+    # T-TVarEq needs elem(enum[float]) = elem(enum[int]); there is no numeric widening, so the
+    # checker refuses the atom as the linter does (it used to compare the members by value).
     result = check_structural(
         {
             "tvars": [
@@ -96,8 +98,8 @@ def test_enum_pair_int_and_float_members_compare_by_value(solver):
             "constraints": {"structural": [{"expr": "a == b"}]},
         }
     )
-    assert result.ok is True
-    assert result.exact_assignment == {"a": "1", "b": "1"}
+    assert result.ok is False and getattr(result, "undecided", False)
+    assert result.issues[0]["code"] == "structural_ill_typed_atom"
 
 
 # 2. merge expansion is bounded ----------------------------------------------------------
@@ -163,7 +165,9 @@ def test_absent_string_enum_literal_polarity(solver, expr, ok):
     "expr,ok,witness",
     [("n != 2.5", True, None), ("n == 2.5", False, None), ("n > 2.5 and n < 3.5", True, 3)],
 )
-def test_int_domain_with_fractional_literal_is_exact(solver, expr, ok, witness):
+def test_int_domain_with_fractional_literal_is_ill_typed(solver, expr, ok, witness):
+    # T-Eq/T-Cmp need n : elem(int) = int and 2.5 has type float; the linter rejects the atom
+    # (constraint_type_mismatch), so the checker no longer decides it.
     result = _check(
         f"""
         tvars:
@@ -172,9 +176,8 @@ def test_int_domain_with_fractional_literal_is_exact(solver, expr, ok, witness):
           structural: [{{expr: "{expr}"}}]
         """
     )
-    assert result.ok is ok
-    if witness is not None:
-        assert result.assignment == {"n": witness}
+    assert result.ok is False and getattr(result, "undecided", False)
+    assert result.issues[0]["code"] == "structural_ill_typed_atom"
 
 
 @pytest.mark.parametrize("op,ok", [("!=", True), ("==", True)])
