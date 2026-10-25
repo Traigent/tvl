@@ -1,5 +1,5 @@
 /** Normative sources the book links to. Links are pinned to a reviewed commit. */
-export const PINNED_COMMIT = "82a0d5651965e724efe2905e83daeb503f623a8e";
+export const PINNED_COMMIT = "58f35baafca2ffa2eaa0112f6ac69f6874f6e6dc";
 
 export const SOURCES = {
   "rfc-0001": {
@@ -23,9 +23,7 @@ export const SOURCES = {
   "error-codes": { label: "Error code catalog", path: "docs/reference/error-codes.md" },
   schema: { label: "TVL JSON Schema", path: "spec/grammar/tvl.schema.json" },
   conformance: { label: "Conformance suite", path: "conformance/README.md" },
-  // The RFC process was added to the contributing guide after PINNED_COMMIT, so this one
-  // link is pinned to a later commit of main that has it.
-  contributing: { label: "Contributing guide", path: "CONTRIBUTING.md", commit: "acfd1ccfaf44356427cbbcca01a8dbdafaa9fd50" },
+  contributing: { label: "Contributing guide", path: "CONTRIBUTING.md" },
   // Discussions are a live forum, not a file: there is no commit to pin.
   discussions: { label: "GitHub Discussions", url: "https://github.com/Traigent/tvl/discussions" },
 } as const satisfies Record<string, Source>;
