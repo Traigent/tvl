@@ -462,9 +462,9 @@ def _create_variable(model: cp_model.CpModel, domain: Domain) -> cp_model.IntVar
         return model.NewBoolVar(name)
     if domain.kind == "enum":
         return _create_enum_variable(model, domain, name)
-    if domain.kind == "int":
+    if domain.kind == "int" and not domain.gridded:
         return _create_int_variable(model, domain, name)
-    if domain.kind == "float":
+    if domain.gridded:
         return _create_float_variable(model, domain, name)
     raise ValueError(f"Unsupported domain type {domain.kind}")
 

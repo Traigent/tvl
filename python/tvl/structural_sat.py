@@ -278,7 +278,7 @@ def _domain_member(domain: Domain, value: Any) -> bool:
         return False
     if isinstance(value, float) and not math.isfinite(value):
         return False
-    if domain.kind == "int":
+    if domain.kind == "int" and not domain.gridded:
         if not (isinstance(value, int) or _exact(value).denominator == 1):
             return False
         index = int(_exact(value))
@@ -1149,7 +1149,7 @@ def _encode_ident_comparison(
 
 
 def _grid_of(domain: Domain) -> Tuple[Fraction, Fraction]:
-    if domain.kind == "float":
+    if domain.gridded:
         return domain.grid_origin, domain.grid_step
     return Fraction(0), Fraction(1)
 
@@ -1417,13 +1417,13 @@ def _candidates_are_exhaustive(
             return False
         if domain.kind in ("bool", "enum"):
             continue
-        if domain.kind == "int" and domain.minimum is not None and domain.maximum is not None:
+        if domain.kind == "int" and not domain.gridded and domain.minimum is not None and domain.maximum is not None:
             # Arithmetic check (never materialise the range): the candidates are distinct,
             # lie in [min, max] (filtered by contains), so they cover it iff the counts match.
             size = int(domain.index_upper()) - int(domain.index_lower()) + 1
             if size >= 0 and len(set(cand)) == size:
                 continue
-        if domain.kind == "float" and full_grids and name in full_grids:
+        if domain.gridded and full_grids and name in full_grids:
             continue
         return False
     return True
@@ -1498,9 +1498,9 @@ def _candidate_list(domain: Domain, val_set: set) -> List[Any]:
         return [True, False]
     if domain.kind == "enum":
         return list(domain.values or [])
-    if domain.kind == "int":
+    if domain.kind == "int" and not domain.gridded:
         return _int_candidates(domain, val_set)
-    if domain.kind == "float":
+    if domain.gridded:
         return _float_candidates(domain, val_set)
     return list(val_set) if val_set else [None]
 

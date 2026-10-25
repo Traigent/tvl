@@ -47,6 +47,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 
+- Integer range `resolution` was ignored: `{range: [0, 4], resolution: 2}` on an `int` TVAR admitted 1 and 3. The domain is now `{a + i*r}` (Definition 3.6) in membership, the structural checker (CP-SAT and fallback) and witnesses. A fractional `resolution` on an `int` range is unchanged (the semantics are silent on it).
 - **(1.5.0)** False UNSAT on strict float comparisons: the strict bound was applied twice, so a satisfiable module such as `t > 0.5`, `t < 0.7` on `{range: [0, 1], resolution: 0.1}` was reported UNSAT. Strict and non-strict bounds are now computed exactly on the grid.
 - **(1.5.0)** False SAT from a resolution that does not divide the range: the checker searched a finer grid than the declared one, so `{range: [0, 1], resolution: 0.3}` with `t >= 0.95` was reported SAT with `t = 1.0`, which is not on the grid `{0, 0.3, 0.6, 0.9}`. Witnesses could also be off-grid when the range did not start at 0.
 - **(1.5.0)** Every CP-SAT status other than a solution was treated as UNSAT. Only `INFEASIBLE` now proves UNSAT; any other status is `structural_solver_inconclusive`.
