@@ -237,8 +237,8 @@ enum_element  = "str" | "int" | "float" ;
 
 (* Tuple types: product type (A × B × ...) - NOT a tagged union. Semantics: Cartesian product of component domains. str is a tuple component only, not a top-level type *)
 tuple_type    = "tuple[", type_list, "]" ;
-type_list     = tuple_component, { ",", tuple_component } ;
-tuple_component = type | "str" ;
+type_list     = tuple_component_type, { ",", tuple_component_type } ;
+tuple_component_type = type | "str" ;
 
 (* Callable types: reference to protocol-defined functions *)
 (* Resolution: Lazy at specialization time via registry lookup *)
