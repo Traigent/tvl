@@ -33,7 +33,9 @@ class SliderConfig:
             return True
         if not self.values or len(self.values) < 3:
             return True
-        gaps = {round(b - a, 9) for a, b in zip(self.values, self.values[1:])}
+        # Exact gaps of the shortest-repr decimals: no rounding may merge distinct gaps.
+        exact = [Fraction(repr(v)) for v in self.values]
+        gaps = {b - a for a, b in zip(exact, exact[1:])}
         return len(gaps) == 1
 
 
@@ -264,6 +266,9 @@ def _tvar_definition(decl: dict[str, Any]) -> dict[str, Any] | None:
         definition["range"] = domain["range"]
         if "resolution" in domain:
             definition["resolution"] = domain["resolution"]
+        elif type_name in ("int", "float"):
+            # Effective resolution when omitted (formal semantics, RangeDomain): 1 / 0.001.
+            definition["resolution"] = 1 if type_name == "int" else "0.001"
     elif "set" in domain or "values" in domain:
         definition["values"] = domain.get("set", domain.get("values"))
     else:

@@ -106,3 +106,26 @@ def test_page_script_moves_over_the_listed_members():
     ).read_text(encoding="utf-8")
     assert "value.values" in script and "dataset.members" in script
     assert "Number(selectors." not in script  # sliders are read through readSlider
+
+
+def test_omitted_int_resolution_is_the_effective_unit_grid(tmp_path):
+    # Definition 3.6: effective resolution is 1 for int ranges (not span/16).
+    payload = _build(tmp_path, "  - {name: k, type: int, domain: {range: [1, 9]}}\n")
+    assert payload["sliders"]["k"]["step"] == 1.0
+    assert (payload["sliders"]["k"]["min"], payload["sliders"]["k"]["max"]) == (1.0, 9.0)
+    for value in [payload["defaults"]["k"], *[p["k"] for p in payload["presets"].values()]]:
+        assert value == int(value) and 1 <= value <= 9, value
+
+
+def test_omitted_float_resolution_is_one_thousandth(tmp_path):
+    payload = _build(tmp_path, "  - {name: w, type: float, domain: {range: [0, 1]}}\n")
+    assert payload["sliders"]["w"]["step"] == 0.001
+
+
+def test_tiny_set_gaps_are_not_classified_uniform(tmp_path):
+    # Exact gaps 1e-10 vs 2e-10 differ; rounding to nine decimals would call this uniform.
+    payload = _build(
+        tmp_path, "  - {name: k, type: 'enum[float]', domain: {set: [0, 0.0000000001, 0.0000000003]}}\n"
+    )
+    assert payload["sliders"]["k"]["values"] == [0.0, 1e-10, 3e-10]
+    assert payload["defaults"]["k"] in (0.0, 1e-10, 3e-10)
