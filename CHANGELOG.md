@@ -47,6 +47,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 
+- `tvl-compose` accepted an overlay that adds values to a `{set: [...]}` domain: the "values may not be added" check compared bare-list domains only. Both spellings, in any combination, are now checked (the two denote the same set, Definition 3.6).
 - `tvl-microsim-bridge` read only the legacy `configuration_space` key, so on a current module it emitted empty defaults, sliders and presets. It now reads the numeric `tvars` (a range's `resolution` becomes the slider step, `tvl.module` the source id); `configuration_space` remains a fallback.
 - `tvl-config-validate` / `validate_configuration` rejected grammar-valid structural constraints that the linter and `tvl-check-structural` accept: chained comparisons (`1 <= x <= 5`), `not (...)` / `not(...)` and `x in {...}` (reported as `unsupported_negation`, `illegal_ident` or `constraint_parse_error`). They are now evaluated; text the structural parser also rejects (an empty `in []`, a hyphenated identifier) still fails closed.
 - The Definition 8.6 precision-alignment check (`inadequate_precision`) read `str(value)`, so a float written with more digits than binary64 holds (`0.100000000000000001`) looked aligned. It now reads the retained source lexeme, as the rest of the tools do.

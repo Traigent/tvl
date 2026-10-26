@@ -496,15 +496,26 @@ def _domain_widenings(name: Any, base_domain: Any, composed_domain: Any) -> list
     """Errors for a TVAR whose overlay domain adds enum values or widens a range."""
     errors = []
 
-    # Check enum domains
-    if isinstance(base_domain, list) and isinstance(composed_domain, list):
-        errors.extend(_enum_additions(name, base_domain, composed_domain))
+    # Check enum domains. ``[v, ...]`` and ``{set: [v, ...]}`` denote the same finite set
+    # (formal semantics Definition 3.6), so both spellings are checked, in any combination.
+    base_values, composed_values = _set_domain_values(base_domain), _set_domain_values(composed_domain)
+    if base_values is not None and composed_values is not None:
+        errors.extend(_enum_additions(name, base_values, composed_values))
 
     # Check range domains
     if isinstance(base_domain, dict) and isinstance(composed_domain, dict):
         if "range" in base_domain and "range" in composed_domain:
             errors.extend(_range_widenings(name, base_domain["range"], composed_domain["range"]))
     return errors
+
+
+def _set_domain_values(domain: Any) -> list[Any] | None:
+    """The values of a finite-set domain (a bare list or ``{set: [...]}``), else None."""
+    if isinstance(domain, list):
+        return domain
+    if isinstance(domain, dict) and isinstance(domain.get("set"), list):
+        return domain["set"]
+    return None
 
 
 def _enum_additions(name: Any, base_domain: list[Any], composed_domain: list[Any]) -> list[str]:

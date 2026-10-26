@@ -557,7 +557,7 @@ By default, the composer enforces the checks below. They do not establish full s
 
 | Element | Rule |
 |---|---|
-| TVAR domains | when both domains are lists, values may not be added; when both are mappings with `range`, endpoints may not widen. Domain-shape changes are not checked here |
+| TVAR domains | when both domains are finite sets (a bare list or `{set: [...]}`, in any combination), values may not be added; when both are mappings with `range`, endpoints may not widen. Domain-shape changes are not checked here |
 | TVARs | may not be added |
 | `exploration.budgets` | `max_trials`, `max_spend_usd`, `max_wallclock_s` may not increase when present in both base and result; removal is not checked here |
 | `promotion_policy.chance_constraints` | a named constraint may not be dropped; `threshold` may only **decrease**; `confidence` may only **increase** |
