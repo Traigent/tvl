@@ -480,6 +480,15 @@ _ATOM_COMPARISONS = (
 )
 
 
+def _is_real(value: Any) -> bool:
+    """A finite real number (not a bool), whose exact rational is defined."""
+    return (
+        isinstance(value, (int, float, Fraction))
+        and not isinstance(value, bool)
+        and not (isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))))
+    )
+
+
 def _atom_true(atom: Atom, flat: Dict[str, Any]) -> bool:
     value = flat.get(atom.path)
     if value is None:
@@ -489,12 +498,9 @@ def _atom_true(atom: Atom, flat: Dict[str, Any]) -> bool:
         target = flat.get(atom.rhs_path)
         if target is None:
             return False
-    elif (
-        atom.exact is not None
-        and isinstance(value, (int, float, Fraction))
-        and not isinstance(value, bool)
-        and not (isinstance(value, float) and value != value)
-    ):
+        if _is_real(value) and _is_real(target):
+            value, target = _exact(value), _exact(target)  # retained lexemes, not binary64
+    elif atom.exact is not None and _is_real(value):
         value, target = _exact(value), atom.exact  # exact rationals, not binary64 roundings
     for op, compare in _ATOM_COMPARISONS:
         if atom.op == op:
@@ -718,7 +724,8 @@ def _ordered_atom_literal(
     if domain.kind in ("int", "float") and isinstance(value, (int, float)) and not isinstance(value, bool):
         # A threshold need not be a domain member (Definition 3.6 grid ``origin + i*step``):
         # compare through the exact rational grid index, as structural_sat does.
-        idx = (_exact(value) - domain.grid_origin) / domain.grid_step
+        exact = atom.exact if atom.exact is not None else _exact(value)
+        idx = (exact - domain.grid_origin) / domain.grid_step
         op = atom.op
         if op in ("==", "!="):
             if idx.denominator != 1:

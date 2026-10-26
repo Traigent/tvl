@@ -53,3 +53,17 @@ def test_satisfiability_encoder_handles_off_grid_thresholds():
     assert solve("x != 3")["ok"] is True
     assert solve("x > 3")["assignment"] == {"x": 4}
     assert solve("x == 2")["assignment"] == {"x": 2}
+
+
+def test_satisfiability_encoder_uses_the_exact_literal():
+    from tvl.constraints import check_structural_satisfiable, compile_constraints
+
+    module = {
+        "tvars": [{"name": "x", "type": "int", "domain": {"range": [0, 2]}}],
+        "constraints": {
+            "structural": [{"expr": "0 <= x <= 0.999999999999999999"}, {"expr": "x = 1"}]
+        },
+    }
+    assert check_structural_satisfiable(compile_constraints(module))["ok"] is False
+    module["constraints"]["structural"][0]["expr"] = "0 <= x <= 1.000000000000000001"
+    assert check_structural_satisfiable(compile_constraints(module))["assignment"] == {"x": 1}

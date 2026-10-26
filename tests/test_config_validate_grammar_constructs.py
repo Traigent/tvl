@@ -86,3 +86,17 @@ YTVARS = [
 def test_tvar_equality_and_exact_thresholds(expr, assignments, holds):
     result = _eval(expr, assignments, YTVARS)
     assert result["ok"] is holds, result["constraints"]
+
+
+def test_tvar_equality_compares_retained_lexemes():
+    from tvl.yaml_safe import safe_load
+
+    tvars = [
+        {"name": "x", "type": "float", "domain": {"range": [0.0, 1.0], "resolution": 0.1}},
+        {"name": "y", "type": "float", "domain": {"range": [0.0, 1.0], "resolution": 0.1}},
+    ]
+    config = safe_load("x: 0.100000000000000001\ny: 0.100000000000000002\n")
+    result = _eval("x = y", config, tvars)
+    assert [i["code"] for i in result["constraints"]] == ["constraint_failed"]
+    same = safe_load("x: 0.5\ny: 0.5\n")
+    assert [i["code"] for i in _eval("x = y", same, tvars)["constraints"]] == []
