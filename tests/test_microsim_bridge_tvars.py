@@ -49,3 +49,30 @@ def test_legacy_configuration_space_still_read(tmp_path):
     payload = build_presets(spec)
     assert payload["source"]["spec_id"] == "old"
     assert "retriever_top_k" in payload["defaults"]
+
+
+def _build(tmp_path, tvars_yaml):
+    spec = tmp_path / "s.yml"
+    spec.write_text("tvl: {module: a.b}\ntvl_version: '1.5'\ntvars:\n" + tvars_yaml, encoding="utf-8")
+    return build_presets(spec)
+
+
+def test_defaults_and_presets_stay_on_the_resolution_grid(tmp_path):
+    payload = _build(
+        tmp_path, "  - {name: k, type: int, domain: {range: [1, 9], resolution: 4}}\n"
+    )
+    members = {1, 5, 9}
+    assert payload["defaults"]["k"] in members
+    assert payload["defaults"]["k"] == 5  # nearest to the midpoint, not 4
+    assert all(preset["k"] in members for preset in payload["presets"].values())
+    assert payload["sliders"]["k"]["max"] == 9
+
+
+def test_non_uniform_set_never_leaves_the_set(tmp_path):
+    payload = _build(
+        tmp_path, "  - {name: k, type: 'enum[int]', domain: {set: [1, 3, 9]}}\n"
+    )
+    members = {1, 3, 9}
+    assert payload["defaults"]["k"] in members
+    assert all(preset["k"] in members for preset in payload["presets"].values())
+    assert payload["sliders"]["k"]["values"] == [1.0, 3.0, 9.0]

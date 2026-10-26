@@ -6,6 +6,7 @@ from typing import Any, Iterable
 
 import json
 
+from tvl.model import exact_number_or_none
 from tvl.yaml_safe import safe_load
 
 
@@ -14,6 +15,34 @@ class SliderConfig:
     minimum: float
     maximum: float
     step: float
+    # The finite domain, sorted, when the slider must land only on members (a set, or a range
+    # with a resolution: Definition 3.6). None for the legacy uniform sliders.
+    values: list[float] | None = None
+
+    @property
+    def uniform(self) -> bool:
+        if not self.values or len(self.values) < 3:
+            return True
+        gaps = {round(b - a, 9) for a, b in zip(self.values, self.values[1:])}
+        return len(gaps) == 1
+
+
+_MAX_GRID_POINTS = 10_001
+
+
+def _grid_values(bounds: list[Any], resolution: Any) -> list[float] | None:
+    """Members ``a + i*r`` of a range with a declared resolution (exact arithmetic), else None."""
+    try:
+        low, high = exact_number_or_none(bounds[0]), exact_number_or_none(bounds[1])
+        step = exact_number_or_none(resolution)
+    except ValueError:
+        return None
+    if low is None or high is None or step is None or step <= 0 or high < low:
+        return None
+    count = int((high - low) // step) + 1
+    if count > _MAX_GRID_POINTS:
+        return None
+    return [float(low + i * step) for i in range(count)]
 
 
 def _to_number(value: Any) -> float | None:
@@ -34,11 +63,11 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
         ]
         if not values:
             return None
-        values.sort()
+        values = sorted(set(values))
         minimum = values[0]
         maximum = values[-1]
         step = values[1] - values[0] if len(values) > 1 else 1.0
-        return SliderConfig(minimum=minimum, maximum=maximum, step=step)
+        return SliderConfig(minimum=minimum, maximum=maximum, step=step, values=values)
     if "range" in definition and isinstance(definition["range"], Iterable):
         bounds = list(definition["range"])
         if len(bounds) != 2:
@@ -50,7 +79,11 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
         span = maximum - minimum
         resolution = _to_number(definition.get("resolution"))
         if resolution is not None and resolution > 0:
-            # A declared range resolution is the grid (Definition 3.6): use it as the step.
+            # A declared range resolution is the grid (Definition 3.6): the members are
+            # a + i*r, so the slider may land only on them (the top may be off the grid).
+            grid = _grid_values(bounds, definition.get("resolution"))
+            if grid:
+                return SliderConfig(minimum=grid[0], maximum=grid[-1], step=resolution, values=grid)
             return SliderConfig(minimum=minimum, maximum=maximum, step=resolution)
         # Provide a sensible default step: divide into 16 increments (avoid zeros).
         step = round(span / 16, 4) if span > 0 else 0.1
@@ -67,6 +100,8 @@ def _infer_default(definition: dict[str, Any]) -> float | int | None:
     slider = _infer_slider(definition)
     if slider:
         midpoint = (slider.minimum + slider.maximum) / 2
+        if slider.values:
+            return min(slider.values, key=lambda v: (abs(v - midpoint), v))  # a member, never between
         step = slider.step or 1.0
         return round(midpoint / step) * step
     return None
@@ -91,6 +126,8 @@ def _clamp(value: float, slider: SliderConfig | None) -> float:
 
 
 def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
+    if slider is not None and slider.values:
+        return min(slider.values, key=lambda v: (abs(v - value), v))
     if slider is None or slider.step <= 0:
         return value
     normalized = (value - slider.minimum) / slider.step
@@ -255,6 +292,7 @@ def build_presets(path: Path) -> dict[str, Any]:
             "min": slider.minimum,
             "max": slider.maximum,
             "step": slider.step,
+            **({} if slider.uniform else {"values": slider.values}),
         }
         for name, slider in sliders.items()
     }
