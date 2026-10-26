@@ -36,3 +36,23 @@ def test_range_bound_with_unrepresentable_lexeme_is_misaligned():
 def test_aligned_value_is_still_accepted():
     codes = _codes("tvars:\n  - name: t\n    type: float\n    domain: {set: [0.1, 0.25]}\n")
     assert "inadequate_precision" not in codes
+
+
+def test_suggested_precision_aligns_the_exact_value():
+    doc = safe_load("tvars:\n  - name: t\n    type: float\n    domain: {set: [0.100000000000000001]}\n")
+    issue = next(i for i in lint_module(doc) if (i["code"] if isinstance(i, dict) else i.code) == "inadequate_precision")
+    suggested = issue["suggested_precision"] if isinstance(issue, dict) else issue.suggested_precision
+    assert suggested == 10**18
+    from fractions import Fraction
+
+    assert (Fraction("0.100000000000000001") * suggested).denominator == 1
+
+
+def test_suggested_precision_for_an_exact_resolution():
+    doc = safe_load(
+        "tvars:\n  - name: t\n    type: float\n"
+        "    domain: {range: [0.0, 1.0], resolution: 0.100000000000000001}\n"
+    )
+    issue = next(i for i in lint_module(doc) if (i["code"] if isinstance(i, dict) else i.code) == "inadequate_precision")
+    suggested = issue["suggested_precision"] if isinstance(issue, dict) else issue.suggested_precision
+    assert suggested == 10**18
