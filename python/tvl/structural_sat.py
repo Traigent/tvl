@@ -1422,10 +1422,9 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
     assignment: Dict[str, Any] = {}
 
+    budget = _SearchBudget(_MAX_FALLBACK_PRODUCT)  # one total for the search and the core reduction
     try:
-        solution = _search_assignment(
-            order, candidates, expressions, assignment, 0, _SearchBudget(_MAX_FALLBACK_PRODUCT)
-        )
+        solution = _search_assignment(order, candidates, expressions, assignment, 0, budget)
     except _SearchBudgetExceeded:
         # The product of the candidate lists (2**n for n Booleans) is past the budget and no
         # witness turned up before it ran out: neither SAT nor UNSAT has been shown.
@@ -1438,7 +1437,12 @@ def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[E
     if not _candidates_are_exhaustive(domains, candidates, full_grids):
         return _undecided_without_solver()
 
-    core = _approximate_unsat_core(domains, expressions, candidates)
+    try:
+        core = _approximate_unsat_core(domains, expressions, candidates, budget)
+    except _SearchBudgetExceeded:
+        # UNSAT is proven (every domain was exhausted) but the core reduction ran out of
+        # budget: report no core rather than an unreduced or partly reduced one.
+        return StructuralResult(ok=False, assignment=None, unsat_core=None)
     return StructuralResult(ok=False, assignment=None, unsat_core=core)
 
 
@@ -1642,6 +1646,7 @@ def _approximate_unsat_core(
     domains: Dict[str, Domain],
     expressions: List[Expression],
     candidates: Dict[str, List[Any]],
+    budget: Optional["_SearchBudget"] = None,
 ) -> List[Dict[str, Any]]:
     core = expressions[:]
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
@@ -1649,7 +1654,7 @@ def _approximate_unsat_core(
     idx = 0
     while idx < len(core):
         candidate_core = core[:idx] + core[idx + 1 :]
-        if _search_assignment(order, candidates, candidate_core, {}, 0) is None:
+        if _search_assignment(order, candidates, candidate_core, {}, 0, budget) is None:
             core = candidate_core
         else:
             idx += 1

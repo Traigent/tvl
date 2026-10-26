@@ -42,3 +42,16 @@ def test_boolean_witness_found_within_budget_is_sat(monkeypatch):
     monkeypatch.setattr(structural_sat, "cp_model", None)
     result = check_structural(_bool_module(30, ["b29 == true"]))
     assert result.ok is True
+
+
+def test_core_reduction_shares_the_budget(monkeypatch):
+    monkeypatch.setattr(structural_sat, "cp_model", None)
+    module = _bool_module(3, ["b0 == true", "b0 == false", "b1 == true"])
+    full = check_structural(module)
+    assert full.ok is False and full.unsat_core  # default budget: a core is reported
+
+    # 8 leaves prove UNSAT; the core reduction then has no budget left.
+    monkeypatch.setattr(structural_sat, "_MAX_FALLBACK_PRODUCT", 8)
+    capped = check_structural(module)
+    assert capped.ok is False and not getattr(capped, "undecided", False)
+    assert capped.unsat_core is None
