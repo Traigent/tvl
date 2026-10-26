@@ -55,3 +55,34 @@ def test_non_representable_text_still_fails_closed(expr):
     result = _result(expr)
     assert result["ok"] is False
     assert result["constraints"] and result["constraints"][0]["code"] != "constraint_failed"
+
+
+def _eval(expr, assignments, tvars=None):
+    module = {"tvars": tvars or TVARS, "constraints": {"structural": [{"expr": expr}]}}
+    return validate_configuration(module, {"assignments": assignments})
+
+
+YTVARS = [
+    {"name": "x", "type": "int", "domain": {"range": [0, 10]}},
+    {"name": "y", "type": "int", "domain": {"range": [0, 10]}},
+]
+
+
+@pytest.mark.parametrize(
+    "expr, assignments, holds",
+    [
+        ("x = y", {"x": 1, "y": 1}, True),
+        ("x = y", {"x": 1, "y": 2}, False),
+        ("x != y", {"x": 1, "y": 2}, True),
+        ("not (x = y)", {"x": 1, "y": 1}, False),
+        ("not (x = y)", {"x": 1, "y": 2}, True),
+        ("0 <= x <= 0.999999999999999999", {"x": 1, "y": 0}, False),
+        ("0 <= x <= 1.000000000000000001", {"x": 1, "y": 0}, True),
+        ("x > 0.999999999999999999", {"x": 1, "y": 0}, True),
+        ("x < 1.000000000000000001", {"x": 1, "y": 0}, True),
+        ("x <= 0.999999999999999999", {"x": 1, "y": 0}, False),
+    ],
+)
+def test_tvar_equality_and_exact_thresholds(expr, assignments, holds):
+    result = _eval(expr, assignments, YTVARS)
+    assert result["ok"] is holds, result["constraints"]

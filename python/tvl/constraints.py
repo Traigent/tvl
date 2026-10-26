@@ -4,6 +4,7 @@ import math
 import operator
 import re
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import Any, Dict, List, Optional, Sequence
 
 try:  # pragma: no cover - optional dependency
@@ -11,7 +12,7 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
-from .model import Domain, _exact, extract_domains, flatten_assignments
+from .model import Domain, _exact, exact_number_or_none, extract_domains, flatten_assignments
 
 
 _OR_SPLIT = re.compile(r"\s+or\s+", re.IGNORECASE)
@@ -59,6 +60,11 @@ class Atom:
     path: str
     op: str
     value: Any
+    # ``x = y`` / ``x != y`` between two TVARs (T-TVarEq): the right-hand TVAR path; ``value`` is unused.
+    rhs_path: Optional[str] = None
+    # Exact rational of a numeric literal, from its source text; comparisons use it, never the
+    # binary64 ``value`` (semantics: numeric atoms are exact).
+    exact: Optional[Fraction] = field(default=None, compare=False)
 
 
 @dataclass
@@ -113,6 +119,7 @@ def _split_top_level_implication(text: str) -> Optional[tuple[str, str]]:
 
 def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
     domains = extract_domains(module.get("tvars", {}))
+    tvar_names = frozenset(domains)
 
     constraints_section = module.get("constraints", {}) or {}
     structural = constraints_section.get("structural") or []
@@ -146,8 +153,8 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
                     text=repr(entry),
                 )
             if has_when_then:
-                antecedent = parse_expression(when_expr)
-                consequent = parse_expression(then_expr)
+                antecedent = parse_expression(when_expr, tvar_names)
+                consequent = parse_expression(then_expr, tvar_names)
                 compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
             elif has_expr:
                 split = _split_top_level_implication(expr_expr) if isinstance(expr_expr, str) else None
@@ -164,11 +171,11 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
                             code="malformed_implication",
                             text=expr_expr,
                         )
-                    antecedent = parse_expression(ante_str)
-                    consequent = parse_expression(cons_str)
+                    antecedent = parse_expression(ante_str, tvar_names)
+                    consequent = parse_expression(cons_str, tvar_names)
                     compiled.append(StructuralConstraint(antecedent=antecedent, consequent=consequent, raw=entry))
                 else:
-                    consequent = parse_expression(expr_expr)
+                    consequent = parse_expression(expr_expr, tvar_names)
                     compiled.append(StructuralConstraint(antecedent=[[]], consequent=consequent, raw=entry))
         except ConstraintParseError as err:
             parse_issues.append({
@@ -181,11 +188,11 @@ def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
     return CompiledConstraints(domains=domains, constraints=compiled, parse_issues=parse_issues)
 
 
-def parse_expression(expr: Any) -> List[List[Atom]]:
+def parse_expression(expr: Any, tvar_names: frozenset = frozenset()) -> List[List[Atom]]:
     if expr is None:
         return [[]]
     if isinstance(expr, list):
-        return _parse_expression_list(expr)
+        return _parse_expression_list(expr, tvar_names)
     if not isinstance(expr, str):
         raise ValueError(f"Expression must be a string; got {expr!r}")
 
@@ -209,14 +216,14 @@ def parse_expression(expr: Any) -> List[List[Atom]]:
             disj = disj.strip()
             if not disj:
                 continue
-            disjuncts.append(_parse_conjunction(disj))
+            disjuncts.append(_parse_conjunction(disj, tvar_names))
     except ConstraintParseError as err:
         if err.code not in _GRAMMAR_FALLBACK_CODES:
             raise
         # A grammar-valid construct the flat regex parser cannot represent (chained
         # comparison, ``not``, ``in {...}``, parentheses): parse it with the structural parser
         # the linter and the checker use, then reduce it to the same flat atoms.
-        return _parse_with_structural_parser(text, err)
+        return _parse_with_structural_parser(text, err, tvar_names)
 
     return disjuncts or [[]]
 
@@ -227,12 +234,14 @@ _GRAMMAR_FALLBACK_CODES = frozenset(
 )
 
 
-def _parse_with_structural_parser(text: str, original: "ConstraintParseError") -> List[List[Atom]]:
+def _parse_with_structural_parser(
+    text: str, original: "ConstraintParseError", tvar_names: frozenset = frozenset()
+) -> List[List[Atom]]:
     from .structural_parser import StructuralParseError, parse_expression as parse_structural
     from .structural_sat import _expand_dnf
 
     try:
-        conditions = _expand_dnf(parse_structural(text), set())
+        conditions = _expand_dnf(parse_structural(text), set(tvar_names))
     except (StructuralParseError, ValueError):
         raise original from None
     if not conditions:
@@ -242,31 +251,31 @@ def _parse_with_structural_parser(text: str, original: "ConstraintParseError") -
     for clause in conditions:
         atoms: List[Atom] = []
         for cond in clause:
-            if cond.rhs_ident is not None:
-                raise original
-            atoms.append(Atom(path=cond.ident, op=cond.operator, value=cond.value))
+            atoms.append(
+                Atom(path=cond.ident, op=cond.operator, value=cond.value, rhs_path=cond.rhs_ident, exact=cond.exact)
+            )
         disjuncts.append(atoms)
     return disjuncts
 
 
-def _parse_expression_list(expr: List[Any]) -> List[List[Atom]]:
+def _parse_expression_list(expr: List[Any], tvar_names: frozenset = frozenset()) -> List[List[Atom]]:
     disjuncts: List[List[Atom]] = []
     for item in expr:
-        disjuncts.extend(parse_expression(item))
+        disjuncts.extend(parse_expression(item, tvar_names))
     return disjuncts or [[]]
 
 
-def _parse_conjunction(disj: str) -> List[Atom]:
+def _parse_conjunction(disj: str, tvar_names: frozenset = frozenset()) -> List[Atom]:
     atoms: List[Atom] = []
     for literal in _AND_SPLIT.split(disj):
         literal = literal.strip()
         if not literal:
             continue
-        atoms.append(_parse_literal(literal))
+        atoms.append(_parse_literal(literal, tvar_names))
     return atoms
 
 
-def _parse_literal(text: str) -> Atom:
+def _parse_literal(text: str, tvar_names: frozenset = frozenset()) -> Atom:
     # Fail closed on valid-grammar constructs the regex parser cannot represent
     # as a single flat Atom (issue #49). The structural_parser tokenizer handles
     # these; here we reject them with a diagnostic rather than mis-parse/swallow.
@@ -312,9 +321,14 @@ def _parse_literal(text: str) -> Atom:
             code="unsupported_interval",
             text=text,
         )
-    value = _parse_value(value_raw)
     canonical_op = "==" if op == "=" else op
-    return Atom(path=path, op=canonical_op, value=value)
+    if canonical_op in ("==", "!=") and value_raw in tvar_names:
+        return Atom(path=path, op=canonical_op, value=None, rhs_path=value_raw)  # T-TVarEq
+    value = _parse_value(value_raw)
+    exact = None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        exact = exact_number_or_none(value_raw)
+    return Atom(path=path, op=canonical_op, value=value, exact=exact)
 
 
 def _parse_value(token: str) -> Any:
@@ -432,22 +446,28 @@ def _constraint_reference_issues(compiled: CompiledConstraints) -> List[Dict[str
     seen_paths: set[str] = set()
     for constraint in compiled.constraints:
         for atom in _constraint_atoms(constraint):
-            if atom.path in seen_paths:
-                continue
-            seen_paths.add(atom.path)
-            if not _IDENT_RE.match(atom.path):
-                issues.append({
-                    "code": "illegal_ident",
-                    "path": atom.path,
-                    "message": f"Constraint references illegal identifier {atom.path!r}",
-                })
-            elif atom.path not in compiled.domains:
-                issues.append({
-                    "code": "unknown_reference",
-                    "path": atom.path,
-                    "message": f"Constraint references undeclared TVAR '{atom.path}'",
-                })
+            for ref in (atom.path, atom.rhs_path):
+                if ref is not None:
+                    _check_reference(ref, compiled, seen_paths, issues)
     return issues
+
+
+def _check_reference(ref: str, compiled: "CompiledConstraints", seen_paths: set, issues: List[Dict[str, Any]]) -> None:
+    if ref in seen_paths:
+        return
+    seen_paths.add(ref)
+    if not _IDENT_RE.match(ref):
+        issues.append({
+            "code": "illegal_ident",
+            "path": ref,
+            "message": f"Constraint references illegal identifier {ref!r}",
+        })
+    elif ref not in compiled.domains:
+        issues.append({
+            "code": "unknown_reference",
+            "path": ref,
+            "message": f"Constraint references undeclared TVAR '{ref}'",
+        })
 
 
 _ATOM_COMPARISONS = (
@@ -464,9 +484,21 @@ def _atom_true(atom: Atom, flat: Dict[str, Any]) -> bool:
     value = flat.get(atom.path)
     if value is None:
         return False
+    target = atom.value
+    if atom.rhs_path is not None:
+        target = flat.get(atom.rhs_path)
+        if target is None:
+            return False
+    elif (
+        atom.exact is not None
+        and isinstance(value, (int, float, Fraction))
+        and not isinstance(value, bool)
+        and not (isinstance(value, float) and value != value)
+    ):
+        value, target = _exact(value), atom.exact  # exact rationals, not binary64 roundings
     for op, compare in _ATOM_COMPARISONS:
         if atom.op == op:
-            return compare(value, atom.value)
+            return compare(value, target)
     raise ValueError(f"Unsupported operator {atom.op}")
 
 
@@ -588,6 +620,8 @@ def _atom_literal(
     domain = domains.get(atom.path)
     if domain is None:
         raise ValueError(f"Unknown TVAR in constraint: {atom.path}")
+    if atom.rhs_path is not None:
+        raise ValueError(f"TVAR-to-TVAR equality is not supported by the satisfiability encoder: {atom.path}")
     var = var_map[atom.path]
 
     if domain.kind == "bool":
