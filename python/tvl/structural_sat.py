@@ -54,6 +54,9 @@ class Condition:
     # Exact rational of a numeric literal, from its source text (None for non-numeric literals).
     # Conditions built without one take the decimal of the value's shortest repr.
     exact: Optional[Fraction] = None
+    # True for a bound that came from lowering an interval ``a <= x <= b`` (T-Interval), which
+    # types its bounds only by ``a <= b``; a direct comparison needs ``n : elem(τ)`` (T-Cmp).
+    from_interval: bool = False
 
     def __post_init__(self) -> None:
         if self.exact is None and self.rhs_ident is None and _is_plain_number(self.value):
@@ -706,12 +709,23 @@ def _atom_problem(cond: Condition, domains: Dict[str, Domain]) -> Optional[Tuple
     if op in _ORDERING_OPS:
         if cls != "num" or not _is_plain_number(value):
             return ILL_TYPED_CODE, "orders a non-numeric operand (T-Cmp requires int or float)"
-        if _numeric_type(domain) == "int" and cond.exact is not None and cond.exact.denominator != 1:
+        if (
+            _numeric_type(domain) == "int"
+            and not cond.from_interval
+            and cond.exact is not None
+            and cond.exact.denominator != 1
+        ):
             return ILL_TYPED_CODE, "compares an int TVAR with a fractional literal (T-Eq/T-Cmp need an int literal)"
         return None
     if cls == "num" and not _is_plain_number(value):
         return ILL_TYPED_CODE, "compares a numeric TVAR with a non-numeric literal (T-Eq/T-Neq)"
-    if cls == "num" and _numeric_type(domain) == "int" and cond.exact is not None and cond.exact.denominator != 1:
+    if (
+        cls == "num"
+        and _numeric_type(domain) == "int"
+        and not cond.from_interval
+        and cond.exact is not None
+        and cond.exact.denominator != 1
+    ):
         # T-Eq/T-Cmp need n : elem(int) = int; a fractional literal has type float.
         return ILL_TYPED_CODE, "compares an int TVAR with a fractional literal (T-Eq/T-Cmp need an int literal)"
     if cls == "bool" and not isinstance(value, bool):
@@ -777,9 +791,11 @@ def _literal_exact(raw: Any, value: Any) -> Optional[Fraction]:
     return key if isinstance(key, Fraction) else None
 
 
-def _value_condition(ident: str, operator: str, token_type: Optional[str], raw: Any) -> "Condition":
+def _value_condition(
+    ident: str, operator: str, token_type: Optional[str], raw: Any, from_interval: bool = False
+) -> "Condition":
     value = _convert_literal_value(token_type, raw)
-    return Condition(ident, operator, value, exact=_literal_exact(raw, value))
+    return Condition(ident, operator, value, exact=_literal_exact(raw, value), from_interval=from_interval)
 
 
 def _convert_number_token(raw: str) -> Any:
@@ -1032,15 +1048,15 @@ def _integrate_interval(clauses: List[List[Condition]], literal: Literal) -> Lis
         below = "<" if op1 == "<=" else "<="
         above = ">" if op2 == "<=" else ">="
         for clause in clauses:
-            new_clauses.append(list(clause) + [_value_condition(literal.ident, below, "NUMBER", left)])
-            new_clauses.append(list(clause) + [_value_condition(literal.ident, above, "NUMBER", right)])
+            new_clauses.append(list(clause) + [_value_condition(literal.ident, below, "NUMBER", left, True)])
+            new_clauses.append(list(clause) + [_value_condition(literal.ident, above, "NUMBER", right, True)])
         return new_clauses
     map_op_left = {"<=": ">=", "<": ">"}
     map_op_right = {"<=": "<=", "<": "<"}
     for clause in clauses:
         new_clause = list(clause)
-        new_clause.append(_value_condition(literal.ident, map_op_left.get(op1, ">="), "NUMBER", left))
-        new_clause.append(_value_condition(literal.ident, map_op_right.get(op2, "<="), "NUMBER", right))
+        new_clause.append(_value_condition(literal.ident, map_op_left.get(op1, ">="), "NUMBER", left, True))
+        new_clause.append(_value_condition(literal.ident, map_op_right.get(op2, "<="), "NUMBER", right, True))
         new_clauses.append(new_clause)
     return new_clauses
 

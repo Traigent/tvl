@@ -65,3 +65,20 @@ def test_enum_element_types_come_from_the_declaration(monkeypatch, solver):
     bad = check_structural(_module([_enum("a", "enum[float]", [1]), _enum("b", "enum[int]", [1])], "a = b"))
     assert getattr(bad, "undecided", False)
     assert bad.issues[0]["code"] == "structural_ill_typed_atom"
+
+
+@pytest.mark.parametrize("solver", ["cpsat", "fallback"])
+def test_interval_bounds_may_be_fractional_on_an_int_tvar(monkeypatch, solver):
+    # T-Interval (semantics 4.6) types an interval only by a <= b; T-Cmp needs n : elem(int).
+    if solver == "fallback":
+        monkeypatch.setattr(structural_sat, "cp_model", None)
+    int_x = {"name": "x", "type": "int", "domain": {"range": [0, 5]}}
+    sat = check_structural(_module([int_x], "0 <= x <= 2.5"))
+    assert sat.ok is True and sat.assignment["x"] in (0, 1, 2)
+    assert check_structural(_module([int_x], "0.5 <= x <= 0.9")).ok is False
+    neg = check_structural(_module([int_x], "not (0.5 <= x <= 4.5) and x != 0"))
+    assert neg.ok is True and neg.assignment == {"x": 5}
+    # A direct comparison still needs an int literal (T-Cmp).
+    direct = check_structural(_module([int_x], "x <= 2.5"))
+    assert getattr(direct, "undecided", False)
+    assert direct.issues[0]["code"] == "structural_ill_typed_atom"
