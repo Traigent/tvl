@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
 
 import json
 
+from tvl.model import exact_number_or_none
 from tvl.yaml_safe import safe_load
 
 
@@ -14,6 +16,53 @@ class SliderConfig:
     minimum: float
     maximum: float
     step: float
+    # The finite domain, sorted, when the slider must land only on members (a set, or a range
+    # with a resolution: Definition 3.6). None for the legacy uniform sliders.
+    values: list[float] | None = None
+    # Exact grid ``(origin, step, count)`` of a range with a resolution; members are
+    # ``origin + i*step`` for ``0 <= i < count`` (Definition 3.6), however large ``count`` is.
+    grid: tuple[Fraction, Fraction, int] | None = None
+
+    @property
+    def has_domain(self) -> bool:
+        return bool(self.values) or self.grid is not None
+
+    @property
+    def uniform(self) -> bool:
+        if self.grid is not None:
+            return True
+        if not self.values or len(self.values) < 3:
+            return True
+        # Exact gaps of the shortest-repr decimals: no rounding may merge distinct gaps.
+        exact = [Fraction(repr(v)) for v in self.values]
+        gaps = {b - a for a, b in zip(exact, exact[1:])}
+        return len(gaps) == 1
+
+
+_MAX_GRID_POINTS = 10_001
+
+
+def _grid_spec(bounds: list[Any], resolution: Any) -> tuple[Fraction, Fraction, int] | None:
+    """Exact ``(origin, step, count)`` of a range with a resolution, else None."""
+    try:
+        low, high = exact_number_or_none(bounds[0]), exact_number_or_none(bounds[1])
+        step = exact_number_or_none(resolution)
+    except ValueError:
+        return None
+    if low is None or high is None or step is None or step <= 0 or high < low:
+        return None
+    return low, step, int((high - low) // step) + 1
+
+
+def _grid_member(grid: tuple[Fraction, Fraction, int], value: float) -> float:
+    """The grid member nearest ``value`` (ties go to the lower one), by exact arithmetic."""
+    origin, step, count = grid
+    index = (Fraction(value) - origin) / step
+    nearest = (index + Fraction(1, 2)).__floor__()
+    if index + Fraction(1, 2) == nearest:  # an exact tie between two members
+        nearest -= 1
+    nearest = max(0, min(count - 1, nearest))
+    return float(origin + nearest * step)
 
 
 def _to_number(value: Any) -> float | None:
@@ -34,11 +83,11 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
         ]
         if not values:
             return None
-        values.sort()
+        values = sorted(set(values))
         minimum = values[0]
         maximum = values[-1]
         step = values[1] - values[0] if len(values) > 1 else 1.0
-        return SliderConfig(minimum=minimum, maximum=maximum, step=step)
+        return SliderConfig(minimum=minimum, maximum=maximum, step=step, values=values)
     if "range" in definition and isinstance(definition["range"], Iterable):
         bounds = list(definition["range"])
         if len(bounds) != 2:
@@ -48,6 +97,24 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
         if minimum is None or maximum is None:
             return None
         span = maximum - minimum
+        resolution = _to_number(definition.get("resolution"))
+        if resolution is not None and resolution > 0:
+            # A declared range resolution is the grid (Definition 3.6): the members are
+            # a + i*r, so the slider may land only on them (the top may be off the grid).
+            grid = _grid_spec(bounds, definition.get("resolution"))
+            if grid:
+                origin, step, count = grid
+                values = (
+                    [float(origin + i * step) for i in range(count)] if count <= _MAX_GRID_POINTS else None
+                )
+                return SliderConfig(
+                    minimum=float(origin),
+                    maximum=float(origin + (count - 1) * step),
+                    step=float(step),
+                    values=values,
+                    grid=grid,
+                )
+            return SliderConfig(minimum=minimum, maximum=maximum, step=resolution)
         # Provide a sensible default step: divide into 16 increments (avoid zeros).
         step = round(span / 16, 4) if span > 0 else 0.1
         return SliderConfig(minimum=minimum, maximum=maximum, step=step)
@@ -63,6 +130,10 @@ def _infer_default(definition: dict[str, Any]) -> float | int | None:
     slider = _infer_slider(definition)
     if slider:
         midpoint = (slider.minimum + slider.maximum) / 2
+        if slider.grid is not None:
+            return _grid_member(slider.grid, midpoint)
+        if slider.values:
+            return min(slider.values, key=lambda v: (abs(v - midpoint), v))  # a member, never between
         step = slider.step or 1.0
         return round(midpoint / step) * step
     return None
@@ -87,6 +158,10 @@ def _clamp(value: float, slider: SliderConfig | None) -> float:
 
 
 def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
+    if slider is not None and slider.grid is not None:
+        return _grid_member(slider.grid, value)
+    if slider is not None and slider.values:
+        return min(slider.values, key=lambda v: (abs(v - value), v))
     if slider is None or slider.step <= 0:
         return value
     normalized = (value - slider.minimum) / slider.step
@@ -96,6 +171,9 @@ def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
 
 def _coerce(name: str, value: float, slider: SliderConfig | None, type_name: str | None) -> float | int:
     value = _snap_to_step(value, slider)
+    if slider is not None and slider.has_domain:
+        # A member of the finite domain is returned as is: rounding could leave the domain.
+        return int(value) if type_name in {"integer", "discrete"} else value
     if type_name in {"integer", "discrete"}:
         return int(round(value))
     if type_name and type_name.startswith("categorical"):
@@ -175,6 +253,59 @@ def _adjust_presets(
     return presets
 
 
+def _tvar_definition(decl: dict[str, Any]) -> dict[str, Any] | None:
+    """Legacy-shaped slider definition of a numeric ``tvars`` declaration, else None."""
+    type_name = str(decl.get("type") or "").lower()
+    domain = decl.get("domain")
+    if isinstance(domain, list):
+        domain = {"set": domain}
+    if not isinstance(domain, dict):
+        return None
+    definition: dict[str, Any] = {}
+    if "range" in domain:
+        definition["range"] = domain["range"]
+        if "resolution" in domain:
+            definition["resolution"] = domain["resolution"]
+        elif type_name in ("int", "float"):
+            # Effective resolution when omitted (formal semantics, RangeDomain): 1 / 0.001.
+            definition["resolution"] = 1 if type_name == "int" else "0.001"
+    elif "set" in domain or "values" in domain:
+        definition["values"] = domain.get("set", domain.get("values"))
+    else:
+        return None
+    if type_name == "int":
+        definition["type"] = "integer"
+    elif type_name == "float":
+        definition["type"] = "continuous"
+    elif type_name.startswith("enum"):
+        values = definition.get("values")
+        numeric = isinstance(values, list) and values and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in values
+        )
+        if not numeric:
+            return None
+        definition["type"] = "discrete" if all(isinstance(v, int) for v in values) else "continuous"
+    else:
+        return None
+    return definition
+
+
+def _configuration_space(spec: dict[str, Any]) -> dict[str, Any]:
+    """Numeric knobs of a TVL module (``tvars``); the legacy ``configuration_space`` block is a fallback."""
+    space: dict[str, Any] = {}
+    tvars = spec.get("tvars")
+    if isinstance(tvars, list):
+        for decl in tvars:
+            if isinstance(decl, dict) and isinstance(decl.get("name"), str):
+                definition = _tvar_definition(decl)
+                if definition is not None:
+                    space[decl["name"]] = definition
+    if space:
+        return space
+    legacy = spec.get("configuration_space")
+    return legacy if isinstance(legacy, dict) else {}
+
+
 def _load_spec(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return safe_load(handle)
@@ -182,7 +313,7 @@ def _load_spec(path: Path) -> dict[str, Any]:
 
 def build_presets(path: Path) -> dict[str, Any]:
     spec = _load_spec(path)
-    configuration_space = spec.get("configuration_space") or {}
+    configuration_space = _configuration_space(spec)
     defaults = _format_defaults(configuration_space)
 
     types = {
@@ -201,16 +332,19 @@ def build_presets(path: Path) -> dict[str, Any]:
             "min": slider.minimum,
             "max": slider.maximum,
             "step": slider.step,
+            **({} if slider.uniform else {"values": slider.values}),
         }
         for name, slider in sliders.items()
     }
 
     presets = _adjust_presets(defaults, sliders, types)
+    legacy_spec = spec.get("spec") if isinstance(spec.get("spec"), dict) else {}
+    tvl_block = spec.get("tvl") if isinstance(spec.get("tvl"), dict) else {}
     payload = {
         "version": "1.0.0",
         "source": {
-            "spec_id": spec.get("spec", {}).get("id"),
-            "spec_version": spec.get("spec", {}).get("version"),
+            "spec_id": tvl_block.get("module", legacy_spec.get("id")),
+            "spec_version": spec.get("tvl_version", legacy_spec.get("version")),
         },
         "defaults": {
             key: presets["baseline"][key] for key in presets["baseline"]

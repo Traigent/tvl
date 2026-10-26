@@ -54,6 +54,9 @@ class Condition:
     # Exact rational of a numeric literal, from its source text (None for non-numeric literals).
     # Conditions built without one take the decimal of the value's shortest repr.
     exact: Optional[Fraction] = None
+    # True for a bound that came from lowering an interval ``a <= x <= b`` (T-Interval), which
+    # types its bounds only by ``a <= b``; a direct comparison needs ``n : elem(τ)`` (T-Cmp).
+    from_interval: bool = False
 
     def __post_init__(self) -> None:
         if self.exact is None and self.rhs_ident is None and _is_plain_number(self.value):
@@ -278,7 +281,7 @@ def _domain_member(domain: Domain, value: Any) -> bool:
         return False
     if isinstance(value, float) and not math.isfinite(value):
         return False
-    if domain.kind == "int":
+    if domain.kind == "int" and not domain.gridded:
         if not (isinstance(value, int) or _exact(value).denominator == 1):
             return False
         index = int(_exact(value))
@@ -636,6 +639,22 @@ def _element_class(domain: Domain) -> str:
     return "num" if _is_numeric_enum(domain) else "enum"
 
 
+def _numeric_type(domain: Domain) -> Optional[str]:
+    """``int`` or ``float`` for a numeric domain, else None.
+
+    A range domain has its declared kind; an enum its declared element type. Only a domain
+    that states none (legacy dict-form tvars) falls back to its values: ``float`` iff some
+    member is a float.
+    """
+    if domain.kind in _NUMERIC_KINDS:
+        return domain.kind
+    if domain.kind == "enum" and _is_numeric_enum(domain):
+        if domain.elem_type in ("int", "float"):
+            return domain.elem_type  # the declared elem(τ), never inferred from the values
+        return "float" if any(isinstance(v, float) for v in domain.values or []) else "int"
+    return None
+
+
 def _typing_problem(domains: Dict[str, Domain], expressions: List[Expression]) -> Optional[Tuple[str, str]]:
     """``(code, message)`` for the first atom the checker must not decide, else None.
 
@@ -680,14 +699,35 @@ def _atom_problem(cond: Condition, domains: Dict[str, Domain]) -> Optional[Tuple
             return ILL_TYPED_CODE, "orders two TVARs, which T-TVarEq does not type"
         if cls != rhs_cls and not (domain.kind == "enum" and rhs.kind == "enum"):
             return ILL_TYPED_CODE, "compares TVARs of different element types (T-TVarEq)"
+        left_num, right_num = _numeric_type(domain), _numeric_type(rhs)
+        if left_num is not None and right_num is not None and left_num != right_num:
+            # elem(int) != elem(float): the typing rules have no numeric widening, and the
+            # linter (lints._are_types_compatible) rejects the same equality.
+            return ILL_TYPED_CODE, "compares an int TVAR with a float TVAR (T-TVarEq has no numeric widening)"
         return None
     value = cond.value
     if op in _ORDERING_OPS:
         if cls != "num" or not _is_plain_number(value):
             return ILL_TYPED_CODE, "orders a non-numeric operand (T-Cmp requires int or float)"
+        if (
+            _numeric_type(domain) == "int"
+            and not cond.from_interval
+            and cond.exact is not None
+            and cond.exact.denominator != 1
+        ):
+            return ILL_TYPED_CODE, "compares an int TVAR with a fractional literal (T-Eq/T-Cmp need an int literal)"
         return None
     if cls == "num" and not _is_plain_number(value):
         return ILL_TYPED_CODE, "compares a numeric TVAR with a non-numeric literal (T-Eq/T-Neq)"
+    if (
+        cls == "num"
+        and _numeric_type(domain) == "int"
+        and not cond.from_interval
+        and cond.exact is not None
+        and cond.exact.denominator != 1
+    ):
+        # T-Eq/T-Cmp need n : elem(int) = int; a fractional literal has type float.
+        return ILL_TYPED_CODE, "compares an int TVAR with a fractional literal (T-Eq/T-Cmp need an int literal)"
     if cls == "bool" and not isinstance(value, bool):
         return ILL_TYPED_CODE, "compares a bool TVAR with a non-bool literal (T-Eq/T-Neq)"
     return None
@@ -751,9 +791,11 @@ def _literal_exact(raw: Any, value: Any) -> Optional[Fraction]:
     return key if isinstance(key, Fraction) else None
 
 
-def _value_condition(ident: str, operator: str, token_type: Optional[str], raw: Any) -> "Condition":
+def _value_condition(
+    ident: str, operator: str, token_type: Optional[str], raw: Any, from_interval: bool = False
+) -> "Condition":
     value = _convert_literal_value(token_type, raw)
-    return Condition(ident, operator, value, exact=_literal_exact(raw, value))
+    return Condition(ident, operator, value, exact=_literal_exact(raw, value), from_interval=from_interval)
 
 
 def _convert_number_token(raw: str) -> Any:
@@ -1006,15 +1048,15 @@ def _integrate_interval(clauses: List[List[Condition]], literal: Literal) -> Lis
         below = "<" if op1 == "<=" else "<="
         above = ">" if op2 == "<=" else ">="
         for clause in clauses:
-            new_clauses.append(list(clause) + [_value_condition(literal.ident, below, "NUMBER", left)])
-            new_clauses.append(list(clause) + [_value_condition(literal.ident, above, "NUMBER", right)])
+            new_clauses.append(list(clause) + [_value_condition(literal.ident, below, "NUMBER", left, True)])
+            new_clauses.append(list(clause) + [_value_condition(literal.ident, above, "NUMBER", right, True)])
         return new_clauses
     map_op_left = {"<=": ">=", "<": ">"}
     map_op_right = {"<=": "<=", "<": "<"}
     for clause in clauses:
         new_clause = list(clause)
-        new_clause.append(_value_condition(literal.ident, map_op_left.get(op1, ">="), "NUMBER", left))
-        new_clause.append(_value_condition(literal.ident, map_op_right.get(op2, "<="), "NUMBER", right))
+        new_clause.append(_value_condition(literal.ident, map_op_left.get(op1, ">="), "NUMBER", left, True))
+        new_clause.append(_value_condition(literal.ident, map_op_right.get(op2, "<="), "NUMBER", right, True))
         new_clauses.append(new_clause)
     return new_clauses
 
@@ -1149,7 +1191,7 @@ def _encode_ident_comparison(
 
 
 def _grid_of(domain: Domain) -> Tuple[Fraction, Fraction]:
-    if domain.kind == "float":
+    if domain.gridded:
         return domain.grid_origin, domain.grid_step
     return Fraction(0), Fraction(1)
 
@@ -1375,35 +1417,51 @@ def _encode_grid_literal(domain: Domain, op: str, exact: Fraction) -> Optional[i
     raise ValueError(f"{domain.path}: unsupported operator {op!r}")
 
 
+def _undecided_without_solver() -> "UndecidedStructuralResult":
+    return _undecided(UNDECIDED_WITHOUT_SOLVER_CODE, UNDECIDED_WITHOUT_SOLVER_MESSAGE)
+
+
+class _SearchBudgetExceeded(Exception):
+    """The fallback search evaluated its whole budget of complete assignments."""
+
+
+class _SearchBudget:
+    def __init__(self, leaves: int) -> None:
+        self.remaining = leaves
+
+    def spend(self) -> None:
+        if self.remaining <= 0:
+            raise _SearchBudgetExceeded()
+        self.remaining -= 1
+
+
 def _check_structural_bruteforce(domains: Dict[str, Domain], expressions: List[Expression]) -> StructuralResult:
     candidates = _candidate_values(domains, expressions)
     full_grids = _widen_to_full_grids(domains, candidates)
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
     assignment: Dict[str, Any] = {}
 
-    solution = _search_assignment(order, candidates, expressions, assignment, 0)
+    budget = _SearchBudget(_MAX_FALLBACK_PRODUCT)  # one total for the search and the core reduction
+    try:
+        solution = _search_assignment(order, candidates, expressions, assignment, 0, budget)
+    except _SearchBudgetExceeded:
+        # The product of the candidate lists (2**n for n Booleans) is past the budget and no
+        # witness turned up before it ran out: neither SAT nor UNSAT has been shown.
+        return _undecided_without_solver()
     if solution is not None:
         return _sat_result(expressions, solution, domains)
 
     # No witness found. A sampled search only proves UNSAT when every domain was
     # enumerated completely; otherwise fail closed with an explicit undecided result.
     if not _candidates_are_exhaustive(domains, candidates, full_grids):
-        return UndecidedStructuralResult(
-            ok=False,
-            assignment=None,
-            unsat_core=None,
-            undecided=True,
-            issues=[
-                {
-                    "code": UNDECIDED_WITHOUT_SOLVER_CODE,
-                    "message": UNDECIDED_WITHOUT_SOLVER_MESSAGE,
-                    "path": ["constraints", "structural"],
-                    "severity": "error",
-                }
-            ],
-        )
+        return _undecided_without_solver()
 
-    core = _approximate_unsat_core(domains, expressions, candidates)
+    try:
+        core = _approximate_unsat_core(domains, expressions, candidates, budget)
+    except _SearchBudgetExceeded:
+        # UNSAT is proven (every domain was exhausted) but the core reduction ran out of
+        # budget: report no core rather than an unreduced or partly reduced one.
+        return StructuralResult(ok=False, assignment=None, unsat_core=None)
     return StructuralResult(ok=False, assignment=None, unsat_core=core)
 
 
@@ -1417,13 +1475,13 @@ def _candidates_are_exhaustive(
             return False
         if domain.kind in ("bool", "enum"):
             continue
-        if domain.kind == "int" and domain.minimum is not None and domain.maximum is not None:
+        if domain.kind == "int" and not domain.gridded and domain.minimum is not None and domain.maximum is not None:
             # Arithmetic check (never materialise the range): the candidates are distinct,
             # lie in [min, max] (filtered by contains), so they cover it iff the counts match.
             size = int(domain.index_upper()) - int(domain.index_lower()) + 1
             if size >= 0 and len(set(cand)) == size:
                 continue
-        if domain.kind == "float" and full_grids and name in full_grids:
+        if domain.gridded and full_grids and name in full_grids:
             continue
         return False
     return True
@@ -1498,9 +1556,9 @@ def _candidate_list(domain: Domain, val_set: set) -> List[Any]:
         return [True, False]
     if domain.kind == "enum":
         return list(domain.values or [])
-    if domain.kind == "int":
+    if domain.kind == "int" and not domain.gridded:
         return _int_candidates(domain, val_set)
-    if domain.kind == "float":
+    if domain.gridded:
         return _float_candidates(domain, val_set)
     return list(val_set) if val_set else [None]
 
@@ -1547,8 +1605,11 @@ def _search_assignment(
     expressions: List[Expression],
     assignment: Dict[str, Any],
     index: int,
+    budget: Optional["_SearchBudget"] = None,
 ) -> Optional[Dict[str, Any]]:
     if index == len(order):
+        if budget is not None:
+            budget.spend()
         if all(_evaluate_expression(expr, assignment) for expr in expressions):
             return dict(assignment)
         return None
@@ -1556,7 +1617,7 @@ def _search_assignment(
     name = order[index]
     for value in candidates.get(name, [None]):
         assignment[name] = value
-        result = _search_assignment(order, candidates, expressions, assignment, index + 1)
+        result = _search_assignment(order, candidates, expressions, assignment, index + 1, budget)
         if result is not None:
             return result
         assignment.pop(name, None)
@@ -1604,6 +1665,7 @@ def _approximate_unsat_core(
     domains: Dict[str, Domain],
     expressions: List[Expression],
     candidates: Dict[str, List[Any]],
+    budget: Optional["_SearchBudget"] = None,
 ) -> List[Dict[str, Any]]:
     core = expressions[:]
     order = sorted(candidates.keys(), key=lambda name: len(candidates[name]))
@@ -1611,7 +1673,7 @@ def _approximate_unsat_core(
     idx = 0
     while idx < len(core):
         candidate_core = core[:idx] + core[idx + 1 :]
-        if _search_assignment(order, candidates, candidate_core, {}, 0) is None:
+        if _search_assignment(order, candidates, candidate_core, {}, 0, budget) is None:
             core = candidate_core
         else:
             idx += 1

@@ -8,6 +8,7 @@ from fractions import Fraction
 from math import lcm
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from .model import ExactLiteralLimitError, exact_number_or_none
 from .structural_parser import Literal, StructuralParseError, clause_to_string, parse_expression
 
 Issue = Dict[str, Any]
@@ -3162,12 +3163,16 @@ def _check_float_precision(
 
 
 def _exact_decimal(value: Any) -> Optional[Fraction]:
-    """The exact rational a YAML number was written as; None if it has none."""
+    """The exact rational a YAML number was written as; None if it has none.
+
+    A float whose YAML source lexeme was retained (one binary64 cannot hold, such as
+    ``0.100000000000000001``) is read from that lexeme, never from ``str(value)``.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     try:
-        return Fraction(str(value))
-    except (ValueError, ZeroDivisionError, OverflowError):
+        return exact_number_or_none(value)
+    except (ValueError, ZeroDivisionError, OverflowError, ExactLiteralLimitError):
         return None
 
 
@@ -3276,7 +3281,7 @@ def _check_resolution_alignment(
     implicit: bool = False,
 ) -> Issue:
     """Issue for a range whose (effective) resolution r has r·P ∉ ℤ."""
-    exact_alignment_precision = _compute_exact_alignment_precision([float(resolution)])
+    exact_alignment_precision = _compute_exact_alignment_precision([resolution])
     shown = float(resolution)
     described = f"the default resolution {shown} for float ranges" if implicit else f"resolution {shown}"
     return {
@@ -3353,11 +3358,11 @@ def _check_value_collisions(
     }
 
 
-def _compute_exact_alignment_precision(values: Sequence[float]) -> Optional[int]:
+def _compute_exact_alignment_precision(values: Sequence[Any]) -> Optional[int]:
     """Return the least integer factor that aligns parsed decimal values exactly.
 
-    The values arrive from YAML as Python numbers, so ``str(value)`` is used to
-    recover their shortest decimal representation. The least common multiple of
+    A ``Fraction`` is used as is; a YAML number is read as the exact decimal it was written
+    as (its retained lexeme when binary64 could not hold it). The least common multiple of
     those exact decimal denominators aligns every value. A smallest-gap rule is
     insufficient because separating adjacent values does not make them integers
     after scaling.
@@ -3365,7 +3370,10 @@ def _compute_exact_alignment_precision(values: Sequence[float]) -> Optional[int]
     precision = 1
     try:
         for value in values:
-            precision = lcm(precision, Fraction(str(value)).denominator)
+            exact = value if isinstance(value, Fraction) else _exact_decimal(value)
+            if exact is None:
+                return None
+            precision = lcm(precision, exact.denominator)
     except (ValueError, ZeroDivisionError, OverflowError):
         return None
     return precision

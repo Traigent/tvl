@@ -165,3 +165,47 @@ def test_legal_dotted_identifier_still_parses_with_double_equals():
     dnf = parse_expression("a.b.c == 1")
     assert dnf[0][0].path == "a.b.c"
     assert dnf[0][0].op == "=="
+
+
+def test_out_of_bounds_literal_is_a_parse_issue_not_a_crash():
+    from tvl.configuration import validate_configuration
+
+    module = {
+        "tvl_version": "1.5",
+        "tvl": {"module": "a.b"},
+        "tvars": [{"name": "x", "type": "float", "domain": {"range": [0, 1]}}],
+        "constraints": {"structural": [{"expr": "x = 1e-401"}]},
+    }
+    result = validate_configuration(module, {"module_id": "a.b", "assignments": {"x": 0}})
+    assert result["ok"] is False
+    assert "invalid_structural_expression" in repr(result)
+
+
+def test_numeric_enum_thresholds_are_exact():
+    from tvl.constraints import check_structural_satisfiable, compile_constraints
+
+    def solve(*exprs):
+        module = {
+            "tvars": [{"name": "x", "type": "enum[float]", "domain": {"set": [1]}}],
+            "constraints": {"structural": [{"expr": e} for e in exprs]},
+        }
+        return check_structural_satisfiable(compile_constraints(module))
+
+    interval = solve("0 <= x < 1.000000000000000001")
+    assert interval["ok"] is True and interval["assignment"] == {"x": 1}
+    assert solve("x < 1.000000000000000001")["ok"] is True  # direct threshold
+    assert solve("x > 0.999999999999999999")["ok"] is True
+    assert solve("x < 0.999999999999999999")["ok"] is False
+    assert solve("x > 1.000000000000000001")["ok"] is False
+
+
+def test_satisfiability_refuses_when_a_constraint_did_not_parse():
+    from tvl.constraints import check_structural_satisfiable, compile_constraints
+
+    module = {
+        "tvars": [{"name": "x", "type": "float", "domain": {"range": [0, 1]}}],
+        "constraints": {"structural": [{"expr": "x = 1e-401"}]},
+    }
+    result = check_structural_satisfiable(compile_constraints(module))
+    assert result["ok"] is False and result["assignment"] is None
+    assert result["parse_issues"] == ["invalid_structural_expression"]

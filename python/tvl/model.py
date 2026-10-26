@@ -201,6 +201,19 @@ class Domain:
     # ``[0.100000000000000001, 0.100000000000000001]`` is the singleton of that exact value.
     exact_minimum: Optional[Fraction] = None
     exact_maximum: Optional[Fraction] = None
+    # Declared scalar element type (``elem(τ)``, semantics §4.5) when the declaration states
+    # one: ``int``/``float``/``str``/``bool`` for ``int``, ``float`` and ``enum[τ]``. None for
+    # tuples, callables and legacy dict-form declarations.
+    elem_type: Optional[str] = None
+
+    @property
+    def gridded(self) -> bool:
+        """True iff values are ``origin + i * step`` for an integer index ``i`` (Definition 3.6).
+
+        Every float domain is; an int domain is only when its range declared a ``resolution``
+        other than 1 (``step`` is then that integer resolution and ``origin`` the lower bound).
+        """
+        return self.kind == "float" or (self.kind == "int" and self.step is not None)
 
     @property
     def grid_origin(self) -> Fraction:
@@ -216,7 +229,7 @@ class Domain:
 
     def grid_count(self) -> Optional[int]:
         """Number of grid points for a bounded float domain, else None."""
-        if self.kind != "float" or self.minimum is None or self.maximum is None:
+        if not self.gridded or self.minimum is None or self.maximum is None:
             return None
         hi = self.index_upper()
         lo = self.index_lower()
@@ -227,7 +240,7 @@ class Domain:
         if self.minimum is None and self.exact_minimum is None:
             return None
         if self.exact_minimum is not None and self.kind in {"int", "float"}:
-            if self.kind == "float":
+            if self.gridded:
                 return int(math.ceil(self.grid_index(self.exact_minimum)))
             return int(math.ceil(self.exact_minimum))
         return self._encode_bound_lower(self.minimum)
@@ -237,7 +250,7 @@ class Domain:
         if self.maximum is None and self.exact_maximum is None:
             return None
         if self.exact_maximum is not None and self.kind in {"int", "float"}:
-            if self.kind == "float":
+            if self.gridded:
                 return int(math.floor(self.grid_index(self.exact_maximum)))
             return int(math.floor(self.exact_maximum))
         return self._encode_bound_upper(self.maximum)
@@ -264,6 +277,14 @@ class Domain:
         if self.kind == "int":
             if not isinstance(value, int):
                 raise ValueError(f"{self.path}: expected int, got {value!r}")
+            if self.step is not None:
+                idx = self.grid_index(value)
+                if idx.denominator != 1:
+                    raise ValueError(
+                        f"{self.path}: value {value!r} is not on the resolution grid "
+                        f"(origin={self.grid_origin}, resolution={self.grid_step})"
+                    )
+                return int(idx)
             return value
 
         if self.kind == "float":
@@ -313,7 +334,7 @@ class Domain:
                 raise ValueError(f"{self.path}: enum domain is missing values")
             return self.values[raw]
         if self.kind == "int":
-            return raw
+            return raw if self.step is None else int(self.grid_origin + raw * self.grid_step)
         if self.kind == "float":
             return self.grid_origin + raw * self.grid_step
         return raw
@@ -345,7 +366,7 @@ class Domain:
     def _encode_bound_lower(self, value: float | int | None) -> Optional[int]:
         if value is None:
             return None
-        if self.kind == "float":
+        if self.gridded:
             # Exact ceil of the rational grid index (legacy grid included).
             return int(math.ceil(self.grid_index(value)))
         return int(value)
@@ -353,7 +374,7 @@ class Domain:
     def _encode_bound_upper(self, value: float | int | None) -> Optional[int]:
         if value is None:
             return None
-        if self.kind == "float":
+        if self.gridded:
             return int(math.floor(self.grid_index(value)))
         return int(value)
 
@@ -649,7 +670,24 @@ def _enumerate_tuple_product(name: str, components: Any) -> List[Any]:
     return list(itertools.product(*axis_values))
 
 
+def _declared_elem_type(dtype: str) -> Optional[str]:
+    """``elem(τ)`` of a declared scalar type (``int``, ``float``, ``bool``, ``enum[τ]``), else None."""
+    text = (dtype or "").strip().lower()
+    if text in {"int", "float", "bool", "str"}:
+        return text
+    if text.startswith("enum[") and text.endswith("]"):
+        inner = text[5:-1].strip()
+        return inner if inner in {"int", "float", "str", "bool"} else None
+    return None
+
+
 def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
+    domain = _build_domain_from_decl(name, dtype, spec)
+    domain.elem_type = _declared_elem_type(dtype)
+    return domain
+
+
+def _build_domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
     kind = _normalize_dtype(dtype)
     if kind == "bool":
         return Domain(path=name, kind="bool")
@@ -703,6 +741,20 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                     exact_minimum = exact_number_or_none(range_vals[0])
                     exact_maximum = exact_number_or_none(range_vals[1])
                     _reject_reversed_range(name, range_vals, minimum, maximum, exact_minimum, exact_maximum)
+                if kind == "int":
+                    # Definition 3.6 / §2.4: a range with resolution r > 0 is {a + i*r}. An integer
+                    # r other than 1 is applied here. Open (owner decision): whether a
+                    # non-integer r on an int range is ill-typed, since its grid points are not
+                    # ints; that case keeps the unit grid.
+                    int_step = _positive_step(spec.get("resolution"))
+                    if (
+                        int_step is not None
+                        and int_step.denominator == 1
+                        and int_step != 1
+                        and minimum is not None
+                    ):
+                        step = int_step
+                        origin = exact_minimum if exact_minimum is not None else _exact(minimum)
                 if kind == "float":
                     # Positivity is decided exactly (an underflowed 1e-400 is positive).
                     step = _positive_step(spec.get("resolution"))
