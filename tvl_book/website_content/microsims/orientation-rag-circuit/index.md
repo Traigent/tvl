@@ -55,6 +55,6 @@ camelCase forms `retrieverTopK`, `rerankWeight` and `responseTokens`. Other keys
 file replaces the built-in preset of the same name, so a preset without any of these keys leaves the sliders
 unchanged.
 
-!!! warning "Known gap in TVL 1.5"
-    The bridge reads a legacy `configuration_space` block, not `tvars`. On a current TVL module it emits empty
-    defaults, sliders, and presets.
+The bridge reads the module's numeric `tvars` (an `int` or `float` range, or a numeric `set`); a range's
+`resolution` becomes the slider step. A legacy `configuration_space` block is read only when the module has no
+numeric `tvars`.
