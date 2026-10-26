@@ -62,3 +62,11 @@ def test_equal_numbers_are_not_added_values(tmp_path):
 def test_a_different_number_is_still_an_added_value(tmp_path):
     with pytest.raises(ValueError, match="cannot add values"):
         _compose(tmp_path, {"set": [0.1]}, {"set": [0.1, 0.2]})
+
+
+def test_string_domain_keeps_lexical_identity(tmp_path):
+    # enum[str]: "01" is not "1".
+    with pytest.raises(ValueError, match="cannot add values"):
+        _compose(tmp_path, {"set": ["1"]}, {"set": ["01"]})
+    with pytest.raises(ValueError, match="cannot add values"):
+        _compose(tmp_path, {"set": ["1.0"]}, {"set": ["1"]})

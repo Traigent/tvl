@@ -486,13 +486,15 @@ def _validate_narrowing(base: dict[str, Any], composed: dict[str, Any]) -> list[
         base_tvar = base_tvars[name]
         base_domain = base_tvar.get("domain")
         composed_domain = composed_tvar.get("domain")
-        errors.extend(_domain_widenings(name, base_domain, composed_domain))
+        errors.extend(_domain_widenings(name, base_domain, composed_domain, base_tvar.get("type")))
 
     errors.extend(_budget_increases(base, composed))
     return errors
 
 
-def _domain_widenings(name: Any, base_domain: Any, composed_domain: Any) -> list[str]:
+def _domain_widenings(
+    name: Any, base_domain: Any, composed_domain: Any, declared_type: Any = None
+) -> list[str]:
     """Errors for a TVAR whose overlay domain adds enum values or widens a range."""
     errors = []
 
@@ -500,7 +502,7 @@ def _domain_widenings(name: Any, base_domain: Any, composed_domain: Any) -> list
     # (formal semantics Definition 3.6), so both spellings are checked, in any combination.
     base_values, composed_values = _set_domain_values(base_domain), _set_domain_values(composed_domain)
     if base_values is not None and composed_values is not None:
-        errors.extend(_enum_additions(name, base_values, composed_values))
+        errors.extend(_enum_additions(name, base_values, composed_values, declared_type))
 
     # Check range domains
     if isinstance(base_domain, dict) and isinstance(composed_domain, dict):
@@ -518,24 +520,36 @@ def _set_domain_values(domain: Any) -> list[Any] | None:
     return None
 
 
-def _enum_additions(name: Any, base_domain: list[Any], composed_domain: list[Any]) -> list[str]:
-    base_keys = {_value_key(v) for v in base_domain}
+def _enum_additions(
+    name: Any, base_domain: list[Any], composed_domain: list[Any], declared_type: Any = None
+) -> list[str]:
+    text_is_lexical = _is_text_type(declared_type)
+    base_keys = {_value_key(v, text_is_lexical) for v in base_domain}
     # Values compare by meaning (a number as its exact rational: 0.0 and -0.0 are one value),
     # but are reported as the text the overlay wrote.
-    added = {str(v) for v in composed_domain if _value_key(v) not in base_keys}
+    added = {str(v) for v in composed_domain if _value_key(v, text_is_lexical) not in base_keys}
     if added:
         return [f"TVAR '{name}': cannot add values {added} in overlay"]
     return []
 
 
-def _value_key(value: Any) -> Any:
-    """Identity of a domain value: numbers by exact value, everything else by its text.
+def _is_text_type(declared_type: Any) -> bool:
+    """True when the declared element type is not numeric (``enum[str]`` and the like)."""
+    text = str(declared_type or "").strip().lower()
+    return bool(text) and text not in {"int", "float", "enum[int]", "enum[float]"}
 
-    Numeric text keeps the loose identity the check always had (``"1"`` is ``1``).
+
+def _value_key(value: Any, text_is_lexical: bool = False) -> Any:
+    """Identity of a domain value: real numbers by exact value, everything else by its text.
+
+    Under a text type (``enum[str]``) a string is only its own spelling: ``"01"`` is not
+    ``"1"``. Otherwise numeric text keeps the loose identity the check always had
+    (``"1"`` is ``1``), which tolerates a domain written with quoted numbers.
     """
     from tvl.model import ExactLiteralLimitError, exact_number_or_none
 
-    if (isinstance(value, (int, float)) and not isinstance(value, bool)) or isinstance(value, str):
+    is_real = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if is_real or (isinstance(value, str) and not text_is_lexical):
         try:
             exact = exact_number_or_none(value)
         except ExactLiteralLimitError:
