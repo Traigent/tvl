@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import operator
 import re
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
-from .model import Domain, extract_domains, flatten_assignments
+from .model import Domain, _exact, extract_domains, flatten_assignments
 
 
 _OR_SPLIT = re.compile(r"\s+or\s+", re.IGNORECASE)
@@ -676,11 +677,31 @@ def _ordered_atom_literal(
     domain: Domain,
     atom: Atom,
 ) -> cp_model.BoolVar:
-    encoded = domain.encode(atom.value)
     lit = model.NewBoolVar(_atom_literal_name(atom))
     if atom.op not in _ATOM_REIFICATIONS:
         raise ValueError(f"Unsupported operator {atom.op}")
-    _reify_atom(model, var, atom.op, encoded, lit)
+    value = atom.value
+    if domain.kind in ("int", "float") and isinstance(value, (int, float)) and not isinstance(value, bool):
+        # A threshold need not be a domain member (Definition 3.6 grid ``origin + i*step``):
+        # compare through the exact rational grid index, as structural_sat does.
+        idx = (_exact(value) - domain.grid_origin) / domain.grid_step
+        op = atom.op
+        if op in ("==", "!="):
+            if idx.denominator != 1:
+                model.Add(lit == (0 if op == "==" else 1))
+                return lit
+            encoded = int(idx)
+        elif op == ">=":
+            encoded = math.ceil(idx)
+        elif op == ">":
+            encoded, op = math.floor(idx) + 1, ">="
+        elif op == "<=":
+            encoded = math.floor(idx)
+        else:  # "<"
+            encoded, op = math.ceil(idx) - 1, "<="
+        _reify_atom(model, var, op, encoded, lit)
+        return lit
+    _reify_atom(model, var, atom.op, domain.encode(value), lit)
     return lit
 
 

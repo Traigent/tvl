@@ -721,9 +721,10 @@ def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
                     exact_maximum = exact_number_or_none(range_vals[1])
                     _reject_reversed_range(name, range_vals, minimum, maximum, exact_minimum, exact_maximum)
                 if kind == "int":
-                    # Definition 3.6: an int range with resolution r is {a + i*r}. Only a
-                    # positive integer r other than 1 changes the grid (semantics are silent on
-                    # a fractional resolution for an int range; that case keeps the unit grid).
+                    # Definition 3.6 / §2.4: a range with resolution r > 0 is {a + i*r}. An integer
+                    # r other than 1 is applied here. Open (owner decision): whether a
+                    # non-integer r on an int range is ill-typed, since its grid points are not
+                    # ints; that case keeps the unit grid.
                     int_step = _positive_step(spec.get("resolution"))
                     if (
                         int_step is not None

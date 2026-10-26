@@ -39,3 +39,17 @@ def test_structural_sees_only_grid_points(monkeypatch, solver):
     sat = check_structural(_module(["x > 0", "x < 4"]))
     assert sat.ok and sat.assignment == {"x": 2}
     assert isinstance(sat.assignment["x"], int)
+
+
+def test_satisfiability_encoder_handles_off_grid_thresholds():
+    from tvl.constraints import check_structural_satisfiable, compile_constraints
+
+    def solve(expr):
+        return check_structural_satisfiable(compile_constraints(_module([expr])))
+
+    sat = solve("x < 3")
+    assert sat["ok"] and sat["assignment"]["x"] in (0, 2)
+    assert solve("x == 3")["ok"] is False
+    assert solve("x != 3")["ok"] is True
+    assert solve("x > 3")["assignment"] == {"x": 4}
+    assert solve("x == 2")["assignment"] == {"x": 2}
