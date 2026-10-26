@@ -256,7 +256,16 @@ def test_int_unencodable_value_raises_encode_error() -> None:
 def test_float_off_grid_threshold_is_encoded_not_rejected() -> None:
     # Definition 3.6: a threshold need not be a grid member; the encoder compares through
     # the exact grid index (commit f4f0821) instead of raising "not on the precision grid".
-    assert _call(FLT, Atom("t", "<", 0.35)) is not None
+    # FLT grid: t = e/10 for encoded e in 0..10, so 0.35 sits at grid index 3.5.
+    for op, predicate in [
+        ("<", lambda e: e <= 3),
+        ("<=", lambda e: e <= 3),
+        (">", lambda e: e >= 4),
+        (">=", lambda e: e >= 4),
+        ("==", lambda e: False),  # no member equals an off-grid value
+        ("!=", lambda e: True),
+    ]:
+        assert _truth_table(FLT, Atom("t", op, 0.35)) == _expected(FLT, predicate), op
 
 
 def test_unsupported_domain_kind_raises_encode_error() -> None:
