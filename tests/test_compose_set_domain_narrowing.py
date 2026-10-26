@@ -51,3 +51,14 @@ def test_narrowing_a_set_domain_is_accepted(tmp_path):
 def test_no_validate_flag_still_bypasses(tmp_path):
     composed = _compose(tmp_path, {"set": ["a", "b"]}, {"set": ["a", "b", "c"]}, validate=False)
     assert composed["tvars"][0]["domain"]["set"] == ["a", "b", "c"]
+
+
+def test_equal_numbers_are_not_added_values(tmp_path):
+    # 0.0 and -0.0 are one value; so are 1 and 1.0 in an enum[float].
+    composed = _compose(tmp_path, {"set": [0.0, 1]}, {"set": [-0.0, 1.0]})
+    assert composed["tvars"][0]["domain"]["set"] == [-0.0, 1.0]
+
+
+def test_a_different_number_is_still_an_added_value(tmp_path):
+    with pytest.raises(ValueError, match="cannot add values"):
+        _compose(tmp_path, {"set": [0.1]}, {"set": [0.1, 0.2]})

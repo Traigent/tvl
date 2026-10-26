@@ -519,12 +519,30 @@ def _set_domain_values(domain: Any) -> list[Any] | None:
 
 
 def _enum_additions(name: Any, base_domain: list[Any], composed_domain: list[Any]) -> list[str]:
-    base_set = set(str(v) for v in base_domain)
-    composed_set = set(str(v) for v in composed_domain)
-    added = composed_set - base_set
+    base_keys = {_value_key(v) for v in base_domain}
+    # Values compare by meaning (a number as its exact rational: 0.0 and -0.0 are one value),
+    # but are reported as the text the overlay wrote.
+    added = {str(v) for v in composed_domain if _value_key(v) not in base_keys}
     if added:
         return [f"TVAR '{name}': cannot add values {added} in overlay"]
     return []
+
+
+def _value_key(value: Any) -> Any:
+    """Identity of a domain value: numbers by exact value, everything else by its text.
+
+    Numeric text keeps the loose identity the check always had (``"1"`` is ``1``).
+    """
+    from tvl.model import ExactLiteralLimitError, exact_number_or_none
+
+    if (isinstance(value, (int, float)) and not isinstance(value, bool)) or isinstance(value, str):
+        try:
+            exact = exact_number_or_none(value)
+        except ExactLiteralLimitError:
+            exact = None
+        if exact is not None:
+            return ("n", exact)
+    return ("s", str(value))
 
 
 def _range_widenings(name: Any, base_range: Any, composed_range: Any) -> list[str]:
