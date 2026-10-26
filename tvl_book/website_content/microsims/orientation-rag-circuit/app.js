@@ -159,7 +159,7 @@ function buildYamlSnapshot() {
     `    value: ${state.retrieverTopK}`,
     "  rerank_weight:",
     "    type: float",
-    `    value: ${state.rerankWeight.toFixed(2)}`,
+    `    value: ${state.rerankWeight}`,
     "  response_tokens:",
     "    type: int",
     `    value: ${state.responseTokens}`,

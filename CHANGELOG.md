@@ -46,6 +46,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- The Orientation RAG page copied its YAML snapshot with the reranker weight rounded to two decimals (`0.12345` became `0.12`); it now emits the slider member exactly.
 - `tvl-check-structural` on a legacy `tvars: {x: {type: int, min: 0, max: 2}}` mapping treated the integer as a grid of step 1/1000, so `x > 0 and x < 1` was rewritten to `x >= 1 and x <= 999` and a witness outside the domain was accepted. An integer domain without a `resolution` now uses the unit grid, and that expression is UNSAT.
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 

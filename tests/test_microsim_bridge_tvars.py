@@ -106,6 +106,7 @@ def test_page_script_moves_over_the_listed_members():
     ).read_text(encoding="utf-8")
     assert "value.values" in script and "dataset.members" in script
     assert "Number(selectors." not in script  # sliders are read through readSlider
+    assert "state.rerankWeight.toFixed" not in script  # the copied YAML emits the member exactly
 
 
 def test_omitted_int_resolution_is_the_effective_unit_grid(tmp_path):
