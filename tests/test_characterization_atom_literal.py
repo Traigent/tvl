@@ -250,12 +250,13 @@ def test_int_unknown_operator_raises_after_encoding() -> None:
 
 def test_int_unencodable_value_raises_encode_error() -> None:
     with pytest.raises(ValueError, match=r"^n: expected int, got 'x'$"):
-        _call(INT, Atom("n", "~", "x"))
+        _call(INT, Atom("n", "<", "x"))
 
 
-def test_float_off_grid_value_raises_encode_error() -> None:
-    with pytest.raises(ValueError, match="is not on the precision grid"):
-        _call(FLT, Atom("t", "<", 0.35))
+def test_float_off_grid_threshold_is_encoded_not_rejected() -> None:
+    # Definition 3.6: a threshold need not be a grid member; the encoder compares through
+    # the exact grid index (commit f4f0821) instead of raising "not on the precision grid".
+    assert _call(FLT, Atom("t", "<", 0.35)) is not None
 
 
 def test_unsupported_domain_kind_raises_encode_error() -> None:
