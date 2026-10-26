@@ -34,10 +34,31 @@ const selectors = {
   constraintRerank: document.querySelector('[data-constraint="rerank"]')
 };
 
+// A slider whose domain is a non-uniform finite set (the presets file lists its `values`)
+// moves over the member INDEX, so it can only land on members of the set.
+function readSlider(element) {
+  const members = element.dataset.members ? JSON.parse(element.dataset.members) : null;
+  const raw = Number(element.value);
+  return members ? members[Math.max(0, Math.min(members.length - 1, Math.round(raw)))] : raw;
+}
+
+function writeSlider(element, value) {
+  const members = element.dataset.members ? JSON.parse(element.dataset.members) : null;
+  if (!members) {
+    element.value = value;
+    return;
+  }
+  let best = 0;
+  members.forEach((member, index) => {
+    if (Math.abs(member - value) < Math.abs(members[best] - value)) best = index;
+  });
+  element.value = best;
+}
+
 const defaultState = {
-  retrieverTopK: Number(selectors.retriever.value),
-  rerankWeight: Number(selectors.rerank.value),
-  responseTokens: Number(selectors.tokens.value)
+  retrieverTopK: readSlider(selectors.retriever),
+  rerankWeight: readSlider(selectors.rerank),
+  responseTokens: readSlider(selectors.tokens)
 };
 
 let state = { ...defaultState };
@@ -186,17 +207,17 @@ function updateUI() {
 
 function applyState(partial) {
   state = { ...state, ...partial };
-  selectors.retriever.value = state.retrieverTopK;
-  selectors.rerank.value = state.rerankWeight;
-  selectors.tokens.value = state.responseTokens;
+  writeSlider(selectors.retriever, state.retrieverTopK);
+  writeSlider(selectors.rerank, state.rerankWeight);
+  writeSlider(selectors.tokens, state.responseTokens);
   updateUI();
 }
 
 function handleSliderChange() {
   state = {
-    retrieverTopK: Number(selectors.retriever.value),
-    rerankWeight: Number(selectors.rerank.value),
-    responseTokens: Number(selectors.tokens.value)
+    retrieverTopK: readSlider(selectors.retriever),
+    rerankWeight: readSlider(selectors.rerank),
+    responseTokens: readSlider(selectors.tokens)
   };
   clearPresetSelection();
   updateUI();
@@ -247,6 +268,14 @@ function configureSliders(config) {
     const targetKey = FIELD_MAP[key] || key;
     const element = sliderConfigs[targetKey];
     if (!element || typeof value !== "object") return;
+    if (Array.isArray(value.values) && value.values.length > 0) {
+      element.dataset.members = JSON.stringify(value.values);
+      element.min = 0;
+      element.max = value.values.length - 1;
+      element.step = 1;
+      return;
+    }
+    delete element.dataset.members;
     if (value.min !== undefined) element.min = value.min;
     if (value.max !== undefined) element.max = value.max;
     if (value.step !== undefined) element.step = value.step;

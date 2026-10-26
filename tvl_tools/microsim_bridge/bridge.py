@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -18,9 +19,18 @@ class SliderConfig:
     # The finite domain, sorted, when the slider must land only on members (a set, or a range
     # with a resolution: Definition 3.6). None for the legacy uniform sliders.
     values: list[float] | None = None
+    # Exact grid ``(origin, step, count)`` of a range with a resolution; members are
+    # ``origin + i*step`` for ``0 <= i < count`` (Definition 3.6), however large ``count`` is.
+    grid: tuple[Fraction, Fraction, int] | None = None
+
+    @property
+    def has_domain(self) -> bool:
+        return bool(self.values) or self.grid is not None
 
     @property
     def uniform(self) -> bool:
+        if self.grid is not None:
+            return True
         if not self.values or len(self.values) < 3:
             return True
         gaps = {round(b - a, 9) for a, b in zip(self.values, self.values[1:])}
@@ -30,8 +40,8 @@ class SliderConfig:
 _MAX_GRID_POINTS = 10_001
 
 
-def _grid_values(bounds: list[Any], resolution: Any) -> list[float] | None:
-    """Members ``a + i*r`` of a range with a declared resolution (exact arithmetic), else None."""
+def _grid_spec(bounds: list[Any], resolution: Any) -> tuple[Fraction, Fraction, int] | None:
+    """Exact ``(origin, step, count)`` of a range with a resolution, else None."""
     try:
         low, high = exact_number_or_none(bounds[0]), exact_number_or_none(bounds[1])
         step = exact_number_or_none(resolution)
@@ -39,10 +49,18 @@ def _grid_values(bounds: list[Any], resolution: Any) -> list[float] | None:
         return None
     if low is None or high is None or step is None or step <= 0 or high < low:
         return None
-    count = int((high - low) // step) + 1
-    if count > _MAX_GRID_POINTS:
-        return None
-    return [float(low + i * step) for i in range(count)]
+    return low, step, int((high - low) // step) + 1
+
+
+def _grid_member(grid: tuple[Fraction, Fraction, int], value: float) -> float:
+    """The grid member nearest ``value`` (ties go to the lower one), by exact arithmetic."""
+    origin, step, count = grid
+    index = (Fraction(value) - origin) / step
+    nearest = (index + Fraction(1, 2)).__floor__()
+    if index + Fraction(1, 2) == nearest:  # an exact tie between two members
+        nearest -= 1
+    nearest = max(0, min(count - 1, nearest))
+    return float(origin + nearest * step)
 
 
 def _to_number(value: Any) -> float | None:
@@ -81,9 +99,19 @@ def _infer_slider(definition: dict[str, Any]) -> SliderConfig | None:
         if resolution is not None and resolution > 0:
             # A declared range resolution is the grid (Definition 3.6): the members are
             # a + i*r, so the slider may land only on them (the top may be off the grid).
-            grid = _grid_values(bounds, definition.get("resolution"))
+            grid = _grid_spec(bounds, definition.get("resolution"))
             if grid:
-                return SliderConfig(minimum=grid[0], maximum=grid[-1], step=resolution, values=grid)
+                origin, step, count = grid
+                values = (
+                    [float(origin + i * step) for i in range(count)] if count <= _MAX_GRID_POINTS else None
+                )
+                return SliderConfig(
+                    minimum=float(origin),
+                    maximum=float(origin + (count - 1) * step),
+                    step=float(step),
+                    values=values,
+                    grid=grid,
+                )
             return SliderConfig(minimum=minimum, maximum=maximum, step=resolution)
         # Provide a sensible default step: divide into 16 increments (avoid zeros).
         step = round(span / 16, 4) if span > 0 else 0.1
@@ -100,6 +128,8 @@ def _infer_default(definition: dict[str, Any]) -> float | int | None:
     slider = _infer_slider(definition)
     if slider:
         midpoint = (slider.minimum + slider.maximum) / 2
+        if slider.grid is not None:
+            return _grid_member(slider.grid, midpoint)
         if slider.values:
             return min(slider.values, key=lambda v: (abs(v - midpoint), v))  # a member, never between
         step = slider.step or 1.0
@@ -126,6 +156,8 @@ def _clamp(value: float, slider: SliderConfig | None) -> float:
 
 
 def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
+    if slider is not None and slider.grid is not None:
+        return _grid_member(slider.grid, value)
     if slider is not None and slider.values:
         return min(slider.values, key=lambda v: (abs(v - value), v))
     if slider is None or slider.step <= 0:
@@ -137,6 +169,9 @@ def _snap_to_step(value: float, slider: SliderConfig | None) -> float:
 
 def _coerce(name: str, value: float, slider: SliderConfig | None, type_name: str | None) -> float | int:
     value = _snap_to_step(value, slider)
+    if slider is not None and slider.has_domain:
+        # A member of the finite domain is returned as is: rounding could leave the domain.
+        return int(value) if type_name in {"integer", "discrete"} else value
     if type_name in {"integer", "discrete"}:
         return int(round(value))
     if type_name and type_name.startswith("categorical"):
