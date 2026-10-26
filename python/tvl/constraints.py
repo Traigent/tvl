@@ -12,7 +12,7 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     cp_model = None  # type: ignore
 
-from .model import Domain, _exact, exact_number_or_none, extract_domains, flatten_assignments
+from .model import Domain, ExactLiteralLimitError, _exact, exact_number_or_none, extract_domains, flatten_assignments
 
 
 _OR_SPLIT = re.compile(r"\s+or\s+", re.IGNORECASE)
@@ -327,7 +327,15 @@ def _parse_literal(text: str, tvar_names: frozenset = frozenset()) -> Atom:
     value = _parse_value(value_raw)
     exact = None
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        exact = exact_number_or_none(value_raw)
+        try:
+            exact = exact_number_or_none(value_raw)
+        except ExactLiteralLimitError as exc:
+            # Fail closed: an out-of-bounds literal is a parse issue, never a pass.
+            raise ConstraintParseError(
+                f"Numeric literal out of bounds in {text!r}: {exc}",
+                code="invalid_structural_expression",
+                text=text,
+            ) from exc
     return Atom(path=path, op=canonical_op, value=value, exact=exact)
 
 
@@ -674,14 +682,16 @@ def _enum_atom_literal(
         return lit
 
     if _is_numeric_enum(values) and atom.op in _VALUE_ORDERINGS:
-        threshold = float(atom.value)
+        # Exact threshold (source text), as for ranges: float(atom.value) would round
+        # ``1.000000000000000001`` to 1 and flip a strict comparison.
+        threshold = atom.exact if atom.exact is not None else _exact(atom.value)
         # Compare enum VALUES against the threshold, not enum indices: the
         # index order is not guaranteed to match value order (legacy
         # dict-form tvars are stored verbatim; only list-form sorts), so we
         # collect the exact set of value-satisfying indices and reify
         # membership over it rather than assuming a contiguous index range.
         holds = _VALUE_ORDERINGS[atom.op]
-        allowed = [idx for idx, val in enumerate(values) if holds(val, threshold)]
+        allowed = [idx for idx, val in enumerate(values) if holds(_exact(val), threshold)]
         _reify_index_membership(model, var, allowed, len(values), lit)
         return lit
 

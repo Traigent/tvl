@@ -46,6 +46,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- `tvl-config-validate`: a numeric literal past the exact-arithmetic bounds in a structural constraint (for example `x = 1e-401`) raised an exception; it is now reported as `invalid_structural_expression` and the constraint does not pass. Thresholds on numeric enums (`enum[float]` with `{set: [1]}`) compare against the exact literal instead of its binary64 rounding, so `0 <= x < 1.000000000000000001` is satisfiable with `x = 1`.
 - The Orientation RAG page copied its YAML snapshot with the reranker weight rounded to two decimals (`0.12345` became `0.12`); it now emits the slider member exactly.
 - `tvl-check-structural` on a legacy `tvars: {x: {type: int, min: 0, max: 2}}` mapping treated the integer as a grid of step 1/1000, so `x > 0 and x < 1` was rewritten to `x >= 1 and x <= 999` and a witness outside the domain was accepted. An integer domain without a `resolution` now uses the unit grid, and that expression is UNSAT.
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
