@@ -501,7 +501,7 @@ def _is_real(value: Any) -> bool:
     return (
         isinstance(value, (int, float, Fraction))
         and not isinstance(value, bool)
-        and not (isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))))
+        and (not isinstance(value, float) or math.isfinite(value))
     )
 
 
