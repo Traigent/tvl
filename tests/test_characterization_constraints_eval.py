@@ -196,13 +196,13 @@ CASES = [('parse_00', 'parse', (None,), {}, ('ok', [[]])),
    'ConstraintParseError',
    "Illegal identifier 'a-b' in constraint literal 'a-b = 1'; identifiers must match "
    '[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*.')),
+ # spec/grammar/tvl.ebnf:328 `unary = [ "not" ] , ( atom | "(" , formula , ")" )`: a bare `not`
+ # before an atom is grammar-valid, so config-validate evaluates it as the negated atom.
  ('parse_21',
   'parse',
   ('not a = 1',),
   {},
-  ('raises',
-   'ConstraintParseError',
-   "Negation ('not') is not supported by config-validate: 'not a = 1'")),
+  ('ok', [[{'__class__': 'Atom', 'path': 'a', 'op': '!=', 'value': 1, 'rhs_path': None, 'exact': Fraction(1, 1)}]])),
  ('parse_22',
   'parse',
   ('a = 1 => b = 2',),
