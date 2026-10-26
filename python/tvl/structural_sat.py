@@ -639,12 +639,15 @@ def _element_class(domain: Domain) -> str:
 def _numeric_type(domain: Domain) -> Optional[str]:
     """``int`` or ``float`` for a numeric domain, else None.
 
-    A range domain has its declared kind. A numeric enum is ``float`` iff some member is a
-    float and ``int`` otherwise (the domain does not keep the declared ``enum[...]`` type).
+    A range domain has its declared kind; an enum its declared element type. Only a domain
+    that states none (legacy dict-form tvars) falls back to its values: ``float`` iff some
+    member is a float.
     """
     if domain.kind in _NUMERIC_KINDS:
         return domain.kind
     if domain.kind == "enum" and _is_numeric_enum(domain):
+        if domain.elem_type in ("int", "float"):
+            return domain.elem_type  # the declared elem(τ), never inferred from the values
         return "float" if any(isinstance(v, float) for v in domain.values or []) else "int"
     return None
 

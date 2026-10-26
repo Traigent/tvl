@@ -201,6 +201,10 @@ class Domain:
     # ``[0.100000000000000001, 0.100000000000000001]`` is the singleton of that exact value.
     exact_minimum: Optional[Fraction] = None
     exact_maximum: Optional[Fraction] = None
+    # Declared scalar element type (``elem(τ)``, semantics §4.5) when the declaration states
+    # one: ``int``/``float``/``str``/``bool`` for ``int``, ``float`` and ``enum[τ]``. None for
+    # tuples, callables and legacy dict-form declarations.
+    elem_type: Optional[str] = None
 
     @property
     def gridded(self) -> bool:
@@ -666,7 +670,24 @@ def _enumerate_tuple_product(name: str, components: Any) -> List[Any]:
     return list(itertools.product(*axis_values))
 
 
+def _declared_elem_type(dtype: str) -> Optional[str]:
+    """``elem(τ)`` of a declared scalar type (``int``, ``float``, ``bool``, ``enum[τ]``), else None."""
+    text = (dtype or "").strip().lower()
+    if text in {"int", "float", "bool", "str"}:
+        return text
+    if text.startswith("enum[") and text.endswith("]"):
+        inner = text[5:-1].strip()
+        return inner if inner in {"int", "float", "str", "bool"} else None
+    return None
+
+
 def _domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
+    domain = _build_domain_from_decl(name, dtype, spec)
+    domain.elem_type = _declared_elem_type(dtype)
+    return domain
+
+
+def _build_domain_from_decl(name: str, dtype: str, spec: Any) -> Domain:
     kind = _normalize_dtype(dtype)
     if kind == "bool":
         return Domain(path=name, kind="bool")

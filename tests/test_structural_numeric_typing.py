@@ -50,3 +50,18 @@ def test_well_typed_numeric_atoms_still_decided(monkeypatch, solver):
         monkeypatch.setattr(structural_sat, "cp_model", None)
     assert check_structural(_module([INT_X], "i == 2.0")).ok is True
     assert check_structural(_module([FLOAT_Y], "f == 1")).ok is True
+
+
+def _enum(name, typ, values):
+    return {"name": name, "type": typ, "domain": {"set": values}}
+
+
+@pytest.mark.parametrize("solver", ["cpsat", "fallback"])
+def test_enum_element_types_come_from_the_declaration(monkeypatch, solver):
+    if solver == "fallback":
+        monkeypatch.setattr(structural_sat, "cp_model", None)
+    ok = check_structural(_module([_enum("a", "enum[float]", [1]), _enum("b", "enum[float]", [1.0])], "a = b"))
+    assert ok.ok is True
+    bad = check_structural(_module([_enum("a", "enum[float]", [1]), _enum("b", "enum[int]", [1])], "a = b"))
+    assert getattr(bad, "undecided", False)
+    assert bad.issues[0]["code"] == "structural_ill_typed_atom"
