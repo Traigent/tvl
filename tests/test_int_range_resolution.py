@@ -67,3 +67,18 @@ def test_satisfiability_encoder_uses_the_exact_literal():
     assert check_structural_satisfiable(compile_constraints(module))["ok"] is False
     module["constraints"]["structural"][0]["expr"] = "0 <= x <= 1.000000000000000001"
     assert check_structural_satisfiable(compile_constraints(module))["assignment"] == {"x": 1}
+
+
+def test_legacy_int_tvars_use_the_unit_grid_in_satisfiability():
+    # Legacy ``tvars: {x: {type: int, min, max}}`` has no resolution: its grid is the unit grid,
+    # not the float default 1/precision, so no integer lies strictly between 0 and 1.
+    from tvl.constraints import check_structural_satisfiable, compile_constraints
+
+    module = {
+        "tvars": {"x": {"type": "int", "min": 0, "max": 2}},
+        "constraints": {"structural": [{"expr": "x > 0 and x < 1"}]},
+    }
+    assert check_structural_satisfiable(compile_constraints(module))["ok"] is False
+    module["constraints"]["structural"] = [{"expr": "x > 0 and x < 2"}]
+    result = check_structural_satisfiable(compile_constraints(module))
+    assert result["ok"] is True and result["assignment"] == {"x": 1}

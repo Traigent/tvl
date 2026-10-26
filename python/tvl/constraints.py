@@ -725,7 +725,11 @@ def _ordered_atom_literal(
         # A threshold need not be a domain member (Definition 3.6 grid ``origin + i*step``):
         # compare through the exact rational grid index, as structural_sat does.
         exact = atom.exact if atom.exact is not None else _exact(value)
-        idx = (exact - domain.grid_origin) / domain.grid_step
+        if domain.gridded:
+            origin, grid_step = domain.grid_origin, domain.grid_step
+        else:  # a non-gridded int domain is the unit grid, not the float default 1/precision
+            origin, grid_step = Fraction(0), Fraction(1)
+        idx = (exact - origin) / grid_step
         op = atom.op
         if op in ("==", "!="):
             if idx.denominator != 1:

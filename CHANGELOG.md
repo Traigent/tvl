@@ -46,6 +46,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- `tvl-check-structural` on a legacy `tvars: {x: {type: int, min: 0, max: 2}}` mapping treated the integer as a grid of step 1/1000, so `x > 0 and x < 1` was rewritten to `x >= 1 and x <= 999` and a witness outside the domain was accepted. An integer domain without a `resolution` now uses the unit grid, and that expression is UNSAT.
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 
 - Website dependencies (Dependabot alerts 219-221): `ip-address` 10.7.1 to 10.7.4 and `@vitest/mocker` 4.1.11 to 4.1.12 (with its `@vitest/spy`), both patch-level bumps inside the existing override ranges.
