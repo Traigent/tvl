@@ -48,6 +48,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 
+- Website dependencies (Dependabot alerts 219-221): `ip-address` 10.7.1 to 10.7.4 and `@vitest/mocker` 4.1.11 to 4.1.12 (with its `@vitest/spy`), both patch-level bumps inside the existing override ranges.
 - `tvl-compose` accepted an overlay that adds values to a `{set: [...]}` domain: the "values may not be added" check compared bare-list domains only. Both spellings, in any combination, are now checked (the two denote the same set, Definition 3.6).
 - `tvl-microsim-bridge` read only the legacy `configuration_space` key, so on a current module it emitted empty defaults, sliders and presets. It now reads the numeric `tvars` (a range's `resolution` becomes the slider step, `tvl.module` the source id); `configuration_space` remains a fallback.
 - `tvl-config-validate` / `validate_configuration` rejected grammar-valid structural constraints that the linter and `tvl-check-structural` accept: chained comparisons (`1 <= x <= 5`), `not (...)` / `not(...)` and `x in {...}` (reported as `unsupported_negation`, `illegal_ident` or `constraint_parse_error`). They are now evaluated; text the structural parser also rejects (an empty `in []`, a hyphenated identifier) still fails closed.
