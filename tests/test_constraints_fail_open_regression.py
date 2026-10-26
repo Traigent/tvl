@@ -197,3 +197,15 @@ def test_numeric_enum_thresholds_are_exact():
     assert solve("x > 0.999999999999999999")["ok"] is True
     assert solve("x < 0.999999999999999999")["ok"] is False
     assert solve("x > 1.000000000000000001")["ok"] is False
+
+
+def test_satisfiability_refuses_when_a_constraint_did_not_parse():
+    from tvl.constraints import check_structural_satisfiable, compile_constraints
+
+    module = {
+        "tvars": [{"name": "x", "type": "float", "domain": {"range": [0, 1]}}],
+        "constraints": {"structural": [{"expr": "x = 1e-401"}]},
+    }
+    result = check_structural_satisfiable(compile_constraints(module))
+    assert result["ok"] is False and result["assignment"] is None
+    assert result["parse_issues"] == ["invalid_structural_expression"]

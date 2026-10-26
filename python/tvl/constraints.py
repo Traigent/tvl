@@ -366,6 +366,14 @@ def check_structural_satisfiable(compiled: CompiledConstraints) -> Dict[str, Any
             "OR-Tools is required for structural satisfiability checking. "
             "Install with: pip install ortools"
         )
+    if compiled.parse_issues:
+        # Fail closed: a constraint that did not parse was dropped from `compiled`, so a
+        # solve over the rest could report SAT for a module it never fully read.
+        return {
+            "ok": False,
+            "assignment": None,
+            "parse_issues": [issue.get("code") for issue in compiled.parse_issues],
+        }
     model = cp_model.CpModel()
     var_map: Dict[str, cp_model.IntVar] = {}
 
