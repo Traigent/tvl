@@ -1,5 +1,5 @@
 /** Normative sources the book links to. Links are pinned to a reviewed commit. */
-export const PINNED_COMMIT = "58f35baafca2ffa2eaa0112f6ac69f6874f6e6dc";
+export const PINNED_COMMIT = "aa70d562e0940dd6411a45b26a37711950dda922";
 
 export const SOURCES = {
   "rfc-0001": {

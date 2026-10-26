@@ -22,6 +22,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Book source links (`website/client/src/book/sources.ts` `PINNED_COMMIT`) now pin `aa70d56`, the commit that carries the 2026-10-25 owner rulings, instead of `58f35ba`.
 - Specification page corrections: version compatibility table, scoped overlay narrowing, budget-check responsibilities, assurance-scope table, a decision table for `chance_constraints` versus a promotion monitor, and the authority section.
 - Publication review corrections across the documentation, including the error code catalog (new entries for operational-check, calibration-readiness and document-shape codes, and a statement of which tool codes it does not list yet).
 - Formal semantics: derived constraints admit strict `<` and `>`, matching the grammar and the reference checker; a strict atom is false at equality.
