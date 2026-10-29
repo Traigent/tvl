@@ -361,13 +361,37 @@ class LintModuleTests(unittest.TestCase):
         self.assertFalse(_collect_codes(issues) & {"duplicate_domain_value", "invalid_range_domain"})
 
     def test_tuple_component_range_without_an_integer_is_not_empty(self) -> None:
-        """The component grid starts at ``lo``, so [1.2, 1.8] is a one-point (or finer) grid, not empty."""
+        """Lint only: the component grid starts at ``lo``, so [1.2, 1.8] is never empty. Whether the schema
+        accepts the form (it asks for ``resolution`` on non-integer ranges) is the schema stage's concern."""
         for comp in ({"range": [1.2, 1.8]}, {"range": [1.2, 1.8], "resolution": 1}):
             with self.subTest(comp=comp):
                 issues = self._lint_tvar(
                     {"name": "c", "type": "tuple[int,float]", "domain": {"components": [[1, 2], comp]}}
                 )
                 self.assertFalse(_collect_codes(issues) & {"empty_domain", "invalid_range_domain"})
+
+    def test_non_list_nested_components_and_non_finite_range_are_flagged(self) -> None:
+        for code, comp in (
+            ("invalid_tuple_domain", {"components": 5}),
+            ("invalid_tuple_domain", {"components": None}),
+            ("invalid_range_domain", {"range": [float("nan"), 1]}),
+            ("invalid_range_domain", {"range": [0, float("inf")]}),
+        ):
+            with self.subTest(comp=comp):
+                issues = self._lint_tvar(
+                    {"name": "c", "type": "tuple[int,int]", "domain": {"components": [[1, 2], comp]}}
+                )
+                self.assertIn(code, _collect_codes(issues))
+
+    def test_reversed_range_with_registry_sibling_is_not_flagged(self) -> None:
+        issues = self._lint_tvar(
+            {
+                "name": "c",
+                "type": "tuple[int,int]",
+                "domain": {"components": [[1, 2], {"range": [5, 1], "registry": "x"}]},
+            }
+        )
+        self.assertNotIn("invalid_range_domain", _collect_codes(issues))
 
     def test_cyclic_tuple_components_terminate(self) -> None:
         """A YAML alias cycle in nested components must not recurse without bound."""

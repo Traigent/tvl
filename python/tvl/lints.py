@@ -1713,7 +1713,9 @@ def _normalize_kind(raw_type: str) -> Optional[str]:
     return None
 
 
-def _report_duplicate_members(name: str, values: List[Any], path: List[Any], issues: List[Issue]) -> None:
+def _report_duplicate_members(
+    name: str, values: List[Any], path: List[Any], issues: List[Issue], where: str = ""
+) -> None:
     """Append ``duplicate_domain_value`` when ``values`` repeats a member (issues #24, #202)."""
     try:
         has_duplicate = len(values) != len(set(values))
@@ -1728,7 +1730,7 @@ def _report_duplicate_members(name: str, values: List[Any], path: List[Any], iss
         issues.append(
             {
                 "code": "duplicate_domain_value",
-                "message": f"TVAR '{name}' domain contains duplicate value(s): {repeated}",
+                "message": f"TVAR '{name}'{where} domain contains duplicate value(s): {repeated}",
                 "path": path,
                 "severity": "error",
             }
@@ -1755,7 +1757,7 @@ def _lint_tuple_components(name: str, components: List[Any], path: List[Any], is
         _lint_tuple_component_list(name, current, current_path, issues, stack, seen)
 
 
-def _range_component_is_valid(label: str, bounds: Any, comp_path: List[Any], issues: List[Issue]) -> bool:
+def _range_component_is_valid(name: str, idx: int, bounds: Any, comp_path: List[Any], issues: List[Issue]) -> bool:
     """Report a malformed or reversed tuple-component ``range``; True when it is usable.
 
     A usable range always resolves to at least ``lo`` itself (the grid starts at ``lo``), so an
@@ -1764,13 +1766,16 @@ def _range_component_is_valid(label: str, bounds: Any, comp_path: List[Any], iss
     try:
         if not (isinstance(bounds, list) and len(bounds) == 2):
             raise ValueError("range must specify [min, max]")
-        reversed_range = float(bounds[0]) > float(bounds[1])
+        lo, hi = float(bounds[0]), float(bounds[1])
+        if not (math.isfinite(lo) and math.isfinite(hi)):
+            raise ValueError("range bounds must be finite")
+        reversed_range = lo > hi
     except (TypeError, ValueError):
-        message = f"TVAR '{label}' range must be two numeric bounds [min, max]"
+        message = f"TVAR '{name}' component {idx} range must be two finite numeric bounds [min, max]"
     else:
         if not reversed_range:
             return True
-        message = f"TVAR '{label}' range has min > max ({bounds[0]} > {bounds[1]})"
+        message = f"TVAR '{name}' component {idx} range has min > max ({bounds[0]} > {bounds[1]})"
     issues.append(
         {"code": "invalid_range_domain", "message": message, "path": comp_path + ["range"], "severity": "error"}
     )
@@ -1778,17 +1783,18 @@ def _range_component_is_valid(label: str, bounds: Any, comp_path: List[Any], iss
 
 
 def _queue_nested_components(
-    label: str,
+    name: str,
+    idx: int,
     comp: Dict[str, Any],
     comp_path: List[Any],
     issues: List[Issue],
     stack: List[Tuple[List[Any], List[Any]]],
 ) -> None:
-    if not comp["components"]:
+    if not isinstance(comp["components"], list) or not comp["components"]:
         issues.append(
             {
                 "code": "invalid_tuple_domain",
-                "message": f"TVAR '{label}' tuple domain must define a non-empty 'components' list",
+                "message": f"TVAR '{name}' component {idx} tuple domain must define a non-empty 'components' list",
                 "path": comp_path + ["components"],
                 "severity": "error",
             }
@@ -1807,7 +1813,6 @@ def _lint_tuple_component_list(
 ) -> None:
     for idx, comp in enumerate(components):
         comp_path = path + [idx]
-        label = f"{name} component {idx}"
         members: Any = None
         if isinstance(comp, list):
             members = comp
@@ -1817,17 +1822,21 @@ def _lint_tuple_component_list(
             elif "set" in comp:
                 members = comp["set"]
             elif "range" in comp:
-                if _range_component_is_valid(label, comp["range"], comp_path, issues):
+                if "registry" in comp and "components" not in comp:
+                    # The model resolves an unusable range through ``registry`` (external).
+                    continue
+                if _range_component_is_valid(name, idx, comp["range"], comp_path, issues):
                     continue
                 # An unusable range makes the model fall through to ``components``
                 # (``model._resolve_component_values``), so lint them as well.
-                if not isinstance(comp.get("components"), list):
-                    continue
-                _queue_nested_components(label, comp, comp_path, issues, stack)
+                if "components" in comp:
+                    _queue_nested_components(name, idx, comp, comp_path, issues, stack)
                 continue
-            elif isinstance(comp.get("components"), list):
-                _queue_nested_components(label, comp, comp_path, issues, stack)
+            elif "components" in comp:
+                _queue_nested_components(name, idx, comp, comp_path, issues, stack)
                 continue
+            # Any other shape (no recognised key, non-list ``values``) is the schema stage's to
+            # reject; it is not linted here.
         if not isinstance(members, list):
             continue
         if members and id(members) in seen:
@@ -1839,13 +1848,13 @@ def _lint_tuple_component_list(
             issues.append(
                 {
                     "code": "empty_domain",
-                    "message": f"TVAR '{label}' has an empty domain",
+                    "message": f"TVAR '{name}' component {idx} has an empty domain",
                     "path": comp_path,
                     "severity": "error",
                 }
             )
             continue
-        _report_duplicate_members(label, members, comp_path, issues)
+        _report_duplicate_members(name, members, comp_path, issues, f" component {idx}")
 
 
 def _parse_domain(
