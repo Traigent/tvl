@@ -392,6 +392,13 @@ class LintModuleTests(unittest.TestCase):
         found = sum(1 for i in issues if i["code"] == "duplicate_domain_value")
         self.assertTrue(1 <= found <= 2, found)
 
+    def test_aliased_member_list_is_checked_once(self) -> None:
+        """Many aliases of one large member list must not multiply the lint work."""
+        shared = [1, 1]
+        comps = [{"values": shared} for _ in range(5)]
+        issues = self._lint_tvar({"name": "c", "type": "tuple[int]", "domain": {"components": comps}})
+        self.assertEqual(1, sum(1 for i in issues if i["code"] == "duplicate_domain_value"))
+
     def test_orphan_min_effect_key_is_flagged(self) -> None:
         """Issue #24 (3/3): a min_effect key that names no declared objective
         must not be silently accepted (a stale/renamed/typo'd entry)."""

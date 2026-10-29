@@ -1752,7 +1752,7 @@ def _lint_tuple_components(name: str, components: List[Any], path: List[Any], is
         if id(current) in seen:
             continue
         seen.add(id(current))
-        _lint_tuple_component_list(name, current, current_path, issues, stack)
+        _lint_tuple_component_list(name, current, current_path, issues, stack, seen)
 
 
 def _range_component_is_valid(label: str, bounds: Any, comp_path: List[Any], issues: List[Issue]) -> bool:
@@ -1803,6 +1803,7 @@ def _lint_tuple_component_list(
     path: List[Any],
     issues: List[Issue],
     stack: List[Tuple[List[Any], List[Any]]],
+    seen: Set[int],
 ) -> None:
     for idx, comp in enumerate(components):
         comp_path = path + [idx]
@@ -1829,6 +1830,11 @@ def _lint_tuple_component_list(
                 continue
         if not isinstance(members, list):
             continue
+        if members and id(members) in seen:
+            # The same member list reached through an alias is checked once, so a few
+            # aliases of one large list cannot multiply the work.
+            continue
+        seen.add(id(members))
         if not members:
             issues.append(
                 {
