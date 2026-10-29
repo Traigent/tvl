@@ -46,6 +46,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- `tvl-validate` and `tvl-lint` report `duplicate_domain_value` for a repeated member in a bare-list `int` or `float` domain and in a tuple component, not only in a `set:` or enum domain.
+- `tvl-validate` and `tvl-lint` report `empty_domain` for an `int` range that contains no integer (`[1.2, 1.8]`), and lint every tuple component: an empty `values`/`set` is `empty_domain`, a reversed `range` is `invalid_range_domain`. `tvl-check-structural` no longer meets these inputs after `tvl-validate` accepted them.
+- The book walkthrough no longer tells readers to set `execution_mode="edge_analytics"`, which the Traigent SDK removed; it points to `offline=True` with `algorithm="grid"` or `"random"`.
 - `check_structural_satisfiable` (Python API) returned `ok: True` for a module with a constraint that did not parse, because the dropped constraint no longer restricted the solve. It now returns `ok: False`, `assignment: None` and the issue codes under `parse_issues`.
 - `tvl-config-validate`: a numeric literal past the exact-arithmetic bounds in a structural constraint (for example `x = 1e-401`) raised an exception; it is now reported as `invalid_structural_expression` and the constraint does not pass. Thresholds on numeric enums (`enum[float]` with `{set: [1]}`) compare against the exact literal instead of its binary64 rounding, so `0 <= x < 1.000000000000000001` is satisfiable with `x = 1`.
 - The Orientation RAG page copied its YAML snapshot with the reranker weight rounded to two decimals (`0.12345` became `0.12`); it now emits the slider member exactly.
