@@ -336,12 +336,61 @@ class LintModuleTests(unittest.TestCase):
                 )
                 self.assertIn(code, _collect_codes(issues))
 
+    def test_unusable_range_with_bad_nested_components_reports_both(self) -> None:
+        """A reversed range falls through to ``components`` in the model, so both are reported."""
+        issues = self._lint_tvar(
+            {
+                "name": "c",
+                "type": "tuple[int,int]",
+                "domain": {"components": [[1, 2], {"range": [9, 1], "components": [{"values": [4, 4]}]}]},
+            }
+        )
+        codes = _collect_codes(issues)
+        self.assertIn("invalid_range_domain", codes)
+        self.assertIn("duplicate_domain_value", codes)
+
+    def test_valid_range_ignores_sibling_components(self) -> None:
+        """A usable range wins over ``components`` (model precedence), so nothing is reported."""
+        issues = self._lint_tvar(
+            {
+                "name": "c",
+                "type": "tuple[int,int]",
+                "domain": {"components": [[1, 2], {"range": [1, 3], "components": [{"values": [4, 4]}]}]},
+            }
+        )
+        self.assertFalse(_collect_codes(issues) & {"duplicate_domain_value", "invalid_range_domain"})
+
+    def test_tuple_component_range_without_an_integer_is_not_empty(self) -> None:
+        """The component grid starts at ``lo``, so [1.2, 1.8] is a one-point (or finer) grid, not empty."""
+        for comp in ({"range": [1.2, 1.8]}, {"range": [1.2, 1.8], "resolution": 1}):
+            with self.subTest(comp=comp):
+                issues = self._lint_tvar(
+                    {"name": "c", "type": "tuple[int,float]", "domain": {"components": [[1, 2], comp]}}
+                )
+                self.assertFalse(_collect_codes(issues) & {"empty_domain", "invalid_range_domain"})
+
     def test_cyclic_tuple_components_terminate(self) -> None:
         """A YAML alias cycle in nested components must not recurse without bound."""
         cyc: Dict[str, Any] = {}
         cyc["components"] = [cyc, {"values": [1, 1]}]
         issues = self._lint_tvar({"name": "c", "type": "tuple[int,int]", "domain": cyc})
         self.assertIn("duplicate_domain_value", _collect_codes(issues))
+
+    def test_deeply_nested_tuple_components_do_not_exhaust_the_stack(self) -> None:
+        node: Dict[str, Any] = {"values": [1, 1]}
+        for _ in range(5000):
+            node = {"components": [node]}
+        issues = self._lint_tvar({"name": "c", "type": "tuple[int]", "domain": node})
+        self.assertIn("duplicate_domain_value", _collect_codes(issues))
+
+    def test_shared_tuple_components_are_linted_once(self) -> None:
+        """An alias DAG (``x: &a [*a_prev, *a_prev]``) must not be walked once per path (2**60 here)."""
+        node: Dict[str, Any] = {"values": [1, 1]}
+        for _ in range(60):
+            node = {"components": [node, node]}
+        issues = self._lint_tvar({"name": "c", "type": "tuple[int]", "domain": node})
+        found = sum(1 for i in issues if i["code"] == "duplicate_domain_value")
+        self.assertTrue(1 <= found <= 2, found)
 
     def test_orphan_min_effect_key_is_flagged(self) -> None:
         """Issue #24 (3/3): a min_effect key that names no declared objective

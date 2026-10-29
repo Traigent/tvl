@@ -72,8 +72,8 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 
 ### `invalid_range_domain`
 - **Severity**: error
-- **Description**: Range domain has invalid format or bounds.
-- **Example**: `domain: { range: [5, 1] }` (min > max)
+- **Description**: Range domain has invalid format or bounds. This includes the `range` of a tuple component, which must be two numeric bounds with min <= max.
+- **Example**: `domain: { range: [5, 1] }` (min > max); `{ range: [64, 0] }` as a tuple component
 - **Remediation**: Specify `range: [min, max]` where `min <= max` with numeric bounds.
 
 ### `unsupported_domain_registry`
@@ -98,8 +98,8 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 
 ### `invalid_tuple_domain`
 - **Severity**: error
-- **Description**: A tuple TVAR domain uses the `components` form, but `components` is not a non-empty list.
-- **Example**: `type: tuple[int, int]` with `domain: { components: [] }`
+- **Description**: A tuple TVAR domain, or a nested tuple component, uses the `components` form, but `components` is not a non-empty list.
+- **Example**: `type: tuple[int, int]` with `domain: { components: [] }`, or `domain: { components: [[1, 2], { components: [] }] }`
 - **Remediation**: List at least one component domain under `components`.
 
 ---

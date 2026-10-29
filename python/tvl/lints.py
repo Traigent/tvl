@@ -1735,32 +1735,74 @@ def _report_duplicate_members(name: str, values: List[Any], path: List[Any], iss
         )
 
 
-def _lint_tuple_components(
-    name: str,
-    components: List[Any],
-    path: List[Any],
-    issues: List[Issue],
-    _active: Optional[Set[int]] = None,
-) -> None:
+def _lint_tuple_components(name: str, components: List[Any], path: List[Any], issues: List[Issue]) -> None:
     """Lint each tuple component for empty, duplicate and reversed domains (issues #202, #203).
 
     Mirrors the key precedence of ``model._resolve_component_values``: ``values``, ``set``,
     ``range``, nested ``components``, then ``registry`` (resolved externally, never linted).
+
+    Nested ``components`` are walked with an explicit stack and each list is visited once, by
+    identity: YAML aliases can make a tiny document stand for a cyclic or exponentially shared
+    structure, and a deep one would exhaust the interpreter stack if walked recursively.
     """
-    # Components already being linted, by identity, so an alias cycle (``&d {components: [*d]}``)
-    # terminates instead of recursing without bound.
-    active = _active if _active is not None else set()
-    if id(components) in active:
-        return
-    active.add(id(components))
+    seen: Set[int] = set()
+    stack: List[Tuple[List[Any], List[Any]]] = [(components, path)]
+    while stack:
+        current, current_path = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        _lint_tuple_component_list(name, current, current_path, issues, stack)
+
+
+def _range_component_is_valid(label: str, bounds: Any, comp_path: List[Any], issues: List[Issue]) -> bool:
+    """Report a malformed or reversed tuple-component ``range``; True when it is usable.
+
+    A usable range always resolves to at least ``lo`` itself (the grid starts at ``lo``), so an
+    integer-free range such as ``[1.2, 1.8]`` is never empty here, unlike a bare ``int`` TVAR.
+    """
     try:
-        _lint_tuple_component_list(name, components, path, issues, active)
-    finally:
-        active.discard(id(components))
+        if not (isinstance(bounds, list) and len(bounds) == 2):
+            raise ValueError("range must specify [min, max]")
+        reversed_range = float(bounds[0]) > float(bounds[1])
+    except (TypeError, ValueError):
+        message = f"TVAR '{label}' range must be two numeric bounds [min, max]"
+    else:
+        if not reversed_range:
+            return True
+        message = f"TVAR '{label}' range has min > max ({bounds[0]} > {bounds[1]})"
+    issues.append(
+        {"code": "invalid_range_domain", "message": message, "path": comp_path + ["range"], "severity": "error"}
+    )
+    return False
+
+
+def _queue_nested_components(
+    label: str,
+    comp: Dict[str, Any],
+    comp_path: List[Any],
+    issues: List[Issue],
+    stack: List[Tuple[List[Any], List[Any]]],
+) -> None:
+    if not comp["components"]:
+        issues.append(
+            {
+                "code": "invalid_tuple_domain",
+                "message": f"TVAR '{label}' tuple domain must define a non-empty 'components' list",
+                "path": comp_path + ["components"],
+                "severity": "error",
+            }
+        )
+        return
+    stack.append((comp["components"], comp_path + ["components"]))
 
 
 def _lint_tuple_component_list(
-    name: str, components: List[Any], path: List[Any], issues: List[Issue], active: Set[int]
+    name: str,
+    components: List[Any],
+    path: List[Any],
+    issues: List[Issue],
+    stack: List[Tuple[List[Any], List[Any]]],
 ) -> None:
     for idx, comp in enumerate(components):
         comp_path = path + [idx]
@@ -1774,43 +1816,16 @@ def _lint_tuple_component_list(
             elif "set" in comp:
                 members = comp["set"]
             elif "range" in comp:
-                bounds = comp["range"]
-                try:
-                    if not (isinstance(bounds, list) and len(bounds) == 2):
-                        raise ValueError("range must specify [min, max]")
-                    reversed_range = float(bounds[0]) > float(bounds[1])
-                except (TypeError, ValueError):
-                    issues.append(
-                        {
-                            "code": "invalid_range_domain",
-                            "message": f"TVAR '{label}' range must be two numeric bounds [min, max]",
-                            "path": comp_path + ["range"],
-                            "severity": "error",
-                        }
-                    )
+                if _range_component_is_valid(label, comp["range"], comp_path, issues):
                     continue
-                if reversed_range:
-                    issues.append(
-                        {
-                            "code": "invalid_range_domain",
-                            "message": f"TVAR '{label}' range has min > max ({bounds[0]} > {bounds[1]})",
-                            "path": comp_path + ["range"],
-                            "severity": "error",
-                        }
-                    )
+                # An unusable range makes the model fall through to ``components``
+                # (``model._resolve_component_values``), so lint them as well.
+                if not isinstance(comp.get("components"), list):
+                    continue
+                _queue_nested_components(label, comp, comp_path, issues, stack)
                 continue
             elif isinstance(comp.get("components"), list):
-                if not comp["components"]:
-                    issues.append(
-                        {
-                            "code": "invalid_tuple_domain",
-                            "message": f"TVAR '{label}' tuple domain must define a non-empty 'components' list",
-                            "path": comp_path + ["components"],
-                            "severity": "error",
-                        }
-                    )
-                    continue
-                _lint_tuple_components(name, comp["components"], comp_path + ["components"], issues, active)
+                _queue_nested_components(label, comp, comp_path, issues, stack)
                 continue
         if not isinstance(members, list):
             continue
