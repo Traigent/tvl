@@ -49,7 +49,7 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 ### `empty_domain`
 - **Severity**: error
 - **Description**: TVAR domain resolves to an empty set after specialization (turning the declared domain, such as a list, set or range, into its finite set of values; formal semantics Definition 3.6). Registry domains are resolved outside TVL, so the linter does not check them for emptiness.
-- **Example**: `domain: []` for an enum TVAR
+- **Example**: `domain: []` for an enum TVAR; `domain: {range: [1.2, 1.8]}` for an `int` TVAR (no integer lies in the range); `{set: []}` as a tuple component
 - **Remediation**: Ensure domain contains at least one valid value.
 
 ### `missing_domain`
@@ -84,7 +84,7 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 
 ### `duplicate_domain_value`
 - **Severity**: error
-- **Description**: An enumerated TVAR domain lists the same member more than once. Without this error, repeated members would collapse into one choice, which inflates the apparent domain size and makes encoding ambiguous.
+- **Description**: A TVAR domain lists the same member more than once: an enum or callable domain, a numeric `set` or bare list, or a tuple component. Without this error, repeated members would collapse into one choice, which inflates the apparent domain size and makes encoding ambiguous.
 - **Example**: `domain: ["gpt-4o", "gpt-4o"]`
 - **Remediation**: Remove the repeated value.
 - **Note**: The domain is a set (formal semantics Definition 3.6). `tvl-check-structural` does not report this code: it removes repeated members and checks the remaining set.
@@ -1055,7 +1055,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `unknown_derived_symbol` | error | Operational | env.context symbol not defined |
 | `non_numeric_derived_symbol` | error | Operational | env.context symbol not numeric |
 | `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
-| `duplicate_domain_value` | error | Domain | Repeated enum member |
+| `duplicate_domain_value` | error | Domain | Repeated domain member |
 | `non_finite_domain_value` | error | Domain | NaN or infinity in a domain |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |

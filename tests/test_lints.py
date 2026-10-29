@@ -245,6 +245,89 @@ class LintModuleTests(unittest.TestCase):
         codes = _collect_codes(issues)
         self.assertNotIn("duplicate_domain_value", codes)
 
+    def _lint_tvar(self, tvar: Dict[str, Any]):
+        doc = _base_module()
+        doc["tvars"] = [tvar]
+        return lint_module(doc)
+
+    def test_duplicate_bare_list_numeric_domain_is_flagged(self) -> None:
+        """Issue #202: bare-list int/float domains need the same duplicate check as 'set'."""
+        for tvar in (
+            {"name": "k", "type": "int", "domain": [0, 1, 1]},
+            {"name": "t", "type": "float", "domain": [0.1, 0.1, 0.5]},
+            {"name": "k", "type": "int", "domain": [3, 3.0, 4]},
+        ):
+            with self.subTest(tvar=tvar):
+                self.assertIn("duplicate_domain_value", _collect_codes(self._lint_tvar(tvar)))
+
+    def test_duplicate_tuple_component_member_is_flagged(self) -> None:
+        """Issue #202: each tuple component list is checked for repeated members."""
+        for comp in ({"values": [256, 256, 512]}, {"set": [256, 256]}, [1, 1]):
+            with self.subTest(comp=comp):
+                issues = self._lint_tvar(
+                    {"name": "shape", "type": "tuple[int,int]", "domain": {"components": [comp, {"values": [0, 64]}]}}
+                )
+                self.assertIn("duplicate_domain_value", _collect_codes(issues))
+
+    def test_unique_numeric_and_tuple_domains_have_no_duplicate_finding(self) -> None:
+        for tvar in (
+            {"name": "k", "type": "int", "domain": [0, 1, 2]},
+            {"name": "t", "type": "float", "domain": {"set": [0.1, 0.5]}},
+            {
+                "name": "shape",
+                "type": "tuple[int,int]",
+                "domain": {"components": [{"values": [256, 512]}, {"range": [0, 64]}]},
+            },
+        ):
+            with self.subTest(tvar=tvar):
+                codes = _collect_codes(self._lint_tvar(tvar))
+                self.assertFalse(codes & {"duplicate_domain_value", "empty_domain", "invalid_range_domain"}, codes)
+
+    def test_int_range_without_an_integer_is_flagged(self) -> None:
+        """Issue #203: [1.2, 1.8] holds no integer; tvl-check-structural calls it UNSAT."""
+        for bounds in ([1.2, 1.8], [1.5, 1.9]):
+            with self.subTest(bounds=bounds):
+                issues = self._lint_tvar({"name": "k", "type": "int", "domain": {"range": bounds}})
+                self.assertIn("empty_domain", _collect_codes(issues))
+
+    def test_int_range_with_an_integer_is_accepted(self) -> None:
+        for bounds in ([1.5, 8], [1, 1], [0, 10], [0.5, 1.5]):
+            with self.subTest(bounds=bounds):
+                issues = self._lint_tvar({"name": "k", "type": "int", "domain": {"range": bounds}})
+                self.assertNotIn("empty_domain", _collect_codes(issues))
+
+    def test_bad_tuple_components_are_flagged(self) -> None:
+        """Issue #203: reversed range and empty set components crash tvl-check-structural."""
+        cases = {
+            "invalid_range_domain": {"range": [64, 0]},
+            "empty_domain": {"set": []},
+        }
+        for code, comp in cases.items():
+            with self.subTest(comp=comp):
+                issues = self._lint_tvar(
+                    {"name": "c", "type": "tuple[int,int]", "domain": {"components": [{"values": [1, 2]}, comp]}}
+                )
+                matching = [i for i in issues if i["code"] == code]
+                self.assertTrue(matching, issues)
+                self.assertIn(1, matching[0]["path"])
+
+    def test_nested_tuple_component_is_linted(self) -> None:
+        issues = self._lint_tvar(
+            {
+                "name": "c",
+                "type": "tuple[int,int]",
+                "domain": {"components": [{"components": [{"values": [1, 1]}]}, {"values": [2]}]},
+            }
+        )
+        self.assertIn("duplicate_domain_value", _collect_codes(issues))
+
+    def test_cyclic_tuple_components_terminate(self) -> None:
+        """A YAML alias cycle in nested components must not recurse without bound."""
+        cyc: Dict[str, Any] = {}
+        cyc["components"] = [cyc, {"values": [1, 1]}]
+        issues = self._lint_tvar({"name": "c", "type": "tuple[int,int]", "domain": cyc})
+        self.assertIn("duplicate_domain_value", _collect_codes(issues))
+
     def test_orphan_min_effect_key_is_flagged(self) -> None:
         """Issue #24 (3/3): a min_effect key that names no declared objective
         must not be silently accepted (a stale/renamed/typo'd entry)."""

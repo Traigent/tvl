@@ -1713,6 +1713,104 @@ def _normalize_kind(raw_type: str) -> Optional[str]:
     return None
 
 
+def _report_duplicate_members(name: str, values: List[Any], path: List[Any], issues: List[Issue]) -> None:
+    """Append ``duplicate_domain_value`` when ``values`` repeats a member (issues #24, #202)."""
+    try:
+        has_duplicate = len(values) != len(set(values))
+    except TypeError:
+        # Unhashable members cannot be compared as a set; the type checks elsewhere report them.
+        return
+    if has_duplicate:
+        counts: Dict[Any, int] = {}
+        for v in values:
+            counts[v] = counts.get(v, 0) + 1
+        repeated = sorted({str(v) for v, n in counts.items() if n > 1})
+        issues.append(
+            {
+                "code": "duplicate_domain_value",
+                "message": f"TVAR '{name}' domain contains duplicate value(s): {repeated}",
+                "path": path,
+                "severity": "error",
+            }
+        )
+
+
+def _lint_tuple_components(
+    name: str,
+    components: List[Any],
+    path: List[Any],
+    issues: List[Issue],
+    _active: Optional[Set[int]] = None,
+) -> None:
+    """Lint each tuple component for empty, duplicate and reversed domains (issues #202, #203).
+
+    Mirrors the key precedence of ``model._resolve_component_values``: ``values``, ``set``,
+    ``range``, nested ``components``, then ``registry`` (resolved externally, never linted).
+    """
+    # Components already being linted, by identity, so an alias cycle (``&d {components: [*d]}``)
+    # terminates instead of recursing without bound.
+    active = _active if _active is not None else set()
+    if id(components) in active:
+        return
+    active.add(id(components))
+    try:
+        _lint_tuple_component_list(name, components, path, issues, active)
+    finally:
+        active.discard(id(components))
+
+
+def _lint_tuple_component_list(
+    name: str, components: List[Any], path: List[Any], issues: List[Issue], active: Set[int]
+) -> None:
+    for idx, comp in enumerate(components):
+        comp_path = path + [idx]
+        label = f"{name} component {idx}"
+        members: Any = None
+        if isinstance(comp, list):
+            members = comp
+        elif isinstance(comp, dict):
+            if "values" in comp:
+                members = comp["values"]
+            elif "set" in comp:
+                members = comp["set"]
+            elif "range" in comp:
+                bounds = comp["range"]
+                try:
+                    reversed_range = (
+                        isinstance(bounds, list)
+                        and len(bounds) == 2
+                        and float(bounds[0]) > float(bounds[1])
+                    )
+                except (TypeError, ValueError):
+                    continue
+                if reversed_range:
+                    issues.append(
+                        {
+                            "code": "invalid_range_domain",
+                            "message": f"TVAR '{label}' range has min > max ({bounds[0]} > {bounds[1]})",
+                            "path": comp_path + ["range"],
+                            "severity": "error",
+                        }
+                    )
+                continue
+            elif isinstance(comp.get("components"), list):
+                _lint_tuple_components(name, comp["components"], comp_path + ["components"], issues, active)
+                continue
+        if not isinstance(members, list):
+            continue
+        if not members:
+            issues.append(
+                {
+                    "code": "empty_domain",
+                    "message": f"TVAR '{label}' has an empty domain",
+                    "path": comp_path,
+                    "severity": "error",
+                }
+            )
+            continue
+        _report_duplicate_members(label, members, comp_path, issues)
+
+
 def _parse_domain(
     name: str,
     kind: str,
@@ -1761,7 +1859,9 @@ def _parse_domain(
                         }
                     )
                     return set(), None, None
-                # Tuple domains are products; we don't enumerate them during linting.
+                # Tuple domains are products; we don't enumerate them during linting, but
+                # each component is checked on its own (issues #202, #203).
+                _lint_tuple_components(name, components, path + ["domain", "components"], issues)
                 return None, None, None
         parsed = _parse_collection(spec, allow_scalar=True)
         if parsed is None:
@@ -1827,18 +1927,7 @@ def _parse_domain(
                                 "severity": "error",
                             }
                         )
-                if len(coerced_values) != len(set(coerced_values)):
-                    # Issue #24: same duplicate-member silent-accept as the
-                    # enum/callable branch above, for the numeric 'set' form.
-                    issues.append(
-                        {
-                            "code": "duplicate_domain_value",
-                            "message": f"TVAR '{name}' domain contains duplicate value(s): "
-                            f"{sorted({v for v in coerced_values if coerced_values.count(v) > 1})}",
-                            "path": path + ["domain"],
-                            "severity": "error",
-                        }
-                    )
+                _report_duplicate_members(name, coerced_values, path + ["domain"], issues)
                 converted.update(coerced_values)
                 return converted, None, None
             if "range" in spec:
@@ -1875,6 +1964,25 @@ def _parse_domain(
                             "severity": "error",
                         }
                     )
+                if (
+                    kind == "int"
+                    and minimum is not None
+                    and maximum is not None
+                    and minimum <= maximum
+                    and math.isfinite(minimum)
+                    and math.isfinite(maximum)
+                    and math.ceil(minimum) > math.floor(maximum)
+                ):
+                    # Issue #203: min <= max but no integer lies between them
+                    # (e.g. [1.2, 1.8]), so the domain is empty.
+                    issues.append(
+                        {
+                            "code": "empty_domain",
+                            "message": f"TVAR '{name}' int range [{minimum}, {maximum}] contains no integer",
+                            "path": path + ["domain"],
+                            "severity": "error",
+                        }
+                    )
                 if kind == "int":
                     min_val = float(minimum) if minimum is not None else None
                     max_val = float(maximum) if maximum is not None else None
@@ -1893,9 +2001,11 @@ def _parse_domain(
         parsed = _parse_collection(spec, allow_scalar=True)
         if parsed is not None:
             converted = set()
+            coerced_list: List[Any] = []
             for item in parsed:
                 try:
-                    converted.add(_coerce_numeric(item, kind))
+                    coerced_list.append(_coerce_numeric(item, kind))
+                    converted.add(coerced_list[-1])
                 except ValueError:
                     issues.append(
                         {
@@ -1905,6 +2015,7 @@ def _parse_domain(
                             "severity": "error",
                         }
                     )
+            _report_duplicate_members(name, coerced_list, path + ["domain"], issues)
             return converted, None, None
         issues.append(
             {
