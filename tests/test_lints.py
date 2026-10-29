@@ -402,6 +402,13 @@ class LintModuleTests(unittest.TestCase):
                 issues = self._lint_tvar({"name": "c", "type": kind, "domain": {"range": [1, 10**400]}})
                 self.assertIn("invalid_range_domain", _collect_codes(issues))
 
+    def test_huge_integer_set_member_does_not_crash(self) -> None:
+        for kind in ("int", "float"):
+            for domain in ({"set": [10**400]}, [10**400, 1]):
+                with self.subTest(kind=kind, domain=domain):
+                    issues = self._lint_tvar({"name": "c", "type": kind, "domain": domain})
+                    self.assertIsInstance(issues, list)
+
     def test_reversed_range_with_registry_sibling_is_not_flagged(self) -> None:
         issues = self._lint_tvar(
             {

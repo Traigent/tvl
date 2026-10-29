@@ -2103,7 +2103,9 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
     if kind == "int":
         if isinstance(value, bool):
             raise ValueError("bool not allowed")
-        if isinstance(value, (int, float)) and float(value).is_integer():
+        if isinstance(value, int):
+            return value  # exact; float(value) would overflow past binary64
+        if isinstance(value, float) and value.is_integer():
             return int(value)
         if isinstance(value, str):
             # str.isdigit() is False for signed integers ('-5'), wrongly rejecting
@@ -2119,7 +2121,10 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
         if isinstance(value, bool):
             raise ValueError("bool not allowed")
         if isinstance(value, (int, float)):
-            return float(value)
+            try:
+                return float(value)
+            except OverflowError as exc:
+                raise ValueError("integer too large for a float") from exc
         try:
             return float(value)
         except (TypeError, ValueError):
