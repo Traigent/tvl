@@ -1995,7 +1995,8 @@ def _parse_domain(
                 try:
                     minimum = float(range_vals[0]) if range_vals[0] is not None else None
                     maximum = float(range_vals[1]) if range_vals[1] is not None else None
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
+                    # OverflowError: an integer bound beyond binary64 has no float form here.
                     issues.append(
                         {
                             "code": "invalid_range_domain",

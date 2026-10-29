@@ -396,6 +396,12 @@ class LintModuleTests(unittest.TestCase):
                 )
                 self.assertEqual(flagged, "invalid_range_domain" in _collect_codes(issues))
 
+    def test_huge_integer_top_level_range_bound_is_reported_not_raised(self) -> None:
+        for kind in ("int", "float"):
+            with self.subTest(kind=kind):
+                issues = self._lint_tvar({"name": "c", "type": kind, "domain": {"range": [1, 10**400]}})
+                self.assertIn("invalid_range_domain", _collect_codes(issues))
+
     def test_reversed_range_with_registry_sibling_is_not_flagged(self) -> None:
         issues = self._lint_tvar(
             {
