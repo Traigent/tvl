@@ -384,7 +384,12 @@ class LintModuleTests(unittest.TestCase):
                 self.assertIn(code, _collect_codes(issues))
 
     def test_huge_integer_tuple_range_bound_does_not_crash(self) -> None:
-        for bounds, flagged in (([1, 10**400], False), ([10**400, 1], True)):
+        for bounds, flagged in (
+            ([1, 10**400], False),
+            ([10**400, 1], True),
+            ([10**400, float("inf")], True),
+            ([float("-inf"), 10**400], True),
+        ):
             with self.subTest(bounds=bounds):
                 issues = self._lint_tvar(
                     {"name": "c", "type": "tuple[int,int]", "domain": {"components": [{"range": bounds}, [1]]}}

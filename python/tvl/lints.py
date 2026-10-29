@@ -1774,7 +1774,7 @@ def _range_component_is_valid(name: str, idx: int, bounds: Any, comp_path: List[
             # An integer beyond binary64 is still an exact, finite bound for the model.
             lo, hi = int(bounds[0]), int(bounds[1])
         reversed_range = lo > hi
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         message = f"TVAR '{name}' component {idx} range must be two finite numeric bounds [min, max]"
     else:
         if not reversed_range:
