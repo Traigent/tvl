@@ -321,6 +321,21 @@ class LintModuleTests(unittest.TestCase):
         )
         self.assertIn("duplicate_domain_value", _collect_codes(issues))
 
+    def test_malformed_tuple_component_range_and_nesting_are_flagged(self) -> None:
+        """Shapes check-structural cannot resolve: null/non-numeric/short range, empty nested components."""
+        cases = (
+            ("invalid_range_domain", {"range": [None, 3]}),
+            ("invalid_range_domain", {"range": ["a", 1]}),
+            ("invalid_range_domain", {"range": [1]}),
+            ("invalid_tuple_domain", {"components": []}),
+        )
+        for code, comp in cases:
+            with self.subTest(comp=comp):
+                issues = self._lint_tvar(
+                    {"name": "c", "type": "tuple[int,int]", "domain": {"components": [[1, 2], comp]}}
+                )
+                self.assertIn(code, _collect_codes(issues))
+
     def test_cyclic_tuple_components_terminate(self) -> None:
         """A YAML alias cycle in nested components must not recurse without bound."""
         cyc: Dict[str, Any] = {}

@@ -1776,12 +1776,18 @@ def _lint_tuple_component_list(
             elif "range" in comp:
                 bounds = comp["range"]
                 try:
-                    reversed_range = (
-                        isinstance(bounds, list)
-                        and len(bounds) == 2
-                        and float(bounds[0]) > float(bounds[1])
-                    )
+                    if not (isinstance(bounds, list) and len(bounds) == 2):
+                        raise ValueError("range must specify [min, max]")
+                    reversed_range = float(bounds[0]) > float(bounds[1])
                 except (TypeError, ValueError):
+                    issues.append(
+                        {
+                            "code": "invalid_range_domain",
+                            "message": f"TVAR '{label}' range must be two numeric bounds [min, max]",
+                            "path": comp_path + ["range"],
+                            "severity": "error",
+                        }
+                    )
                     continue
                 if reversed_range:
                     issues.append(
@@ -1794,6 +1800,16 @@ def _lint_tuple_component_list(
                     )
                 continue
             elif isinstance(comp.get("components"), list):
+                if not comp["components"]:
+                    issues.append(
+                        {
+                            "code": "invalid_tuple_domain",
+                            "message": f"TVAR '{label}' tuple domain must define a non-empty 'components' list",
+                            "path": comp_path + ["components"],
+                            "severity": "error",
+                        }
+                    )
+                    continue
                 _lint_tuple_components(name, comp["components"], comp_path + ["components"], issues, active)
                 continue
         if not isinstance(members, list):
