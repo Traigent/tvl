@@ -1766,9 +1766,13 @@ def _range_component_is_valid(name: str, idx: int, bounds: Any, comp_path: List[
     try:
         if not (isinstance(bounds, list) and len(bounds) == 2):
             raise ValueError("range must specify [min, max]")
-        lo, hi = float(bounds[0]), float(bounds[1])
-        if not (math.isfinite(lo) and math.isfinite(hi)):
-            raise ValueError("range bounds must be finite")
+        try:
+            lo, hi = float(bounds[0]), float(bounds[1])
+            if not (math.isfinite(lo) and math.isfinite(hi)):
+                raise ValueError("range bounds must be finite")
+        except OverflowError:
+            # An integer beyond binary64 is still an exact, finite bound for the model.
+            lo, hi = int(bounds[0]), int(bounds[1])
         reversed_range = lo > hi
     except (TypeError, ValueError):
         message = f"TVAR '{name}' component {idx} range must be two finite numeric bounds [min, max]"

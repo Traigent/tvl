@@ -383,6 +383,14 @@ class LintModuleTests(unittest.TestCase):
                 )
                 self.assertIn(code, _collect_codes(issues))
 
+    def test_huge_integer_tuple_range_bound_does_not_crash(self) -> None:
+        for bounds, flagged in (([1, 10**400], False), ([10**400, 1], True)):
+            with self.subTest(bounds=bounds):
+                issues = self._lint_tvar(
+                    {"name": "c", "type": "tuple[int,int]", "domain": {"components": [{"range": bounds}, [1]]}}
+                )
+                self.assertEqual(flagged, "invalid_range_domain" in _collect_codes(issues))
+
     def test_reversed_range_with_registry_sibling_is_not_flagged(self) -> None:
         issues = self._lint_tvar(
             {
