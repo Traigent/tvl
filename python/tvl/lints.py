@@ -1713,6 +1713,154 @@ def _normalize_kind(raw_type: str) -> Optional[str]:
     return None
 
 
+def _report_duplicate_members(
+    name: str, values: List[Any], path: List[Any], issues: List[Issue], where: str = ""
+) -> None:
+    """Append ``duplicate_domain_value`` when ``values`` repeats a member (issues #24, #202)."""
+    try:
+        has_duplicate = len(values) != len(set(values))
+    except TypeError:
+        # Unhashable members cannot be compared as a set; the type checks elsewhere report them.
+        return
+    if has_duplicate:
+        counts: Dict[Any, int] = {}
+        for v in values:
+            counts[v] = counts.get(v, 0) + 1
+        repeated = sorted({str(v) for v, n in counts.items() if n > 1})
+        issues.append(
+            {
+                "code": "duplicate_domain_value",
+                "message": f"TVAR '{name}'{where} domain contains duplicate value(s): {repeated}",
+                "path": path,
+                "severity": "error",
+            }
+        )
+
+
+def _lint_tuple_components(name: str, components: List[Any], path: List[Any], issues: List[Issue]) -> None:
+    """Lint each tuple component for empty, duplicate and reversed domains (issues #202, #203).
+
+    Mirrors the key precedence of ``model._resolve_component_values``: ``values``, ``set``,
+    ``range``, nested ``components``, then ``registry`` (resolved externally, never linted).
+
+    Nested ``components`` are walked with an explicit stack and each list is visited once, by
+    identity: YAML aliases can make a tiny document stand for a cyclic or exponentially shared
+    structure, and a deep one would exhaust the interpreter stack if walked recursively.
+    """
+    seen: Set[int] = set()
+    stack: List[Tuple[List[Any], List[Any]]] = [(components, path)]
+    while stack:
+        current, current_path = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        _lint_tuple_component_list(name, current, current_path, issues, stack, seen)
+
+
+def _range_component_is_valid(name: str, idx: int, bounds: Any, comp_path: List[Any], issues: List[Issue]) -> bool:
+    """Report a malformed or reversed tuple-component ``range``; True when it is usable.
+
+    A usable range always resolves to at least ``lo`` itself (the grid starts at ``lo``), so an
+    integer-free range such as ``[1.2, 1.8]`` is never empty here, unlike a bare ``int`` TVAR.
+    """
+    try:
+        if not (isinstance(bounds, list) and len(bounds) == 2):
+            raise ValueError("range must specify [min, max]")
+        try:
+            lo, hi = float(bounds[0]), float(bounds[1])
+            if not (math.isfinite(lo) and math.isfinite(hi)):
+                raise ValueError("range bounds must be finite")
+        except OverflowError:
+            # An integer beyond binary64 is still an exact, finite bound for the model.
+            lo, hi = int(bounds[0]), int(bounds[1])
+        reversed_range = lo > hi
+    except (TypeError, ValueError, OverflowError):
+        message = f"TVAR '{name}' component {idx} range must be two finite numeric bounds [min, max]"
+    else:
+        if not reversed_range:
+            return True
+        message = f"TVAR '{name}' component {idx} range has min > max ({bounds[0]} > {bounds[1]})"
+    issues.append(
+        {"code": "invalid_range_domain", "message": message, "path": comp_path + ["range"], "severity": "error"}
+    )
+    return False
+
+
+def _queue_nested_components(
+    name: str,
+    idx: int,
+    comp: Dict[str, Any],
+    comp_path: List[Any],
+    issues: List[Issue],
+    stack: List[Tuple[List[Any], List[Any]]],
+) -> None:
+    if not isinstance(comp["components"], list) or not comp["components"]:
+        issues.append(
+            {
+                "code": "invalid_tuple_domain",
+                "message": f"TVAR '{name}' component {idx} tuple domain must define a non-empty 'components' list",
+                "path": comp_path + ["components"],
+                "severity": "error",
+            }
+        )
+        return
+    stack.append((comp["components"], comp_path + ["components"]))
+
+
+def _lint_tuple_component_list(
+    name: str,
+    components: List[Any],
+    path: List[Any],
+    issues: List[Issue],
+    stack: List[Tuple[List[Any], List[Any]]],
+    seen: Set[int],
+) -> None:
+    for idx, comp in enumerate(components):
+        comp_path = path + [idx]
+        members: Any = None
+        if isinstance(comp, list):
+            members = comp
+        elif isinstance(comp, dict):
+            if "values" in comp:
+                members = comp["values"]
+            elif "set" in comp:
+                members = comp["set"]
+            elif "range" in comp:
+                if "registry" in comp and "components" not in comp:
+                    # The model resolves an unusable range through ``registry`` (external).
+                    continue
+                if _range_component_is_valid(name, idx, comp["range"], comp_path, issues):
+                    continue
+                # An unusable range makes the model fall through to ``components``
+                # (``model._resolve_component_values``), so lint them as well.
+                if "components" in comp:
+                    _queue_nested_components(name, idx, comp, comp_path, issues, stack)
+                continue
+            elif "components" in comp:
+                _queue_nested_components(name, idx, comp, comp_path, issues, stack)
+                continue
+            # Any other shape (no recognised key, non-list ``values``) is the schema stage's to
+            # reject; it is not linted here.
+        if not isinstance(members, list):
+            continue
+        if members and id(members) in seen:
+            # The same member list reached through an alias is checked once, so a few
+            # aliases of one large list cannot multiply the work.
+            continue
+        seen.add(id(members))
+        if not members:
+            issues.append(
+                {
+                    "code": "empty_domain",
+                    "message": f"TVAR '{name}' component {idx} has an empty domain",
+                    "path": comp_path,
+                    "severity": "error",
+                }
+            )
+            continue
+        _report_duplicate_members(name, members, comp_path, issues, f" component {idx}")
+
+
 def _parse_domain(
     name: str,
     kind: str,
@@ -1761,7 +1909,9 @@ def _parse_domain(
                         }
                     )
                     return set(), None, None
-                # Tuple domains are products; we don't enumerate them during linting.
+                # Tuple domains are products; we don't enumerate them during linting, but
+                # each component is checked on its own (issues #202, #203).
+                _lint_tuple_components(name, components, path + ["domain", "components"], issues)
                 return None, None, None
         parsed = _parse_collection(spec, allow_scalar=True)
         if parsed is None:
@@ -1827,18 +1977,7 @@ def _parse_domain(
                                 "severity": "error",
                             }
                         )
-                if len(coerced_values) != len(set(coerced_values)):
-                    # Issue #24: same duplicate-member silent-accept as the
-                    # enum/callable branch above, for the numeric 'set' form.
-                    issues.append(
-                        {
-                            "code": "duplicate_domain_value",
-                            "message": f"TVAR '{name}' domain contains duplicate value(s): "
-                            f"{sorted({v for v in coerced_values if coerced_values.count(v) > 1})}",
-                            "path": path + ["domain"],
-                            "severity": "error",
-                        }
-                    )
+                _report_duplicate_members(name, coerced_values, path + ["domain"], issues)
                 converted.update(coerced_values)
                 return converted, None, None
             if "range" in spec:
@@ -1856,7 +1995,8 @@ def _parse_domain(
                 try:
                     minimum = float(range_vals[0]) if range_vals[0] is not None else None
                     maximum = float(range_vals[1]) if range_vals[1] is not None else None
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
+                    # OverflowError: an integer bound beyond binary64 has no float form here.
                     issues.append(
                         {
                             "code": "invalid_range_domain",
@@ -1871,6 +2011,25 @@ def _parse_domain(
                         {
                             "code": "invalid_range_domain",
                             "message": f"TVAR '{name}' range has min > max ({minimum} > {maximum})",
+                            "path": path + ["domain"],
+                            "severity": "error",
+                        }
+                    )
+                if (
+                    kind == "int"
+                    and minimum is not None
+                    and maximum is not None
+                    and minimum <= maximum
+                    and math.isfinite(minimum)
+                    and math.isfinite(maximum)
+                    and math.ceil(minimum) > math.floor(maximum)
+                ):
+                    # Issue #203: min <= max but no integer lies between them
+                    # (e.g. [1.2, 1.8]), so the domain is empty.
+                    issues.append(
+                        {
+                            "code": "empty_domain",
+                            "message": f"TVAR '{name}' int range [{minimum}, {maximum}] contains no integer",
                             "path": path + ["domain"],
                             "severity": "error",
                         }
@@ -1893,9 +2052,11 @@ def _parse_domain(
         parsed = _parse_collection(spec, allow_scalar=True)
         if parsed is not None:
             converted = set()
+            coerced_list: List[Any] = []
             for item in parsed:
                 try:
-                    converted.add(_coerce_numeric(item, kind))
+                    coerced_list.append(_coerce_numeric(item, kind))
+                    converted.add(coerced_list[-1])
                 except ValueError:
                     issues.append(
                         {
@@ -1905,6 +2066,7 @@ def _parse_domain(
                             "severity": "error",
                         }
                     )
+            _report_duplicate_members(name, coerced_list, path + ["domain"], issues)
             return converted, None, None
         issues.append(
             {
@@ -1941,7 +2103,9 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
     if kind == "int":
         if isinstance(value, bool):
             raise ValueError("bool not allowed")
-        if isinstance(value, (int, float)) and float(value).is_integer():
+        if isinstance(value, int):
+            return value  # exact; float(value) would overflow past binary64
+        if isinstance(value, float) and value.is_integer():
             return int(value)
         if isinstance(value, str):
             # str.isdigit() is False for signed integers ('-5'), wrongly rejecting
@@ -1957,7 +2121,10 @@ def _coerce_numeric(value: Any, kind: str) -> float | int:
         if isinstance(value, bool):
             raise ValueError("bool not allowed")
         if isinstance(value, (int, float)):
-            return float(value)
+            try:
+                return float(value)
+            except OverflowError as exc:
+                raise ValueError("integer too large for a float") from exc
         try:
             return float(value)
         except (TypeError, ValueError):

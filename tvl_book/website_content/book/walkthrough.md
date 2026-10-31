@@ -48,7 +48,7 @@ pip install -e .
   TVO reads TVL, can emit them; see [Chapter 5](chapter-05-integration.md)).
 
 ### 5. Privacy Modes and Execution
-- Toggle `execution_mode="edge_analytics"` to experience local-only runs.
+- Run with `offline=True` and `algorithm="grid"` (or `"random"`) to experience local-only runs.
 - Record findings in a `provenance.json` file as shown in Chapter 5.
 
 ## Automation Script
