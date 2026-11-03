@@ -46,6 +46,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- Enum domains are checked: `enum[str]`, `enum[int]` and `enum[float]` reject members of another type with the lint error `invalid_enum_domain`, and the module schema enforces the same member types, so configuration and structural validators reject them too (issue #157).
+- The module schema tightens bounds that only the lint enforced (chance-constraint `threshold` and `confidence`, banded `tol` and `alpha`, a required `exploration.strategy`, `convergence` window and threshold); `tvl-validate` keeps reporting the documented lint code for them instead of the generic `schema_error` (issue #156).
+- `tvl-ci-gate` lints every full module before deciding, where it linted only TVL 1.3 modules, so a schema-valid module with an error-severity lint is refused instead of promoting; a legacy full module passed with `--policy` now goes through schema validation (issues #156, #165). Warning-severity lints are kept in its output.
+- `tvl-parse` exits 2 on an empty, sequence or scalar document instead of exiting 0 with `ok: true`; schema validation stays `tvl-validate`'s job (issue #164).
+- `tvl-check-structural --candidate-file` reports an unreadable, malformed or non-mapping candidate or module as a diagnostic with exit 2 (JSON when `--json`), not a traceback (issue #159).
+- The VS Code extension derives the linter path only from an exact `tvl-validate` basename and has a machine-scoped `tvl.lint.path` setting for custom validator names; pull-request CI compiles and tests the extension with `TVL_REQUIRE_CLI=1` (issues #160, #166).
+
 - `tvl-validate` and `tvl-lint` report `duplicate_domain_value` for a repeated member in a bare-list `int` or `float` domain and in a tuple component, not only in a `set:` or enum domain.
 - `tvl-validate` and `tvl-lint` report `empty_domain` for an `int` range that contains no integer (`[1.2, 1.8]`), and lint every tuple component: an empty `values`/`set` is `empty_domain`, a reversed `range` is `invalid_range_domain`. `tvl-check-structural` no longer meets these inputs after `tvl-validate` accepted them.
 - The book walkthrough no longer tells readers to set `execution_mode="edge_analytics"`, which the Traigent SDK removed; it points to `offline=True` with `algorithm="grid"` or `"random"`.
