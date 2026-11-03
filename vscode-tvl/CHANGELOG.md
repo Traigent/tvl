@@ -6,6 +6,15 @@ All notable changes to the TVL extension will be documented in this file.
 
 ### Added
 
+- `tvl.lint.path`, a machine-scoped setting for the `tvl-lint` executable. Leave it empty and the extension derives the sibling of `tvl.cli.path`; set it when `tvl.cli.path` uses a custom executable name.
+
+### Fixed
+
+- Lint no longer derives the linter by replacing the text `validate` anywhere in the configured path, which broke when a parent directory contained "validate" and otherwise ran the validator while reporting it as the linter. The sibling is now derived only from an exact `tvl-validate` or `tvl-validate.exe` basename, preserving parent directories and Windows paths; a custom validator name is refused with a message pointing at `tvl.lint.path` rather than silently running the wrong tool.
+- A validation or lint run that could not produce a result — a configuration error, or the CLI failing to run at all — now clears the diagnostics from the previous run instead of leaving squiggles that describe a check that never happened.
+
+### Added
+
 - Syntax highlighting for TVL 1.3 (RFC 0003 draft) blocks (`requirements`, `monitors`, `responses`, `pack` / `tvl_pack`) and keys in `vscode-tvl/syntaxes/tvl.tmLanguage.json` and `editor_shared/vscode/tvl.tmLanguage.json`.
 - Syntax highlighting for TVL 1.3 closed enums: requirement kinds (`rate_bound`, `zero_tolerance`, `recovery_time`, `evidence_liveness`), predicate patterns (`absence`, `bounded_existence`, `precedence`, `bounded_response`, `protocol`), trace and monitor events, response actions (`notify`, `open_next_step`, `optimize`, `rollback`, `throttle`, `degrade`, `suspend`, `block_action`, `halt_unit`), approvals (`none`, `standing`, `human`), and monitor decision methods/sources/profiles.
 - Snippets (`snippets/tvl.code-snippets` and `editor_shared/vscode/tvl.code-snippets`):

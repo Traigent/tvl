@@ -193,7 +193,7 @@
         },
         "min_effect": {
           "type": "object",
-          "description": "Per-objective ε tolerances that define acceptable deltas for dominance comparisons.",
+          "description": "Per-objective ε tolerances that define acceptable deltas for dominance comparisons. Lint-only rule: every objective with a `direction` needs an entry (`missing_min_effect`); JSON Schema cannot express that cross-reference, so `tvl-validate` is the authority.",
           "additionalProperties": {
             "type": "number",
             "minimum": 0,
@@ -218,13 +218,15 @@
               },
               "threshold": {
                 "type": "number",
-                "description": "Target value the metric must satisfy."
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Bound on a violation rate: the largest admissible fraction of trials that violate the constraint (0 ≤ threshold ≤ 1)."
               },
               "confidence": {
                 "type": "number",
-                "minimum": 0,
-                "maximum": 1,
-                "description": "Confidence level for the chance constraint evaluation."
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1,
+                "description": "Confidence level for the chance constraint evaluation (0 < confidence < 1)."
               }
             }
           }
@@ -266,6 +268,7 @@
     "exploration": {
       "type": ["object", "null"],
       "additionalProperties": false,
+      "required": ["strategy"],
       "deprecated": true,
       "description": "Legacy, non-semantic implementation hints for a runtime. Retained for compatibility; portable TVL requirement specifications should place search strategy, sampling, scheduling, and budgets in a separate implementation profile or run plan.",
       "properties": {
@@ -300,7 +303,15 @@
         "convergence": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Optional stopping rule based on convergence metrics (e.g., hypervolume improvement).",
+          "description": "Optional stopping rule based on convergence metrics (e.g., hypervolume improvement). With `metric: hypervolume_improvement`, `window` and a `threshold` > 0 are required.",
+          "if": {
+            "required": ["metric"],
+            "properties": { "metric": { "const": "hypervolume_improvement" } }
+          },
+          "then": {
+            "required": ["window", "threshold"],
+            "properties": { "threshold": { "exclusiveMinimum": 0 } }
+          },
           "properties": {
             "metric": {
               "enum": ["hypervolume_improvement", "none"],
@@ -349,6 +360,44 @@
       "additionalProperties": false,
       "required": ["name", "type", "domain"],
       "description": "Single tuned-variable declaration (`(name, type, domain)` in Listing 8).",
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum[int]" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "domain": {
+                "if": { "type": "array" },
+                "then": { "items": { "type": "integer" } },
+                "else": { "properties": { "set": { "items": { "type": "integer" } } } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "enum[float]" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "domain": {
+                "if": { "type": "array" },
+                "then": { "items": { "type": "number" } },
+                "else": { "properties": { "set": { "items": { "type": "number" } } } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "enum[str]" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "domain": {
+                "if": { "type": "array" },
+                "then": { "items": { "type": "string" } },
+                "else": { "properties": { "set": { "items": { "type": "string" } } } }
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -358,7 +407,7 @@
         "type": {
           "type": "string",
           "pattern": "^(bool|int|float|enum\\[(str|int|float)\\]|tuple\\[.+\\]|callable\\[[A-Za-z0-9_.-]+\\])$",
-          "description": "Declared TVAR type. TVL 1.0 supports primitive, enum, tuple, and `callable[ProtoId]` forms."
+          "description": "Declared TVAR type. TVL 1.0 supports primitive, enum, tuple, and `callable[ProtoId]` forms. Enum domains enforce the declared element type for arrays and sets; registry references are resolved separately. JSON Schema treats integral numbers such as 3.0 as integers; lint additionally checks Python literal types (`invalid_enum_domain`)."
         },
         "domain": {
           "$ref": "#/$defs/DomainSpec",
@@ -817,8 +866,8 @@
                         },
                         "tol": {
                           "type": "number",
-                          "minimum": 0,
-                          "description": "Non-negative tolerance radius."
+                          "exclusiveMinimum": 0,
+                          "description": "Positive tolerance radius (tol > 0)."
                         }
                       }
                     }
@@ -831,9 +880,9 @@
                 },
                 "alpha": {
                   "type": "number",
-                  "minimum": 0,
+                  "exclusiveMinimum": 0,
                   "maximum": 1,
-                  "description": "Significance level for the band test."
+                  "description": "Significance level for the band test (0 < alpha ≤ 1)."
                 }
               },
               "description": "Banded objective parameters mirroring Listing 10."

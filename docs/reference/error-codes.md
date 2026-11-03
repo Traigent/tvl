@@ -96,6 +96,13 @@ A TVAR (tuned variable) is one entry of the `tvars` array: a choice the module l
 - **Example**: `domain: { range: [0.0, .inf] }` gives `TVAR 't' domain contains inf; ...`
 - **Remediation**: Use finite bounds and values.
 
+### `invalid_enum_domain`
+- **Severity**: error
+- **Description**: A TVAR declared `enum[str]`, `enum[int]` or `enum[float]` lists a domain member whose type does not match the element type. `enum[str]` accepts strings only; `enum[int]` accepts integers; `enum[float]` accepts integers and floats. Booleans are never numbers, and strings are never converted, so `"3"` is not an `int`. YAML `3.0` is a float, so it is rejected in `enum[int]`. The message names the TVAR and the offending values.
+- **Example**: `type: enum[int]` with `domain: [three, 4]`
+- **Remediation**: Change the member to the declared element type, or change the declared type.
+- **Note**: The schema enforces member types for direct arrays and `domain.set`, so module loaders used by configuration and structural checks also reject mismatches. Registry references are unchanged. JSON Schema treats integral numbers such as `3.0` as integers; schema-only consumers accept this representation in `enum[int]`, while the lint rejects the Python float literal.
+
 ### `invalid_tuple_domain`
 - **Severity**: error
 - **Description**: A tuple TVAR domain, or a nested tuple component, uses the `components` form, but `components` is not a non-empty list.
@@ -1057,6 +1064,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
 | `duplicate_domain_value` | error | Domain | Repeated domain member |
 | `non_finite_domain_value` | error | Domain | NaN or infinity in a domain |
+| `invalid_enum_domain` | error | Domain | Enum member does not match `enum[T]` |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
 | `structural_undecided_without_solver` | error | Structural | No OR-Tools; fallback could not decide |
