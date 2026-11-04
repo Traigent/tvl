@@ -1010,6 +1010,14 @@ responses:
 
 A checker violation is never blocked in-process in 1.3: checkers see output after the fact.
 
+#### Enforcing local guards
+
+`tvl-compile-runtime` writes `runtime-local.json`, the artifact a runtime loads to enforce these guards. The
+Traigent Python SDK does this in `traigent.runtime` (`LocalGuardSet`, `guarded`, `LocalGuardError`); its guide,
+[Block destructive tool calls with local guards](https://github.com/Traigent/Traigent/blob/develop/docs/guides/local-guards.md), walks through a `precedence` rule ("a delete needs a recorded
+approval first") end to end, with a runnable example. Guards run only in the process that loads them, cover only
+the tools you wrap, and send nothing anywhere.
+
 ## 9. Organisation floors with packs
 
 A platform team often wants rules every agent must meet. Put them in a separate **`tvl_pack`** document, not in each module. A pack has no
