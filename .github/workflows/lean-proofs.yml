@@ -43,7 +43,7 @@ jobs:
       # `lake build`; it also caches proofs/.lake via actions/cache so repeat
       # builds of an unchanged manifest are fast.
       - name: Build Lean proofs
-        uses: leanprover/lean-action@24581d74d674803a25a81b10b059c5c0cdd344c6 # v1.6.2
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
         with:
           lake-package-directory: proofs
           build: "true"
