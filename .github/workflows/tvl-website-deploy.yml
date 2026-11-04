@@ -32,6 +32,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: prod-build
     env:
       AWS_REGION: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
       TVL_WEBSITE_S3_BUCKET: ${{ vars.TVL_WEBSITE_S3_BUCKET }}
