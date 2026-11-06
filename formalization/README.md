@@ -15,6 +15,7 @@ This directory holds the formal semantics of TVL and the RFCs that change the la
 | [0003](rfc-0003-runtime-requirements-monitors-responses.md) | Runtime Requirements, Monitors and Responses | Accepted (2026-10-21) | TVL 1.3 |
 | [0004](rfc-0004-reactive-outcomes-and-guards.md) | Reactive Outcomes and Guards: telling people when the repair loop needs them | Accepted (2026-10-21) | TVL 1.4 |
 | [0005](rfc-0005-persistence-and-census-aggregates.md) | Breach Persistence and Census Aggregates | Accepted (2026-10-23) | TVL 1.5 |
+| [0007](rfc-0007-crew-scope-and-crew-run-bounds.md) | Crew Scope and Crew-Run Bounds | Draft | TVL 1.7 |
 
 The status column is read from each RFC's header; the RFC is the authority if they ever differ.
 
