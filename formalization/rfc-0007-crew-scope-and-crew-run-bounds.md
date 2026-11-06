@@ -50,8 +50,10 @@ decision  = …earlier variants… | rec("method": "exact_crew_run_v1") ;
 Metric meanings, per crew run, each counted once per distinct record (replays and duplicate deliveries add nothing):
 
 1. `handoffs`: the number of requested handoffs, keyed by `(crew_run_id, hop_seq)`, counted when the transfer is requested, before the receiving role runs. The request that makes the count exceed `lte` is the breach.
-2. `role_loops`: the number of handoffs whose receiving role was already entered earlier in the same run (the entry role counts as entered at run start). A→B→A is one loop. A retry of one invocation is not a handoff and adds nothing.
+2. `role_loops`: the number of entered handoffs whose receiving role was already entered earlier in the same run (the entry role counts as entered at run start). A→B→A is one loop. A retry of one invocation is not a handoff and adds nothing.
 3. `cost_usd`: the sum of the exclusive (self) cost of every member execution in the run, exact decimal USD under the source contract. Costs are nonnegative. An unknown cost is never read as zero.
+
+**Attempted versus entered.** A handoff has two recorded moments: *requested* (the sender asks to transfer, before dispatch) and *entered* (the receiving role actually starts). A request that is denied, dropped or times out is requested but never entered. Rules: `handoffs` counts requested transfers, so a denied request still counts and the count is the number of requests the sender made; `role_loops` counts entered roles only, so a request that never enters cannot add a loop; `cost_usd` counts executions that started. The sender allocates the transfer's `hop_seq` from the hop counter it carries, unique per run; a replay of the same `(crew_run_id, hop_seq)` changes nothing. Concurrent transfers that receive the same `hop_seq` are one transfer.
 
 The bound limits **recorded** quantities; it is not a bound on provider invoices or on damage done by an already-dispatched call.
 
@@ -91,6 +93,10 @@ Proposed normative effect, local and customer-side (the same family as `block_ac
 
 Fail-closed rules (proposed): `approval` is `none` (a per-run automatic stop; `standing` and `human` are refused). `on_check_error` is required and `allow` is refused (`response_halt_crew_on_check_error_allow`): if the controller cannot establish the counters, the crew binding or the run identity, further handoffs are denied. No repeat, `persist`, target, severity or fallback fields. An implementation that cannot enforce `halt_crew` MUST refuse to activate a contract containing it (`unsupported_construct`) and MUST NOT degrade it to `notify`.
 
+Halt reason mapping. When a run is halted by `halt_crew`, the implementation records a closed halt reason derived from the breached metric: `handoffs` gives `handoffs_exceeded`, `role_loops` gives `role_loops_exceeded`, `cost_usd` gives `budget_exceeded`. These names are this RFC's proposal; the implementing platform's schema enum is authoritative for the stored values, and a mismatch is resolved there, not here. No free-text reason is recorded.
+
+Fail-closed precedence. When a `halt_crew` rule with `on_check_error: block` is active for a crew, a handoff whose identity cannot be established (missing crew binding, missing role identity, unresolved run) is denied. This overrides any telemetry rule that would drop attribution and let the work continue: dropping telemetry never overrides an active enforcement deny. Without an active `halt_crew` rule, missing identity only drops attribution and the work continues.
+
 Relation to `halt_fleet` (RFC 0006 draft): different scope and strength. `halt_crew` is bounded to one run and self-expiring; it neither requires nor implies a fleet latch; both can be present and the stricter control wins.
 
 ### 2.6 Example
@@ -100,13 +106,13 @@ Relation to `halt_fleet` (RFC 0006 draft): different scope and strength. `halt_c
 tvl_version: "1.7"
 tvars:
   - name: planner_temperature
-    scope: { crew: crew_9k2m4x7q, role: rtk_q4zt7c2w }
+    scope: { crew: crew_9a2f4c7e1b3d5f60a8c2e4d6f8b0a1c3, role: rtk_q4zt7c2wmhxbv3jkdsa5npe6rf }
 requirements:
-  - { name: run_handoffs, kind: crew_bound, unit: crew_run, crew: crew_9k2m4x7q,
+  - { name: run_handoffs, kind: crew_bound, unit: crew_run, crew: crew_9a2f4c7e1b3d5f60a8c2e4d6f8b0a1c3,
       metric: handoffs, bound: { lte: 12 } }
-  - { name: run_loops, kind: crew_bound, unit: crew_run, crew: crew_9k2m4x7q,
+  - { name: run_loops, kind: crew_bound, unit: crew_run, crew: crew_9a2f4c7e1b3d5f60a8c2e4d6f8b0a1c3,
       metric: role_loops, bound: { lte: 3 } }
-  - { name: run_spend, kind: crew_bound, unit: crew_run, crew: crew_9k2m4x7q,
+  - { name: run_spend, kind: crew_bound, unit: crew_run, crew: crew_9a2f4c7e1b3d5f60a8c2e4d6f8b0a1c3,
       metric: cost_usd, source_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       bound: { lte: 2.5 } }
 monitors:
@@ -130,7 +136,7 @@ No formal-semantics text or Lean update is written. Open obligations: per-run co
 
 ## 5. Conformance
 
-Proposed cases (names only, none exist): `crew-scope-metadata-only`, `crew-scope-role-without-crew`, `crew-bound-handoffs-out-of-range`, `crew-bound-cost-needs-source-digest`, `crew-bound-window-forbidden`, `crew-bound-loop-counting` (A→B→A is 1; retry adds 0), `crew-bound-unknown-cost-breach-first`, `halt-crew-on-check-error-allow-rejected`, `halt-crew-unsupported-refused`, `old-version-refuses-crew-bound`. New diagnostics: `scope_role_without_crew` (W), `crew_scope_mismatch` (W), `runtime_crew_bound_out_of_range` (E), `response_halt_crew_on_check_error_allow` (E).
+Proposed cases (names only, none exist): `crew-scope-metadata-only`, `crew-scope-role-without-crew`, `crew-bound-handoffs-out-of-range`, `crew-bound-cost-needs-source-digest`, `crew-bound-window-forbidden`, `crew-bound-loop-counting` (A→B→A is 1; retry adds 0), `crew-bound-unknown-cost-breach-first`, `halt-crew-on-check-error-allow-rejected`, `halt-crew-unsupported-refused`, `halt-crew-missing-identity-denies`, `crew-bound-requested-not-entered` (denied request counts for handoffs, adds no loop), `old-version-refuses-crew-bound`. New diagnostics: `scope_role_without_crew` (W), `crew_scope_mismatch` (W), `runtime_crew_bound_out_of_range` (E), `response_halt_crew_on_check_error_allow` (E).
 
 ## 6. Alternatives considered
 
