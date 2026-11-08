@@ -43,9 +43,25 @@ class _VersionAction(argparse.Action):
         super().__init__(option_strings, dest=dest, default=default, nargs=0, help=help)
 
     def __call__(self, parser, namespace, values, option_string=None):
-        version = importlib.metadata.version(DISTRIBUTION)
-        print(f"{parser.prog} {version}")
+        distribution = importlib.metadata.distribution(DISTRIBUTION)
+        print(f"{_tool_name(parser.prog, distribution)} {distribution.version}")
         parser.exit(0)
+
+
+def _tool_name(prog: str, distribution: importlib.metadata.Distribution) -> str:
+    """The console-script name, also under ``python -m`` (where ``prog`` is ``cli.py``)."""
+    scripts = {ep.name: ep.module for ep in distribution.entry_points if ep.group == "console_scripts"}
+    if prog in scripts:
+        return prog
+    main_spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+    main_module = getattr(main_spec, "name", None)
+    if main_module is None:
+        return prog
+    package = main_module.removesuffix(".__main__")
+    for name, module in scripts.items():
+        if module in (main_module, f"{package}.cli"):
+            return name
+    return prog
 
 
 def add_version_arg(parser: argparse.ArgumentParser) -> None:

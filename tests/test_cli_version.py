@@ -36,3 +36,27 @@ def test_console_script_prints_version_and_exits_zero(script, monkeypatch, capsy
     output = capsys.readouterr()
     assert output.out.strip() == f"{script} {importlib.metadata.version('tvl-spec')}"
     assert output.err == ""
+
+
+@pytest.mark.parametrize("script", sorted(SCRIPTS))
+def test_python_dash_m_prints_the_console_script_name(script):
+    # `python -m tvl_tools.<tool>.cli --version` used to print "cli.py <version>".
+    import subprocess
+
+    module = SCRIPTS[script].split(":")[0]
+    proc = subprocess.run(
+        [sys.executable, "-m", module, "--version"], capture_output=True, text=True, cwd=ROOT, check=False
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == f"{script} {importlib.metadata.version('tvl-spec')}"
+
+
+def test_python_dash_m_package_main_prints_the_console_script_name():
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.microsim_bridge", "--version"],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == f"tvl-microsim-bridge {importlib.metadata.version('tvl-spec')}"
