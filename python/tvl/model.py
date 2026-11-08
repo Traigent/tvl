@@ -340,13 +340,23 @@ class Domain:
         return raw
 
     def contains(self, value: Any) -> bool:
+        # Issue #244: True == 1 in Python, so a bool is not a member of an int or float
+        # domain, and in an enum a bool matches only a bool member (and a number only a
+        # non-bool member). encode() keeps its pinned coercions (see
+        # tests/test_domain_encode_characterization.py); membership is checked here.
+        is_bool = isinstance(value, bool)
+        if is_bool and self.kind in {"int", "float"}:
+            return False
         try:
             encoded = self.encode(value)
         except ValueError:
             return False
 
         if self.kind == "enum":
-            return True
+            return any(
+                isinstance(member, bool) == is_bool and (member is value or member == value)
+                for member in (self.values or [])
+            )
 
         if self.kind == "bool":
             return encoded in (0, 1)

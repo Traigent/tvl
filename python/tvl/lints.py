@@ -3159,7 +3159,7 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
     budgets = exploration.get("budgets")
     if isinstance(budgets, dict):
         max_trials = budgets.get("max_trials")
-        if max_trials is not None and (not isinstance(max_trials, int) or max_trials <= 0):
+        if max_trials is not None and (not _is_int_strict(max_trials) or max_trials <= 0):
             issues.append(
                 {
                     "code": "invalid_max_trials",
@@ -3172,7 +3172,7 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
     parallelism = exploration.get("parallelism")
     if isinstance(parallelism, dict):
         max_parallel = parallelism.get("max_parallel_trials")
-        if max_parallel is not None and (not isinstance(max_parallel, int) or max_parallel <= 0):
+        if max_parallel is not None and (not _is_int_strict(max_parallel) or max_parallel <= 0):
             issues.append(
                 {
                     "code": "invalid_parallelism",
@@ -3197,7 +3197,7 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
                         "severity": "error",
                     }
                 )
-            if window is None or not isinstance(window, int) or window <= 0:
+            if window is None or not _is_int_strict(window) or window <= 0:
                 issues.append(
                     {
                         "code": "invalid_convergence_window",
