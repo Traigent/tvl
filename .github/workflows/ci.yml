@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the superseded run. Pushes to
+# main are never cancelled, so every main commit keeps its own result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   python:
     name: Python Tests
     runs-on: ubuntu-latest
+    # Observed: about 6 min median, 7.4 min max.
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -34,6 +42,8 @@ jobs:
   vscode:
     name: VS Code Extension
     runs-on: ubuntu-latest
+    # Observed: under 1 min.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -71,6 +81,9 @@ jobs:
   website:
     name: Website Build
     runs-on: ubuntu-latest
+    # Observed: about 1 min median, 2.4 min max; the Playwright and book PDF
+    # steps make it the most install-heavy job.
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository

@@ -19,10 +19,19 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the superseded run. Pushes to
+# main are never cancelled, so every main commit keeps its own result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lake-build:
     name: Lean Build (proofs/)
     runs-on: ubuntu-latest
+    # Observed: about 3 min median with a warm cache, 22 min max on a cold
+    # Mathlib cache; the limit leaves room for a cold build.
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository

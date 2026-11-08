@@ -6,6 +6,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the superseded run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dco:
     name: Signed-off-by check
@@ -13,6 +18,8 @@ jobs:
     # the account type is set by GitHub, not by the commit author.
     if: github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
+    # Observed: under 1 min.
+    timeout-minutes: 5
 
     steps:
       - name: Check out repository
