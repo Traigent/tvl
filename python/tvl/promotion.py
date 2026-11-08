@@ -489,8 +489,22 @@ def _test_objective(
     if inc_samples is not None and cand_samples is not None:
         return _test_from_samples(spec, inc_samples, cand_samples, paired)
 
-    # Fall back to aggregated stats
-    return _test_from_stats(spec, inc_data, cand_data)
+    # Fall back to aggregated stats. An arm given only as samples (the other
+    # arm being mean/std/n) contributes the stats derived from its samples;
+    # reading it as mean/std/n would see an empty arm (n=0, mean=0.0) (tvl#262).
+    return _test_from_stats(spec, _arm_stats(inc_data), _arm_stats(cand_data))
+
+
+def _arm_stats(arm: dict[str, Any]) -> dict[str, Any]:
+    """``arm`` with ``mean``/``std``/``n`` derived from ``samples`` when it has
+    samples and no aggregated statistics; otherwise ``arm`` unchanged."""
+    samples = arm.get("samples")
+    if samples is None or any(key in arm for key in ("mean", "std", "n")):
+        return arm
+    n = len(samples)
+    mean = sum(samples) / n if n > 0 else 0.0
+    var = sum((x - mean) ** 2 for x in samples) / (n - 1) if n > 1 else 0.0
+    return {**arm, "mean": mean, "std": math.sqrt(var), "n": n}
 
 
 def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> ObjectiveResult:
