@@ -30,6 +30,12 @@ def _shape(value: Any, required: str, optional: str = "") -> None:
     _require(value.keys() <= set((required + " " + optional).split()), "unknown record field")
 
 
+def _name(value: Any, field: str) -> Any:
+    """Type-check a recorded identity before any hash-based membership test."""
+    _require(isinstance(value, str), f"{field} must be a string")
+    return value
+
+
 def _hour(value: Any) -> None:
     _require(type(value) is int and value >= 0, "hours must be nonnegative integers")
 
@@ -121,7 +127,7 @@ class _Trace:
         self.events: list[tuple[str, str, str, Any]] = []
 
     def monitor(self, name: str) -> dict:
-        _require(name in self.monitors, "unknown monitor")
+        _require(_name(name, "monitor") in self.monitors, "unknown monitor")
         monitor = self.monitors[name]
         _require(monitor["phase"] == "runtime", "history monitor must be runtime")
         _require(self.monitor_environment(name) == self.environment,
@@ -139,7 +145,7 @@ class _Trace:
         _shape(record, "kind name value")
         _enum(record["kind"], "response monitor")
         _require(isinstance(record["value"], str) and record["value"], "revision must be a nonempty string")
-        name, value = record["name"], record["value"]
+        name, value = _name(record["name"], "revision name"), record["value"]
         revisions = self.revisions if record["kind"] == "response" else self.monitor_keys
         _require(name in revisions and revisions[name] != value, "unknown or unchanged revision")
         revisions[name] = value
@@ -228,7 +234,7 @@ class _Trace:
             _require(type(record["retries_exhausted"]) is bool, "retry bound fact must be boolean")
             _require(record["checks"] == "passed" or record["write"] == "not_attempted",
                      "write without passed checks")
-        pair = record["response"], record["rule"]
+        pair = _name(record["response"], "response"), _name(record["rule"], "rule")
         _require(pair in self.rules and self.rules[pair]["do"] == "optimize", "not an optimize rule")
         _require(type(record["occurrence"]) is int and record["occurrence"] >= 0, "invalid occurrence")
         _require(isinstance(record["scope"], str) and isinstance(record["revision"], str), "invalid attempt identity")
