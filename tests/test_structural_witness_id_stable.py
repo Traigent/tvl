@@ -55,8 +55,19 @@ def test_witness_id_is_a_sha256_of_the_canonical_witness() -> None:
     from tvl_tools.tvl_check_structural import cli as structural
 
     witness = {"mode": "fast", "k": "3"}
-    canonical = json.dumps(witness, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    expected = "w-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    canonical = json.dumps(witness, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    expected = "w-" + hashlib.sha256(canonical.encode("ascii")).hexdigest()[:16]
     assert structural._build_witness_id(witness) == expected
     assert structural._build_witness_id({"k": "3", "mode": "fast"}) == expected
     assert structural._build_witness_id({"mode": "fast", "k": "5"}) != expected
+
+
+def test_witness_id_for_a_lone_surrogate_value_is_stable_and_does_not_crash(tmp_path: Path) -> None:
+    # YAML "\ud800" loads as a lone surrogate, which UTF-8 cannot encode.
+    module = tmp_path / "m.tvl.yml"
+    module.write_text(MODULE.replace('domain: ["fast", "slow"]', 'domain: ["\\ud800"]'), encoding="utf-8")
+    assert "\\ud800" in module.read_text(encoding="utf-8")
+    candidate = tmp_path / "cand.json"
+    candidate.write_text(json.dumps(CANDIDATE), encoding="utf-8")
+    ids = {_witness_id(module, candidate, seed) for seed in ("1", "2")}
+    assert len(ids) == 1

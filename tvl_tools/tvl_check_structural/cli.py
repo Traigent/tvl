@@ -181,11 +181,12 @@ def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
     if not isinstance(assignment, dict):
         return None
     # Issue #250: a stable digest of the canonical witness, never the per-process salted hash().
+    # ensure_ascii escapes every non-ASCII character, so a lone surrogate cannot fail to encode.
     try:
-        canonical = json.dumps(assignment, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        canonical = json.dumps(assignment, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     except TypeError:
         return None
-    return "w-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return "w-" + hashlib.sha256(canonical.encode("ascii")).hexdigest()[:16]
 
 
 def _load_module(path: Path) -> dict[str, Any]:
