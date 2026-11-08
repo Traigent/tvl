@@ -179,11 +179,12 @@ def _witness(result: Any) -> Optional[dict[str, Any]]:
 def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
     if not isinstance(assignment, dict):
         return None
+    # Issue #250: a stable digest of the canonical witness, never the per-process salted hash().
     try:
-        items = tuple(sorted(assignment.items()))
+        canonical = json.dumps(assignment, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     except TypeError:
         return None
-    return f"w-{abs(hash(items)) % 1_000_000:06d}"
+    return "w-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def _load_module(path: Path) -> dict[str, Any]:
