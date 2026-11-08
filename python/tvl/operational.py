@@ -103,6 +103,9 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
     try:
         return float(value)
+    except OverflowError:
+        # An integer beyond the float range is not a finite budget; the caller rejects infinities.
+        return math.inf if value > 0 else -math.inf
     except (TypeError, ValueError):
         return None
 
@@ -391,7 +394,7 @@ def _sum_derived_terms(
             continue
         try:
             number = float(sym_val)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             non_numeric.append(sym)
             continue
         if not math.isfinite(number):

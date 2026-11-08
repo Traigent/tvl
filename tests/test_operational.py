@@ -159,6 +159,49 @@ class OperationalTests(unittest.TestCase):
                 self.assertFalse(result.ok)
                 self.assertEqual([i["code"] for i in result.issues], ["non_numeric_derived_symbol"])
 
+    def test_operational_huge_integer_context_value_is_non_numeric(self) -> None:
+        # Issue #245: float(10**400) raises OverflowError; it must be a coded issue, not a crash.
+        for value in (10**400, -(10**400)):
+            with self.subTest(value=value):
+                doc = _base_module()
+                doc["environment"]["context"] = {"lat": value}
+                doc.setdefault("constraints", {})["derived"] = [{"require": "env.context.lat <= 5"}]
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual([i["code"] for i in result.issues], ["non_numeric_derived_symbol"])
+
+    def test_operational_huge_integer_max_spend_is_invalid_budget(self) -> None:
+        # Issue #245: an integer too large for a float is not a finite budget.
+        for value in (10**400, -(10**400)):
+            with self.subTest(value=value):
+                doc = _base_module()
+                doc["exploration"]["budgets"] = {"max_spend_usd": value}
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual(result.binding_budget, "max_spend_usd")
+                self.assertEqual([i["code"] for i in result.issues], ["invalid_budget_max_spend"])
+
+    def test_cli_huge_integer_context_value_exits_2_without_traceback(self) -> None:
+        import subprocess
+        import tempfile
+
+        source = (BASE / "spec" / "examples" / "cost-optimization.tvl.yml").read_text(encoding="utf-8")
+        text = source.replace(
+            "provider_input_price_usd_per_1k_tokens: 0.03",
+            f"provider_input_price_usd_per_1k_tokens: {10**400}",
+        )
+        self.assertNotEqual(text, source)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "huge.tvl.yml"
+            path.write_text(text, encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, "-m", "tvl_tools.tvl_check_operational.cli", str(path), "--json"],
+                capture_output=True, text=True, cwd=BASE, check=False,
+            )
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("non_numeric_derived_symbol", proc.stdout)
+
     def test_operational_finite_context_value_still_decides(self) -> None:
         for value, ok in ((180, True), (900, False), (180.5, True)):
             with self.subTest(value=value):
