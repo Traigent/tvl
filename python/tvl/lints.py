@@ -940,7 +940,8 @@ def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
                 tuned = []
             if isinstance(tuned, list):
                 for tp_idx, tp in enumerate(tuned):
-                    if tp not in ctx.tvar_names:
+                    # Issue #230: a list or mapping entry is unhashable; check str first.
+                    if not isinstance(tp, str) or tp not in ctx.tvar_names:
                         ctx.add(
                             "invalid_tuned_param",
                             f"composite '{ctx.name}' tuned_params entry '{tp}' does not "
