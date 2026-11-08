@@ -4628,15 +4628,25 @@ def _predicate_canonical(pred: Optional[Dict[str, Any]]) -> Any:
             pred.get("correlate_by", "unit"),
         )
     if pattern == "protocol":
-        alphabet = tuple(sorted(_selector_canonical(s) for s in (pred.get("alphabet") or []) if isinstance(s, dict)))
+        # Issue #229: selectors may set different fields (tool vs status), so the
+        # canonical tuples mix None and str; sort by repr for a total, stable order.
+        alphabet = tuple(
+            sorted(
+                (_selector_canonical(s) for s in (pred.get("alphabet") or []) if isinstance(s, dict)),
+                key=repr,
+            )
+        )
         states = tuple(sorted(set(pred.get("states") or [])))
         accepting = tuple(sorted(set(pred.get("accepting") or [])))
         rejecting = tuple(sorted(set(pred.get("rejecting") or [])))
         transitions = tuple(
             sorted(
-                (t.get("from"), _selector_canonical(t.get("when") or {}), t.get("to"))
-                for t in (pred.get("transitions") or [])
-                if isinstance(t, dict)
+                (
+                    (t.get("from"), _selector_canonical(t.get("when") or {}), t.get("to"))
+                    for t in (pred.get("transitions") or [])
+                    if isinstance(t, dict)
+                ),
+                key=repr,
             )
         )
         return (

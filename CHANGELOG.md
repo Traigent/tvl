@@ -47,6 +47,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- A `protocol` requirement whose selectors set different fields (one `tool`, another `status` or `ref`) no longer crashes `tvl-validate`, `tvl-lint` and runtime composition with a raw `TypeError`; duplicate detection still treats reordered selectors as the same requirement (issue #229).
 - Enum domains are checked: `enum[str]`, `enum[int]` and `enum[float]` reject members of another type with the lint error `invalid_enum_domain`, and the module schema enforces the same member types, so configuration and structural validators reject them too (issue #157).
 - The module schema tightens bounds that only the lint enforced (chance-constraint `threshold` and `confidence`, banded `tol` and `alpha`, a required `exploration.strategy`, `convergence` window and threshold); `tvl-validate` keeps reporting the documented lint code for them instead of the generic `schema_error` (issue #156).
 - `tvl-ci-gate` lints every full module before deciding, where it linted only TVL 1.3 modules, so a schema-valid module with an error-severity lint is refused instead of promoting; a legacy full module passed with `--policy` now goes through schema validation (issues #156, #165). Warning-severity lints are kept in its output.
