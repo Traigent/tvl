@@ -8,6 +8,7 @@ import { Link, useParams } from "wouter";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
+import { downloadText } from "@/lib/download";
 
 interface SpecConfig {
   title: string;
@@ -105,13 +106,7 @@ export default function SpecViewer() {
   };
 
   const handleDownload = () => {
-    const element = document.createElement("a");
-    const file = new Blob([content], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = config.downloadPath.split("/").pop() || "file.txt";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    downloadText(content, config.downloadPath.split("/").pop() || "file.txt");
     toast.success("Download started");
   };
 
