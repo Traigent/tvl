@@ -57,8 +57,10 @@ Prefer a scripted tour? Run:
 
 ```bash
 cd Traigent/walkthrough
-bash walkthrough.sh
+bash test_all_examples.sh --mock
 ```
 
-This walks through the same milestones, creating datasets and running optimizations automatically. Keep the
-terminal output handy; several book chapters reference these logs when explaining promotion decisions.
+This runs the walkthrough examples one after another in mock mode, which needs no API keys. Pass `--real`
+instead to make real model calls with your provider keys. `walkthrough/README.md` lists the commands for
+running each example on its own. Keep the terminal output handy; several book chapters reference these logs
+when explaining promotion decisions.
