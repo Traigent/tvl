@@ -156,7 +156,16 @@ def run_cli(
             checker_registry_doc=checker_doc,
         )
 
-        _write_artifact_pair(args.out_dir, contract, local_prog)
+        try:
+            _write_artifact_pair(args.out_dir, contract, local_prog)
+        except OSError as exc:
+            # A local filesystem failure, not a document defect: name the directory and cause.
+            reason = exc.strerror or type(exc).__name__
+            raise RuntimeClosedError(
+                "io_error",
+                path=["out_dir"],
+                message=f"Cannot write the compiled artifacts to {args.out_dir}: {reason}",
+            ) from exc
 
         digest = canonical_json_digest(contract)
         result = {

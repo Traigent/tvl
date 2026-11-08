@@ -1268,6 +1268,7 @@ A value of the wrong JSON type, for example a string where an integer is require
 | `runtime_unresolved_alias` | error | compile | a name has no entry in the token map, the token map is missing, unreadable or malformed, or an entry breaks the one-to-one rule. The message does not say which entry. | check that the map covers every module, requirement, monitor, response, rule, environment (including the default `production`), selector `ref`, protocol state and customer checker you use |
 | `runtime_unsafe_egress` | error | compile | the compiled hosted contract failed its own closed-schema self-check, or does not correspond to your module through the token map (for example a crossed or malformed reference) | check the token map entries; if the map is right, treat it as a toolchain bug. Nothing is written. |
 | `schema_error` | error | lint, compile | a document fails its JSON Schema: an unknown key, a wrong type, or a missing always-required key | see the message path; for a rule written with `on:` rename it `trigger` |
+| `io_error` | error | compile | the compiled artifacts could not be written to `--out-dir`: for example a regular file is in the way, or the directory or its parent is not writable. The message names the directory and the operating-system cause; the documents themselves are valid. Path: `out_dir`. | make `--out-dir` a writable directory, or choose another; any previous artifact pair there is left unchanged |
 
 ### Responses
 

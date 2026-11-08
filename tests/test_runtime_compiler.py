@@ -7,6 +7,9 @@ from __future__ import annotations
 import json
 
 
+import os
+
+
 from pathlib import Path
 
 
@@ -383,7 +386,7 @@ def test_compile_cli_failure_preserves_artifact_pair(
     code, result = run_compile_cli(args)
     assert code == 2 and not result["ok"]
     assert result["contract_digest"] is None
-    assert [issue["code"] for issue in result["issues"]] == ["schema_error"]
+    assert [issue["code"] for issue in result["issues"]] == ["io_error"]
     assert len(failures) == 1
     assert {path.name: path.read_bytes() for path in out_dir.iterdir()} == previous
 
@@ -720,3 +723,34 @@ def test_compile_with_pack_still_excludes_floor_only_pack_requirements() -> None
     _contract, local, _ = compile_runtime_document(module, packs=[pack], token_map_doc=tokens)
     assert [r["name"] for r in local["declarations"]["requirements"]] == ["unused", "latency_2s"]
 
+
+@pytest.mark.parametrize("blocker", ["out_dir_is_file", "read_only_parent"])
+def test_compile_cli_unwritable_out_dir_is_io_error(tmp_path: Path, blocker: str) -> None:
+    """Issue #226: an --out-dir that cannot be written is io_error naming the path, not schema_error."""
+    case = _numbers_case()
+    module_path = tmp_path / "m.yml"
+    tokens_path = tmp_path / "tokens.json"
+    module_path.write_text(json.dumps(case["module"]), encoding="utf-8")
+    tokens_path.write_text(json.dumps({"format": "tvl-token-map/1", "tokens": case["input"]["token_map"]}),
+                           encoding="utf-8")
+    if blocker == "out_dir_is_file":
+        out_dir = tmp_path / "taken"
+        out_dir.write_text("not a directory", encoding="utf-8")
+    else:
+        parent = tmp_path / "ro"
+        parent.mkdir()
+        parent.chmod(0o500)
+        out_dir = parent / "out"
+    try:
+        if blocker == "read_only_parent" and os.access(parent, os.W_OK):
+            pytest.skip("running with privileges that ignore directory permissions")
+        code, result = run_compile_cli(
+            [str(module_path), "--token-map", str(tokens_path), "--out-dir", str(out_dir), "--format", "json"]
+        )
+    finally:
+        if blocker == "read_only_parent":
+            parent.chmod(0o700)
+    assert code == 2 and not result["ok"]
+    assert [issue["code"] for issue in result["issues"]] == ["io_error"]
+    assert str(out_dir) in result["issues"][0]["message"]
+    assert result["issues"][0]["path"] == ["out_dir"]
