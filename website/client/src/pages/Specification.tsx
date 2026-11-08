@@ -7,6 +7,7 @@ import { FileText, Eye, ShieldCheck, Sigma, FileCode, ArrowRight, BookOpen, Brac
 import { Link } from "wouter";
 import { useState, useEffect } from "react";
 import { Streamdown } from "streamdown";
+import { fetchText } from "@/lib/fetchText";
 
 export default function Specification() {
   const [languageContent, setLanguageContent] = useState("");
@@ -16,8 +17,8 @@ export default function Specification() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/docs/language.md").then((r) => r.text()),
-      fetch("/docs/schema.md").then((r) => r.text()),
+      fetchText("/docs/language.md"),
+      fetchText("/docs/schema.md"),
     ])
       .then(([lang, schema]) => {
         setLanguageContent(lang);

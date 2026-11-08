@@ -18,6 +18,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { fetchText } from "@/lib/fetchText";
 import { latestOnly } from "@/lib/latest";
 import { languageFromPath } from "@/lib/prism";
 import { Link } from "wouter";
@@ -385,8 +386,8 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
     if (fileContents[path]) return fileContents[path];
 
     try {
-      const response = await fetch(path);
-      const content = await response.text();
+      // fetchText throws on an HTTP error, so a failed load is never cached.
+      const content = await fetchText(path);
       setFileContents((prev) => ({ ...prev, [path]: content }));
       return content;
     } catch (err) {

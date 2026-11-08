@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { downloadText } from "@/lib/download";
+import { fetchText } from "@/lib/fetchText";
 import { latestOnly } from "@/lib/latest";
 
 interface SpecConfig {
@@ -93,8 +94,7 @@ export default function SpecViewer() {
     const isCurrent = requests.begin();
     setLoading(true);
     setContent("");
-    fetch(config.filePath)
-      .then((r) => r.text())
+    fetchText(config.filePath)
       .then((text) => {
         if (isCurrent()) setContent(text);
       })
