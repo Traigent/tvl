@@ -111,3 +111,73 @@ def test_ci_gate_reports_the_sample_arm_from_its_samples(tmp_path: Path):
     assert per["latency_p95_ms"]["mean_incumbent"] == pytest.approx(1500.0)
     assert out["decision"] == "Promote"
     assert proc.returncode == 0
+
+
+HIGH_INC = [0.95, 0.96, 0.95, 0.96, 0.95, 0.96]
+
+
+def _gate(tmp_path: Path, inc_quality: dict) -> tuple[dict, int]:
+    inc = {
+        "module_id": "corp.support.rag_bot",
+        "objective_values": {
+            "quality": inc_quality,
+            "latency_p95_ms": {"samples": [1500, 1510, 1490, 1505, 1495, 1500]},
+        },
+        "chance_outcomes": {"latency_slo": {"violations": 0, "trials": 100}},
+    }
+    cand = {
+        "module_id": "corp.support.rag_bot",
+        "objective_values": {
+            "quality": dict(CAND_STATS),
+            "latency_p95_ms": {"mean": 1300, "std": 85, "n": 40},
+        },
+        "chance_outcomes": {"latency_slo": {"violations": 0, "trials": 100}},
+    }
+    (tmp_path / "inc.yml").write_text(yaml.safe_dump(inc), encoding="utf-8")
+    (tmp_path / "cand.yml").write_text(yaml.safe_dump(cand), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_ci_gate.cli",
+         str(REPO / "spec/examples/rag-support-bot.tvl.yml"),
+         str(tmp_path / "inc.yml"), str(tmp_path / "cand.yml"), "--json"],
+        capture_output=True, text=True, cwd=REPO, check=False,
+    )
+    return json.loads(proc.stdout), proc.returncode
+
+
+@pytest.mark.parametrize(
+    "inc_quality",
+    [
+        {"samples": HIGH_INC, "n": 6},
+        {"samples": HIGH_INC, "mean": 0.0, "std": 1.0, "n": 6},
+        _stats_of(HIGH_INC),  # control: the same incumbent given as statistics
+    ],
+    ids=["samples-plus-n", "samples-plus-contradicting-stats", "stats-control"],
+)
+def test_ci_gate_reads_a_sample_arm_with_stated_stats_from_its_samples(tmp_path: Path, inc_quality: dict):
+    # A samples arm that also states n kept mean 0.0 and promoted a regression (tvl#262).
+    out, code = _gate(tmp_path, inc_quality)
+    quality = out["evidence"]["per_objective"]["quality"]
+    assert quality["mean_incumbent"] == pytest.approx(sum(HIGH_INC) / 6)
+    assert quality["n_incumbent"] == 6
+    assert out["decision"] == "Reject"
+    assert code == 2
+
+
+@pytest.mark.parametrize("missing", ["mean", "std", "n"])
+def test_an_arm_with_incomplete_stats_is_missing_evidence_not_zero(missing: str):
+    from tvl.promotion import epsilon_pareto_gate
+
+    inc_stats = {key: value for key, value in _stats_of(HIGH_INC).items() if key != missing}
+    decision, evidence = epsilon_pareto_gate(
+        {"objective_values": {"quality": inc_stats}},
+        {"objective_values": {"quality": dict(CAND_STATS)}},
+        {"alpha": 0.05, "min_effect": {"quality": 0.01}},
+        [{"name": "quality", "direction": "maximize"}],
+    )
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["verdict"] == "inconclusive"
+    assert quality["code"] == "missing_statistical_evidence"
+    if missing == "mean":
+        assert quality["mean_incumbent"] is None
+    assert evidence["summary"]["decision_reason"].startswith("missing_statistical_evidence")

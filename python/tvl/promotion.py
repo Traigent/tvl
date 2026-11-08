@@ -46,9 +46,9 @@ class ObjectiveResult:
     test_type: str  # "welch", "paired", "precomputed"
     n_incumbent: int
     n_candidate: int
-    mean_incumbent: float
-    mean_candidate: float
-    delta: float  # candidate - incumbent
+    mean_incumbent: Optional[float]  # None only when the arm states no mean (code set)
+    mean_candidate: Optional[float]
+    delta: Optional[float]  # candidate - incumbent
     std_pooled: Optional[float]
     t_statistic: Optional[float]
     df: Optional[float]
@@ -60,6 +60,12 @@ class ObjectiveResult:
     adjusted_p_inferior: Optional[float] = None
     epsilon: float = 0.0
     verdict: str = "inconclusive"  # "superior", "noninferior", "inferior", "inconclusive"
+
+
+@dataclass
+class _MissingEvidenceResult(ObjectiveResult):
+    """Inconclusive standard-objective result whose arm lacks usable statistics (tvl#262)."""
+    code: str = "missing_statistical_evidence"
 
 
 @dataclass
@@ -154,7 +160,7 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
             "p_value_upper": r.p_value_upper,
             "verdict": r.verdict,
         }
-    return {
+    out = {
         "test_type": r.test_type,
         "n_incumbent": r.n_incumbent,
         "n_candidate": r.n_candidate,
@@ -173,6 +179,9 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
         "epsilon": r.epsilon,
         "verdict": r.verdict,
     }
+    if isinstance(r, _MissingEvidenceResult):
+        out["code"] = r.code
+    return out
 
 
 def _chance_to_dict(c: ChanceResult) -> Dict[str, Any]:
@@ -495,11 +504,20 @@ def _test_objective(
     return _test_from_stats(spec, _arm_stats(inc_data), _arm_stats(cand_data))
 
 
+_ARM_STAT_KEYS = ("mean", "std", "n")
+
+
 def _arm_stats(arm: dict[str, Any]) -> dict[str, Any]:
     """``arm`` with ``mean``/``std``/``n`` derived from ``samples`` when it has
-    samples and no aggregated statistics; otherwise ``arm`` unchanged."""
+    samples; otherwise ``arm`` unchanged.
+
+    Samples take precedence over any stated statistics, as they do when both arms
+    carry samples: a stated ``n`` alone must not leave ``mean`` at a default (tvl#262).
+    An empty ``samples`` list is no samples, so stated statistics are used."""
     samples = arm.get("samples")
-    if samples is None or any(key in arm for key in ("mean", "std", "n")):
+    if not samples and any(key in arm for key in _ARM_STAT_KEYS):
+        return arm
+    if samples is None:
         return arm
     n = len(samples)
     mean = sum(samples) / n if n > 0 else 0.0
@@ -584,6 +602,41 @@ def _unestimable_result(
         mean_candidate=mean_cand,
         delta=mean_cand - mean_inc,
         std_pooled=0.0,
+        t_statistic=None,
+        df=None,
+        p_value_noninf=1.0,
+        p_value_super=1.0,
+        epsilon=spec.epsilon,
+        verdict="inconclusive",
+    )
+
+
+def _incomplete_stats(arm: Dict[str, Any]) -> bool:
+    """The arm states some of ``mean``/``std``/``n`` but not all three (an arm stating
+    none is an empty arm, spec §7.2)."""
+    stated = [arm.get(key) is not None for key in _ARM_STAT_KEYS]
+    return any(key in arm for key in _ARM_STAT_KEYS) and not all(stated)
+
+
+def _missing_evidence_result(
+    spec: ObjectiveSpec, inc_data: Dict[str, Any], cand_data: Dict[str, Any]
+) -> "_MissingEvidenceResult":
+    """Inconclusive result for an arm with neither samples nor complete mean/std/n.
+
+    A missing statistic is never read as 0.0, which could decide the comparison (tvl#262);
+    the result carries the code the measurement readiness check uses for the same input.
+    """
+    mean_inc = inc_data.get("mean")
+    mean_cand = cand_data.get("mean")
+    return _MissingEvidenceResult(
+        name=spec.name,
+        test_type="welch",
+        n_incumbent=inc_data.get("n") or 0,
+        n_candidate=cand_data.get("n") or 0,
+        mean_incumbent=mean_inc,
+        mean_candidate=mean_cand,
+        delta=None if mean_inc is None or mean_cand is None else mean_cand - mean_inc,
+        std_pooled=None,
         t_statistic=None,
         df=None,
         p_value_noninf=1.0,
@@ -768,6 +821,9 @@ def _test_from_stats(
     cand_data: Dict[str, Any],
 ) -> ObjectiveResult:
     """Perform t-tests from aggregated statistics."""
+    if _incomplete_stats(inc_data) or _incomplete_stats(cand_data):
+        return _missing_evidence_result(spec, inc_data, cand_data)
+
     mean_inc = inc_data.get("mean", 0.0)
     std_inc = inc_data.get("std", 0.0)
     n_inc = inc_data.get("n", 0)
@@ -1187,6 +1243,15 @@ def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
         return (
             "Reject",
             f"Regression beyond the allowed margin demonstrated on: {', '.join(failing)}",
+        )
+    missing = [
+        name for name, r in evidence.per_objective.items()
+        if isinstance(r, _MissingEvidenceResult)
+    ]
+    if missing:
+        return (
+            "NoDecision",
+            f"missing_statistical_evidence: no samples or complete mean/std/n for: {', '.join(missing)}",
         )
     inconclusive = _objective_names(evidence, ObjectiveResult, lambda verdict: verdict == "inconclusive")
     return (
