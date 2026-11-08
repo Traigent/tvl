@@ -26,9 +26,7 @@ def test_input_error_table_covers_all_console_scripts():
     assert ARGS.keys() == SCRIPTS.keys()
 
 
-# tvl-microsim-bridge still tracebacks on unreadable input on main (#159, bridge half);
-# its fix was not ported with this change because main's bridge was reworked in #195.
-@pytest.mark.parametrize("script", sorted(set(SCRIPTS) - {"tvl-microsim-bridge"}))
+@pytest.mark.parametrize("script", sorted(SCRIPTS))
 @pytest.mark.parametrize("defect", ["missing", "malformed"])
 def test_console_input_error_is_defined_exit_without_traceback(script, defect, tmp_path, monkeypatch, capsys):
     path = tmp_path / "input.yml"
