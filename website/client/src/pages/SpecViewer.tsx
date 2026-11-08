@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { downloadText } from "@/lib/download";
+import { latestOnly } from "@/lib/latest";
 
 interface SpecConfig {
   title: string;
@@ -86,16 +87,26 @@ export default function SpecViewer() {
       return;
     }
 
+    // The route keeps this component mounted when only :type changes, so a slower
+    // earlier response must not land under the newly selected spec.
+    const requests = latestOnly();
+    const isCurrent = requests.begin();
+    setLoading(true);
+    setContent("");
     fetch(config.filePath)
       .then((r) => r.text())
       .then((text) => {
-        setContent(text);
+        if (isCurrent()) setContent(text);
       })
       .catch((err) => {
+        if (!isCurrent()) return;
         console.error("Error loading file:", err);
         toast.error("Failed to load file");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (isCurrent()) setLoading(false);
+      });
+    return () => requests.cancel();
   }, [config]);
 
   const handleCopy = () => {

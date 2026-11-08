@@ -17,7 +17,8 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { latestOnly } from "@/lib/latest";
 import { languageFromPath } from "@/lib/prism";
 import { Link } from "wouter";
 
@@ -44,6 +45,7 @@ export default function Examples() {
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null);
+  const previewRequests = useRef(latestOnly());
 
   const examples: ExampleFile[] = [
     {
@@ -406,8 +408,11 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
       return;
     }
 
+    // Only the latest Preview click may open its file and clear the loading flag.
+    const isCurrent = previewRequests.current.begin();
     setLoadingPreview(path);
     await loadFileContent(path);
+    if (!isCurrent()) return;
     setPreviewPath(path);
     setLoadingPreview(null);
   };
