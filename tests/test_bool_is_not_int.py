@@ -1,4 +1,4 @@
-"""Issue #244: a boolean is not an integer in the exploration lints or in Domain.encode.
+"""Issue #244: a boolean is not an integer in the exploration lints or in Domain.contains.
 
 ``isinstance(True, int)`` is true in Python, so these sites accepted ``true`` where a
 positive integer (or a numeric/enum member) is required.
