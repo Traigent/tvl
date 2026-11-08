@@ -10,6 +10,7 @@ from tvl.loader import is_pack_document, load
 from tvl.measurement import load_measurement, prepare_measurement_bundle
 from tvl.promotion import epsilon_pareto_gate
 from tvl.yaml_safe import safe_load
+from tvl_tools.cli_utils import add_version_arg
 
 
 def _refuse_unsupported(construct: str, use_json: bool) -> None:
@@ -122,6 +123,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Offline run of the promotion gate: prints the decision (Promote, Reject, NoDecision or Error) and exits 0 only for Promote."
     )
+    add_version_arg(parser)
     parser.add_argument(
         "inputs",
         nargs="+",

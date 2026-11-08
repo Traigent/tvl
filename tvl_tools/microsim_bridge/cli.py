@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from tvl_tools.cli_utils import add_version_arg
+
 from .bridge import build_presets, dump_presets
 
 
@@ -11,6 +13,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Export a TVL spec into Orientation RAG MicroSim presets.",
     )
+    add_version_arg(parser)
     parser.add_argument(
         "spec",
         type=Path,

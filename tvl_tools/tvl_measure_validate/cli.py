@@ -7,10 +7,12 @@ from tvl.errors import TVLError
 from tvl.loader import load
 from tvl.lints import _uses_13_constructs
 from tvl.measurement import load_measurement, validate_measurement
+from tvl_tools.cli_utils import add_version_arg
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate configuration + measurement bundle against a TVL module")
+    add_version_arg(parser)
     parser.add_argument("module", type=Path, help="TVL module YAML")
     parser.add_argument("config", type=Path, help="Configuration YAML")
     parser.add_argument("measurement", type=Path, help="Measurement bundle YAML")

@@ -10,6 +10,7 @@ from typing import Any
 from tvl.configuration import load_configuration, validate_configuration
 from tvl.errors import TVLError
 from tvl.loader import load
+from tvl_tools.cli_utils import add_version_arg
 
 
 def _current_timestamp() -> str:
@@ -84,6 +85,7 @@ def _default_remediation(code: Any) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate a configuration against a TVL module")
+    add_version_arg(parser)
     parser.add_argument("module", type=Path, help="TVL module YAML")
     parser.add_argument("config", help="Configuration YAML or '-' for stdin")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")

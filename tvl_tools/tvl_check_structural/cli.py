@@ -18,6 +18,7 @@ from tvl.loader import load
 from tvl.model import InvalidDomainError
 from tvl.structural_parser import StructuralParseError
 from tvl.structural_sat import check_structural
+from tvl_tools.cli_utils import add_version_arg
 
 
 def _current_timestamp() -> str:
@@ -193,6 +194,7 @@ def _load_module(path: Path) -> dict[str, Any]:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check structural satisfiability of a TVL module")
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL module YAML")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON diagnostics")
     parser.add_argument("--candidate-file", type=Path, help="Path to repair candidate JSON", default=None)

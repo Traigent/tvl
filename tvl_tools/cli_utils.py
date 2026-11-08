@@ -1,4 +1,5 @@
 import argparse
+import importlib.metadata
 import json
 import sys
 from pathlib import Path
@@ -25,6 +26,35 @@ def format_issue_line(issue: dict[str, Any]) -> str:
     if message.startswith(f"{path}: "):
         return f"[{issue.get('code')}] {message}"
     return f"[{issue.get('code')}] {path}: {message}"
+
+
+DISTRIBUTION = "tvl-spec"
+
+
+class _VersionAction(argparse.Action):
+    """Print ``<prog> <tvl-spec version>`` and exit 0.
+
+    The version is read from the installed distribution metadata only when the
+    flag is given, so it is correct for an editable install and for a wheel, and
+    a missing installation fails on ``--version`` instead of on every run.
+    """
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help=None):
+        super().__init__(option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        version = importlib.metadata.version(DISTRIBUTION)
+        print(f"{parser.prog} {version}")
+        parser.exit(0)
+
+
+def add_version_arg(parser: argparse.ArgumentParser) -> None:
+    """Add ``--version``, reporting the installed tvl-spec version."""
+    parser.add_argument(
+        "--version",
+        action=_VersionAction,
+        help=f"Show the installed {DISTRIBUTION} version and exit",
+    )
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:

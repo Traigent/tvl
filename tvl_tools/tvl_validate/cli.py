@@ -10,6 +10,7 @@ from tvl.loader import is_pack_document
 
 from tvl_tools.cli_utils import (
     add_common_args,
+    add_version_arg,
     blocking_issues,
     format_issue_line,
     get_format,
@@ -241,6 +242,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Validate a TVL module against the JSON Schema and normative lints",
     )
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL module YAML")
     add_common_args(parser)
     args = parser.parse_args()

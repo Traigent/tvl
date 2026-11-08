@@ -17,6 +17,7 @@ import yaml
 
 from tvl_tools.cli_utils import (
     add_common_args,
+    add_version_arg,
     get_format,
     handle_error,
     load_yaml_safely,
@@ -741,6 +742,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compose TVL overlay files into valid TVL modules",
     )
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to overlay or module YAML file")
     parser.add_argument(
         "--pack",
