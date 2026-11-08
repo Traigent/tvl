@@ -19,10 +19,12 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same pull request cancels the superseded run. Pushes to
-# main are never cancelled, so every main commit keeps its own result.
+# A newer push to the same pull request cancels the superseded run. Every other
+# run (a push to main) gets a group of its own, keyed by run id: a shared group
+# holds one pending run, and GitHub cancels it when a newer one queues, even
+# with cancel-in-progress false. So no main run waits for or cancels another.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
