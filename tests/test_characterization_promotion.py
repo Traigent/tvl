@@ -2,9 +2,14 @@
 
 Pins ``epsilon_pareto_gate`` (decision and the full evidence dict),
 ``_test_from_samples``, ``_test_banded_objective`` and ``_make_decision``.
-Floating-point results are compared exactly: a behaviour-preserving refactor
-must keep the arithmetic order. NaN is normalised to the string ``"nan"`` so
-it can be compared."""
+Floating-point results of the gate's own arithmetic (means, deltas, standard
+deviations, t statistics, degrees of freedom) are compared exactly: a
+behaviour-preserving refactor must keep the arithmetic order. Values that come
+from scipy distribution functions (p-values, adjusted p-values, confidence
+bounds) are compared to a relative tolerance of 1e-9, because ``scipy`` is a
+version range and its tail values drift by about 1e-12 relative between
+releases (tvl#253). NaN is normalised to the string ``"nan"`` so it can be
+compared."""
 
 # Expected values were recorded from the unchanged source before refactoring.
 
@@ -42,6 +47,42 @@ def normalize(value):
         return value
     as_float = float(value)
     return "nan" if math.isnan(as_float) else as_float
+
+
+# Fields whose values come from scipy.stats (t/beta cdf, sf, ppf) and so depend
+# on the installed scipy release.
+SCIPY_DERIVED_KEYS = frozenset(
+    {
+        "p_value",
+        "p_value_noninf",
+        "p_value_super",
+        "p_value_inferior",
+        "p_value_lower",
+        "p_value_upper",
+        "adjusted_p_super",
+        "adjusted_p_inferior",
+        "adjusted_p_noninf",
+        "ci_lower",
+        "ci_upper",
+    }
+)
+SCIPY_REL_TOL = 1e-9
+
+
+def with_scipy_tolerance(expected):
+    """Copy of a normalised pin with scipy-derived floats wrapped in ``pytest.approx``."""
+    if isinstance(expected, dict):
+        return {
+            k: (
+                pytest.approx(v, rel=SCIPY_REL_TOL, abs=0.0)
+                if k in SCIPY_DERIVED_KEYS and isinstance(v, float)
+                else with_scipy_tolerance(v)
+            )
+            for k, v in expected.items()
+        }
+    if isinstance(expected, (list, tuple)):
+        return type(expected)(with_scipy_tolerance(v) for v in expected)
+    return expected
 
 
 def _samples(name, direction, epsilon, inc, cand, paired):
@@ -82,6 +123,14 @@ FUNCS = {
 }
 
 nan = float("nan")
+
+# gate_superiority_at_alpha sets alpha exactly equal to the superiority p-value
+# to pin the strict ``p < alpha`` comparison. The p-value comes from scipy, so it
+# is computed with the installed scipy; a recorded literal sits ~1e-12 off the
+# boundary on another scipy release and flips the decision (tvl#253).
+_SUPERIORITY_AT_ALPHA = _samples(
+    "acc", "maximize", 0.02, [0.8, 0.82, 0.79, 0.81, 0.83, 0.8], [0.81, 0.84, 0.8, 0.83, 0.85, 0.82], False
+).p_value_super
 
 
 CASES = [('samples_single_inc',
@@ -2530,7 +2579,7 @@ CASES = [('samples_single_inc',
   'gate',
   ({'objective_values': {'acc': {'samples': [0.8, 0.82, 0.79, 0.81, 0.83, 0.8]}}},
    {'objective_values': {'acc': {'samples': [0.81, 0.84, 0.8, 0.83, 0.85, 0.82]}}},
-   {'adjust': 'none', 'alpha': 0.6304560288468111, 'min_effect': {'acc': 0.02}},
+   {'adjust': 'none', 'alpha': _SUPERIORITY_AT_ALPHA, 'min_effect': {'acc': 0.02}},
    [{'direction': 'maximize', 'name': 'acc'}]),
   {},
   ('ok',
@@ -2574,7 +2623,21 @@ def test_pinned_case(case_id, fn, args, kwargs, expected):
         assert type(info.value).__name__ == expected[1]
         assert str(info.value) == expected[2]
     else:
-        assert normalize(func(*args, **kwargs)) == expected[1]
+        assert normalize(func(*args, **kwargs)) == with_scipy_tolerance(expected[1])
+
+
+def test_scipy_derived_floats_tolerate_library_drift():
+    """tvl#253: scipy is a version range, so its tail values drift by ~1e-12
+    relative between releases. Only scipy-derived fields get a tolerance; the
+    gate's own arithmetic stays pinned exactly."""
+    pinned = {"p_value_super": 7.722907528673328e-05, "ci_lower": 0.81, "mean": 0.5, "verdict": "superior"}
+    drifted = dict(pinned, p_value_super=7.722907528662226e-05, ci_lower=0.81 * (1 + 1e-12))
+    assert drifted == with_scipy_tolerance(pinned)
+    assert dict(pinned, p_value_super=7.7229e-05) != with_scipy_tolerance(pinned)
+    assert dict(pinned, mean=math.nextafter(0.5, 1.0)) != with_scipy_tolerance(pinned)
+    assert dict(pinned, verdict="noninferior") != with_scipy_tolerance(pinned)
+    nested = [{"per_objective": {"q": dict(pinned)}}]
+    assert [{"per_objective": {"q": drifted}}] == with_scipy_tolerance(nested)
 
 
 def test_gate_requires_scipy(monkeypatch):
