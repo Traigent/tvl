@@ -80,16 +80,20 @@ def _build_repair_candidates(
                 numeric_value = None
             if numeric_value is not None and math.isfinite(numeric_value):
                 delta = max(1.0, abs(numeric_value) * 0.1)
+                # Splice at the bound's own span (issue #247): a textual replace would edit
+                # the first occurrence, which may be inside the symbol (k1 <= 1).
+                head = expression[: numeric_match.start(3)]
+                tail = expression[numeric_match.end(3):]
                 if operator in {"<=", "<"}:
                     new_value = numeric_value + delta
-                    new_expr = expression.replace(value_str, _format_number(new_value), 1)
+                    new_expr = head + _format_number(new_value) + tail
                     intent = "relax_bound"
                     rationale.append(
                         f"Relax upper bound: {symbol} from {value_str} → {_format_number(new_value)}"
                     )
                 elif operator in {">=", ">"}:
                     new_value = numeric_value - delta
-                    new_expr = expression.replace(value_str, _format_number(new_value), 1)
+                    new_expr = head + _format_number(new_value) + tail
                     intent = "relax_bound"
                     rationale.append(
                         f"Relax lower bound: {symbol} from {value_str} → {_format_number(new_value)}"
