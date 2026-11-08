@@ -238,7 +238,7 @@ def main() -> None:
                     reason = reason.removesuffix(" on")
                 print(f"Reason: {reason}")
             else:
-                print(f"Reason: {evidence.get('decision_reason', '')}")
+                print(f"Reason: {evidence.get('summary', {}).get('decision_reason', '')}")
             if warnings:
                 print("Warnings:")
                 for warning in warnings:
