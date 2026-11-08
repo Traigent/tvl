@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -193,6 +194,12 @@ def _objective_issues(
         return [
             _objective_issue(name, "missing_observed", "Observed value required for objective checks")
         ]
+    if not math.isfinite(observed):
+        # Issue #252: a crashed or empty measurement exported as NaN (or an infinity)
+        # compares false with every bound, so it would pass the band check.
+        return [
+            _objective_issue(name, "non_finite_observed", f"Observed value {observed} is not a finite number")
+        ]
 
     band = spec.get("band")
     slo = spec.get("slo")
@@ -220,7 +227,12 @@ def _band_bounds(band: dict[str, Any]) -> tuple[Any, Any]:
 
 def _band_issues(name: Any, band: dict[str, Any], observed: float) -> list[dict[str, Any]]:
     low, high = _band_bounds(band)
-    if (low is not None and observed < low) or (high is not None and observed > high):
+    # Issue #252: every comparison with a NaN bound is false, so a NaN bound (x != x)
+    # is a violation too. The original comparisons run first, keeping their errors
+    # for incomparable bounds (tests/test_characterization_measurement.py).
+    if (low is not None and (observed < low or low != low)) or (
+        high is not None and (observed > high or high != high)
+    ):
         return [_objective_issue(name, "band_violation", f"Value {observed} outside band [{low}, {high}]")]
     return []
 

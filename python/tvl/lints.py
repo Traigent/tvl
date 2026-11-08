@@ -2879,7 +2879,7 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
             path = ["objectives", idx, "band"]
             target = band.get("target")
             if isinstance(target, list):
-                if len(target) != 2 or not all(_is_number(x) for x in target):
+                if len(target) != 2 or not all(_is_finite_number(x) for x in target):
                     issues.append(
                         {
                             "code": "invalid_band_target",
@@ -2902,7 +2902,7 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
             elif isinstance(target, dict):
                 center = target.get("center")
                 tol = target.get("tol")
-                if not _is_number(center) or not _is_number(tol):
+                if not _is_finite_number(center) or not _is_finite_number(tol):
                     issues.append(
                         {
                             "code": "invalid_band_center_tol",
@@ -3003,7 +3003,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
             else:
                 value = min_effect.get(name)
-                if not _is_number(value) or float(value) < 0:
+                if not _is_finite_number(value) or float(value) < 0:
                     issues.append(
                         {
                             "code": "invalid_min_effect",
@@ -3168,6 +3168,17 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     "severity": "error",
                 }
             )
+        max_spend = budgets.get("max_spend_usd")
+        # Issue #252: the schema bound (minimum 0) is false for NaN, so the lint is the gate.
+        if max_spend is not None and (not _is_finite_number(max_spend) or max_spend < 0):
+            issues.append(
+                {
+                    "code": "invalid_budget_max_spend",
+                    "message": "exploration.budgets.max_spend_usd must be a finite number >= 0",
+                    "path": ["exploration", "budgets", "max_spend_usd"],
+                    "severity": "error",
+                }
+            )
 
     parallelism = exploration.get("parallelism")
     if isinstance(parallelism, dict):
@@ -3188,7 +3199,7 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
         if metric == "hypervolume_improvement":
             threshold = convergence.get("threshold")
             window = convergence.get("window")
-            if threshold is None or not _is_number(threshold) or float(threshold) <= 0:
+            if threshold is None or not _is_finite_number(threshold) or float(threshold) <= 0:
                 issues.append(
                     {
                         "code": "invalid_convergence_threshold",
@@ -3210,6 +3221,11 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_finite_number(value: Any) -> bool:
+    """A number that is not NaN or an infinity (issue #252: every comparison with NaN is false)."""
+    return _is_number(value) and (isinstance(value, int) or math.isfinite(value))
 
 
 # -----------------------------------------------------------------------------

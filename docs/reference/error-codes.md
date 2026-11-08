@@ -309,7 +309,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_budget_max_spend`
 - **Severity**: error
-- **Description**: `exploration.budgets.max_spend_usd` is negative.
+- **Description**: `exploration.budgets.max_spend_usd` is negative, NaN or an infinity. The linter (`tvl-validate`, `tvl-lint`) reports it too, because the schema's `minimum: 0` does not reject NaN.
 - **Example**: `budgets: { max_spend_usd: -1 }`
 - **Remediation**: Set `max_spend_usd` to 0 or a positive number; 0 means no paid spending is allowed.
 
@@ -356,7 +356,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 ### `invalid_band_target`
 - **Severity**: error
 - **Description**: Banded objective target has invalid format. A banded objective declares an acceptable range instead of a direction: `target: [low, high]`, or `{ center, tol }`, where `tol` is the tolerance radius around `center` and must be greater than 0.
-- **Example**: `band: { target: [1, "high"] }`
+- **Example**: `band: { target: [1, "high"] }`, or a bound that is NaN or an infinity (`[100, .nan]`)
 - **Remediation**: Use `target: [low, high]` with numeric values or `{ center: num, tol: num }`.
 
 ### `invalid_band_bounds`
@@ -367,7 +367,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_band_center_tol`
 - **Severity**: error
-- **Description**: Banded objective center/tol are not numbers.
+- **Description**: Banded objective center/tol are not finite numbers (NaN and infinities are rejected).
 - **Example**: `band: { target: { center: "middle", tol: 5 } }`
 - **Remediation**: Use numeric values for center and tol.
 
@@ -376,6 +376,13 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 - **Description**: Banded objective tolerance is not positive.
 - **Example**: `band: { target: { center: 100, tol: 0 } }`
 - **Remediation**: Set tol > 0.
+
+### `non_finite_observed`
+- **Severity**: error
+- **Reported by**: `tvl-measure-validate`
+- **Description**: An objective's observed value in the measurement bundle (its `mean`, the mean of its `samples`, or a legacy `observed`) is NaN or an infinity, for example a crashed or empty measurement exported as `.nan`. Every comparison with NaN is false, so the value cannot be checked against a band.
+- **Example**: `objective_values: { latency_ms: { mean: .nan, std: 5, n: 30 } }`
+- **Remediation**: Re-run the measurement and record a finite value.
 
 ### `missing_band_target`
 - **Severity**: error
@@ -439,7 +446,7 @@ The promotion policy compares a candidate with the incumbent. Under `dominance: 
 
 ### `invalid_min_effect`
 - **Severity**: error
-- **Description**: Epsilon value is not a non-negative number.
+- **Description**: Epsilon value is not a finite non-negative number (NaN and infinities are rejected).
 - **Example**: `min_effect: { quality: -0.01 }`
 - **Remediation**: Set epsilon >= 0.
 
@@ -498,7 +505,7 @@ The promotion policy compares a candidate with the incumbent. Under `dominance: 
 
 ### `invalid_convergence_threshold`
 - **Severity**: error
-- **Description**: Hypervolume convergence threshold is not positive. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
+- **Description**: Hypervolume convergence threshold is not a finite positive number. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
 - **Example**: `convergence: { metric: hypervolume_improvement, threshold: 0 }`
 - **Remediation**: Set threshold > 0.
 
@@ -1056,7 +1063,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `invalid_convergence_threshold` | error | Exploration | Bad threshold |
 | `invalid_convergence_window` | error | Exploration | Bad window |
 | `invalid_budget_max_trials` | error | Operational | max_trials not positive |
-| `invalid_budget_max_spend` | error | Operational | max_spend_usd negative |
+| `invalid_budget_max_spend` | error | Operational | max_spend_usd negative or not finite |
 | `invalid_budget_max_wallclock` | error | Operational | max_wallclock_s not positive |
 | `unsupported_derived_expression` | error | Operational | Derived constraint not `LinExpr OP Number` (a linear expression compared with a number) |
 | `unknown_derived_symbol` | error | Operational | env.context symbol not defined |
@@ -1064,6 +1071,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
 | `duplicate_domain_value` | error | Domain | Repeated domain member |
 | `non_finite_domain_value` | error | Domain | NaN or infinity in a domain |
+| `non_finite_observed` | error | Measurement | NaN or infinity as an observed objective value |
 | `invalid_enum_domain` | error | Domain | Enum member does not match `enum[T]` |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
