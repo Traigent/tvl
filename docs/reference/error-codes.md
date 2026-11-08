@@ -333,8 +333,8 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `non_numeric_derived_symbol`
 - **Severity**: error
-- **Description**: An `env.context` symbol used in a derived constraint does not have a numeric value.
-- **Example**: `environment.context.region: eu` with `require: "env.context.region <= 1"`
+- **Description**: An `env.context` symbol used in a derived constraint does not have a finite numeric value. A boolean, a non-numeric string, NaN or an infinity (including the strings `"nan"` and `"inf"`) is rejected, and so is a weighted sum that overflows; such a value would otherwise satisfy or fail inequalities silently.
+- **Example**: `environment.context.region: eu` with `require: "env.context.region <= 1"`; `environment.context.latency_ms: .nan` with `require: "env.context.latency_ms <= 250"`
 - **Remediation**: Give the symbol a numeric value, or remove it from the constraint.
 
 ### `derived_constraint_violation`

@@ -131,6 +131,44 @@ class OperationalTests(unittest.TestCase):
         codes = {issue["code"] for issue in result.issues}
         self.assertIn("derived_invalid_symbol_reference", codes)
 
+    def test_operational_non_finite_or_bool_context_value_is_non_numeric(self) -> None:
+        # Issue #245: NaN makes every negated inequality false, so it used to pass.
+        for value in (float("nan"), "nan", float("inf"), "-inf", True, False):
+            for op in ("<=", ">=", "<", ">", "="):
+                with self.subTest(value=value, op=op):
+                    doc = _base_module()
+                    doc["environment"]["context"] = {"gateway_baseline_latency_ms": value}
+                    doc.setdefault("constraints", {})["derived"] = [
+                        {"require": f"env.context.gateway_baseline_latency_ms {op} 250"},
+                    ]
+                    result = check_operational(doc)
+                    self.assertFalse(result.ok)
+                    codes = [issue["code"] for issue in result.issues]
+                    self.assertEqual(codes, ["non_numeric_derived_symbol"])
+
+    def test_operational_overflowing_sum_is_non_numeric(self) -> None:
+        # Issue #245: finite terms whose weighted sum overflows to inf - inf = NaN.
+        for op in ("<=", ">=", "<", ">"):
+            with self.subTest(op=op):
+                doc = _base_module()
+                doc["environment"]["context"] = {"a": 1e308, "b": 1e308}
+                doc.setdefault("constraints", {})["derived"] = [
+                    {"require": f"2 * env.context.a - 2 * env.context.b {op} 5"},
+                ]
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual([i["code"] for i in result.issues], ["non_numeric_derived_symbol"])
+
+    def test_operational_finite_context_value_still_decides(self) -> None:
+        for value, ok in ((180, True), (900, False), (180.5, True)):
+            with self.subTest(value=value):
+                doc = _base_module()
+                doc["environment"]["context"] = {"gateway_baseline_latency_ms": value}
+                doc.setdefault("constraints", {})["derived"] = [
+                    {"require": "env.context.gateway_baseline_latency_ms <= 250"},
+                ]
+                self.assertEqual(check_operational(doc).ok, ok)
+
 
 if __name__ == "__main__":
     unittest.main()

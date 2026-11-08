@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -383,10 +384,22 @@ def _sum_derived_terms(
         if sym_val is None:
             missing.append(sym)
             continue
+        # A bool is not a measurement, and NaN/inf would defeat every inequality test.
+        if isinstance(sym_val, bool):
+            non_numeric.append(sym)
+            continue
         try:
-            total_value += coeff * float(sym_val)
+            number = float(sym_val)
         except (TypeError, ValueError):
             non_numeric.append(sym)
+            continue
+        if not math.isfinite(number):
+            non_numeric.append(sym)
+            continue
+        total_value += coeff * number
+    if not non_numeric and not missing and not math.isfinite(total_value):
+        # Finite terms can still overflow; report every symbol in the sum.
+        non_numeric = [sym for _coeff, sym in terms]
     return None, total_value, missing, non_numeric
 
 
