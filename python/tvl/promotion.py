@@ -652,11 +652,11 @@ def _one_sided_t_tests(
     Superiority: H0: sigma * delta <= epsilon, t = (sigma * delta - epsilon) / se.
     """
     t_noninf = (signed_effect + epsilon) / se
-    p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_noninf = scipy_stats.t.sf(t_noninf, df)
     p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
     t_super = (signed_effect - epsilon) / se
-    p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
+    p_super = scipy_stats.t.sf(t_super, df)
     return t_noninf, p_noninf, p_inferior, p_super
 
 
@@ -815,11 +815,11 @@ def _test_from_stats(
         df = min(n_inc, n_cand) - 1
 
     t_noninf = (sigma * delta + epsilon) / se
-    p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_noninf = scipy_stats.t.sf(t_noninf, df)
     p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
     t_super = (sigma * delta - epsilon) / se
-    p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
+    p_super = scipy_stats.t.sf(t_super, df)
 
     return ObjectiveResult(
         name=spec.name,
@@ -893,8 +893,8 @@ def _test_banded_objective(
     t1 = _t_statistic(mean - band_lower, se)
     t2 = _t_statistic(band_upper - mean, se)
 
-    p1 = 1.0 - scipy_stats.t.cdf(t1, df)
-    p2 = 1.0 - scipy_stats.t.cdf(t2, df)
+    p1 = scipy_stats.t.sf(t1, df)
+    p2 = scipy_stats.t.sf(t2, df)
 
     # (1 - 2α) confidence interval
     t_crit = scipy_stats.t.ppf(1 - band_alpha, df)

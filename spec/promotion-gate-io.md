@@ -194,8 +194,8 @@ evidence:
       ci_upper: 100.59             # 90% CI upper
       band_lower: 95
       band_upper: 105
-      p_value_lower: 1e-300        # H₀: μ ≤ 95 (clipped at 1e-300)
-      p_value_upper: 1e-300        # H₀: μ ≥ 105 (clipped at 1e-300)
+      p_value_lower: 3.2e-19       # H₀: μ ≤ 95
+      p_value_upper: 3.2e-19       # H₀: μ ≥ 105
       verdict: "in_band"           # "in_band" | "out_of_band" | "inconclusive"
 
   chance_constraints:
@@ -491,6 +491,7 @@ Effect sizes alone never decide statistical objective comparisons: a `Promote` r
 
 - Handle division by zero in SE calculation
 - Clip p-values to [1e-300, 1.0] range
+- Compute upper-tail p-values with the survival function (`t.sf(t, df)`), not `1 - t.cdf(t, df)`, which rounds to 0 below about 1e-16
 - Use log-space for very small p-values if needed
 
 ---
