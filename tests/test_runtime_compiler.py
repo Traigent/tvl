@@ -606,3 +606,117 @@ def test_compile_cli_unreadable_token_map_still_reported_for_valid_module(tmp_pa
     )
     assert code == 2
     assert result["issues"][0]["code"] == "runtime_unresolved_alias"
+
+
+def _filled_token_map(documents: list) -> dict:
+    from tvl.runtime_projection import token_map_template
+
+    template = token_map_template(documents)
+    for index, entry in enumerate(template["tokens"]):
+        entry["hosted"] = f"tok_{index:04d}"
+    return template
+
+
+def _unmonitored_requirement_module() -> dict:
+    return {
+        "tvl": {"module": "example.audit"},
+        "environment": {"snapshot_id": "2026-10-01T00:00:00Z"},
+        "evaluation_set": {"dataset": "example.eval"},
+        "tvars": [{"name": "x", "type": "int", "domain": {"range": [1, 3]}}],
+        "objectives": [{"name": "quality", "direction": "maximize"}],
+        "promotion_policy": {"dominance": "epsilon_pareto", "alpha": 0.05, "min_effect": {"quality": 0.01}},
+        "tvl_version": "1.3",
+        "requirements": [
+            {
+                "name": "unused",
+                "kind": "rate_bound",
+                "unit": "trace",
+                "violation": {"metric": "wall_clock_latency_ms", "exceeds": 2000},
+                "max_rate": 0.05,
+            }
+        ],
+    }
+
+
+def test_compile_with_pack_keeps_unmonitored_module_requirements() -> None:
+    """Issue #134: an (empty) --pack must not drop module requirements that have no monitor."""
+    module = _unmonitored_requirement_module()
+    empty_pack = {"tvl_version": "1.3", "pack": {"module": "example.floor"}, "requirements": [], "monitors": []}
+    tokens = _filled_token_map([module, empty_pack])
+
+    _c0, without_pack, _ = compile_runtime_document(module, token_map_doc=tokens)
+    _c1, with_pack, _ = compile_runtime_document(module, token_map_doc=tokens, packs=[empty_pack])
+
+    assert [r["name"] for r in without_pack["declarations"]["requirements"]] == ["unused"]
+    assert [r["name"] for r in with_pack["declarations"]["requirements"]] == ["unused"]
+    assert with_pack["declarations"]["requirements"] == without_pack["declarations"]["requirements"]
+
+
+def test_compile_with_pack_still_excludes_floor_only_pack_requirements() -> None:
+    """Issue #134: retaining module requirements must not carry floor-only pack requirements."""
+    module = _unmonitored_requirement_module()
+    module["requirements"].append(
+        {
+            "name": "latency_2s",
+            "kind": "rate_bound",
+            "unit": "trace",
+            "violation": {"metric": "wall_clock_latency_ms", "exceeds": 2000},
+            "max_rate": 0.05,
+        }
+    )
+    module["monitors"] = [
+        {
+            "name": "latency_2s_prod",
+            "requirement": "latency_2s",
+            "phase": "runtime",
+            "profile": "backend_v1",
+            "applies_to": "agent",
+            "evidence": {"source": "backend_trace_metadata", "deployment_environment": "production"},
+            "decision": {"method": "clopper_pearson_exact_v1"},
+        }
+    ]
+    pack = {
+        "tvl_version": "1.3",
+        "pack": {"module": "example.floor"},
+        "requirements": [
+            {
+                "name": "latency_floor_2s",
+                "kind": "rate_bound",
+                "unit": "trace",
+                "violation": {"metric": "wall_clock_latency_ms", "exceeds": 2000},
+                "max_rate": 0.10,
+            },
+            {
+                "name": "latency_floor_live",
+                "kind": "evidence_liveness",
+                "unit": "window",
+                "of": "latency_floor_2s_prod",
+                "max_stale_windows": 4,
+            },
+        ],
+        "monitors": [
+            {
+                "name": "latency_floor_2s_prod",
+                "requirement": "latency_floor_2s",
+                "phase": "runtime",
+                "profile": "backend_v1",
+                "applies_to": "tenant_floor",
+                "evidence": {"source": "backend_trace_metadata", "deployment_environment": "production"},
+                "window": {"tumbling_hours": 6, "grace_minutes": 30},
+                "decision": {"method": "clopper_pearson_exact_v1"},
+                "episode": {"closure_windows": 2, "closure_max_age_hours": 24},
+            },
+            {
+                "name": "latency_floor_live_check",
+                "requirement": "latency_floor_live",
+                "phase": "runtime",
+                "applies_to": "tenant_floor",
+                "evidence": {"source": "windows"},
+                "decision": {"method": "exact_count_v1"},
+            },
+        ],
+    }
+    tokens = _filled_token_map([module, pack])
+    _contract, local, _ = compile_runtime_document(module, packs=[pack], token_map_doc=tokens)
+    assert [r["name"] for r in local["declarations"]["requirements"]] == ["unused", "latency_2s"]
+
