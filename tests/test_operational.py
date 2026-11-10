@@ -181,6 +181,30 @@ class OperationalTests(unittest.TestCase):
                 self.assertEqual(result.binding_budget, "max_spend_usd")
                 self.assertEqual([i["code"] for i in result.issues], ["invalid_budget_max_spend"])
 
+    def test_operational_infinite_trial_and_wallclock_budget_is_invalid_not_crash(self) -> None:
+        # Issue #245: an infinite count (YAML `.inf`) cannot be converted to int and must be a coded issue.
+        cases = (
+            ("max_trials", float("inf"), "invalid_budget_max_trials"),
+            ("max_trials", float("-inf"), "invalid_budget_max_trials"),
+            ("max_wallclock_s", float("inf"), "invalid_budget_max_wallclock"),
+            ("max_wallclock_s", float("-inf"), "invalid_budget_max_wallclock"),
+        )
+        for key, value, code in cases:
+            with self.subTest(key=key, value=value):
+                doc = _base_module()
+                doc["exploration"]["budgets"] = {key: value}
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual([i["code"] for i in result.issues], [code])
+
+    def test_operational_huge_integer_budget_counts_stay_valid(self) -> None:
+        # A huge but finite integer count is still a positive integer; only infinities are rejected.
+        for key in ("max_trials", "max_wallclock_s"):
+            with self.subTest(key=key):
+                doc = _base_module()
+                doc["exploration"]["budgets"] = {key: 10**400}
+                self.assertTrue(check_operational(doc).ok)
+
     def test_cli_huge_integer_context_value_exits_2_without_traceback(self) -> None:
         import subprocess
         import tempfile
@@ -201,6 +225,48 @@ class OperationalTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stderr)
         self.assertNotIn("Traceback", proc.stderr)
         self.assertIn("non_numeric_derived_symbol", proc.stdout)
+
+    def test_derived_integer_literal_too_large_for_float_is_coded_not_crashing(self) -> None:
+        # Issue #245: a derived require whose integer literal exceeds the float range
+        # must yield a coded error, never an OverflowError traceback.
+        big = 10**400
+        shapes = (
+            f"env.context.x <= {big}",
+            f"env.context.x + {big} <= 5",
+            f"env.context.x * {big} <= 5",
+            f"-{big} * env.context.x <= 5",
+            f"env.context.x <= -{big}",
+        )
+        for expression in shapes:
+            with self.subTest(expression=expression[:40]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1}
+                doc.setdefault("constraints", {})["derived"] = [{"require": expression}]
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual([i["code"] for i in result.issues], ["unsupported_derived_expression"])
+
+    def test_cli_derived_integer_literal_too_large_exits_2_without_traceback(self) -> None:
+        import subprocess
+        import tempfile
+
+        source = (BASE / "spec" / "examples" / "cost-optimization.tvl.yml").read_text(encoding="utf-8")
+        original = "    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05\n"
+        text = source.replace(
+            original,
+            original + f"    - require: env.context.provider_input_price_usd_per_1k_tokens * {10**400} <= 5\n",
+        )
+        self.assertNotEqual(text, source)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "derived_huge.tvl.yml"
+            path.write_text(text, encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, "-m", "tvl_tools.tvl_check_operational.cli", str(path), "--json"],
+                capture_output=True, text=True, cwd=BASE, check=False,
+            )
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("unsupported_derived_expression", proc.stdout)
 
     def test_operational_finite_context_value_still_decides(self) -> None:
         for value, ok in ((180, True), (900, False), (180.5, True)):

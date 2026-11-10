@@ -4,16 +4,16 @@ import ast
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from .model import ValidationOptions, extract_validation_options
 
 
 @dataclass
 class BudgetSummary:
-    max_trials: Optional[int]
+    max_trials: Optional[Union[int, float]]
     max_spend_usd: Optional[float]
-    max_wallclock_s: Optional[int]
+    max_wallclock_s: Optional[Union[int, float]]
 
 
 @dataclass
@@ -89,13 +89,21 @@ def check_operational(module: dict[str, Any]) -> OperationalResult:
     return OperationalResult(ok=True, binding_budget=None, issues=issues)
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> Optional[Union[int, float]]:
     if value is None:
         return None
     try:
         return int(value)
+    except OverflowError:
+        # An infinite count (for example YAML `.inf`) is not a positive integer; the caller rejects it.
+        return math.inf if value > 0 else -math.inf
     except (TypeError, ValueError):
         return None
+
+
+def _is_infinite(value: Any) -> bool:
+    # math.isinf() converts ints to float and would overflow on a huge int, so test floats only.
+    return isinstance(value, float) and math.isinf(value)
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -114,7 +122,7 @@ def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Opti
     issues: list[dict[str, Any]] = []
     binding: Optional[str] = None
 
-    if budget.max_trials is not None and budget.max_trials <= 0:
+    if budget.max_trials is not None and (budget.max_trials <= 0 or _is_infinite(budget.max_trials)):
         binding = binding or "max_trials"
         issues.append(
             {
@@ -137,7 +145,7 @@ def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Opti
             }
         )
 
-    if budget.max_wallclock_s is not None and budget.max_wallclock_s <= 0:
+    if budget.max_wallclock_s is not None and (budget.max_wallclock_s <= 0 or _is_infinite(budget.max_wallclock_s)):
         binding = binding or "max_wallclock_s"
         issues.append(
             {
@@ -228,15 +236,33 @@ def _scaled_symbol_term(value: Any, symbol_node: ast.AST, negate: bool = False):
     name, legacy = _derived_symbol_name(symbol_node)
     if name is None:
         return None
-    coefficient = -float(value) if negate else float(value)
+    magnitude = _literal_float(value)
+    if magnitude is None:
+        return None
+    coefficient = -magnitude if negate else magnitude
     return [(coefficient, name)], [name] if legacy else []
+
+
+def _literal_float(value: Any) -> Optional[float]:
+    """Return ``float(value)`` for a numeric literal, or None if it is beyond the float range.
+
+    Issue #245: an integer literal such as ``10**400`` is valid Python but has no
+    float; the derived walker treats that expression as unsupported, not as a crash.
+    """
+    try:
+        return float(value)
+    except OverflowError:
+        return None
 
 
 def _walk_derived(node: ast.AST, depth: int = 0):
     if depth > _DERIVED_MAX_DEPTH:
         return None
     if _is_numeric_constant(node):
-        return [(float(node.value), None)], []
+        literal = _literal_float(node.value)
+        if literal is None:
+            return None
+        return [(literal, None)], []
     if isinstance(node, (ast.Name, ast.Attribute)):
         return _scaled_symbol_term(1.0, node)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
@@ -294,9 +320,14 @@ def _derived_comparison(body: ast.AST) -> Optional[tuple[ast.AST, str, float]]:
         return None
     comp = body.comparators[0]
     if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub) and isinstance(comp.operand, ast.Constant):
-        val = -float(comp.operand.value)
+        magnitude = _literal_float(comp.operand.value)
+        if magnitude is None:
+            return None
+        val = -magnitude
     elif _is_numeric_constant(comp):
-        val = float(comp.value)
+        val = _literal_float(comp.value)
+        if val is None:
+            return None
     else:
         return None
     return body.left, op, val
