@@ -513,13 +513,17 @@ def _test_objective(
 
 
 _ARM_STAT_KEYS = ("mean", "std", "n")
-_STATS_AGREEMENT = {"rel_tol": 1e-6, "abs_tol": 1e-9}
+# A stated mean or std within 1% (relative) of the samples' value is a rounding or a
+# convention difference, not a contradiction. ``n`` must match exactly.
+_STATS_AGREEMENT = {"rel_tol": 1e-2, "abs_tol": 1e-9}
 
 
 def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:
     """True when an arm with samples states an ``n``, ``mean`` or ``std`` that its own
-    samples do not produce (tvl#262). The std is compared only when the samples
-    determine one (n >= 2). A non-finite stated value never agrees."""
+    samples do not produce (tvl#262). ``n`` must equal the sample count. A stated mean
+    must be within 1% of the sample mean. A stated std must be within 1% of either the
+    ddof=1 or the ddof=0 sample std. The std is compared only when the samples determine
+    one (n >= 2). A non-finite stated value never agrees."""
     samples = arm.get("samples")
     if not samples:
         return False
@@ -530,8 +534,13 @@ def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:
     if arm.get("mean") is not None and not math.isclose(arm["mean"], mean, **_STATS_AGREEMENT):
         return True
     if n >= 2 and arm.get("std") is not None:
-        var = sum((x - mean) ** 2 for x in samples) / (n - 1)
-        if not math.isclose(arm["std"], math.sqrt(var), **_STATS_AGREEMENT):
+        sum_sq = sum((x - mean) ** 2 for x in samples)
+        std_ddof1 = math.sqrt(sum_sq / (n - 1))
+        std_ddof0 = math.sqrt(sum_sq / n)
+        if not (
+            math.isclose(arm["std"], std_ddof1, **_STATS_AGREEMENT)
+            or math.isclose(arm["std"], std_ddof0, **_STATS_AGREEMENT)
+        ):
             return True
     return False
 

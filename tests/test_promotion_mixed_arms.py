@@ -347,3 +347,57 @@ def test_consistent_stated_statistics_still_reject():
 
     assert decision == "Reject"
     assert "code" not in evidence["per_objective"]["quality"]
+
+
+# Mean 0.7032917 (sum 4.21975 over six samples).
+SAMPLE_703 = [0.70, 0.71, 0.69, 0.70, 0.72, 0.69975]
+
+
+def _sample_std(samples: list[float], ddof: int) -> float:
+    n = len(samples)
+    mean = sum(samples) / n
+    return math.sqrt(sum((x - mean) ** 2 for x in samples) / (n - ddof))
+
+
+@pytest.mark.parametrize(
+    "stated",
+    [
+        {"mean": 0.703},  # mean rounded to three places: relative difference about 5e-4
+        {"std": round(_sample_std(SAMPLE_703, 1), 4)},  # std rounded to four places
+        {"std": _sample_std(SAMPLE_703, 0)},  # std with the numpy default ddof=0
+    ],
+    ids=["mean-rounded", "std-rounded", "std-ddof0"],
+)
+def test_rounded_or_ddof0_stated_statistics_are_used_as_given(stated: dict):
+    # Consistent statistics (within 1% relative) are accepted and used exactly as stated, so the
+    # result equals the aggregated-stats test on the stated numbers.
+    mean = stated.get("mean", sum(SAMPLE_703) / 6)
+    std = stated.get("std", _sample_std(SAMPLE_703, 1))
+    arm = {"samples": SAMPLE_703, "mean": mean, "std": std, "n": 6}
+    result = _test_objective(_spec(), arm, dict(CAND_STATS))
+    oracle = _test_from_stats(_spec(), {"mean": mean, "std": std, "n": 6}, dict(CAND_STATS))
+
+    assert result.verdict == oracle.verdict
+    assert result.n_incumbent == 6
+    assert result.mean_incumbent == pytest.approx(mean, rel=1e-12)
+    for field in ("t_statistic", "df", "p_value_noninf", "p_value_super", "p_value_inferior"):
+        assert getattr(result, field) == pytest.approx(getattr(oracle, field), rel=1e-12), field
+
+
+@pytest.mark.parametrize(
+    "contradiction",
+    [
+        {"mean": 0.80},  # about 14% away from the sample mean
+        {"std": 2.0 * _sample_std(SAMPLE_703, 1)},  # twice the sample std
+        {"n": 100000},
+    ],
+    ids=["mean-0.80", "std-doubled", "n-100000"],
+)
+def test_contradictions_against_rounded_samples_stay_no_decision(contradiction: dict):
+    arm = {"samples": SAMPLE_703, **contradiction}
+    decision, evidence = _gate_api(arm, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+    assert "disagree with the samples" in evidence["summary"]["decision_reason"]
