@@ -15,11 +15,18 @@ import sys
 from pathlib import Path
 
 import pytest
+from tvl.diagnostics import (
+    closed_lint_issue,
+    closed_schema_issues,
+    runtime_syntax_issues,
+)
 from tvl.lints import lint_module
 from tvl.runtime import RuntimeClosedError
 from tvl.runtime_projection import token_map_template
+from tvl.schema import validator
 from tvl.yaml_safe import safe_load
 
+from tvl_tools.cli_utils import load_yaml_safely
 from tvl_tools.tvl_compile_runtime import cli
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,6 +132,20 @@ def _outcome(seen: list, argv: list) -> tuple:
     if seen:
         return ("catchall", type(seen[0]))
     return ("exit", code)
+
+
+def _lint_path_directly(document: dict) -> None:
+    """The steps tvl-compile-runtime runs before it compiles, called without the CLI's catch-all.
+
+    A lint diagnostic is a normal result. An exception of any kind is a defect on the lint path, and the
+    catch-all cannot hide it here, because nothing above this call maps exceptions to a code.
+    """
+    runtime_syntax_issues(document)
+    closed_schema_issues(validator().iter_errors(document))
+    issues = lint_module(document)
+    errors = [issue for issue in issues if issue.get("severity") == "error"]
+    if errors:
+        closed_lint_issue(errors[0])
 
 
 def _is_allowed(outcome: tuple) -> bool:
@@ -290,6 +311,7 @@ def test_numeric_extremes_never_escape_or_hit_unexpected_catch_all(
     seen = _observe(monkeypatch)
     base = BASES[base_index]
     bad = []
+    direct_bad = []
     count = 0
     for leaf in _numeric_leaves(base["module"]):
         for value in (10**400, -(10**400), float("inf"), float("nan")):
@@ -303,11 +325,17 @@ def test_numeric_extremes_never_escape_or_hit_unexpected_catch_all(
                 (tmp / "pack0.yml").write_text(json.dumps(base["pack"]), encoding="utf-8")
                 argv += ["--pack", str(tmp / "pack0.yml")]
             outcome = _outcome(seen, argv)
+            # Second path: the same document through the lint steps directly, with no catch-all above them.
+            try:
+                _lint_path_directly(load_yaml_safely(tmp / "module.yml"))
+            except Exception as exc:  # noqa: BLE001 - the property under test: no exception of any kind
+                direct_bad.append((leaf, repr(value)[:20], type(exc).__name__))
             count += 1
             if not _is_allowed(outcome):
                 bad.append((leaf, repr(value)[:20], outcome))
     assert count > 0
     assert not bad, f"{len(bad)} numeric-extreme cases escaped or hit an unexpected exception: {bad[:5]}"
+    assert not direct_bad, f"{len(direct_bad)} numeric-extreme documents raised on the lint path: {direct_bad[:5]}"
 
 
 @pytest.mark.parametrize(
