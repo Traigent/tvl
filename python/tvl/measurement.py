@@ -226,9 +226,10 @@ def _band_bounds(band: dict[str, Any]) -> tuple[Any, Any]:
 
 
 def _is_nan(value: Any) -> bool:
-    # Bounds are compared with a float observed value before this runs, so they are
-    # orderable; math.isnan() would raise on a non-float bound, hence the isinstance guard.
-    return isinstance(value, float) and math.isnan(value)
+    # Intentional NaN test by self-comparison (NaN is the only value unequal to itself).
+    # It must also work for numpy scalars, which are not float subclasses, so do not
+    # replace it with an isinstance(float) check.
+    return value != value  # noqa: PLR0124
 
 
 def _band_issues(name: Any, band: dict[str, Any], observed: float) -> list[dict[str, Any]]:

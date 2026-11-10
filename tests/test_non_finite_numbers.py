@@ -8,6 +8,7 @@ import copy
 import math
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 from tvl.lints import lint_module
@@ -132,3 +133,11 @@ def test_measurement_rejects_non_finite_samples(bad):
 def test_measurement_band_with_nan_bound_is_not_satisfied(target):
     assert not _measure(_banded(target), 5000)["ok"]
     assert not _measure(_banded(target), 500)["ok"]
+
+
+def test_measurement_band_with_numpy_float32_nan_bound_is_not_satisfied():
+    # Control: a Python float NaN bound. Red case: a numpy scalar NaN bound, which is
+    # not a float subclass; both must be reported as violations.
+    assert not _measure(_banded([math.nan, 900]), 500)["ok"]
+    assert not _measure(_banded([np.float32("nan"), 900]), 500)["ok"]
+    assert not _measure(_banded([100, np.float32("nan")]), 500)["ok"]
