@@ -71,3 +71,14 @@ def test_witness_id_for_a_lone_surrogate_value_is_stable_and_does_not_crash(tmp_
     candidate.write_text(json.dumps(CANDIDATE), encoding="utf-8")
     ids = {_witness_id(module, candidate, seed) for seed in ("1", "2")}
     assert len(ids) == 1
+
+
+def test_witness_id_for_a_non_ascii_value_is_stable_and_pinned(tmp_path: Path) -> None:
+    # Issue #250: the digest is over the ASCII-escaped canonical form, so a witness with "café"
+    # has this id in every process. Earlier builds hashed the UTF-8 form and gave w-855f44b1144ca7ba.
+    module = tmp_path / "m.tvl.yml"
+    module.write_text(MODULE.replace('domain: ["fast", "slow"]', 'domain: ["caf\\u00e9", "slow"]'), encoding="utf-8")
+    candidate = tmp_path / "cand.json"
+    candidate.write_text(json.dumps(CANDIDATE), encoding="utf-8")
+    ids = {_witness_id(module, candidate, seed) for seed in ("1", "2", "3")}
+    assert ids == {"w-03700caa42b41dbc"}
