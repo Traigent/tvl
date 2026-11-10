@@ -47,7 +47,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `tvl-ci-gate --help` no longer describes the tool as a dry run.
 - Website dependencies: seven unused packages and the axios override are removed from the lockfile (issue #257).
 - The book drops an unreferenced 350 KB screenshot from `tvl_book/figures` (issue #260).
-- The Guided Walkthrough's automation step runs from the `Traigent` directory and names the script that ships in `walkthrough/`, `test_all_examples.sh` (issue #234).
+- The Guided Walkthrough's automation step runs `test_all_examples.sh` (issue #234).
 - CI: jobs have timeouts, pull request runs cancel superseded runs, and every non-PR CI and Lean run has its own concurrency group, so a push to `main` no longer waits on or cancels another run (issue #237).
 
 ### Fixed
@@ -79,7 +79,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `tvl-check-operational` rejects a NaN, an infinity or a boolean in `env.context`, and reports an integer too large for a float (for example `10**400`) as `non_numeric_derived_symbol` instead of crashing (issue #245).
 - The runtime trace reader raises `TraceError` for a non-string identity field instead of a `TypeError` (issue #251).
 - `tvl-compose` parses bound clauses in linear time; a crafted clause no longer triggers regex backtracking that took minutes (issue #238).
-- Promotion: an arm that carries only samples gets its n, mean and sample std from those samples before the aggregated-stats test, so a mixed pair reports the real incumbent; a missing statistic is never read as 0 and gives `missing_statistical_evidence` with `NoDecision` (issue #262).
+- Promotion: for aggregated-stats comparisons a statistic the arm states is used as given; missing ones are derived from its samples, so a mixed pair reports the real incumbent; an arm whose mean cannot be determined is reported, never read as 0, and gives `missing_statistical_evidence` with `NoDecision` (issue #262). A banded candidate called directly with a missing mean or std still reads it as 0.0.
 - Promotion: upper-tail p-values are computed with `t.sf`, so a small p-value no longer clips to the underflow floor; no verdict changes (issue #263).
 - The SpecViewer download revokes its object URL after the click, also when the click throws (issue #235).
 - The SpecViewer and Examples preview apply only the latest request, and SpecViewer's Copy and Download stay disabled until content loads (issue #236).
