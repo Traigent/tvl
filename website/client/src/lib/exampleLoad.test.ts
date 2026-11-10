@@ -54,7 +54,10 @@ describe("Examples page uses the load result (#240)", () => {
     expect(copy.indexOf("if (!result.ok)")).toBeLessThan(copy.indexOf("writeText("));
   });
 
-  it("the preview panel renders a stored load error", () => {
-    expect(examples).toContain("previewErrors[example.path]");
+  it("the preview panel renders a stored load error only when one is set", () => {
+    // The error block must sit behind a truthy previewErrors[example.path] check, not just contain the message.
+    expect(examples).toMatch(
+      /\)\s*:\s*previewErrors\[example\.path\]\s*\?\s*\(\s*<div role="alert"[^>]*>\s*\{previewErrors\[example\.path\]\}\s*<\/div>\s*\)\s*:/,
+    );
   });
 });
