@@ -2645,7 +2645,8 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
                 }
             )
             return issues
-        if type_info.minimum is not None and float(numeric) < float(type_info.minimum):
+        # int and float compare exactly in Python, so an integer beyond binary64 needs no float() here.
+        if type_info.minimum is not None and numeric < type_info.minimum:
             issues.append(
                 {
                     "code": "constraint_value_out_of_domain",
@@ -2654,7 +2655,7 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
                     "severity": "error",
                 }
             )
-        if type_info.maximum is not None and float(numeric) > float(type_info.maximum):
+        if type_info.maximum is not None and numeric > type_info.maximum:
             issues.append(
                 {
                     "code": "constraint_value_out_of_domain",
@@ -2888,6 +2889,15 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
                             "severity": "error",
                         }
                     )
+                elif not all(_fits_float(x) for x in target):
+                    issues.append(
+                        {
+                            "code": "invalid_band_target",
+                            "message": f"Banded objective '{name}' target bounds must be within the float range",
+                            "path": path + ["target"],
+                            "severity": "error",
+                        }
+                    )
                 else:
                     low, high = float(target[0]), float(target[1])
                     if low >= high:
@@ -2911,6 +2921,15 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
                             "severity": "error",
                         }
                     )
+                elif not _fits_float(tol):
+                    issues.append(
+                        {
+                            "code": "invalid_band_center_tol",
+                            "message": f"Banded objective '{name}' tol must be within the float range",
+                            "path": path + ["target", "tol"],
+                            "severity": "error",
+                        }
+                    )
                 elif float(tol) <= 0:
                     issues.append(
                         {
@@ -2931,7 +2950,7 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
 
             alpha = band.get("alpha")
-            if not _is_number(alpha) or not (0 < float(alpha) <= 1):
+            if not _is_number(alpha) or not _fits_float(alpha) or not (0 < float(alpha) <= 1):
                 issues.append(
                     {
                         "code": "invalid_band_alpha",
@@ -2962,7 +2981,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
     # An omitted alpha takes the documented default (0.05); an explicit value,
     # including null, must still be a number in (0, 1).
     alpha = policy.get("alpha", 0.05)
-    if not _is_number(alpha) or not (0 < float(alpha) < 1):
+    if not _is_number(alpha) or not _fits_float(alpha) or not (0 < float(alpha) < 1):
         issues.append(
             {
                 "code": "invalid_alpha",
@@ -3003,7 +3022,16 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
             else:
                 value = min_effect.get(name)
-                if not _is_finite_number(value) or not _fits_float(value) or float(value) < 0:
+                if _is_finite_number(value) and not _fits_float(value):
+                    issues.append(
+                        {
+                            "code": "invalid_min_effect",
+                            "message": f"promotion_policy.min_effect['{name}'] must be a finite number >= 0 within the float range",
+                            "path": ["promotion_policy", "min_effect", name],
+                            "severity": "error",
+                        }
+                    )
+                elif not _is_finite_number(value) or float(value) < 0:
                     issues.append(
                         {
                             "code": "invalid_min_effect",
@@ -3058,7 +3086,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
             else:
                 seen_names[name] = idx
-        if not _is_number(threshold) or not (0 <= float(threshold) <= 1):
+        if not _is_number(threshold) or not _fits_float(threshold) or not (0 <= float(threshold) <= 1):
             issues.append(
                 {
                     "code": "invalid_chance_threshold",
@@ -3067,7 +3095,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     "severity": "error",
                 }
             )
-        if not _is_number(confidence) or not (0 < float(confidence) < 1):
+        if not _is_number(confidence) or not _fits_float(confidence) or not (0 < float(confidence) < 1):
             issues.append(
                 {
                     "code": "invalid_chance_confidence",
@@ -3199,11 +3227,16 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
         if metric == "hypervolume_improvement":
             threshold = convergence.get("threshold")
             window = convergence.get("window")
-            if threshold is None or not _is_finite_number(threshold) or float(threshold) <= 0:
+            if (
+                threshold is None
+                or not _is_finite_number(threshold)
+                or not _fits_float(threshold)
+                or float(threshold) <= 0
+            ):
                 issues.append(
                     {
                         "code": "invalid_convergence_threshold",
-                        "message": "hypervolume_improvement convergence requires threshold > 0",
+                        "message": "hypervolume_improvement convergence requires a threshold > 0 within the float range",
                         "path": ["exploration", "convergence", "threshold"],
                         "severity": "error",
                     }
@@ -3235,6 +3268,11 @@ def _fits_float(value: Any) -> bool:
     except OverflowError:
         return False
     return True
+
+
+def _display_number(value: Any) -> Any:
+    """``float(value)`` for a message, or the exact text when binary64 cannot hold it."""
+    return float(value) if _fits_float(value) else str(value)
 
 
 # -----------------------------------------------------------------------------
@@ -3443,7 +3481,7 @@ def _check_values_alignment(
         "severity": "warning",
         "message": (
             f"TVAR '{name}' has domain value {value} which is not aligned to "
-            f"precision P={precision}: {value} × {precision} = {float(exact * precision)} "
+            f"precision P={precision}: {value} × {precision} = {_display_number(exact * precision)} "
             f"is not an integer. SMT encoding soundness (Theorem 8.1) does not hold."
             f"{_precision_suggestion(exact_alignment_precision)}"
         ),
@@ -3507,7 +3545,7 @@ def _check_resolution_alignment(
 ) -> Issue:
     """Issue for a range whose (effective) resolution r has r·P ∉ ℤ."""
     exact_alignment_precision = _compute_exact_alignment_precision([resolution])
-    shown = float(resolution)
+    shown = _display_number(resolution)
     described = f"the default resolution {shown} for float ranges" if implicit else f"resolution {shown}"
     return {
         "code": "inadequate_precision",
