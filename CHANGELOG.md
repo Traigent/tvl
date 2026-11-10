@@ -45,6 +45,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The domain model (`tvl.model`) gives a float range inside a tuple component the default step 0.001 when it has no `resolution`, instead of raising an error. The JSON Schema still requires the `resolution` there, so such a module is still a schema error.
 - Repeated enum members are treated as one set member by `tvl-check-structural`; `tvl-validate` still reports `duplicate_domain_value`.
 - `tvl-ci-gate --help` no longer describes the tool as a dry run.
+- Website dependencies: seven unused packages and the axios override are removed from the lockfile (issue #257).
+- The book drops an unreferenced 350 KB screenshot from `tvl_book/figures` (issue #260).
+- The Guided Walkthrough's automation step runs from the `Traigent` directory and names the script that ships in `walkthrough/`, `test_all_examples.sh` (issue #234).
+- CI: jobs have timeouts, pull request runs cancel superseded runs, and every non-PR CI and Lean run has its own concurrency group, so a push to `main` no longer waits on or cancels another run (issue #237).
 
 ### Fixed
 
@@ -66,6 +70,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `tvl-config-validate`: a numeric literal past the exact-arithmetic bounds in a structural constraint (for example `x = 1e-401`) raised an exception; it is now reported as `invalid_structural_expression` and the constraint does not pass. Thresholds on numeric enums (`enum[float]` with `{set: [1]}`) compare against the exact literal instead of its binary64 rounding, so `0 <= x < 1.000000000000000001` is satisfiable with `x = 1`.
 - The Orientation RAG page copied its YAML snapshot with the reranker weight rounded to two decimals (`0.12345` became `0.12`); it now emits the slider member exactly.
 - `tvl-check-structural` on a legacy `tvars: {x: {type: int, min: 0, max: 2}}` mapping treated the integer as a grid of step 1/1000, so `x > 0 and x < 1` was rewritten to `x >= 1 and x <= 999` and a witness outside the domain was accepted. An integer domain without a `resolution` now uses the unit grid, and that expression is UNSAT.
+- `tvl-config-validate` reads escaped quotes in constraint values the way the structural parser does, and splits `and`/`or` only outside quoted strings; an unterminated quoted value is a parse issue (issue #246).
+- `tvl-check-structural --candidate-file` splices a `relax_bound` repair at the bound's own position, so it no longer rewrites the wrong variable's constraint (issue #247).
+- `tvl-check-structural` no longer crashes on a lone surrogate in an enum value: the witness id is a sha256 over an ASCII-escaped canonical form, and a list-valued witness gets an id instead of a `TypeError` (issue #250).
+- `tvl-compile-runtime` keeps every requirement the module declares when it compiles with packs; only floor-only pack requirements are excluded (issue #134).
+- The CLI prints the promotion-gate reason from the evidence summary for core modules instead of an empty reason (issue #138).
+- `tvl-compile-runtime` reports an unwritable `--out-dir` as `io_error` instead of a traceback (issue #226).
+- `tvl-check-operational` rejects a NaN, an infinity or a boolean in `env.context`, and reports an integer too large for a float (for example `10**400`) as `non_numeric_derived_symbol` instead of crashing (issue #245).
+- The runtime trace reader raises `TraceError` for a non-string identity field instead of a `TypeError` (issue #251).
+- `tvl-compose` parses bound clauses in linear time; a crafted clause no longer triggers regex backtracking that took minutes (issue #238).
+- Promotion: an arm that carries only samples gets its n, mean and sample std from those samples before the aggregated-stats test, so a mixed pair reports the real incumbent; a missing statistic is never read as 0 and gives `missing_statistical_evidence` with `NoDecision` (issue #262).
+- Promotion: upper-tail p-values are computed with `t.sf`, so a small p-value no longer clips to the underflow floor; no verdict changes (issue #263).
+- The SpecViewer download revokes its object URL after the click, also when the click throws (issue #235).
+- The SpecViewer and Examples preview apply only the latest request, and SpecViewer's Copy and Download stay disabled until content loads (issue #236).
+- Every website fetch rejects a non-2xx response, so an error page is never shown or copied as file content (issue #240).
+- The Examples preview shows a failed load as an error message; Copy reports the error and does not copy it or show success (issue #240).
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 
 - Website dependencies (Dependabot alerts 219-221): `ip-address` 10.7.1 to 10.7.4 and `@vitest/mocker` 4.1.11 to 4.1.12 (with its `@vitest/spy`), both patch-level bumps inside the existing override ranges.
