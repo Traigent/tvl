@@ -534,3 +534,29 @@ def test_int_literal_equal_to_a_binary64_range_bound_is_not_rejected(lo: int, hi
 )
 def test_int_literal_beyond_a_range_bound_is_still_rejected(lo: int, hi: int, expr: str) -> None:
     assert _error_codes(_int_range_module(lo, hi, expr)) == ["constraint_value_out_of_domain"]
+
+
+def _single_error_message(module: dict, code: str) -> str:
+    errors = [issue for issue in lint_module(module) if issue["severity"] == "error"]
+    assert [issue["code"] for issue in errors] == [code]
+    return errors[0]["message"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [0, -1, 0.0, -0.0, float("inf"), float("nan"), True],
+    ids=["zero", "minus_one", "float_zero", "negative_zero", "inf", "nan", "true"],
+)
+def test_convergence_threshold_that_is_not_positive_keeps_the_plain_message(value) -> None:
+    base = _constructs_base("list")
+    base["module"]["exploration"]["convergence"]["threshold"] = value
+    message = _single_error_message(base["module"], "invalid_convergence_threshold")
+    assert message == "hypervolume_improvement convergence requires threshold > 0"
+
+
+@pytest.mark.parametrize("value", [BIG, -BIG], ids=["huge_positive", "huge_negative"])
+def test_convergence_threshold_beyond_the_float_range_names_the_float_range(value: int) -> None:
+    base = _constructs_base("list")
+    base["module"]["exploration"]["convergence"]["threshold"] = value
+    message = _single_error_message(base["module"], "invalid_convergence_threshold")
+    assert message == "hypervolume_improvement convergence requires a threshold > 0 within the float range"

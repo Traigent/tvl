@@ -3229,16 +3229,20 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
         if metric == "hypervolume_improvement":
             threshold = convergence.get("threshold")
             window = convergence.get("window")
-            if (
-                threshold is None
-                or not _is_finite_number(threshold)
-                or not _fits_float(threshold)
-                or float(threshold) <= 0
-            ):
+            if _is_finite_number(threshold) and not _fits_float(threshold):
                 issues.append(
                     {
                         "code": "invalid_convergence_threshold",
                         "message": "hypervolume_improvement convergence requires a threshold > 0 within the float range",
+                        "path": ["exploration", "convergence", "threshold"],
+                        "severity": "error",
+                    }
+                )
+            elif threshold is None or not _is_finite_number(threshold) or float(threshold) <= 0:
+                issues.append(
+                    {
+                        "code": "invalid_convergence_threshold",
+                        "message": "hypervolume_improvement convergence requires threshold > 0",
                         "path": ["exploration", "convergence", "threshold"],
                         "severity": "error",
                     }
