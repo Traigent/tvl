@@ -251,6 +251,8 @@ Does either arm have fewer than 2 observations (n < 2)?
 
 **Default**: Use Welch's t-test unless `paired: true` is set in the candidate's objective entry and the two sample lists have equal length.
 
+**Arm with samples next to stated statistics**: the test runs on the statistics derived from the samples, which are authoritative; stated `mean/std/n` on that arm are a consistency check only. A stated value that contradicts the samples gives `NoDecision` with `missing_statistical_evidence`. An arm that lacks one of `mean`, `std` or `n` gives the same code, and its statistic is never read as 0. See the §7.2 paragraph "No statistics at all".
+
 ### 3.2 Non-Inferiority Test
 
 For each objective i with direction σᵢ (1 for maximize, -1 for minimize) and epsilon εᵢ:
@@ -519,6 +521,7 @@ The diagnostic catalog is [docs/reference/error-codes.md](../docs/reference/erro
 | `missing_measurement` | `tvl-measure-validate` | No chance outcome for a declared chance constraint |
 | `missing_statistical_runtime` | `tvl-measure-validate` | scipy is not installed, so chance constraints cannot be evaluated |
 | `unsupported_construct` | both tools | The input is a `tvl-runtime-report/1` file, not a measurement bundle |
+| `missing_statistical_evidence` | gate (per objective) | `NoDecision` with an `inconclusive` objective when an arm lacks `mean/std/n` (with no samples), or its stated statistics contradict its samples (§7.2) |
 
 **Warnings** for deprecated input forms: `deprecated_measurement_objectives`, `deprecated_measurement_chance`, `legacy_chance_not_convertible` (a legacy `chance` summary whose violation count cannot be reconstructed exactly), and `deprecated_ci_gate_policy_flag` (`--policy` used).
 

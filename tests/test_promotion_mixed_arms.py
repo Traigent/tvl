@@ -4,9 +4,9 @@
 otherwise read mean/std/n from each arm with defaults 0.0/0.0/0, so the arm
 given as samples was read as an empty arm (n=0, mean=0.0). The objective was
 always inconclusive and the evidence reported an incumbent that contradicted
-the input. Spec 3.1: aggregated statistics are used when raw samples are not
-available for both arms; the sample arm's n, mean and sample std are derived
-from its samples.
+the input. Spec 3.1 uses aggregated statistics when raw samples are not
+available for both arms; spec 7.2 ("No statistics at all") derives the sample
+arm's n, mean and sample std from its samples.
 
 See Traigent/tvl#262.
 """
