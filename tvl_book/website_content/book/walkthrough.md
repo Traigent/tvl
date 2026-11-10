@@ -53,10 +53,10 @@ pip install -e .
 
 ## Automation Script
 
-Prefer a scripted tour? Run:
+Prefer a scripted tour? From the `Traigent` directory you entered in the prerequisites, run:
 
 ```bash
-cd Traigent/walkthrough
+cd walkthrough
 bash test_all_examples.sh --mock
 ```
 
