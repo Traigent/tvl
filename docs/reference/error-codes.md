@@ -321,8 +321,8 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `unsupported_derived_expression`
 - **Severity**: error
-- **Description**: A derived constraint is not of the form `LinExpr OP Number`, where `LinExpr` is a sum or difference of terms such as `env.context.a` or `2 * env.context.b` (and plain numbers), and OP is `<=`, `>=`, `<`, `>` or `=`.
-- **Example**: `require: "env.context.a"`
+- **Description**: A derived constraint is not of the form `LinExpr OP Number`, where `LinExpr` is a sum or difference of terms such as `env.context.a` or `2 * env.context.b` (and plain numbers), and OP is `<=`, `>=`, `<`, `>` or `=`. An integer literal too large for a float (for example `10**400` written in the constraint) is reported here, as a coefficient or as the bound. An infinite coefficient (for example `1e400` in `env.context.a * 1e400 <= 5`) is reported here too; the message names the constraint, not a symbol. The same integer as an `env.context` value is `non_numeric_derived_symbol` instead.
+- **Example**: `require: "env.context.a"`, or `require: "env.context.a * 1e400 <= 5"`
 - **Remediation**: Write the constraint as a linear expression over `env.context.*` symbols compared with a number.
 
 ### `unknown_derived_symbol`
@@ -333,7 +333,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `non_numeric_derived_symbol`
 - **Severity**: error
-- **Description**: An `env.context` symbol used in a derived constraint does not have a finite numeric value. A boolean, a non-numeric string, NaN or an infinity (including the strings `"nan"` and `"inf"`) is rejected, and so is a weighted sum that overflows; such a value would otherwise satisfy or fail inequalities silently.
+- **Description**: An `env.context` symbol used in a derived constraint does not have a finite numeric value. A boolean, a non-numeric string, NaN or an infinity (including the strings `"nan"` and `"inf"`) is rejected, and so is a weighted sum that overflows; such a value would otherwise satisfy or fail inequalities silently. An integer too large for a float given as an `env.context` value is reported here; the same integer written as a literal in a `require` is `unsupported_derived_expression`.
 - **Example**: `environment.context.region: eu` with `require: "env.context.region <= 1"`; `environment.context.latency_ms: .nan` with `require: "env.context.latency_ms <= 250"`
 - **Remediation**: Give the symbol a numeric value, or remove it from the constraint.
 

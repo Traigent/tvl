@@ -432,8 +432,14 @@ def _sum_derived_terms(
             non_numeric.append(sym)
             continue
         total_value += coeff * number
-    if not non_numeric and not missing and not math.isfinite(total_value):
-        # Finite terms can still overflow; report every symbol in the sum.
+    if (
+        not non_numeric
+        and not missing
+        and not math.isfinite(total_value)
+        and all(math.isfinite(coeff) for coeff, _sym in terms)
+    ):
+        # Finite terms can still overflow; report every symbol in the sum. An infinite
+        # coefficient is the literal's fault, not the symbols', and is reported by the caller.
         non_numeric = [sym for _coeff, sym in terms]
     return None, total_value, missing, non_numeric
 
@@ -479,6 +485,12 @@ def _derived_constraint_issue(
         return _derived_error(
             "non_numeric_derived_symbol",
             f"Environment symbol(s) '{', '.join(non_numeric)}' must be numeric",
+            path,
+        )
+    if any(not math.isfinite(coeff) for coeff, _sym in derived.symbol):
+        return _derived_error(
+            "unsupported_derived_expression",
+            f"Derived constraint '{derived.expression}' has a numeric literal that is not finite",
             path,
         )
 

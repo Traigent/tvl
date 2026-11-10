@@ -159,6 +159,20 @@ class OperationalTests(unittest.TestCase):
                 self.assertFalse(result.ok)
                 self.assertEqual([i["code"] for i in result.issues], ["non_numeric_derived_symbol"])
 
+    def test_infinite_literal_coefficient_is_blamed_on_the_literal_not_the_symbol(self) -> None:
+        # The infinite coefficient is the literal 1e400; the finite symbol x is not the cause, for
+        # x = 1 (inf * 1) or x = 0 (inf * 0 is NaN). The expression is unsupported.
+        for value in (1, 0):
+            with self.subTest(x=value):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": value}
+                doc.setdefault("constraints", {})["derived"] = [
+                    {"require": "env.context.x * 1e400 <= 5"},
+                ]
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual([i["code"] for i in result.issues], ["unsupported_derived_expression"])
+
     def test_operational_huge_integer_context_value_is_non_numeric(self) -> None:
         # Issue #245: float(10**400) raises OverflowError; it must be a coded issue, not a crash.
         for value in (10**400, -(10**400)):
