@@ -467,3 +467,42 @@ def test_overflow_error_from_the_pipeline_is_a_coded_malformed_input(
     code, result = cli.run_cli(argv)
     assert code == 2 and result["ok"] is False
     assert result["issues"][0]["code"] == "schema_error"
+
+
+def _int_range_module(lo: int, hi: int, expr: str) -> dict:
+    """The unmonitored base with one int TVAR over [lo, hi] and one structural constraint."""
+    module = copy.deepcopy(_unmonitored_base()["module"])
+    module["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [lo, hi]}}]
+    module["constraints"] = {"structural": [{"expr": expr}], "derived": []}
+    return module
+
+
+def _error_codes(module: dict) -> list:
+    return [issue["code"] for issue in lint_module(module) if issue["severity"] == "error"]
+
+
+# Int range bounds are stored as binary64. An integer literal that fits in binary64 is compared as
+# binary64, so a literal equal to the bound it was stored from is not rejected.
+VALID_BOUNDARY_CASES = [
+    (0, 10**17 + 1, "x <= 100000000000000001"),
+    (0, 2**53 + 1, "x <= 9007199254740993"),
+    (0, 2**53 + 1, "x == 9007199254740993"),
+    (-(2**53 + 1), 0, "x >= -9007199254740993"),
+]
+
+
+@pytest.mark.parametrize("lo,hi,expr", VALID_BOUNDARY_CASES, ids=["1e17_le", "2p53_le", "2p53_eq", "neg_ge"])
+def test_int_literal_equal_to_a_binary64_range_bound_is_not_rejected(lo: int, hi: int, expr: str) -> None:
+    assert "constraint_value_out_of_domain" not in _error_codes(_int_range_module(lo, hi, expr))
+
+
+@pytest.mark.parametrize(
+    "lo,hi,expr",
+    [
+        (0, 2**53, "x <= 9007199254740995"),  # 2**53+3 is beyond the bound 2**53: still rejected
+        (0, 2**53, f"x <= {BIG}"),  # beyond the float range: a coded issue, not an exception
+    ],
+    ids=["2p53_plus3_le", "beyond_float_le"],
+)
+def test_int_literal_beyond_a_range_bound_is_still_rejected(lo: int, hi: int, expr: str) -> None:
+    assert _error_codes(_int_range_module(lo, hi, expr)) == ["constraint_value_out_of_domain"]

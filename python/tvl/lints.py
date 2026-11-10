@@ -2645,8 +2645,10 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
                 }
             )
             return issues
-        # int and float compare exactly in Python, so an integer beyond binary64 needs no float() here.
-        if type_info.minimum is not None and numeric < type_info.minimum:
+        # Range bounds are stored as binary64, so a literal that fits is compared as binary64 (as before).
+        # An integer beyond the float range is compared exactly: it lies outside every finite bound.
+        compared = float(numeric) if _fits_float(numeric) else numeric
+        if type_info.minimum is not None and compared < float(type_info.minimum):
             issues.append(
                 {
                     "code": "constraint_value_out_of_domain",
@@ -2655,7 +2657,7 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
                     "severity": "error",
                 }
             )
-        if type_info.maximum is not None and numeric > type_info.maximum:
+        if type_info.maximum is not None and compared > float(type_info.maximum):
             issues.append(
                 {
                     "code": "constraint_value_out_of_domain",
