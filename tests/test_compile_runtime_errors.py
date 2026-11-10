@@ -452,3 +452,18 @@ def test_lint_site_with_integer_beyond_float_range_is_a_coded_issue(
     setter(base["module"], sign * BIG)
     errors = [issue for issue in lint_module(base["module"]) if issue["severity"] == "error"]
     assert [(issue["code"], issue["path"]) for issue in errors] == [(code, path)]
+
+
+def test_overflow_error_from_the_pipeline_is_a_coded_malformed_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Defence in depth: an OverflowError reaching the catch-all is malformed-input range, exit 2 schema_error."""
+    argv = _write_case(tmp_path, BASES[0])
+
+    def overflow(*_args, **_kwargs):
+        raise OverflowError("int too large to convert to float")
+
+    monkeypatch.setattr(cli, "compile_runtime_document", overflow)
+    code, result = cli.run_cli(argv)
+    assert code == 2 and result["ok"] is False
+    assert result["issues"][0]["code"] == "schema_error"

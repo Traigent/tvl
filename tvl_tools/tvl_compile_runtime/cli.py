@@ -193,9 +193,10 @@ def run_cli(
         }
         print_output(result, get_format(args), text_renderer)
         return 2, result
-    except Exception as exc:  # noqa: BLE001
-        if not isinstance(exc, (ValueError, OSError)):
+    except Exception as exc:
+        if not isinstance(exc, (ValueError, OSError, OverflowError)):
             # Not a malformed-input condition: a programming error must surface, not read as a document defect.
+            # OverflowError is an integer beyond the float range in a document value, a range condition like ValueError.
             raise
         issue = {
             "code": "schema_error",
