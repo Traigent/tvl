@@ -524,10 +524,10 @@ def _stated_value_agrees(stated: Any, value: float) -> bool:
     The allowance is half a unit of the last decimal place the stated value is written with,
     read from ``str(stated)`` before any float conversion, so ``0.0012`` has four places and a
     half unit of 5e-5, ``np.float32(0.701)`` has three, and an integer has none (a half unit of
-    0.5). The allowance has a relative floor of 1e-9 of the sample value, so full-precision
-    floating-point values written by numeric libraries agree with the gate's own sums. A
-    non-finite, boolean or unparseable stated value never agrees, and neither does one too
-    large for a float."""
+    0.5). The allowance has a relative floor of 1e-9 of the sample value, so float64 values
+    written at full precision agree with the gate's own sums; float32 values are compared
+    exactly as float32 and may disagree. A non-finite, boolean or unparseable stated value
+    never agrees, and neither does one too large for a float."""
     if isinstance(stated, bool) or not isinstance(stated, numbers.Real):
         return False
     try:
