@@ -215,13 +215,16 @@ def test_samples_plus_n_only_derive_mean_and_std_from_the_samples():
 
 
 def test_samples_plus_std_only_keep_the_stated_std_and_derive_n_and_mean():
-    # The stated std agrees with the samples (a contradicting std is no decision; see below).
-    stated_std = _stats_of(HIGH_INC)["std"]
+    # The stated std is 0.5% above the sample std: within the 1% tolerance, so it is accepted
+    # and used as stated. The pooled std must reflect the stated value, not the derived one.
+    derived_std = _stats_of(HIGH_INC)["std"]
+    stated_std = derived_std * (1 + 5e-3)
     result = _test_objective(_spec(), {"samples": HIGH_INC, "std": stated_std}, dict(CAND_STATS))
 
     assert result.n_incumbent == 6
     assert result.mean_incumbent == pytest.approx(sum(HIGH_INC) / 6)
     assert result.std_pooled == pytest.approx(math.sqrt((stated_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
+    assert result.std_pooled != pytest.approx(math.sqrt((derived_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
 
 
 def test_empty_samples_with_full_stats_use_the_stated_stats_beside_a_sample_candidate():
