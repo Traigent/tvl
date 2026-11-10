@@ -596,3 +596,37 @@ def test_stated_value_too_large_for_a_float_is_no_decision_not_an_exception():
     quality = evidence["per_objective"]["quality"]
     assert decision == "NoDecision"
     assert quality["code"] == "missing_statistical_evidence"
+
+
+# A float subclass whose text is not a number is unparseable: it never agrees, and no exception
+# escapes. Each value equals the sample mean (1.0), so only the text decides (tvl#262).
+
+
+class _NaNText(float):
+    def __str__(self):
+        return "NaN"
+
+
+class _InfinityText(float):
+    def __str__(self):
+        return "Infinity"
+
+
+class _NonStrText(float):
+    def __str__(self):
+        return 5
+
+
+@pytest.mark.parametrize(
+    "stated_mean",
+    [_NaNText(1.0), _InfinityText(1.0), _NonStrText(1.0)],
+    ids=["text-NaN", "text-Infinity", "text-non-str"],
+)
+def test_stated_value_with_unparseable_text_is_no_decision_not_an_exception(stated_mean):
+    decision, evidence = _gate_api(
+        {"samples": [1.0, 1.1, 0.9], "mean": stated_mean}, dict(CAND_STATS)
+    )
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"

@@ -538,7 +538,10 @@ def _stated_value_agrees(stated: Any, value: float) -> bool:
         return False
     try:
         exponent = decimal.Decimal(str(stated)).as_tuple().exponent
-    except (decimal.InvalidOperation, ValueError):
+    except (TypeError, ValueError, ArithmeticError):
+        return False
+    # A finite Decimal has an int exponent. 'F' (Infinity) and 'n'/'N' (NaN) are not.
+    if not isinstance(exponent, int):
         return False
     places = max(0, -exponent)
     allowance = max(0.5 * 10 ** (-places), 1e-9 * abs(value))
