@@ -156,11 +156,11 @@ export default function SpecViewer() {
           <h1 className="text-3xl font-bold mb-2">{config.title}</h1>
           <p className="text-muted-foreground mb-4">{config.description}</p>
           <div className="flex gap-2">
-            <Button onClick={handleCopy} variant="outline">
+            <Button onClick={handleCopy} variant="outline" disabled={loading || !content}>
               {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
               {copied ? "Copied!" : "Copy"}
             </Button>
-            <Button onClick={handleDownload}>
+            <Button onClick={handleDownload} disabled={loading || !content}>
               <Download className="mr-2 h-4 w-4" />
               Download
             </Button>
