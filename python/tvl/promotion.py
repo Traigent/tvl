@@ -906,13 +906,14 @@ def _test_from_stats(
     if _incomplete_stats(inc_data) or _incomplete_stats(cand_data):
         return _missing_evidence_result(spec, inc_data, cand_data)
 
-    mean_inc = inc_data.get("mean", 0.0)
-    std_inc = inc_data.get("std", 0.0)
-    n_inc = inc_data.get("n", 0)
+    # _incomplete_stats above returned False, so every statistic is present and not None.
+    mean_inc = inc_data["mean"]
+    std_inc = inc_data["std"]
+    n_inc = inc_data["n"]
 
-    mean_cand = cand_data.get("mean", 0.0)
-    std_cand = cand_data.get("std", 0.0)
-    n_cand = cand_data.get("n", 0)
+    mean_cand = cand_data["mean"]
+    std_cand = cand_data["std"]
+    n_cand = cand_data["n"]
 
     if n_inc < 2 or n_cand < 2:
         return ObjectiveResult(
