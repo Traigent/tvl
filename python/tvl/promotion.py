@@ -495,12 +495,13 @@ def _test_objective(
     cand_samples = cand_data.get("samples")
     paired = cand_data.get("paired", False)
 
-    if inc_samples is not None and cand_samples is not None:
+    # Both arms with samples: the test runs on the samples, as before this branch.
+    if inc_samples and cand_samples:
         return _test_from_samples(spec, inc_samples, cand_samples, paired)
 
-    # Fall back to aggregated stats. An arm given only as samples (the other
-    # arm being mean/std/n) contributes the stats derived from its samples;
-    # reading it as mean/std/n would see an empty arm (n=0, mean=0.0) (tvl#262).
+    # Aggregated stats. A statistic an arm states is used as given; the ones it
+    # does not state are derived from its samples (tvl#262). An empty samples list
+    # is no samples.
     return _test_from_stats(spec, _arm_stats(inc_data), _arm_stats(cand_data))
 
 
@@ -508,21 +509,20 @@ _ARM_STAT_KEYS = ("mean", "std", "n")
 
 
 def _arm_stats(arm: dict[str, Any]) -> dict[str, Any]:
-    """``arm`` with ``mean``/``std``/``n`` derived from ``samples`` when it has
-    samples; otherwise ``arm`` unchanged.
+    """``arm`` with each of ``mean``/``std``/``n`` it does not state derived from its
+    ``samples``; an arm without samples is returned unchanged.
 
-    Samples take precedence over any stated statistics, as they do when both arms
-    carry samples: a stated ``n`` alone must not leave ``mean`` at a default (tvl#262).
-    An empty ``samples`` list is no samples, so stated statistics are used."""
+    A stated statistic always wins over the one derived from the samples (tvl#262).
+    A single sample has no sample std; that arm is inconclusive by the n < 2 rule,
+    which never reads the std."""
     samples = arm.get("samples")
-    if not samples and any(key in arm for key in _ARM_STAT_KEYS):
-        return arm
-    if samples is None:
+    if not samples:
         return arm
     n = len(samples)
-    mean = sum(samples) / n if n > 0 else 0.0
+    mean = sum(samples) / n
     var = sum((x - mean) ** 2 for x in samples) / (n - 1) if n > 1 else 0.0
-    return {**arm, "mean": mean, "std": math.sqrt(var), "n": n}
+    derived = {"mean": mean, "std": math.sqrt(var), "n": n}
+    return {**arm, **{key: value for key, value in derived.items() if arm.get(key) is None}}
 
 
 def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> ObjectiveResult:
@@ -612,10 +612,10 @@ def _unestimable_result(
 
 
 def _incomplete_stats(arm: Dict[str, Any]) -> bool:
-    """The arm states some of ``mean``/``std``/``n`` but not all three (an arm stating
-    none is an empty arm, spec §7.2)."""
-    stated = [arm.get(key) is not None for key in _ARM_STAT_KEYS]
-    return any(key in arm for key in _ARM_STAT_KEYS) and not all(stated)
+    """Some of ``mean``/``std``/``n`` is neither stated nor derivable from the arm's
+    samples (``_arm_stats`` has already derived what it could). An arm without
+    samples that states none of them is incomplete too (spec §7.2)."""
+    return any(arm.get(key) is None for key in _ARM_STAT_KEYS)
 
 
 def _missing_evidence_result(

@@ -148,12 +148,11 @@ def _gate(tmp_path: Path, inc_quality: dict) -> tuple[dict, int]:
     "inc_quality",
     [
         {"samples": HIGH_INC, "n": 6},
-        {"samples": HIGH_INC, "mean": 0.0, "std": 1.0, "n": 6},
         _stats_of(HIGH_INC),  # control: the same incumbent given as statistics
     ],
-    ids=["samples-plus-n", "samples-plus-contradicting-stats", "stats-control"],
+    ids=["samples-plus-n", "stats-control"],
 )
-def test_ci_gate_reads_a_sample_arm_with_stated_stats_from_its_samples(tmp_path: Path, inc_quality: dict):
+def test_ci_gate_reads_a_sample_arm_with_stated_n_from_its_samples(tmp_path: Path, inc_quality: dict):
     # A samples arm that also states n kept mean 0.0 and promoted a regression (tvl#262).
     out, code = _gate(tmp_path, inc_quality)
     quality = out["evidence"]["per_objective"]["quality"]
@@ -161,6 +160,87 @@ def test_ci_gate_reads_a_sample_arm_with_stated_stats_from_its_samples(tmp_path:
     assert quality["n_incumbent"] == 6
     assert out["decision"] == "Reject"
     assert code == 2
+
+
+def test_ci_gate_uses_a_stated_mean_over_the_samples_mean(tmp_path: Path):
+    # Stated statistics win; samples fill in what is missing (tvl#262). The stated mean 0.0 is used.
+    out, code = _gate(tmp_path, {"samples": HIGH_INC, "mean": 0.0, "std": 1.0, "n": 6})
+    quality = out["evidence"]["per_objective"]["quality"]
+    assert quality["mean_incumbent"] == pytest.approx(0.0)
+    assert quality["n_incumbent"] == 6
+    assert out["decision"] == "Promote"
+    assert code == 0
+
+
+def _gate_api(inc_quality: dict, cand_quality: dict):
+    from tvl.promotion import epsilon_pareto_gate
+
+    return epsilon_pareto_gate(
+        {"objective_values": {"quality": inc_quality}},
+        {"objective_values": {"quality": cand_quality}},
+        {"alpha": 0.05, "min_effect": {"quality": 0.01}},
+        [{"name": "quality", "direction": "maximize"}],
+    )
+
+
+def test_stated_mean_wins_over_the_samples_mean_in_a_mixed_pair():
+    # Issue #262 flip: the incumbent states mean 0.80. The samples (mean 0.703) do not override it,
+    # so the pair is not decided on the samples' mean (base 840939f: NoDecision with mean 0.80).
+    inc = {"samples": INC_SAMPLES, "mean": 0.80, "std": 0.04, "n": 6}
+    decision, evidence = _gate_api(inc, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["mean_incumbent"] == pytest.approx(0.80)
+    assert quality["n_incumbent"] == 6
+
+
+def test_original_262_repro_promotes_with_the_real_incumbent_n():
+    decision, evidence = _gate_api({"samples": INC_SAMPLES}, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "Promote"
+    assert quality["n_incumbent"] == 6
+    assert quality["mean_incumbent"] == pytest.approx(sum(INC_SAMPLES) / 6)
+
+
+def test_samples_plus_n_only_derive_mean_and_std_from_the_samples():
+    result = _test_objective(_spec(), {"samples": HIGH_INC, "n": 6}, dict(CAND_STATS))
+
+    assert result.n_incumbent == 6
+    assert result.mean_incumbent == pytest.approx(sum(HIGH_INC) / 6)
+    expected_std = _stats_of(HIGH_INC)["std"]
+    assert result.std_pooled == pytest.approx(math.sqrt((expected_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
+
+
+def test_samples_plus_std_only_keep_the_stated_std_and_derive_n_and_mean():
+    result = _test_objective(_spec(), {"samples": HIGH_INC, "std": 0.01}, dict(CAND_STATS))
+
+    assert result.n_incumbent == 6
+    assert result.mean_incumbent == pytest.approx(sum(HIGH_INC) / 6)
+    assert result.std_pooled == pytest.approx(math.sqrt((0.01 ** 2 + 0.04 ** 2) / 2), rel=1e-12)
+
+
+def test_empty_samples_with_full_stats_use_the_stated_stats_beside_a_sample_candidate():
+    # An empty samples list is no samples: the incumbent's stated stats are used, not an n=0 arm.
+    cand = [0.80, 0.83, 0.81, 0.82, 0.84, 0.82]
+    decision, evidence = _gate_api({"samples": [], "mean": 0.70, "std": 0.01, "n": 6}, {"samples": cand})
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "Promote"
+    assert quality["n_incumbent"] == 6
+    assert quality["mean_incumbent"] == pytest.approx(0.70)
+    assert "code" not in quality
+
+
+@pytest.mark.parametrize("inc_quality", [{}, {"samples": []}], ids=["no-samples-no-stats", "empty-samples-no-stats"])
+def test_an_arm_with_no_samples_and_no_stats_is_missing_evidence_not_zero(inc_quality: dict):
+    decision, evidence = _gate_api(inc_quality, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+    assert quality["mean_incumbent"] is None
 
 
 @pytest.mark.parametrize("missing", ["mean", "std", "n"])
