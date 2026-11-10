@@ -495,7 +495,7 @@ def test_stated_mean_0_99_percent_off_the_sample_mean_is_no_decision():
 def test_stated_mean_exactly_half_a_unit_away_is_consistent():
     # The samples [1.5, 1.6] have mean 1.55. The stated 1.5 is written to one place, so the
     # half unit is 0.05 and the difference is exactly that.
-    decision, evidence = _gate_api({"samples": [1.5, 1.6], "mean": 1.5}, dict(CAND_STATS))
+    _decision, evidence = _gate_api({"samples": [1.5, 1.6], "mean": 1.5}, dict(CAND_STATS))
 
     assert "code" not in evidence["per_objective"]["quality"]
 
@@ -614,7 +614,8 @@ class _InfinityText(float):
 
 class _NonStrText(float):
     def __str__(self):
-        return 5
+        # Deliberate: __str__ returns a non-str to prove the gate does not crash on it.
+        return 5  # noqa: PLE0307
 
 
 @pytest.mark.parametrize(
