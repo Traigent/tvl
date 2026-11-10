@@ -234,8 +234,8 @@ def _is_nan(value: Any) -> bool:
 
 def _band_issues(name: Any, band: dict[str, Any], observed: float) -> list[dict[str, Any]]:
     low, high = _band_bounds(band)
-    # Issue #252: every comparison with a NaN bound is false, so a NaN bound (math.isnan)
-    # is a violation too. The original comparisons run first, keeping their errors
+    # Issue #252: every comparison with a NaN bound is false, so a NaN bound (tested by
+    # self-comparison in _is_nan) is a violation too. The original comparisons run first, keeping their errors
     # for incomparable bounds (tests/test_characterization_measurement.py).
     if (low is not None and (observed < low or _is_nan(low))) or (
         high is not None and (observed > high or _is_nan(high))
