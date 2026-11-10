@@ -46,9 +46,9 @@ class ObjectiveResult:
     test_type: str  # "welch", "paired", "precomputed"
     n_incumbent: int
     n_candidate: int
-    mean_incumbent: Optional[float]  # None only when the arm states no mean (code set)
-    mean_candidate: Optional[float]
-    delta: Optional[float]  # candidate - incumbent
+    mean_incumbent: float | None  # None only when the arm states no mean (code set)
+    mean_candidate: float | None
+    delta: float | None  # candidate - incumbent
     std_pooled: Optional[float]
     t_statistic: Optional[float]
     df: Optional[float]
@@ -640,7 +640,7 @@ def _unestimable_result(
     )
 
 
-def _incomplete_stats(arm: Dict[str, Any]) -> bool:
+def _incomplete_stats(arm: dict[str, Any]) -> bool:
     """Some of ``mean``/``std``/``n`` is neither stated nor derivable from the arm's
     samples (``_arm_stats`` has already derived what it could). An arm without
     samples that states none of them is incomplete too (spec §7.2)."""
@@ -648,8 +648,8 @@ def _incomplete_stats(arm: Dict[str, Any]) -> bool:
 
 
 def _missing_evidence_result(
-    spec: ObjectiveSpec, inc_data: Dict[str, Any], cand_data: Dict[str, Any], conflict: bool = False
-) -> "_MissingEvidenceResult":
+    spec: ObjectiveSpec, inc_data: dict[str, Any], cand_data: dict[str, Any], conflict: bool = False
+) -> _MissingEvidenceResult:
     """Inconclusive result for an arm with neither samples nor complete mean/std/n, or
     (``conflict``) whose stated statistics contradict its samples.
 

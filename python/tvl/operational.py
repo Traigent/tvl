@@ -4,16 +4,16 @@ import ast
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from .model import ValidationOptions, extract_validation_options
 
 
 @dataclass
 class BudgetSummary:
-    max_trials: Optional[Union[int, float]]
+    max_trials: int | float | None
     max_spend_usd: Optional[float]
-    max_wallclock_s: Optional[Union[int, float]]
+    max_wallclock_s: int | float | None
 
 
 @dataclass
@@ -89,7 +89,7 @@ def check_operational(module: dict[str, Any]) -> OperationalResult:
     return OperationalResult(ok=True, binding_budget=None, issues=issues)
 
 
-def _safe_int(value: Any) -> Optional[Union[int, float]]:
+def _safe_int(value: Any) -> int | float | None:
     if value is None:
         return None
     try:

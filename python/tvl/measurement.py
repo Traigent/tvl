@@ -225,13 +225,19 @@ def _band_bounds(band: dict[str, Any]) -> tuple[Any, Any]:
     return None, None
 
 
+def _is_nan(value: Any) -> bool:
+    # Bounds are compared with a float observed value before this runs, so they are
+    # orderable; math.isnan() would raise on a non-float bound, hence the isinstance guard.
+    return isinstance(value, float) and math.isnan(value)
+
+
 def _band_issues(name: Any, band: dict[str, Any], observed: float) -> list[dict[str, Any]]:
     low, high = _band_bounds(band)
-    # Issue #252: every comparison with a NaN bound is false, so a NaN bound (x != x)
+    # Issue #252: every comparison with a NaN bound is false, so a NaN bound (math.isnan)
     # is a violation too. The original comparisons run first, keeping their errors
     # for incomparable bounds (tests/test_characterization_measurement.py).
-    if (low is not None and (observed < low or low != low)) or (
-        high is not None and (observed > high or high != high)
+    if (low is not None and (observed < low or _is_nan(low))) or (
+        high is not None and (observed > high or _is_nan(high))
     ):
         return [_objective_issue(name, "band_violation", f"Value {observed} outside band [{low}, {high}]")]
     return []

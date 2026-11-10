@@ -18,6 +18,7 @@ from tvl.loader import load
 from tvl.model import InvalidDomainError
 from tvl.structural_parser import StructuralParseError
 from tvl.structural_sat import check_structural
+
 from tvl_tools.cli_utils import add_version_arg
 
 
