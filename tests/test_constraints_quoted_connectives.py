@@ -121,6 +121,22 @@ def test_config_validate_rejects_the_value_an_escaped_quote_forbids(tmp_path) ->
     assert results == {'a"b': 5, "c": 0}
 
 
+def test_backslash_in_a_quoted_value_escapes_the_next_character() -> None:
+    # Issue #246 behaviour change, pinned: "C:\path" reads as C:path, as the structural parser reads it.
+    assert parse_expression(r'mode != "C:\path"', frozenset({"mode"})) == [
+        [Atom(path="mode", op="!=", value="C:path")]
+    ]
+
+
+def test_unquoted_value_with_an_apostrophe_is_a_constraint_parse_error() -> None:
+    # Issue #246 behaviour change, pinned: an unquoted value containing a quote character is rejected.
+    compiled = compile_constraints(_module("mode != don't"))
+    assert compiled.constraints == []
+    [issue] = compiled.parse_issues
+    assert issue["code"] == "constraint_parse_error"
+    assert "quote" in issue["message"]
+
+
 def test_unquoted_connectives_still_split() -> None:
     assert parse_expression('mode = "c" and y = 1 or y = 2', frozenset({"mode", "y"})) == [
         [Atom(path="mode", op="==", value="c"), Atom(path="y", op="==", value=1)],
