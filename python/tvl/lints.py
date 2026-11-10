@@ -3003,7 +3003,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
             else:
                 value = min_effect.get(name)
-                if not _is_finite_number(value) or float(value) < 0:
+                if not _is_finite_number(value) or not _fits_float(value) or float(value) < 0:
                     issues.append(
                         {
                             "code": "invalid_min_effect",
@@ -3226,6 +3226,15 @@ def _is_number(value: Any) -> bool:
 def _is_finite_number(value: Any) -> bool:
     """A number that is not NaN or an infinity (issue #252: every comparison with NaN is false)."""
     return _is_number(value) and (isinstance(value, int) or math.isfinite(value))
+
+
+def _fits_float(value: Any) -> bool:
+    """False for an integer that float() cannot represent (e.g. 10**400): a malformed value, not a crash."""
+    try:
+        float(value)
+    except OverflowError:
+        return False
+    return True
 
 
 # -----------------------------------------------------------------------------

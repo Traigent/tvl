@@ -193,7 +193,10 @@ def run_cli(
         }
         print_output(result, get_format(args), text_renderer)
         return 2, result
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        if not isinstance(exc, (ValueError, OSError)):
+            # Not a malformed-input condition: a programming error must surface, not read as a document defect.
+            raise
         issue = {
             "code": "schema_error",
             "message": "schema_error",
