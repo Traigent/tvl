@@ -665,13 +665,13 @@ def _missing_evidence_result(
     A missing statistic is never read as 0.0, which could decide the comparison (tvl#262);
     the result carries the code the measurement readiness check uses for the same input.
     """
-    mean_inc = inc_data.get("mean")
-    mean_cand = cand_data.get("mean")
+    n_inc, mean_inc = _reported_n_and_mean(inc_data, conflict)
+    n_cand, mean_cand = _reported_n_and_mean(cand_data, conflict)
     return _MissingEvidenceResult(
         name=spec.name,
         test_type="welch",
-        n_incumbent=inc_data.get("n") or 0,
-        n_candidate=cand_data.get("n") or 0,
+        n_incumbent=n_inc,
+        n_candidate=n_cand,
         mean_incumbent=mean_inc,
         mean_candidate=mean_cand,
         delta=None if mean_inc is None or mean_cand is None else mean_cand - mean_inc,
@@ -684,6 +684,16 @@ def _missing_evidence_result(
         verdict="inconclusive",
         conflict=conflict,
     )
+
+
+def _reported_n_and_mean(arm: dict[str, Any], conflict: bool) -> tuple[int, Any]:
+    """The n and mean an arm reports as missing-evidence evidence. On a conflict, an arm
+    with samples reports the values its samples give, not the stated ones that contradict
+    them (tvl#262)."""
+    samples = arm.get("samples")
+    if conflict and samples:
+        return len(samples), sum(samples) / len(samples)
+    return arm.get("n") or 0, arm.get("mean")
 
 
 def _test_from_samples(

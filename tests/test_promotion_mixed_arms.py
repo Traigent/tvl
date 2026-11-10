@@ -184,15 +184,15 @@ def _gate_api(inc_quality: dict, cand_quality: dict):
 
 
 def test_stated_mean_contradicting_the_samples_is_no_decision_in_a_mixed_pair():
-    # The incumbent states mean 0.80 beside samples averaging 0.703. The stated value is
-    # reported as given, but the contradiction leaves the objective undecided.
+    # The incumbent states mean 0.80 beside samples averaging 0.703. The contradiction leaves
+    # the objective undecided, and the evidence reports the mean the samples give, not 0.80.
     inc = {"samples": INC_SAMPLES, "mean": 0.80, "std": 0.04, "n": 6}
     decision, evidence = _gate_api(inc, dict(CAND_STATS))
 
     quality = evidence["per_objective"]["quality"]
     assert decision == "NoDecision"
     assert quality["code"] == "missing_statistical_evidence"
-    assert quality["mean_incumbent"] == pytest.approx(0.80)
+    assert quality["mean_incumbent"] == pytest.approx(sum(INC_SAMPLES) / 6)
     assert quality["n_incumbent"] == 6
 
 
@@ -309,6 +309,23 @@ def test_stated_n_contradicting_the_samples_is_no_decision_through_ci_gate(tmp_p
     assert quality["code"] == "missing_statistical_evidence"
     assert "disagree with the samples" in out["evidence"]["summary"]["decision_reason"]
     assert code != 0
+
+
+@pytest.mark.parametrize(
+    "contradiction",
+    [{"n": 100000}, {"mean": 0.5}, {"std": 5.0}, {"n": 100000, "mean": 0.5}],
+    ids=["n", "mean", "std", "n-and-mean"],
+)
+def test_conflict_evidence_reports_the_sample_arms_n_and_mean(contradiction: dict):
+    # The conflict result must not show the stated, contradicting values as the arm's n and mean.
+    decision, evidence = _gate_api(_stats_of(INC_SAMPLES), {"samples": CAND8, **contradiction})
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+    assert quality["n_candidate"] == 8
+    assert quality["mean_candidate"] == pytest.approx(sum(CAND8) / 8)
+    assert quality["delta"] == pytest.approx(sum(CAND8) / 8 - _stats_of(INC_SAMPLES)["mean"])
 
 
 @pytest.mark.parametrize("side", ["candidate", "incumbent"])
