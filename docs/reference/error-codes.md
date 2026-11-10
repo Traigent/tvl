@@ -356,7 +356,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 ### `invalid_band_target`
 - **Severity**: error
 - **Description**: Banded objective target has invalid format. A banded objective declares an acceptable range instead of a direction: `target: [low, high]`, or `{ center, tol }`, where `tol` is the tolerance radius around `center` and must be greater than 0.
-- **Example**: `band: { target: [1, "high"] }`, or a bound that is NaN or an infinity (`[100, .nan]`)
+- **Example**: `band: { target: [1, "high"] }`, or a bound that is NaN, an infinity (`[100, .nan]`), or an integer beyond the float range
 - **Remediation**: Use `target: [low, high]` with numeric values or `{ center: num, tol: num }`.
 
 ### `invalid_band_bounds`
@@ -367,7 +367,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_band_center_tol`
 - **Severity**: error
-- **Description**: Banded objective center/tol are not finite numbers (NaN and infinities are rejected).
+- **Description**: Banded objective center/tol are not finite numbers (NaN and infinities are rejected), or tol is an integer beyond the float range.
 - **Example**: `band: { target: { center: "middle", tol: 5 } }`
 - **Remediation**: Use numeric values for center and tol.
 
@@ -446,7 +446,7 @@ The promotion policy compares a candidate with the incumbent. Under `dominance: 
 
 ### `invalid_min_effect`
 - **Severity**: error
-- **Description**: Epsilon value is not a finite non-negative number (NaN and infinities are rejected).
+- **Description**: Epsilon value is not a finite non-negative number (NaN and infinities are rejected), including an integer beyond the float range.
 - **Example**: `min_effect: { quality: -0.01 }`
 - **Remediation**: Set epsilon >= 0.
 
@@ -505,7 +505,7 @@ The promotion policy compares a candidate with the incumbent. Under `dominance: 
 
 ### `invalid_convergence_threshold`
 - **Severity**: error
-- **Description**: Hypervolume convergence threshold is not a finite positive number. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
+- **Description**: Hypervolume convergence threshold is not a finite number greater than 0, including an integer beyond the float range. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
 - **Example**: `convergence: { metric: hypervolume_improvement, threshold: 0 }`
 - **Remediation**: Set threshold > 0.
 
