@@ -23,7 +23,7 @@ jobs:
   python:
     name: Python Tests
     runs-on: ubuntu-latest
-    # Observed: about 6 min median, 7.4 min max.
+    # Observed over the last 100 successful runs: median about 5.2 min, max 7.4 min.
     timeout-minutes: 20
 
     steps:
@@ -85,9 +85,9 @@ jobs:
   website:
     name: Website Build
     runs-on: ubuntu-latest
-    # Observed: about 1 min median, 2.4 min max; the Playwright and book PDF
-    # steps make it the most install-heavy job.
-    timeout-minutes: 20
+    # Observed over the last 100 successful runs: median about 1.2 min, max 16 min. In the
+    # 16-min run the Install Playwright Chromium step alone took about 15 min.
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository

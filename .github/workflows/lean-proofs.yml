@@ -33,8 +33,7 @@ jobs:
   lake-build:
     name: Lean Build (proofs/)
     runs-on: ubuntu-latest
-    # Observed: about 3 min median with a warm cache, 22 min max on a cold
-    # Mathlib cache; the limit leaves room for a cold build.
+    # Observed over the last 53 successful runs of this job: median about 2.6 min, max 22 min.
     timeout-minutes: 45
 
     steps:

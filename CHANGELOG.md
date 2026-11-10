@@ -48,7 +48,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Website dependencies: seven unused packages and the axios override are removed from the lockfile (issue #257).
 - The book drops an unreferenced 350 KB screenshot from `tvl_book/figures` (issue #260).
 - The Guided Walkthrough's automation step runs `test_all_examples.sh` (issue #234).
-- CI: jobs have timeouts, pull request runs cancel superseded runs, and every non-PR CI and Lean run has its own concurrency group, so a push to `main` no longer waits on or cancels another run (issue #237).
+- CI: every job has a timeout, and the Website Build timeout is 30 minutes, since its Playwright Chromium install took about 15 minutes in an observed run. In the CI and Lean Proofs workflows, pull request runs cancel the runs they supersede, and runs of other events, such as a push to `main`, are never cancelled by a later run (issue #237).
 
 ### Fixed
 
