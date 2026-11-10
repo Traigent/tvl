@@ -519,18 +519,32 @@ _ARM_STAT_KEYS = ("mean", "std", "n")
 
 
 def _stated_value_agrees(stated: Any, value: float) -> bool:
-    """True when a stated mean or std agrees with the sample value it is compared to: the
-    difference is at most half a unit of the last decimal place the stated value is written
-    with (tvl#262). ``repr`` gives that place, so ``0.0012`` has four places and a half unit
-    of 5e-5. An integer-valued stated number has no decimal places and gets a half unit of 0.5.
-    A non-finite or boolean stated value never agrees."""
+    """True when a stated mean or std agrees with the sample value it is compared to (tvl#262).
+
+    The allowance is half a unit of the last decimal place the stated value is written with,
+    read from ``str(stated)`` before any float conversion, so ``0.0012`` has four places and a
+    half unit of 5e-5, ``np.float32(0.701)`` has three, and an integer has none (a half unit of
+    0.5). The allowance has a relative floor of 1e-9 of the sample value, so full-precision
+    floating-point values written by numeric libraries agree with the gate's own sums. A
+    non-finite, boolean or unparseable stated value never agrees, and neither does one too
+    large for a float."""
     if isinstance(stated, bool) or not isinstance(stated, numbers.Real):
         return False
-    stated = float(stated)
-    if not math.isfinite(stated):
+    try:
+        number = float(stated)
+    except OverflowError:
         return False
-    places = max(0, -decimal.Decimal(repr(stated)).as_tuple().exponent)
-    return abs(stated - value) <= 0.5 * 10 ** (-places) + 1e-12
+    if not math.isfinite(number):
+        return False
+    try:
+        exponent = decimal.Decimal(str(stated)).as_tuple().exponent
+    except (decimal.InvalidOperation, ValueError):
+        return False
+    places = max(0, -exponent)
+    allowance = max(0.5 * 10 ** (-places), 1e-9 * abs(value))
+    # The 1e-9 relative slack absorbs the rounding of the subtraction itself, so an exact
+    # half-unit boundary (samples [1.5, 1.6] against 1.5) is accepted.
+    return abs(number - value) <= allowance * (1 + 1e-9)
 
 
 def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:

@@ -530,3 +530,69 @@ def test_stats_only_pair_is_tested_on_the_stated_values():
     assert result.mean_incumbent == 0.70
     assert result.p_value_super == pytest.approx(oracle.p_value_super, rel=1e-12)
     assert result.p_value_noninf == pytest.approx(oracle.p_value_noninf, rel=1e-12)
+
+
+# Written precision is read from the value as stated, not from a float's repr (tvl#262).
+
+
+def test_float32_stated_mean_and_std_agree_with_the_samples():
+    # numpy writes a float32 with its shortest repr (0.701), but float() of it has 16 digits.
+    np = pytest.importorskip("numpy")
+    stated = {
+        "samples": SAMPLE_703,
+        "mean": np.float32(0.703),
+        "std": np.float32(round(_sample_std(SAMPLE_703, 1), 4)),
+        "n": 6,
+    }
+    decision, evidence = _gate_api(stated, dict(CAND_STATS))
+    samples_only_decision, _ = _gate_api({"samples": SAMPLE_703}, dict(CAND_STATS))
+
+    assert "code" not in evidence["per_objective"]["quality"]
+    assert decision == samples_only_decision
+
+
+@pytest.mark.parametrize(
+    ("samples", "agrees"),
+    [([0.5, 0.6, 0.7], True), ([0.2, 0.3, 0.4], False)],
+    ids=["int-1-vs-sample-mean-0.6", "int-1-vs-sample-mean-0.3"],
+)
+def test_integer_stated_mean_has_an_allowance_of_half_a_unit(samples: list[float], agrees: bool):
+    # An integer has no decimal places, so its allowance is 0.5. Before this, float(1) was read as
+    # 1.0 (one place) and the allowance was 0.05.
+    decision, evidence = _gate_api({"samples": samples, "mean": 1, "n": 3}, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    if agrees:
+        assert "code" not in quality
+    else:
+        assert decision == "NoDecision"
+        assert quality["code"] == "missing_statistical_evidence"
+
+
+@pytest.mark.parametrize("scale", [1.5e5, 2.5e6], ids=["scale-1.5e5", "scale-2.5e6"])
+def test_full_precision_numpy_statistics_on_large_values_agree(scale: float):
+    # np.mean and np.std are pairwise sums; the gate sums in order. The two differ by an ulp, which
+    # is far larger than 1e-12 at this magnitude. Such a stated value is still the same statistic.
+    np = pytest.importorskip("numpy")
+    for seed in range(20):
+        rng = np.random.default_rng(seed)
+        samples = [float(x) for x in rng.normal(scale, 0.1 * scale, 30)]
+        stated = {
+            "samples": samples,
+            "mean": float(np.mean(samples)),
+            "std": float(np.std(samples, ddof=1)),
+            "n": 30,
+        }
+        decision, evidence = _gate_api(stated, dict(CAND_STATS))
+        samples_only_decision, _ = _gate_api({"samples": samples}, dict(CAND_STATS))
+
+        assert "code" not in evidence["per_objective"]["quality"], f"seed {seed}"
+        assert decision == samples_only_decision, f"seed {seed}"
+
+
+def test_stated_value_too_large_for_a_float_is_no_decision_not_an_exception():
+    decision, evidence = _gate_api({"samples": [1.0, 2.0], "mean": 10 ** 400}, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
