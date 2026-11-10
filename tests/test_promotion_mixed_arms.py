@@ -214,17 +214,16 @@ def test_samples_plus_n_only_derive_mean_and_std_from_the_samples():
     assert result.std_pooled == pytest.approx(math.sqrt((expected_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
 
 
-def test_samples_plus_std_only_keep_the_stated_std_and_derive_n_and_mean():
-    # The stated std is 0.5% above the sample std: within the 1% tolerance, so it is accepted
-    # and used as stated. The pooled std must reflect the stated value, not the derived one.
+def test_samples_plus_std_only_derive_n_and_mean_and_use_the_sample_std():
+    # The samples are authoritative: the pooled std comes from the samples' ddof=1 std, and
+    # a consistent stated std is only a cross-check, never the value the test uses.
     derived_std = _stats_of(HIGH_INC)["std"]
-    stated_std = derived_std * (1 + 5e-3)
+    stated_std = round(derived_std, 4)
     result = _test_objective(_spec(), {"samples": HIGH_INC, "std": stated_std}, dict(CAND_STATS))
 
     assert result.n_incumbent == 6
     assert result.mean_incumbent == pytest.approx(sum(HIGH_INC) / 6)
-    assert result.std_pooled == pytest.approx(math.sqrt((stated_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
-    assert result.std_pooled != pytest.approx(math.sqrt((derived_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
+    assert result.std_pooled == pytest.approx(math.sqrt((derived_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
 
 
 def test_empty_samples_with_full_stats_use_the_stated_stats_beside_a_sample_candidate():
@@ -350,8 +349,8 @@ def test_stated_statistics_contradicting_the_samples_are_no_decision(side: str, 
 
 @pytest.mark.parametrize(
     "stated",
-    [{"n": 8}, _stats_of(CAND8), {"mean": _stats_of(CAND8)["mean"] * (1 + 1e-9)}],
-    ids=["n-equal-to-samples", "full-stats-from-samples", "mean-within-tolerance"],
+    [{"n": 8}, _stats_of(CAND8)],
+    ids=["n-equal-to-samples", "full-stats-from-samples"],
 )
 def test_consistent_stated_statistics_still_promote(stated: dict):
     decision, evidence = _gate_api(_stats_of(INC_SAMPLES), {"samples": CAND8, **stated})
@@ -382,26 +381,46 @@ def _sample_std(samples: list[float], ddof: int) -> float:
 @pytest.mark.parametrize(
     "stated",
     [
-        {"mean": 0.703},  # mean rounded to three places: relative difference about 5e-4
-        {"std": round(_sample_std(SAMPLE_703, 1), 4)},  # std rounded to four places
-        {"std": _sample_std(SAMPLE_703, 0)},  # std with the numpy default ddof=0
+        {"n": 6, "mean": 0.703},  # mean written to three places; |diff| = 2.9e-4 <= 5e-4
+        {"n": 6, "std": round(_sample_std(SAMPLE_703, 1), 4)},  # std written to four places
+        {"n": 6, "mean": 0.703, "std": round(_sample_std(SAMPLE_703, 1), 4)},
     ],
-    ids=["mean-rounded", "std-rounded", "std-ddof0"],
+    ids=["mean-3-places", "std-4-places", "mean-and-std"],
 )
-def test_rounded_or_ddof0_stated_statistics_are_used_as_given(stated: dict):
-    # Consistent statistics (within 1% relative) are accepted and used exactly as stated, so the
-    # result equals the aggregated-stats test on the stated numbers.
-    mean = stated.get("mean", sum(SAMPLE_703) / 6)
-    std = stated.get("std", _sample_std(SAMPLE_703, 1))
-    arm = {"samples": SAMPLE_703, "mean": mean, "std": std, "n": 6}
-    result = _test_objective(_spec(), arm, dict(CAND_STATS))
-    oracle = _test_from_stats(_spec(), {"mean": mean, "std": std, "n": 6}, dict(CAND_STATS))
+def test_consistent_written_precision_statistics_decide_as_the_samples_alone(stated: dict):
+    # The stated values agree with the samples to the precision they are written with, so
+    # they are accepted, and the test runs on the sample mean and std, not on the stated ones.
+    result = _test_objective(_spec(), {"samples": SAMPLE_703, **stated}, dict(CAND_STATS))
+    samples_only = _test_objective(_spec(), {"samples": SAMPLE_703}, dict(CAND_STATS))
 
-    assert result.verdict == oracle.verdict
+    assert result.verdict == samples_only.verdict
     assert result.n_incumbent == 6
-    assert result.mean_incumbent == pytest.approx(mean, rel=1e-12)
+    assert result.mean_incumbent == pytest.approx(sum(SAMPLE_703) / 6, rel=1e-12)
+    assert result.std_pooled == pytest.approx(samples_only.std_pooled, rel=1e-12)
     for field in ("t_statistic", "df", "p_value_noninf", "p_value_super", "p_value_inferior"):
-        assert getattr(result, field) == pytest.approx(getattr(oracle, field), rel=1e-12), field
+        assert getattr(result, field) == pytest.approx(getattr(samples_only, field), rel=1e-12), field
+
+
+def test_stated_population_std_is_accepted_and_the_sample_std_is_used():
+    # A std written to four places that equals the ddof=0 population std is consistent. The test
+    # still uses the ddof=1 std of the samples: the stated value does not reach the p-values.
+    pop_std = round(_sample_std(SAMPLE_703, 0), 4)
+    sample_std = _sample_std(SAMPLE_703, 1)
+    assert pop_std != pytest.approx(sample_std, rel=1e-3)
+
+    decision, evidence = _gate_api({"samples": SAMPLE_703, "std": pop_std, "n": 6}, dict(CAND_STATS))
+    samples_only_decision, samples_only = _gate_api({"samples": SAMPLE_703}, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert "code" not in quality
+    assert decision == samples_only_decision
+    assert quality["p_value_super"] == pytest.approx(samples_only["per_objective"]["quality"]["p_value_super"], rel=1e-12)
+    assert quality["p_value_noninf"] == pytest.approx(
+        samples_only["per_objective"]["quality"]["p_value_noninf"], rel=1e-12
+    )
+    assert quality["std_pooled"] == pytest.approx(
+        math.sqrt((sample_std ** 2 + 0.04 ** 2) / 2), rel=1e-12
+    )
 
 
 @pytest.mark.parametrize(
@@ -421,3 +440,93 @@ def test_contradictions_against_rounded_samples_stay_no_decision(contradiction: 
     assert decision == "NoDecision"
     assert quality["code"] == "missing_statistical_evidence"
     assert "disagree with the samples" in evidence["summary"]["decision_reason"]
+
+
+# The samples are authoritative. A stated mean, std or n on an arm with samples is a consistency
+# cross-check only: it must agree with the samples to the precision it is written with, and the
+# test never reads the stated value (tvl#262).
+
+COST8 = [0.00120, 0.00125, 0.00123, 0.00124, 0.00122, 0.00123, 0.00124, 0.00127]  # mean 0.001235
+COST_CAND = {"mean": 0.0010, "std": 0.00002, "n": 50}
+C30 = [0.701 + 0.004 * ((i % 5) - 2) for i in range(30)]
+
+
+def _gate_objective(inc_quality: dict, cand_quality: dict, direction: str, min_effect: float):
+    from tvl.promotion import epsilon_pareto_gate
+
+    return epsilon_pareto_gate(
+        {"objective_values": {"quality": inc_quality}},
+        {"objective_values": {"quality": cand_quality}},
+        {"alpha": 0.05, "min_effect": {"quality": min_effect}},
+        [{"name": "quality", "direction": direction}],
+    )
+
+
+def test_cost_mean_written_to_four_places_is_consistent_and_decides_as_the_samples_alone():
+    # The sample mean is 0.001235. Stated 0.0012 is that mean written to four places:
+    # |diff| = 3.5e-5 <= 0.5 * 10**-4. The result equals the one with no stated mean.
+    stated_decision, stated_ev = _gate_objective({"samples": COST8, "mean": 0.0012}, COST_CAND, "minimize", 0.0)
+    alone_decision, alone_ev = _gate_objective({"samples": COST8}, COST_CAND, "minimize", 0.0)
+    quality = stated_ev["per_objective"]["quality"]
+    alone = alone_ev["per_objective"]["quality"]
+
+    assert "code" not in quality
+    assert stated_decision == alone_decision
+    assert quality["mean_incumbent"] == pytest.approx(0.001235, rel=1e-12)
+    for field in ("t_statistic", "df", "std_pooled", "p_value_noninf", "p_value_super", "p_value_inferior"):
+        assert quality[field] == pytest.approx(alone[field], rel=1e-12), field
+
+
+def test_stated_mean_0_99_percent_off_the_sample_mean_is_no_decision():
+    # 1.0099 times the sample mean is 0.99% away. Written in full, that is far finer than the
+    # stated precision allows, so the stated mean contradicts the samples.
+    s = _stats_of(C30)
+    decision, evidence = _gate_api(
+        {"mean": 0.70, "std": 0.01, "n": 30},
+        {"samples": C30, "mean": s["mean"] * 1.0099},
+    )
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+    assert "disagree with the samples" in evidence["summary"]["decision_reason"]
+
+
+def test_stated_mean_exactly_half_a_unit_away_is_consistent():
+    # The samples [1.5, 1.6] have mean 1.55. The stated 1.5 is written to one place, so the
+    # half unit is 0.05 and the difference is exactly that.
+    decision, evidence = _gate_api({"samples": [1.5, 1.6], "mean": 1.5}, dict(CAND_STATS))
+
+    assert "code" not in evidence["per_objective"]["quality"]
+
+
+def test_stated_mean_just_over_half_a_unit_away_is_no_decision():
+    # The samples [1.5, 1.6002] have mean 1.5501. The difference from 1.5 is 0.0501, just over 0.05.
+    decision, evidence = _gate_api({"samples": [1.5, 1.6002], "mean": 1.5}, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+
+
+@pytest.mark.parametrize("stated_mean", [float("nan"), float("inf"), True], ids=["nan", "inf", "bool"])
+def test_non_finite_or_boolean_stated_mean_is_no_decision(stated_mean):
+    # A boolean is not a statistic. For the sample mean 1.0, True would otherwise read as 1.0.
+    decision, evidence = _gate_api({"samples": [1.0, 1.1, 0.9], "mean": stated_mean}, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+
+
+def test_stats_only_pair_is_tested_on_the_stated_values():
+    # An arm without samples is unchanged: its stated mean, std and n are the inputs.
+    inc = {"mean": 0.70, "std": 0.01, "n": 50}
+    cand = {"mean": 0.82, "std": 0.04, "n": 200}
+    result = _test_objective(_spec(), dict(inc), dict(cand))
+    oracle = _test_from_stats(_spec(), dict(inc), dict(cand))
+
+    assert result.n_incumbent == 50
+    assert result.mean_incumbent == 0.70
+    assert result.p_value_super == pytest.approx(oracle.p_value_super, rel=1e-12)
+    assert result.p_value_noninf == pytest.approx(oracle.p_value_noninf, rel=1e-12)

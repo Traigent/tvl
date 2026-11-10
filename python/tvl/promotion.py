@@ -9,7 +9,9 @@ This module implements ε-Pareto dominance testing with:
 """
 from __future__ import annotations
 
+import decimal
 import math
+import numbers
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -503,27 +505,40 @@ def _test_objective(
     if inc_samples and cand_samples:
         return _test_from_samples(spec, inc_samples, cand_samples, paired)
 
-    # Aggregated stats. A statistic an arm states is used as given; the ones it
-    # does not state are derived from its samples (tvl#262). An empty samples list
-    # is no samples. Stated statistics that contradict an arm's own samples do not
-    # decide the objective, whichever path the gate was invoked through.
+    # Aggregated stats. An arm with samples is tested on the statistics its samples
+    # give; a statistic it states is only a consistency cross-check (tvl#262). An
+    # empty samples list is no samples. Stated statistics that contradict an arm's
+    # own samples do not decide the objective, whichever path the gate was invoked
+    # through.
     if _stated_stats_contradict_samples(inc_data) or _stated_stats_contradict_samples(cand_data):
         return _missing_evidence_result(spec, inc_data, cand_data, conflict=True)
     return _test_from_stats(spec, _arm_stats(inc_data), _arm_stats(cand_data))
 
 
 _ARM_STAT_KEYS = ("mean", "std", "n")
-# A stated mean or std within 1% (relative) of the samples' value is a rounding or a
-# convention difference, not a contradiction. ``n`` must match exactly.
-_STATS_AGREEMENT = {"rel_tol": 1e-2, "abs_tol": 1e-9}
+
+
+def _stated_value_agrees(stated: Any, value: float) -> bool:
+    """True when a stated mean or std agrees with the sample value it is compared to: the
+    difference is at most half a unit of the last decimal place the stated value is written
+    with (tvl#262). ``repr`` gives that place, so ``0.0012`` has four places and a half unit
+    of 5e-5. An integer-valued stated number has no decimal places and gets a half unit of 0.5.
+    A non-finite or boolean stated value never agrees."""
+    if isinstance(stated, bool) or not isinstance(stated, numbers.Real):
+        return False
+    stated = float(stated)
+    if not math.isfinite(stated):
+        return False
+    places = max(0, -decimal.Decimal(repr(stated)).as_tuple().exponent)
+    return abs(stated - value) <= 0.5 * 10 ** (-places) + 1e-12
 
 
 def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:
     """True when an arm with samples states an ``n``, ``mean`` or ``std`` that its own
     samples do not produce (tvl#262). ``n`` must equal the sample count. A stated mean
-    must be within 1% of the sample mean. A stated std must be within 1% of either the
-    ddof=1 or the ddof=0 sample std. The std is compared only when the samples determine
-    one (n >= 2). A non-finite stated value never agrees."""
+    must agree with the sample mean to the precision it is written with (see
+    ``_stated_value_agrees``). A stated std must agree with either the ddof=1 or the ddof=0
+    sample std. The std is compared only when the samples determine one (n >= 2)."""
     samples = arm.get("samples")
     if not samples:
         return False
@@ -531,36 +546,36 @@ def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:
     mean = sum(samples) / n
     if arm.get("n") is not None and arm["n"] != n:
         return True
-    if arm.get("mean") is not None and not math.isclose(arm["mean"], mean, **_STATS_AGREEMENT):
+    if arm.get("mean") is not None and not _stated_value_agrees(arm["mean"], mean):
         return True
     if n >= 2 and arm.get("std") is not None:
         sum_sq = sum((x - mean) ** 2 for x in samples)
         std_ddof1 = math.sqrt(sum_sq / (n - 1))
         std_ddof0 = math.sqrt(sum_sq / n)
         if not (
-            math.isclose(arm["std"], std_ddof1, **_STATS_AGREEMENT)
-            or math.isclose(arm["std"], std_ddof0, **_STATS_AGREEMENT)
+            _stated_value_agrees(arm["std"], std_ddof1)
+            or _stated_value_agrees(arm["std"], std_ddof0)
         ):
             return True
     return False
 
 
 def _arm_stats(arm: dict[str, Any]) -> dict[str, Any]:
-    """``arm`` with each of ``mean``/``std``/``n`` it does not state derived from its
-    ``samples``; an arm without samples is returned unchanged.
+    """``arm`` with its ``mean``/``std``/``n`` set from its ``samples``; an arm without
+    samples is returned unchanged.
 
-    A stated statistic that agrees with the samples is used as given (a contradicting
-    one is rejected earlier, by ``_stated_stats_contradict_samples``). A single sample
-    has no sample std; that arm is inconclusive by the n < 2 rule, which never reads
-    the std."""
+    The samples are authoritative: any stated mean, std or n on an arm with samples is
+    replaced by the value the samples give (n, the mean, and the ddof=1 sample std, 0.0
+    for a single sample). A stated value that does not agree with the samples never gets
+    here: ``_stated_stats_contradict_samples`` rejects it first. A single sample has no
+    sample std; that arm is inconclusive by the n < 2 rule, which never reads the std."""
     samples = arm.get("samples")
     if not samples:
         return arm
     n = len(samples)
     mean = sum(samples) / n
     var = sum((x - mean) ** 2 for x in samples) / (n - 1) if n > 1 else 0.0
-    derived = {"mean": mean, "std": math.sqrt(var), "n": n}
-    return {**arm, **{key: value for key, value in derived.items() if arm.get(key) is None}}
+    return {**arm, "mean": mean, "std": math.sqrt(var), "n": n}
 
 
 def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> ObjectiveResult:
