@@ -86,6 +86,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The SpecViewer and Examples preview apply only the latest request, and SpecViewer's Copy and Download stay disabled until content loads (issue #236).
 - Every website fetch rejects a non-2xx response, so an error page is never shown or copied as file content (issue #240).
 - The Examples preview shows a failed load as an error message; Copy reports the error and does not copy it or show success (issue #240).
+
 Entries marked **(1.5.0)** fix defects that are also present in the 1.5.0 release. The structural soundness fixes among them can change a reported result, so re-run `tvl-check-structural` on modules checked with 1.5.0.
 
 - Website dependencies (Dependabot alerts 219-221): `ip-address` 10.7.1 to 10.7.4 and `@vitest/mocker` 4.1.11 to 4.1.12 (with its `@vitest/spy`), both patch-level bumps inside the existing override ranges.
