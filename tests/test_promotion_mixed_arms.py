@@ -162,14 +162,14 @@ def test_ci_gate_reads_a_sample_arm_with_stated_n_from_its_samples(tmp_path: Pat
     assert code == 2
 
 
-def test_ci_gate_uses_a_stated_mean_over_the_samples_mean(tmp_path: Path):
-    # Stated statistics win; samples fill in what is missing (tvl#262). The stated mean 0.0 is used.
+def test_ci_gate_stated_mean_contradicting_the_samples_is_no_decision(tmp_path: Path):
+    # A stated mean that the samples do not produce (0.0 against samples averaging 0.955) must not
+    # decide the objective: it promoted before the tvl#262 contradiction rule.
     out, code = _gate(tmp_path, {"samples": HIGH_INC, "mean": 0.0, "std": 1.0, "n": 6})
     quality = out["evidence"]["per_objective"]["quality"]
-    assert quality["mean_incumbent"] == pytest.approx(0.0)
-    assert quality["n_incumbent"] == 6
-    assert out["decision"] == "Promote"
-    assert code == 0
+    assert quality["code"] == "missing_statistical_evidence"
+    assert out["decision"] == "NoDecision"
+    assert code != 0
 
 
 def _gate_api(inc_quality: dict, cand_quality: dict):
@@ -183,14 +183,15 @@ def _gate_api(inc_quality: dict, cand_quality: dict):
     )
 
 
-def test_stated_mean_wins_over_the_samples_mean_in_a_mixed_pair():
-    # Issue #262 flip: the incumbent states mean 0.80. The samples (mean 0.703) do not override it,
-    # so the pair is not decided on the samples' mean (base 840939f: NoDecision with mean 0.80).
+def test_stated_mean_contradicting_the_samples_is_no_decision_in_a_mixed_pair():
+    # The incumbent states mean 0.80 beside samples averaging 0.703. The stated value is
+    # reported as given, but the contradiction leaves the objective undecided.
     inc = {"samples": INC_SAMPLES, "mean": 0.80, "std": 0.04, "n": 6}
     decision, evidence = _gate_api(inc, dict(CAND_STATS))
 
     quality = evidence["per_objective"]["quality"]
     assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
     assert quality["mean_incumbent"] == pytest.approx(0.80)
     assert quality["n_incumbent"] == 6
 
@@ -214,11 +215,13 @@ def test_samples_plus_n_only_derive_mean_and_std_from_the_samples():
 
 
 def test_samples_plus_std_only_keep_the_stated_std_and_derive_n_and_mean():
-    result = _test_objective(_spec(), {"samples": HIGH_INC, "std": 0.01}, dict(CAND_STATS))
+    # The stated std agrees with the samples (a contradicting std is no decision; see below).
+    stated_std = _stats_of(HIGH_INC)["std"]
+    result = _test_objective(_spec(), {"samples": HIGH_INC, "std": stated_std}, dict(CAND_STATS))
 
     assert result.n_incumbent == 6
     assert result.mean_incumbent == pytest.approx(sum(HIGH_INC) / 6)
-    assert result.std_pooled == pytest.approx(math.sqrt((0.01 ** 2 + 0.04 ** 2) / 2), rel=1e-12)
+    assert result.std_pooled == pytest.approx(math.sqrt((stated_std ** 2 + 0.04 ** 2) / 2), rel=1e-12)
 
 
 def test_empty_samples_with_full_stats_use_the_stated_stats_beside_a_sample_candidate():
@@ -261,3 +264,86 @@ def test_an_arm_with_incomplete_stats_is_missing_evidence_not_zero(missing: str)
     if missing == "mean":
         assert quality["mean_incumbent"] is None
     assert evidence["summary"]["decision_reason"].startswith("missing_statistical_evidence")
+
+
+CAND8 = [0.80, 0.83, 0.81, 0.82, 0.84, 0.82, 0.81, 0.83]
+LOW8 = [0.60, 0.63, 0.61, 0.62, 0.64, 0.62, 0.61, 0.63]
+
+
+def _gate_cli(tmp_path: Path, inc_quality: dict, cand_quality: dict) -> tuple[dict, int]:
+    inc = {
+        "module_id": "corp.support.rag_bot",
+        "objective_values": {
+            "quality": inc_quality,
+            "latency_p95_ms": {"samples": [1500, 1510, 1490, 1505, 1495, 1500]},
+        },
+        "chance_outcomes": {"latency_slo": {"violations": 0, "trials": 100}},
+    }
+    cand = {
+        "module_id": "corp.support.rag_bot",
+        "objective_values": {
+            "quality": cand_quality,
+            "latency_p95_ms": {"mean": 1300, "std": 85, "n": 40},
+        },
+        "chance_outcomes": {"latency_slo": {"violations": 0, "trials": 100}},
+    }
+    (tmp_path / "inc.yml").write_text(yaml.safe_dump(inc), encoding="utf-8")
+    (tmp_path / "cand.yml").write_text(yaml.safe_dump(cand), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "-m", "tvl_tools.tvl_ci_gate.cli",
+         str(REPO / "spec/examples/rag-support-bot.tvl.yml"),
+         str(tmp_path / "inc.yml"), str(tmp_path / "cand.yml"), "--json"],
+        capture_output=True, text=True, cwd=REPO, check=False,
+    )
+    return json.loads(proc.stdout), proc.returncode
+
+
+def test_stated_n_contradicting_the_samples_is_no_decision_through_ci_gate(tmp_path: Path):
+    # tvl#262 follow-up: 8 samples with a stated n of 100000 promoted (exit 0) before the fix.
+    out, code = _gate_cli(tmp_path, _stats_of(INC_SAMPLES), {"samples": CAND8, "n": 100000})
+    quality = out["evidence"]["per_objective"]["quality"]
+    assert out["decision"] == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+    assert "disagree with the samples" in out["evidence"]["summary"]["decision_reason"]
+    assert code != 0
+
+
+@pytest.mark.parametrize("side", ["candidate", "incumbent"])
+@pytest.mark.parametrize(
+    "contradiction",
+    [{"n": 100000}, {"mean": 0.5}, {"std": 5.0}],
+    ids=["n", "mean", "std"],
+)
+def test_stated_statistics_contradicting_the_samples_are_no_decision(side: str, contradiction: dict):
+    arm = {"samples": CAND8, **contradiction}
+    if side == "candidate":
+        decision, evidence = _gate_api(_stats_of(INC_SAMPLES), arm)
+    else:
+        decision, evidence = _gate_api(arm, dict(CAND_STATS))
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "NoDecision"
+    assert quality["code"] == "missing_statistical_evidence"
+    assert quality["verdict"] == "inconclusive"
+    assert "disagree with the samples" in evidence["summary"]["decision_reason"]
+
+
+@pytest.mark.parametrize(
+    "stated",
+    [{"n": 8}, _stats_of(CAND8), {"mean": _stats_of(CAND8)["mean"] * (1 + 1e-9)}],
+    ids=["n-equal-to-samples", "full-stats-from-samples", "mean-within-tolerance"],
+)
+def test_consistent_stated_statistics_still_promote(stated: dict):
+    decision, evidence = _gate_api(_stats_of(INC_SAMPLES), {"samples": CAND8, **stated})
+
+    quality = evidence["per_objective"]["quality"]
+    assert decision == "Promote"
+    assert "code" not in quality
+    assert quality["n_candidate"] == 8
+
+
+def test_consistent_stated_statistics_still_reject():
+    decision, evidence = _gate_api(_stats_of(INC_SAMPLES), {"samples": LOW8, "n": 8})
+
+    assert decision == "Reject"
+    assert "code" not in evidence["per_objective"]["quality"]

@@ -64,8 +64,12 @@ class ObjectiveResult:
 
 @dataclass
 class _MissingEvidenceResult(ObjectiveResult):
-    """Inconclusive standard-objective result whose arm lacks usable statistics (tvl#262)."""
+    """Inconclusive standard-objective result whose arm lacks usable statistics (tvl#262).
+
+    ``conflict`` marks an arm whose stated statistics contradict its own samples,
+    as opposed to one that lacks them."""
     code: str = "missing_statistical_evidence"
+    conflict: bool = False
 
 
 @dataclass
@@ -501,20 +505,45 @@ def _test_objective(
 
     # Aggregated stats. A statistic an arm states is used as given; the ones it
     # does not state are derived from its samples (tvl#262). An empty samples list
-    # is no samples.
+    # is no samples. Stated statistics that contradict an arm's own samples do not
+    # decide the objective, whichever path the gate was invoked through.
+    if _stated_stats_contradict_samples(inc_data) or _stated_stats_contradict_samples(cand_data):
+        return _missing_evidence_result(spec, inc_data, cand_data, conflict=True)
     return _test_from_stats(spec, _arm_stats(inc_data), _arm_stats(cand_data))
 
 
 _ARM_STAT_KEYS = ("mean", "std", "n")
+_STATS_AGREEMENT = {"rel_tol": 1e-6, "abs_tol": 1e-9}
+
+
+def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:
+    """True when an arm with samples states an ``n``, ``mean`` or ``std`` that its own
+    samples do not produce (tvl#262). The std is compared only when the samples
+    determine one (n >= 2). A non-finite stated value never agrees."""
+    samples = arm.get("samples")
+    if not samples:
+        return False
+    n = len(samples)
+    mean = sum(samples) / n
+    if arm.get("n") is not None and arm["n"] != n:
+        return True
+    if arm.get("mean") is not None and not math.isclose(arm["mean"], mean, **_STATS_AGREEMENT):
+        return True
+    if n >= 2 and arm.get("std") is not None:
+        var = sum((x - mean) ** 2 for x in samples) / (n - 1)
+        if not math.isclose(arm["std"], math.sqrt(var), **_STATS_AGREEMENT):
+            return True
+    return False
 
 
 def _arm_stats(arm: dict[str, Any]) -> dict[str, Any]:
     """``arm`` with each of ``mean``/``std``/``n`` it does not state derived from its
     ``samples``; an arm without samples is returned unchanged.
 
-    A stated statistic always wins over the one derived from the samples (tvl#262).
-    A single sample has no sample std; that arm is inconclusive by the n < 2 rule,
-    which never reads the std."""
+    A stated statistic that agrees with the samples is used as given (a contradicting
+    one is rejected earlier, by ``_stated_stats_contradict_samples``). A single sample
+    has no sample std; that arm is inconclusive by the n < 2 rule, which never reads
+    the std."""
     samples = arm.get("samples")
     if not samples:
         return arm
@@ -619,9 +648,10 @@ def _incomplete_stats(arm: Dict[str, Any]) -> bool:
 
 
 def _missing_evidence_result(
-    spec: ObjectiveSpec, inc_data: Dict[str, Any], cand_data: Dict[str, Any]
+    spec: ObjectiveSpec, inc_data: Dict[str, Any], cand_data: Dict[str, Any], conflict: bool = False
 ) -> "_MissingEvidenceResult":
-    """Inconclusive result for an arm with neither samples nor complete mean/std/n.
+    """Inconclusive result for an arm with neither samples nor complete mean/std/n, or
+    (``conflict``) whose stated statistics contradict its samples.
 
     A missing statistic is never read as 0.0, which could decide the comparison (tvl#262);
     the result carries the code the measurement readiness check uses for the same input.
@@ -643,6 +673,7 @@ def _missing_evidence_result(
         p_value_super=1.0,
         epsilon=spec.epsilon,
         verdict="inconclusive",
+        conflict=conflict,
     )
 
 
@@ -1246,13 +1277,24 @@ def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
         )
     missing = [
         name for name, r in evidence.per_objective.items()
-        if isinstance(r, _MissingEvidenceResult)
+        if isinstance(r, _MissingEvidenceResult) and not r.conflict
     ]
-    if missing:
-        return (
-            "NoDecision",
-            f"missing_statistical_evidence: no samples or complete mean/std/n for: {', '.join(missing)}",
-        )
+    conflicting = [
+        name for name, r in evidence.per_objective.items()
+        if isinstance(r, _MissingEvidenceResult) and r.conflict
+    ]
+    if missing or conflicting:
+        parts = []
+        if missing:
+            parts.append(
+                f"missing_statistical_evidence: no samples or complete mean/std/n for: {', '.join(missing)}"
+            )
+        if conflicting:
+            parts.append(
+                "missing_statistical_evidence: stated statistics disagree with the samples for: "
+                f"{', '.join(conflicting)}"
+            )
+        return ("NoDecision", "; ".join(parts))
     inconclusive = _objective_names(evidence, ObjectiveResult, lambda verdict: verdict == "inconclusive")
     return (
         "NoDecision",
