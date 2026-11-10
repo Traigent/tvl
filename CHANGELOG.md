@@ -61,6 +61,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `tvl-ci-gate` lints every full module before deciding, where it linted only TVL 1.3 modules, so a schema-valid module with an error-severity lint is refused instead of promoting; a legacy full module passed with `--policy` now goes through schema validation (issues #156, #165). Warning-severity lints are kept in its output.
 - `tvl-parse` exits 2 on an empty, sequence or scalar document instead of exiting 0 with `ok: true`; schema validation stays `tvl-validate`'s job (issue #164).
 - `tvl-check-structural --candidate-file` reports an unreadable, malformed or non-mapping candidate or module as a diagnostic with exit 2 (JSON when `--json`), not a traceback (issue #159).
+- `tvl-microsim-bridge` exits 2 with a one-line `Error:` message when its spec is missing or does not parse, instead of a traceback; with `--dry-run` it also prints an `{"ok": false, "error": ...}` JSON object (issue #159).
 - The VS Code extension derives the linter path only from an exact `tvl-validate` basename and has a machine-scoped `tvl.lint.path` setting for custom validator names; pull-request CI compiles and tests the extension with `TVL_REQUIRE_CLI=1` (issues #160, #166).
 
 - `tvl-validate` and `tvl-lint` report `duplicate_domain_value` for a repeated member in a bare-list `int` or `float` domain and in a tuple component, not only in a `set:` or enum domain.
