@@ -733,23 +733,24 @@ def test_compile_cli_unwritable_out_dir_is_io_error(tmp_path: Path, blocker: str
     module_path.write_text(json.dumps(case["module"]), encoding="utf-8")
     tokens_path.write_text(json.dumps({"format": "tvl-token-map/1", "tokens": case["input"]["token_map"]}),
                            encoding="utf-8")
+    read_only_parent: Path | None = None
     if blocker == "out_dir_is_file":
         out_dir = tmp_path / "taken"
         out_dir.write_text("not a directory", encoding="utf-8")
     else:
-        parent = tmp_path / "ro"
-        parent.mkdir()
-        parent.chmod(0o500)
-        out_dir = parent / "out"
+        read_only_parent = tmp_path / "ro"
+        read_only_parent.mkdir()
+        read_only_parent.chmod(0o500)
+        out_dir = read_only_parent / "out"
     try:
-        if blocker == "read_only_parent" and os.access(parent, os.W_OK):
+        if read_only_parent is not None and os.access(read_only_parent, os.W_OK):
             pytest.skip("running with privileges that ignore directory permissions")
         code, result = run_compile_cli(
             [str(module_path), "--token-map", str(tokens_path), "--out-dir", str(out_dir), "--format", "json"]
         )
     finally:
-        if blocker == "read_only_parent":
-            parent.chmod(0o700)
+        if read_only_parent is not None:
+            read_only_parent.chmod(0o700)
     assert code == 2 and not result["ok"]
     assert [issue["code"] for issue in result["issues"]] == ["io_error"]
     assert str(out_dir) in result["issues"][0]["message"]

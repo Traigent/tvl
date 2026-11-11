@@ -4,6 +4,7 @@ The duplicate-requirement identity sorted selector tuples that hold ``None`` for
 fields next to strings, which raised ``TypeError`` for a schema-valid module.
 """
 
+import contextlib
 import copy
 import json
 import sys
@@ -60,10 +61,8 @@ def test_tvl_validate_reports_issues_not_a_python_error(tmp_path, monkeypatch, c
     module = tmp_path / "mixed.tvl.yml"
     module.write_text(yaml.safe_dump(_mixed_selector_module(), sort_keys=False))
     monkeypatch.setattr(sys, "argv", ["tvl-validate", str(module), "--json"])
-    try:
+    with contextlib.suppress(SystemExit):
         cli.main()
-    except SystemExit:
-        pass
     payload = json.loads(capsys.readouterr().out)
     assert "error" not in payload, payload
     assert "issues" in payload

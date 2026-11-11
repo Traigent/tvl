@@ -226,16 +226,19 @@ def _band_bounds(band: dict[str, Any]) -> tuple[Any, Any]:
 
 
 def _is_nan(value: Any) -> bool:
-    # Intentional NaN test by self-comparison (NaN is the only value unequal to itself).
-    # It must also work for numpy scalars, which are not float subclasses, so do not
-    # replace it with an isinstance(float) check.
-    return value != value  # noqa: PLR0124
+    # math.isnan reads numpy scalars and Decimal NaN, which are not float subclasses, so
+    # do not replace it with an isinstance(float) check. A value it cannot read as a
+    # number (a string, a mapping, an integer beyond the float range) is not NaN.
+    try:
+        return math.isnan(value)
+    except (TypeError, OverflowError):
+        return False
 
 
 def _band_issues(name: Any, band: dict[str, Any], observed: float) -> list[dict[str, Any]]:
     low, high = _band_bounds(band)
     # Issue #252: every comparison with a NaN bound is false, so a NaN bound (tested by
-    # self-comparison in _is_nan) is a violation too. The original comparisons run first, keeping their errors
+    # _is_nan) is a violation too. The original comparisons run first, keeping their errors
     # for incomparable bounds (tests/test_characterization_measurement.py).
     if (low is not None and (observed < low or _is_nan(low))) or (
         high is not None and (observed > high or _is_nan(high))
