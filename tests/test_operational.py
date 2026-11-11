@@ -14,7 +14,7 @@ if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
 
 
-def _tree_env() -> Dict[str, str]:
+def _tree_env() -> dict[str, str]:
     # The CLI subprocesses must import the tree under test, not whatever tvl is installed.
     return dict(os.environ, PYTHONPATH=os.pathsep.join([str(PKG_ROOT), str(BASE)]))
 
