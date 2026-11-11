@@ -53,3 +53,16 @@ describe("SpecViewer ignores superseded loads and keeps loading state honest (#2
     expect(spec).toMatch(/\.catch\(\(err\) => \{\s*if \(!isCurrent\(\)\) return;[\s\S]*?toast\.error\("Failed to load file"\);\s*\}\)/);
   });
 });
+
+describe("Specification shows an error state when its documentation fails to load (#272)", () => {
+  const spec = readFileSync(path.join(PAGES, "Specification.tsx"), "utf8");
+
+  it("the rejection handler records a visible error message, not only a console entry", () => {
+    expect(spec).toMatch(/\.catch\(\(err\) => \{\s*console\.error\("[^"]*", err\);\s*setLoadError\(/);
+  });
+
+  it("both documentation tabs render the error message in place of their content", () => {
+    expect(spec.match(/\) : loadError \? \(/g)?.length ?? 0).toBe(2);
+    expect(spec).toMatch(/role="alert"/);
+  });
+});

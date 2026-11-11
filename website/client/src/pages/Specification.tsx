@@ -14,6 +14,7 @@ export default function Specification() {
   const [schemaContent, setSchemaContent] = useState("");
   const [activeTab, setActiveTab] = useState("language");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -24,7 +25,10 @@ export default function Specification() {
         setLanguageContent(lang);
         setSchemaContent(schema);
       })
-      .catch((err) => console.error("Error loading documentation:", err))
+      .catch((err) => {
+        console.error("Error loading documentation:", err);
+        setLoadError("The documentation could not be loaded. Reload the page to try again.");
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -299,6 +303,8 @@ export default function Specification() {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-12 text-muted-foreground">Loading documentation...</div>
+                  ) : loadError ? (
+                    <div role="alert" className="text-sm text-destructive">{loadError}</div>
                   ) : (
                     <div className="spec-prose max-w-none">
                       <Streamdown>{languageContent}</Streamdown>
@@ -319,6 +325,8 @@ export default function Specification() {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-12 text-muted-foreground">Loading documentation...</div>
+                  ) : loadError ? (
+                    <div role="alert" className="text-sm text-destructive">{loadError}</div>
                   ) : (
                     <div className="spec-prose max-w-none">
                       <Streamdown>{schemaContent}</Streamdown>
