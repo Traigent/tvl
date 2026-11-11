@@ -1011,7 +1011,7 @@ These diagnostics indicate that the module uses features outside the formally ve
 | 0 | Success under the tool's contract (see the 1.3 tool table below) |
 | 2 | A reported issue, validation or parse failure, or an unsuccessful gate decision, as specified by the tool |
 
-TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`, which exits 5 when validation fails or it refuses a construct. Exit 1 is not a defined diagnostic outcome. Diagnostics with severity `info` never change the exit status.
+TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`, which exits 5 when validation fails or it refuses a construct. Exit 1 is not a defined diagnostic outcome. `tvl-compile-runtime` does not report an internal error (a bug in the toolchain, not a problem with the input) as one of these codes: it exits 1 with a Python traceback, and such a failure should be reported as a bug. Diagnostics with severity `info` never change the exit status.
 
 ---
 
