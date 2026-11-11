@@ -503,6 +503,41 @@ class OperationalTests(unittest.TestCase):
                     f"Derived constraint '{expression}' has a numeric literal beyond the float range",
                 )
 
+    def test_derived_unary_minus_chain_too_deep_for_the_parser_is_a_coded_issue(self) -> None:
+        # ast.parse raises MemoryError, not SyntaxError, on a very long unary-minus chain. It must be
+        # reported as the same unparseable-form issue that a RecursionError gives, never raised.
+        for literal in ("5", str(10**400)):
+            with self.subTest(literal=literal[:8]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1}
+                doc.setdefault("constraints", {})["derived"] = [
+                    {"require": "-" * 6000 + f"env.context.x <= {literal}"},
+                ]
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                self.assertEqual([i["code"] for i in result.issues], ["unsupported_derived_expression"])
+
+    def test_cli_unary_minus_chain_too_deep_for_the_parser_exits_2_without_traceback(self) -> None:
+        import subprocess
+        import tempfile
+
+        source = (BASE / "spec" / "examples" / "cost-optimization.tvl.yml").read_text(encoding="utf-8")
+        original = "    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05\n"
+        for literal in ("5", str(10**400)):
+            deep = "-" * 6000 + f"env.context.provider_input_price_usd_per_1k_tokens <= {literal}"
+            text = source.replace(original, original + f"    - require: {deep}\n")
+            self.assertNotEqual(text, source)
+            with self.subTest(literal=literal[:8]), tempfile.TemporaryDirectory() as tmp:
+                path = pathlib.Path(tmp) / "minus_deep.tvl.yml"
+                path.write_text(text, encoding="utf-8")
+                proc = subprocess.run(
+                    [sys.executable, "-m", "tvl_tools.tvl_check_operational.cli", str(path), "--json"],
+                    capture_output=True, text=True, cwd=BASE, check=False, env=_tree_env(),
+                )
+                self.assertEqual(proc.returncode, 2, proc.stderr[-2000:])
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertIn("unsupported_derived_expression", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

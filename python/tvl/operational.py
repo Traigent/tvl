@@ -130,7 +130,7 @@ def _beyond_float_probe(derived: DerivedConstraint) -> DerivedConstraint | None:
     expression = re.sub(r'(?<![=<>!])=(?![=])', '==', derived.expression)
     try:
         tree = ast.parse(expression, mode='eval')
-    except (SyntaxError, ValueError, RecursionError):
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
         return None
     body = tree.body
     if not isinstance(body, ast.Compare) or len(body.ops) != 1:
@@ -240,7 +240,8 @@ def _parse_derived_expression(
         tree = ast.parse(expression, mode='eval')
     except SyntaxError:
         return None, None, None, []
-    except RecursionError:
+    except (RecursionError, MemoryError):
+        # CPython's parser reports a too-deep expression as MemoryError ("Parser stack overflowed").
         return None, None, None, []
     return _parse_derived_tree(tree)
 
