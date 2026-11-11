@@ -204,7 +204,7 @@ def _scalar(rng: random.Random):
         return "a" * 200_000
     return copy.deepcopy(rng.choice([
         None, True, False, 0, -1, 2**63, 10**400, 1.5, float("nan"), float("inf"),
-        "", "x", "\x00", "‮\x00\x1b[0m", "a" * 4000, [], {}, [None], {"k": None},  # noqa: PLE2502 - deliberate control characters as test input
+        "", "x", "\x00", "\u202e\x00\x1b[0m", "a" * 4000, [], {}, [None], {"k": None},
     ]))
 
 
@@ -237,7 +237,7 @@ def _mutate_text(rng: random.Random, text: str) -> bytes:
     if op == "truncate":
         return text[: rng.randrange(len(text) + 1)].encode("utf-8")
     if op == "ctrl":
-        char = rng.choice(["\x00", "\x1b", "\t", "\r\n", " ", "﻿", "‮", "\x7f", "\U0001F600"])  # noqa: PLE2502 - deliberate control characters as test input
+        char = rng.choice(["\x00", "\x1b", "\t", "\r\n", "\u2028", "\ufeff", "\u202e", "\x7f", "\U0001F600"])
         index = rng.randrange(len(text) + 1)
         return (text[:index] + char + text[index:]).encode("utf-8")
     if op == "tabs":
