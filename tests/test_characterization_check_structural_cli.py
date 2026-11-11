@@ -104,7 +104,7 @@ def _docs(out: str) -> list[dict[str, Any]]:
             assert isinstance(doc["durationMs"], int) and doc["durationMs"] >= 0
             doc["durationMs"] = "<ms>"
         if doc.get("witnessId") is not None:
-            assert doc["witnessId"].startswith("w-") and len(doc["witnessId"]) == 8
+            assert doc["witnessId"].startswith("w-") and len(doc["witnessId"]) == 18
             doc["witnessId"] = "<w>"
         docs.append(doc)
     return docs
@@ -384,13 +384,15 @@ def test_json_candidate_sat_with_unsortable_assignment(monkeypatch, capsys, tmp_
     assert _docs(out)[0]["witnessId"] is None
 
 
-def test_json_candidate_sat_with_unhashable_assignment_raises(monkeypatch, capsys, tmp_path) -> None:
+def test_json_candidate_sat_with_list_valued_assignment_gets_witness_id(monkeypatch, capsys, tmp_path) -> None:
+    # Before #250 hash() of a list value raised TypeError; the JSON digest handles it.
     module = str(_write(tmp_path, SAT))
     cand = _candidate(tmp_path, {"id": "c", "edits": []})
     monkeypatch.setattr(cli, "check_structural", lambda m: StructuralResult(ok=True, assignment={"a": [1]}, unsat_core=None))
-    monkeypatch.setattr(sys, "argv", ["x", module, "--json", "--candidate-file", str(cand)])
-    with pytest.raises(TypeError, match="unhashable"):
-        cli.main()
+    code, out, _ = _run(monkeypatch, capsys, module, "--json", "--candidate-file", str(cand))
+    assert code == 0
+    assert cli._build_witness_id({"a": [1]}) in out
+    assert _docs(out)[0]["witnessId"] == "<w>"
 
 
 def test_text_candidate_mode_prints_text_only(monkeypatch, capsys, tmp_path) -> None:

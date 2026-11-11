@@ -4,6 +4,7 @@ import { ChapterReferences, chapterNumber, DesignSpaceMotif, PredictAnswers } fr
 import { beginPending, reportBookError } from "../components/pending";
 import { editionLine, includePilotFromSearch, lastWrittenChapter, plannedChapters, readableChapters, type Chapter } from "../chapters";
 import { BUILD_COMMIT } from "../buildInfo";
+import { fetchText } from "../../lib/fetchText";
 import { ChapterProvider, CommitContext, PrintContext } from "../context";
 import { mdxComponents } from "../mdxComponents";
 import "../book.css";
@@ -94,7 +95,7 @@ export default function BookPrint() {
         document.body.appendChild(host);
         // Paged.js is given only the book stylesheet. The site's Tailwind CSS is not needed
         // for print and Paged.js's CSS parser does not cope with all of it.
-        const css = await (await fetch(bookCssUrl)).text();
+        const css = await fetchText(bookCssUrl);
         const sheets: Record<string, string>[] = [{ [new URL(bookCssUrl, location.href).href]: css }];
         for (const el of Array.from(document.head.querySelectorAll("style"))) el.remove();
         for (const link of Array.from(document.querySelectorAll('link[rel="stylesheet"]'))) link.remove();

@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -166,12 +167,14 @@ _SHARED_BOUND_CASES = {
 
 def _cli_codes(tool: str, path: Path) -> tuple[int, set[str]]:
     """Run a CLI the way a user does and return its exit status and codes."""
+    tree_env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT / "python"), str(ROOT)]))
     proc = subprocess.run(
         [sys.executable, "-m", f"tvl_tools.{tool}.cli", str(path), "--json"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env=tree_env,
     )
     assert proc.stdout, f"{tool} printed nothing; stderr={proc.stderr[:400]}"
     payload = json.loads(proc.stdout)
@@ -377,3 +380,67 @@ def test_the_redacted_channel_is_not_substituted(tmp_path):
     assert "ghost_customer_key" not in proc.stdout, (
         "a redacted diagnostic was replaced by an unredacted lint: " + proc.stdout
     )
+
+
+# Issue #224: an integer beyond the float range is a coded lint error at a band centre or a budget, and
+# tvl-validate exits 2 on it. The schema accepts these integers, so the lint is the only gate.
+_BIG = 10**400
+
+
+def _band_doc(target) -> dict:
+    doc = copy.deepcopy(BASE)
+    doc["objectives"] = [{"name": "quality", "band": {"target": target, "test": "TOST", "alpha": 0.05}}]
+    doc["promotion_policy"]["min_effect"] = {"quality": 0.01}
+    return doc
+
+
+@pytest.mark.parametrize("target,code,message,path", [
+    ({"center": _BIG, "tol": 1}, "invalid_band_center_tol",
+     "Banded objective 'quality' center must be within the float range", ["target", "center"]),
+    ({"center": 1, "tol": _BIG}, "invalid_band_center_tol",
+     "Banded objective 'quality' tol must be within the float range", ["target", "tol"]),
+    ([0.5, _BIG], "invalid_band_target",
+     "Banded objective 'quality' target bounds must be within the float range", ["target"]),
+    ([-_BIG, 0.9], "invalid_band_target",
+     "Banded objective 'quality' target bounds must be within the float range", ["target"]),
+], ids=["center", "tol", "list_high", "list_low"])
+def test_band_target_beyond_float_range_is_a_coded_lint_error(target, code, message, path):
+    errors = [i for i in lint_module(_band_doc(target)) if i.get("severity") == "error"]
+    assert [(i["code"], i["message"], i["path"]) for i in errors] == [
+        (code, message, ["objectives", 0, "band", *path]),
+    ]
+
+
+@pytest.mark.parametrize("value,message", [
+    (_BIG - 1, "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range"),
+    (-_BIG, "exploration.budgets.max_spend_usd must be a finite number >= 0"),
+], ids=["huge_positive", "huge_negative"])
+def test_max_spend_beyond_float_range_is_a_coded_lint_error(value, message):
+    doc = copy.deepcopy(BASE)
+    doc["exploration"]["budgets"] = {"max_spend_usd": value}
+    errors = [i for i in lint_module(doc) if i.get("severity") == "error"]
+    assert [(i["code"], i["message"], i["path"]) for i in errors] == [
+        ("invalid_budget_max_spend", message, ["exploration", "budgets", "max_spend_usd"]),
+    ]
+
+
+@pytest.mark.parametrize("target,code", [
+    ({"center": _BIG, "tol": 1}, "invalid_band_center_tol"),
+    ([0.5, _BIG], "invalid_band_target"),
+], ids=["center", "list_high"])
+def test_tvl_validate_exits_2_on_a_band_integer_beyond_the_float_range(tmp_path, target, code):
+    path_file = tmp_path / "module.tvl.yml"
+    path_file.write_text(yaml.safe_dump(_band_doc(target)), encoding="utf-8")
+    status, codes = _cli_codes("tvl_validate", path_file)
+    assert status == 2, f"tvl-validate exit {status}, codes {sorted(codes)}"
+    assert code in codes
+
+
+def test_tvl_validate_exits_2_on_a_max_spend_beyond_the_float_range(tmp_path):
+    doc = copy.deepcopy(BASE)
+    doc["exploration"]["budgets"] = {"max_spend_usd": _BIG - 1}
+    path_file = tmp_path / "module.tvl.yml"
+    path_file.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    status, codes = _cli_codes("tvl_validate", path_file)
+    assert status == 2, f"tvl-validate exit {status}, codes {sorted(codes)}"
+    assert "invalid_budget_max_spend" in codes

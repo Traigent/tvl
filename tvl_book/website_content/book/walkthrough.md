@@ -6,10 +6,10 @@ linear walkthrough so you can follow along while reading Chapters 1–3.
 ## Prerequisites
 
 - Clone the Traigent repository and create a virtual environment.
-- Optional: set `TRAIGENT_MOCK_MODE=true` to exercise the flow without API keys.
+- The mock examples need no API keys.
 
 ```bash
-git clone https://github.com/nimrodbusany/Traigent.git
+git clone https://github.com/Traigent/Traigent.git
 cd Traigent
 python -m venv .venv
 source .venv/bin/activate
@@ -21,12 +21,12 @@ pip install -e .
 ## Chapter Highlights
 
 ### 1. What Traigent Optimizes
-- Read `walkthrough/README.md` section “Chapter 1”.
+- Read the mock examples section of `walkthrough/README.md`.
 - Run the first example to see parameter injection in action:
   ```bash
-  TRAIGENT_MOCK_MODE=true python examples/core/hello-world/run.py
+  python walkthrough/mock/01_tuning_qa.py
   ```
-- Note how adaptive variables (model, temperature, retrieval depth) map directly to Chapter 2’s configuration space.
+- Note how the adaptive variables (`model` and `temperature`) map directly to Chapter 2’s configuration space.
 
 ### 2. Decorator Integration
 - Inspect the decorator pattern in the walkthrough: you wrap an existing function instead of rewriting it.
@@ -53,12 +53,14 @@ pip install -e .
 
 ## Automation Script
 
-Prefer a scripted tour? Run:
+Prefer a scripted tour? From the `Traigent` directory you entered in the prerequisites, run:
 
 ```bash
-cd Traigent/walkthrough
-bash walkthrough.sh
+cd walkthrough
+bash test_all_examples.sh --mock
 ```
 
-This walks through the same milestones, creating datasets and running optimizations automatically. Keep the
-terminal output handy; several book chapters reference these logs when explaining promotion decisions.
+This runs the walkthrough examples one after another in mock mode, which needs no API keys. Pass `--real`
+instead to make real model calls with your provider keys. `walkthrough/README.md` lists the commands for
+running each example on its own. Keep the terminal output handy; several book chapters reference these logs
+when explaining promotion decisions.

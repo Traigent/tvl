@@ -41,7 +41,7 @@ flowchart LR
 | [Requirements in Production](chapter-06-requirements-in-production.md) | TVL 1.3 (accepted; still valid in TVL 1.5): requirements, monitors and responses after release | Campus latency module, organisation floor pack |
 | [Resources](resources.md) | Commands, references, and next steps | Tooling cheat sheet |
 | [Hands-on Labs](labs.md) | Run Traigent examples aligned with the chapters | Hello World, Tradeoffs, Guardrails |
-| [Guided Walkthrough](walkthrough.md) | Step-by-step SDK tour | `walkthrough.sh` script |
+| [Guided Walkthrough](walkthrough.md) | Step-by-step SDK tour | `test_all_examples.sh` script |
 | [Playground](playground.md) | Streamlit control center for experiments | Problem manager + visualizations |
 
 ## Hands-On Materials

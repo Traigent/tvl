@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -10,9 +11,11 @@ from .model import ValidationOptions, extract_validation_options
 
 @dataclass
 class BudgetSummary:
-    max_trials: Optional[int]
+    max_trials: int | float | None
     max_spend_usd: Optional[float]
-    max_wallclock_s: Optional[int]
+    max_wallclock_s: int | float | None
+    # True for a positive integer float() cannot hold (issue #224), so the message can say so.
+    max_spend_beyond_float: bool = False
 
 
 @dataclass
@@ -46,6 +49,7 @@ def build_operational_model(module: dict[str, Any]) -> OperationalModel:
         max_trials=_safe_int(budgets.get("max_trials")),
         max_spend_usd=_safe_float(budgets.get("max_spend_usd")),
         max_wallclock_s=_safe_int(budgets.get("max_wallclock_s")),
+        max_spend_beyond_float=_positive_int_beyond_float(budgets.get("max_spend_usd")),
     )
 
     derived_block = (module.get("constraints") or {}).get("derived") or []
@@ -88,13 +92,70 @@ def check_operational(module: dict[str, Any]) -> OperationalResult:
     return OperationalResult(ok=True, binding_budget=None, issues=issues)
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> int | float | None:
     if value is None:
         return None
     try:
         return int(value)
+    except OverflowError:
+        # An infinite count (for example YAML `.inf`) is not a positive integer; the caller rejects it.
+        return math.inf if value > 0 else -math.inf
     except (TypeError, ValueError):
         return None
+
+
+def _is_infinite(value: Any) -> bool:
+    # math.isinf() converts ints to float and would overflow on a huge int, so test floats only.
+    return isinstance(value, float) and math.isinf(value)
+
+
+def _positive_int_beyond_float(value: Any) -> bool:
+    """True for a positive integer such as 10**400, which has no binary64 value."""
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return False
+    try:
+        float(value)
+    except OverflowError:
+        return True
+    return False
+
+
+def _beyond_float_probe(derived: DerivedConstraint) -> DerivedConstraint | None:
+    """Return the expression with its beyond-float right-hand literal replaced by 0, or None.
+
+    Only a comparison whose right-hand side is an integer literal beyond the float range qualifies.
+    The probe is built on the parsed tree, so no source is regenerated and re-parsed. Callers run the
+    ordinary derived checks on the probe: its issue is what a small literal would show.
+    """
+    expression = re.sub(r'(?<![=<>!])=(?![=])', '==', derived.expression)
+    try:
+        tree = ast.parse(expression, mode='eval')
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return None
+    body = tree.body
+    if not isinstance(body, ast.Compare) or len(body.ops) != 1:
+        return None
+    comp = body.comparators[0]
+    if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub):
+        comp = comp.operand
+    if not (
+        _is_numeric_constant(comp)
+        and isinstance(comp.value, int)
+        and not isinstance(comp.value, bool)
+        and _literal_float(comp.value) is None
+    ):
+        return None
+    body.comparators[0] = ast.Constant(value=0)
+    symbol, operator, value, legacy = _parse_derived_tree(tree)
+    if not symbol or operator is None or value is None:
+        return None
+    return DerivedConstraint(
+        expression=derived.expression,
+        symbol=symbol,
+        operator=operator,
+        value=value,
+        legacy_symbols=legacy,
+    )
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -102,6 +163,9 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
     try:
         return float(value)
+    except OverflowError:
+        # An integer beyond the float range is not a finite budget; the caller rejects infinities.
+        return math.inf if value > 0 else -math.inf
     except (TypeError, ValueError):
         return None
 
@@ -110,7 +174,7 @@ def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Opti
     issues: list[dict[str, Any]] = []
     binding: Optional[str] = None
 
-    if budget.max_trials is not None and budget.max_trials <= 0:
+    if budget.max_trials is not None and (budget.max_trials <= 0 or _is_infinite(budget.max_trials)):
         binding = binding or "max_trials"
         issues.append(
             {
@@ -121,18 +185,24 @@ def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Opti
             }
         )
 
-    if budget.max_spend_usd is not None and budget.max_spend_usd < 0:
+    # Issue #252: written in accepting form so NaN and infinities are rejected too.
+    if budget.max_spend_usd is not None and not (math.isfinite(budget.max_spend_usd) and budget.max_spend_usd >= 0):
         binding = binding or "max_spend_usd"
+        message = (
+            "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range"
+            if budget.max_spend_beyond_float
+            else "exploration.budgets.max_spend_usd must be >= 0"
+        )
         issues.append(
             {
                 "code": "invalid_budget_max_spend",
-                "message": "exploration.budgets.max_spend_usd must be >= 0",
+                "message": message,
                 "path": ["exploration", "budgets", "max_spend_usd"],
                 "severity": "error",
             }
         )
 
-    if budget.max_wallclock_s is not None and budget.max_wallclock_s <= 0:
+    if budget.max_wallclock_s is not None and (budget.max_wallclock_s <= 0 or _is_infinite(budget.max_wallclock_s)):
         binding = binding or "max_wallclock_s"
         issues.append(
             {
@@ -163,20 +233,26 @@ def _parse_derived_expression(
     # Replace single `=` with `==` to support EBNF `lin_arith_expr` syntax in Python AST
     expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
 
-    # Guard the parse itself as well as the walk below: a sufficiently deep /
+    # Guard the parse itself as well as the walk: a sufficiently deep /
     # long chained expression can blow the stack inside ast.parse() before
-    # _walk_derived ever runs, not just inside its own recursion. One try
-    # spanning both keeps a single graceful "unparseable" exit for either
-    # failure mode.
+    # _walk_derived ever runs, not just inside its own recursion.
     try:
         tree = ast.parse(expression, mode='eval')
+    except SyntaxError:
+        return None, None, None, []
+    except (RecursionError, MemoryError):
+        # CPython's parser reports a too-deep expression as MemoryError ("Parser stack overflowed").
+        return None, None, None, []
+    return _parse_derived_tree(tree)
+
+
+def _parse_derived_tree(tree: ast.Expression) -> tuple[list | None, str | None, float | None, list[str]]:
+    try:
         comparison = _derived_comparison(tree.body)
         if comparison is None:
             return None, None, None, []
         left, op, val = comparison
         walked = _walk_derived(left)
-    except SyntaxError:
-        return None, None, None, []
     except RecursionError:
         # Defense in depth: the depth guard should prevent this, but never
         # let stack exhaustion escape as an uncaught crash of the CLI check.
@@ -223,15 +299,33 @@ def _scaled_symbol_term(value: Any, symbol_node: ast.AST, negate: bool = False):
     name, legacy = _derived_symbol_name(symbol_node)
     if name is None:
         return None
-    coefficient = -float(value) if negate else float(value)
+    magnitude = _literal_float(value)
+    if magnitude is None:
+        return None
+    coefficient = -magnitude if negate else magnitude
     return [(coefficient, name)], [name] if legacy else []
+
+
+def _literal_float(value: Any) -> Optional[float]:
+    """Return ``float(value)`` for a numeric literal, or None if it is beyond the float range.
+
+    Issue #245: an integer literal such as ``10**400`` is valid Python but has no
+    float; the derived walker treats that expression as unsupported, not as a crash.
+    """
+    try:
+        return float(value)
+    except OverflowError:
+        return None
 
 
 def _walk_derived(node: ast.AST, depth: int = 0):
     if depth > _DERIVED_MAX_DEPTH:
         return None
     if _is_numeric_constant(node):
-        return [(float(node.value), None)], []
+        literal = _literal_float(node.value)
+        if literal is None:
+            return None
+        return [(literal, None)], []
     if isinstance(node, (ast.Name, ast.Attribute)):
         return _scaled_symbol_term(1.0, node)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
@@ -289,9 +383,14 @@ def _derived_comparison(body: ast.AST) -> Optional[tuple[ast.AST, str, float]]:
         return None
     comp = body.comparators[0]
     if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub) and isinstance(comp.operand, ast.Constant):
-        val = -float(comp.operand.value)
+        magnitude = _literal_float(comp.operand.value)
+        if magnitude is None:
+            return None
+        val = -magnitude
     elif _is_numeric_constant(comp):
-        val = float(comp.value)
+        val = _literal_float(comp.value)
+        if val is None:
+            return None
     else:
         return None
     return body.left, op, val
@@ -356,13 +455,15 @@ def _derived_shape_issue(derived: DerivedConstraint, path: list[Any]) -> Optiona
             ),
             path,
         )
-    if derived.symbol is None or derived.operator is None or derived.value is None:
-        return _derived_error(
-            "unsupported_derived_expression",
-            f"Derived constraint '{derived.expression}' must be of the form symbol OP value where OP is <=, >=, <, >, or =",
-            path,
-        )
     return None
+
+
+def _unsupported_form_issue(derived: DerivedConstraint, path: list[Any]) -> dict[str, Any]:
+    return _derived_error(
+        "unsupported_derived_expression",
+        f"Derived constraint '{derived.expression}' must be of the form symbol OP value where OP is <=, >=, <, >, or =",
+        path,
+    )
 
 
 def _sum_derived_terms(
@@ -383,10 +484,28 @@ def _sum_derived_terms(
         if sym_val is None:
             missing.append(sym)
             continue
-        try:
-            total_value += coeff * float(sym_val)
-        except (TypeError, ValueError):
+        # A bool is not a measurement, and NaN/inf would defeat every inequality test.
+        if isinstance(sym_val, bool):
             non_numeric.append(sym)
+            continue
+        try:
+            number = float(sym_val)
+        except (TypeError, ValueError, OverflowError):
+            non_numeric.append(sym)
+            continue
+        if not math.isfinite(number):
+            non_numeric.append(sym)
+            continue
+        total_value += coeff * number
+    if (
+        not non_numeric
+        and not missing
+        and not math.isfinite(total_value)
+        and all(math.isfinite(coeff) for coeff, _sym in terms)
+    ):
+        # Finite terms can still overflow; report every symbol in the sum. An infinite
+        # coefficient is the literal's fault, not the symbols', and is reported by the caller.
+        non_numeric = [sym for _coeff, sym in terms]
     return None, total_value, missing, non_numeric
 
 
@@ -407,12 +526,13 @@ def _derived_violated(op: Any, numeric_value: float, val: Any) -> bool:
     return False
 
 
-def _derived_constraint_issue(
+def _derived_operand_check(
     derived: DerivedConstraint, path: list[Any], symbol_table: dict[str, Any]
-) -> Optional[dict[str, Any]]:
+) -> tuple[dict[str, Any] | None, float]:
+    """Run the shape, symbol and finiteness checks on a supported form; return the first issue and the sum."""
     shape_issue = _derived_shape_issue(derived, path)
     if shape_issue is not None:
-        return shape_issue
+        return shape_issue, 0.0
 
     invalid_symbol, numeric_value, missing, non_numeric = _sum_derived_terms(derived.symbol, symbol_table)
     if invalid_symbol is not None:
@@ -420,19 +540,52 @@ def _derived_constraint_issue(
             "derived_invalid_symbol_reference",
             f"Operational preconditions may reference only env.context.* symbols; found '{invalid_symbol}'",
             path,
-        )
+        ), 0.0
     if missing:
         return _derived_error(
             "unknown_derived_symbol",
             f"Derived constraint references unknown environment symbol(s): {', '.join(missing)}",
             path,
-        )
+        ), 0.0
     if non_numeric:
         return _derived_error(
             "non_numeric_derived_symbol",
             f"Environment symbol(s) '{', '.join(non_numeric)}' must be numeric",
             path,
+        ), 0.0
+    if any(not math.isfinite(coeff) for coeff, _sym in derived.symbol):
+        return _derived_error(
+            "unsupported_derived_expression",
+            f"Derived constraint '{derived.expression}' has a numeric literal that is not finite",
+            path,
+        ), 0.0
+    return None, numeric_value
+
+
+def _derived_constraint_issue(
+    derived: DerivedConstraint, path: list[Any], symbol_table: dict[str, Any]
+) -> Optional[dict[str, Any]]:
+    if derived.symbol is None or derived.operator is None or derived.value is None:
+        shape_issue = _derived_shape_issue(derived, path)
+        if shape_issue is not None:
+            return shape_issue
+        probe = _beyond_float_probe(derived)
+        if probe is None:
+            return _unsupported_form_issue(derived, path)
+        # Issue #224: the form is right and the literal is what float() cannot hold. Any ordinary
+        # issue of the literal-0 form is what a small literal would show, so it is reported instead.
+        probe_issue, _probe_sum = _derived_operand_check(probe, path, symbol_table)
+        if probe_issue is not None:
+            return probe_issue
+        return _derived_error(
+            "unsupported_derived_expression",
+            f"Derived constraint '{derived.expression}' has a numeric literal beyond the float range",
+            path,
         )
+
+    issue, numeric_value = _derived_operand_check(derived, path, symbol_table)
+    if issue is not None:
+        return issue
 
     op = derived.operator
     val = derived.value

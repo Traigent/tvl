@@ -117,6 +117,40 @@ def _split_top_level_implication(text: str) -> Optional[tuple[str, str]]:
     return None
 
 
+def _split_outside_quotes(pattern: re.Pattern[str], text: str) -> list[str]:
+    """``pattern.split(text)``, ignoring matches inside a quoted string (issue #246).
+
+    Quotes and backslash escapes are scanned as in :func:`_split_top_level_implication`,
+    so a value such as ``"x and y == 1"`` is never split into two atoms."""
+    quoted = [False] * len(text)
+    quote: str | None = None
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            quoted[i] = True
+            if ch == "\\":
+                if i + 1 < len(text):
+                    quoted[i + 1] = True
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+            quoted[i] = True
+        i += 1
+    parts: list[str] = []
+    start = 0
+    for match in pattern.finditer(text):
+        if quoted[match.start()]:
+            continue
+        parts.append(text[start:match.start()])
+        start = match.end()
+    parts.append(text[start:])
+    return parts
+
+
 def compile_constraints(module: Dict[str, Any]) -> CompiledConstraints:
     domains = extract_domains(module.get("tvars", {}))
     tvar_names = frozenset(domains)
@@ -212,7 +246,7 @@ def parse_expression(expr: Any, tvar_names: frozenset = frozenset()) -> List[Lis
 
     try:
         disjuncts: List[List[Atom]] = []
-        for disj in _OR_SPLIT.split(text):
+        for disj in _split_outside_quotes(_OR_SPLIT, text):
             disj = disj.strip()
             if not disj:
                 continue
@@ -267,7 +301,7 @@ def _parse_expression_list(expr: List[Any], tvar_names: frozenset = frozenset())
 
 def _parse_conjunction(disj: str, tvar_names: frozenset = frozenset()) -> List[Atom]:
     atoms: List[Atom] = []
-    for literal in _AND_SPLIT.split(disj):
+    for literal in _split_outside_quotes(_AND_SPLIT, disj):
         literal = literal.strip()
         if not literal:
             continue
@@ -313,6 +347,16 @@ def _parse_literal(text: str, tvar_names: frozenset = frozenset()) -> Atom:
 
     path, op, value_raw = match.groups()
     value_raw = value_raw.strip()
+    if value_raw[:1] in {'"', "'"}:
+        # Unescaped as the structural parser does, so both read the same string (issue #246).
+        return Atom(path=path, op="==" if op == "=" else op, value=_unquote(value_raw, text))
+    if '"' in value_raw or "'" in value_raw:
+        # The quote would open a string in the structural parser too; say so, not "interval".
+        raise ConstraintParseError(
+            f"Unquoted value contains a quote character in {text!r}; quote the whole value "
+            "and escape inner quotes with a backslash",
+            text=text,
+        )
     # A residual comparison operator in an unquoted value means a compound/interval
     # atom (e.g. ``a <= t <= b``) the flat Atom model cannot represent (issue #49).
     if value_raw[:1] not in {'"', "'"} and _COMPARISON_OP_RE.search(value_raw):
@@ -339,12 +383,36 @@ def _parse_literal(text: str, tvar_names: frozenset = frozenset()) -> Atom:
     return Atom(path=path, op=canonical_op, value=value, exact=exact)
 
 
+def _unquote(token: str, text: str) -> str:
+    """The string a quoted ``token`` denotes, with ``\\x`` read as ``x``.
+
+    Same rules as ``structural_parser._quoted_token``: the literal must end at the
+    first unescaped closing quote, and that quote must be the token's last character.
+    """
+    quote = token[0]
+    chars: list[str] = []
+    i = 1
+    while i < len(token):
+        ch = token[i]
+        if ch == "\\" and i + 1 < len(token):
+            chars.append(token[i + 1])
+            i += 2
+            continue
+        if ch == "\\":
+            break
+        if ch == quote:
+            if i != len(token) - 1:
+                raise ConstraintParseError(f"Unexpected text after string literal in {text!r}", text=text)
+            return "".join(chars)
+        chars.append(ch)
+        i += 1
+    # An unterminated string literal must not become a verbatim string value (issue #246).
+    raise ConstraintParseError(f"Unterminated string literal in {text!r}", text=text)
+
+
 def _parse_value(token: str) -> Any:
     if not token:
         return token
-
-    if token[0] in {'"', "'"} and token[-1] == token[0]:
-        return token[1:-1]
 
     lowered = token.lower()
     if lowered in {"true", "false"}:

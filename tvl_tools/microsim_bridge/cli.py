@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from tvl_tools.cli_utils import add_version_arg
+
 from .bridge import build_presets, dump_presets
 
 
@@ -11,6 +13,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Export a TVL spec into Orientation RAG MicroSim presets.",
     )
+    add_version_arg(parser)
     parser.add_argument(
         "spec",
         type=Path,
@@ -34,13 +37,23 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     import json
     import sys
+
+    import yaml
     from tvl.loader import is_pack_document
     from tvl.yaml_safe import safe_load
 
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    raw_doc = safe_load(args.spec.read_text(encoding="utf-8"))
+    try:
+        raw_doc = safe_load(args.spec.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # Issue #159: an unreadable spec is a defined exit-2 diagnostic, not a traceback.
+        message = " ".join(str(exc).split())
+        print(f"Error: {message}", file=sys.stderr)
+        if args.dry_run:
+            print(json.dumps({"ok": False, "error": message}, indent=2))
+        raise SystemExit(2) from None
     if isinstance(raw_doc, dict):
         refuse_construct: str | None = None
         if is_pack_document(raw_doc):

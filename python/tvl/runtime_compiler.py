@@ -114,6 +114,11 @@ def compile_runtime_document(
 
     # Step 2: Compose with each --pack (recording packs_checked; contract keeps module's own monitors per §16.3 item 10)
     working_doc = copy.deepcopy(dict(doc))
+    # The module's own requirements stay in its contract even when no monitor names them
+    # (RFC 0003 §11.5: compiled arrays are normalized source declarations).
+    module_req_names = {
+        r.get("name") for r in doc.get("requirements") or [] if isinstance(r, Mapping)
+    }
     packs_checked: List[Dict[str, str]] = []
     if packs:
         if not isinstance(token_map_doc, Mapping) or token_map_doc.get("format") != "tvl-token-map/1":
@@ -134,7 +139,11 @@ def compile_runtime_document(
             agent_mons = [m for m in composed_doc.get("monitors") or [] if m.get("applies_to") != "tenant_floor"]
             agent_mon_names = {str(m.get("name")) for m in agent_mons}
             agent_req_names = {m.get("requirement") for m in agent_mons}
-            agent_reqs = [r for r in composed_doc.get("requirements") or [] if r.get("name") in agent_req_names]
+            agent_reqs = [
+                r
+                for r in composed_doc.get("requirements") or []
+                if r.get("name") in agent_req_names or r.get("name") in module_req_names
+            ]
             agent_resps: List[Dict[str, Any]] = []
             for resp in composed_doc.get("responses") or []:
                 if not isinstance(resp, Mapping):

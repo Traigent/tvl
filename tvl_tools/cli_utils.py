@@ -1,4 +1,5 @@
 import argparse
+import importlib.metadata
 import json
 import sys
 from pathlib import Path
@@ -25,6 +26,51 @@ def format_issue_line(issue: dict[str, Any]) -> str:
     if message.startswith(f"{path}: "):
         return f"[{issue.get('code')}] {message}"
     return f"[{issue.get('code')}] {path}: {message}"
+
+
+DISTRIBUTION = "tvl-spec"
+
+
+class _VersionAction(argparse.Action):
+    """Print ``<prog> <tvl-spec version>`` and exit 0.
+
+    The version is read from the installed distribution metadata only when the
+    flag is given, so it is correct for an editable install and for a wheel, and
+    a missing installation fails on ``--version`` instead of on every run.
+    """
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help=None):
+        super().__init__(option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        distribution = importlib.metadata.distribution(DISTRIBUTION)
+        print(f"{_tool_name(parser.prog, distribution)} {distribution.version}")
+        parser.exit(0)
+
+
+def _tool_name(prog: str, distribution: importlib.metadata.Distribution) -> str:
+    """The console-script name, also under ``python -m`` (where ``prog`` is ``cli.py``)."""
+    scripts = {ep.name: ep.module for ep in distribution.entry_points if ep.group == "console_scripts"}
+    if prog in scripts:
+        return prog
+    main_spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+    main_module = getattr(main_spec, "name", None)
+    if main_module is None:
+        return prog
+    package = main_module.removesuffix(".__main__")
+    for name, module in scripts.items():
+        if module in (main_module, f"{package}.cli"):
+            return name
+    return prog
+
+
+def add_version_arg(parser: argparse.ArgumentParser) -> None:
+    """Add ``--version``, reporting the installed tvl-spec version."""
+    parser.add_argument(
+        "--version",
+        action=_VersionAction,
+        help=f"Show the installed {DISTRIBUTION} version and exit",
+    )
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:

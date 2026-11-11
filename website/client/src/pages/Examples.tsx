@@ -17,7 +17,10 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { loadExample } from "@/lib/exampleLoad";
+import { latestOnly } from "@/lib/latest";
 import { languageFromPath } from "@/lib/prism";
 import { Link } from "wouter";
 
@@ -44,6 +47,8 @@ export default function Examples() {
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null);
+  const [previewErrors, setPreviewErrors] = useState<Record<string, string>>({});
+  const previewRequests = useRef(latestOnly());
 
   const examples: ExampleFile[] = [
     {
@@ -376,26 +381,29 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
   };
 
   const loadFileContent = async (path: string) => {
-    if (!allowedExamplePaths.has(path)) {
-      return "Unsupported example path";
+    // A failed load is never cached and never returned as file text.
+    const result = await loadExample(path, allowedExamplePaths, fileContents[path]);
+    if (result.ok) {
+      setFileContents((prev) => ({ ...prev, [path]: result.content }));
+      setPreviewErrors((prev) => {
+        const next = { ...prev };
+        delete next[path];
+        return next;
+      });
+    } else {
+      console.error(result.error);
+      setPreviewErrors((prev) => ({ ...prev, [path]: result.error }));
     }
-
-    if (fileContents[path]) return fileContents[path];
-
-    try {
-      const response = await fetch(path);
-      const content = await response.text();
-      setFileContents((prev) => ({ ...prev, [path]: content }));
-      return content;
-    } catch (err) {
-      console.error(`Error loading ${path}:`, err);
-      return "Error loading file content";
-    }
+    return result;
   };
 
   const copyToClipboard = async (path: string) => {
-    const content = await loadFileContent(path);
-    await navigator.clipboard.writeText(content);
+    const result = await loadFileContent(path);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    await navigator.clipboard.writeText(result.content);
     setCopiedFile(path);
     setTimeout(() => setCopiedFile(null), 2000);
   };
@@ -406,8 +414,11 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
       return;
     }
 
+    // Only the latest Preview click may open its file and clear the loading flag.
+    const isCurrent = previewRequests.current.begin();
     setLoadingPreview(path);
     await loadFileContent(path);
+    if (!isCurrent()) return;
     setPreviewPath(path);
     setLoadingPreview(null);
   };
@@ -492,6 +503,10 @@ tvl-check-operational text-to-sql.tvl.yml --json`,
           <CardContent>
             {loadingPreview === example.path ? (
               <div className="text-sm text-muted-foreground">Loading preview...</div>
+            ) : previewErrors[example.path] ? (
+              <div role="alert" className="text-sm text-destructive">
+                {previewErrors[example.path]}
+              </div>
             ) : (
               <CodeIDE
                 code={fileContents[example.path] ?? ""}

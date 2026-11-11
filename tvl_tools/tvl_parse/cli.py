@@ -7,6 +7,7 @@ from tvl.loader import is_pack_document
 
 from tvl_tools.cli_utils import (
     add_common_args,
+    add_version_arg,
     get_format,
     handle_error,
     load_yaml_safely,
@@ -21,6 +22,7 @@ def text_renderer(data: dict[str, Any]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parse TVL YAML and print AST as JSON")
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL YAML file")
     add_common_args(parser)
     args = parser.parse_args()

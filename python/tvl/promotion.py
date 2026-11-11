@@ -9,7 +9,9 @@ This module implements ε-Pareto dominance testing with:
 """
 from __future__ import annotations
 
+import decimal
 import math
+import numbers
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -46,9 +48,9 @@ class ObjectiveResult:
     test_type: str  # "welch", "paired", "precomputed"
     n_incumbent: int
     n_candidate: int
-    mean_incumbent: float
-    mean_candidate: float
-    delta: float  # candidate - incumbent
+    mean_incumbent: float | None  # None only when the arm states no mean (code set)
+    mean_candidate: float | None
+    delta: float | None  # candidate - incumbent
     std_pooled: Optional[float]
     t_statistic: Optional[float]
     df: Optional[float]
@@ -60,6 +62,16 @@ class ObjectiveResult:
     adjusted_p_inferior: Optional[float] = None
     epsilon: float = 0.0
     verdict: str = "inconclusive"  # "superior", "noninferior", "inferior", "inconclusive"
+
+
+@dataclass
+class _MissingEvidenceResult(ObjectiveResult):
+    """Inconclusive standard-objective result whose arm lacks usable statistics (tvl#262).
+
+    ``conflict`` marks an arm whose stated statistics contradict its own samples,
+    as opposed to one that lacks them."""
+    code: str = "missing_statistical_evidence"
+    conflict: bool = False
 
 
 @dataclass
@@ -154,7 +166,7 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
             "p_value_upper": r.p_value_upper,
             "verdict": r.verdict,
         }
-    return {
+    out = {
         "test_type": r.test_type,
         "n_incumbent": r.n_incumbent,
         "n_candidate": r.n_candidate,
@@ -173,6 +185,9 @@ def _result_to_dict(r: Union[ObjectiveResult, BandedResult]) -> Dict[str, Any]:
         "epsilon": r.epsilon,
         "verdict": r.verdict,
     }
+    if isinstance(r, _MissingEvidenceResult):
+        out["code"] = r.code
+    return out
 
 
 def _chance_to_dict(c: ChanceResult) -> Dict[str, Any]:
@@ -486,11 +501,98 @@ def _test_objective(
     cand_samples = cand_data.get("samples")
     paired = cand_data.get("paired", False)
 
-    if inc_samples is not None and cand_samples is not None:
+    # Both arms with samples: the test runs on the samples, as before this branch.
+    if inc_samples and cand_samples:
         return _test_from_samples(spec, inc_samples, cand_samples, paired)
 
-    # Fall back to aggregated stats
-    return _test_from_stats(spec, inc_data, cand_data)
+    # Aggregated stats. An arm with samples is tested on the statistics its samples
+    # give; a statistic it states is only a consistency cross-check (tvl#262). An
+    # empty samples list is no samples. Stated statistics that contradict an arm's
+    # own samples do not decide the objective, whichever path the gate was invoked
+    # through.
+    if _stated_stats_contradict_samples(inc_data) or _stated_stats_contradict_samples(cand_data):
+        return _missing_evidence_result(spec, inc_data, cand_data, conflict=True)
+    return _test_from_stats(spec, _arm_stats(inc_data), _arm_stats(cand_data))
+
+
+_ARM_STAT_KEYS = ("mean", "std", "n")
+
+
+def _stated_value_agrees(stated: Any, value: float) -> bool:
+    """True when a stated mean or std agrees with the sample value it is compared to (tvl#262).
+
+    The allowance is half a unit of the last decimal place the stated value is written with,
+    read from ``str(stated)`` before any float conversion, so ``0.0012`` has four places and a
+    half unit of 5e-5, ``np.float32(0.701)`` has three, and an integer has none (a half unit of
+    0.5). The allowance has a relative floor of 1e-9 of the sample value, so float64 values
+    written at full precision agree with the gate's own sums; float32 values are compared
+    exactly as float32 and may disagree. A non-finite, boolean or unparseable stated value
+    never agrees, and neither does one too large for a float."""
+    if isinstance(stated, bool) or not isinstance(stated, numbers.Real):
+        return False
+    try:
+        number = float(stated)
+    except OverflowError:
+        return False
+    if not math.isfinite(number):
+        return False
+    try:
+        exponent = decimal.Decimal(str(stated)).as_tuple().exponent
+    except (TypeError, ValueError, ArithmeticError):
+        return False
+    # A finite Decimal has an int exponent. 'F' (Infinity) and 'n'/'N' (NaN) are not.
+    if not isinstance(exponent, int):
+        return False
+    places = max(0, -exponent)
+    allowance = max(0.5 * 10 ** (-places), 1e-9 * abs(value))
+    # The 1e-9 relative slack absorbs the rounding of the subtraction itself, so an exact
+    # half-unit boundary (samples [1.5, 1.6] against 1.5) is accepted.
+    return abs(number - value) <= allowance * (1 + 1e-9)
+
+
+def _stated_stats_contradict_samples(arm: dict[str, Any]) -> bool:
+    """True when an arm with samples states an ``n``, ``mean`` or ``std`` that its own
+    samples do not produce (tvl#262). ``n`` must equal the sample count. A stated mean
+    must agree with the sample mean to the precision it is written with (see
+    ``_stated_value_agrees``). A stated std must agree with either the ddof=1 or the ddof=0
+    sample std. The std is compared only when the samples determine one (n >= 2)."""
+    samples = arm.get("samples")
+    if not samples:
+        return False
+    n = len(samples)
+    mean = sum(samples) / n
+    if arm.get("n") is not None and arm["n"] != n:
+        return True
+    if arm.get("mean") is not None and not _stated_value_agrees(arm["mean"], mean):
+        return True
+    if n >= 2 and arm.get("std") is not None:
+        sum_sq = sum((x - mean) ** 2 for x in samples)
+        std_ddof1 = math.sqrt(sum_sq / (n - 1))
+        std_ddof0 = math.sqrt(sum_sq / n)
+        if not (
+            _stated_value_agrees(arm["std"], std_ddof1)
+            or _stated_value_agrees(arm["std"], std_ddof0)
+        ):
+            return True
+    return False
+
+
+def _arm_stats(arm: dict[str, Any]) -> dict[str, Any]:
+    """``arm`` with its ``mean``/``std``/``n`` set from its ``samples``; an arm without
+    samples is returned unchanged.
+
+    The samples are authoritative: any stated mean, std or n on an arm with samples is
+    replaced by the value the samples give (n, the mean, and the ddof=1 sample std, 0.0
+    for a single sample). A stated value that does not agree with the samples never gets
+    here: ``_stated_stats_contradict_samples`` rejects it first. A single sample has no
+    sample std; that arm is inconclusive by the n < 2 rule, which never reads the std."""
+    samples = arm.get("samples")
+    if not samples:
+        return arm
+    n = len(samples)
+    mean = sum(samples) / n
+    var = sum((x - mean) ** 2 for x in samples) / (n - 1) if n > 1 else 0.0
+    return {**arm, "mean": mean, "std": math.sqrt(var), "n": n}
 
 
 def _from_precomputed(spec: ObjectiveSpec, cand_data: Dict[str, Any]) -> ObjectiveResult:
@@ -579,6 +681,53 @@ def _unestimable_result(
     )
 
 
+def _incomplete_stats(arm: dict[str, Any]) -> bool:
+    """Some of ``mean``/``std``/``n`` is neither stated nor derivable from the arm's
+    samples (``_arm_stats`` has already derived what it could). An arm without
+    samples that states none of them is incomplete too (spec §7.2)."""
+    return any(arm.get(key) is None for key in _ARM_STAT_KEYS)
+
+
+def _missing_evidence_result(
+    spec: ObjectiveSpec, inc_data: dict[str, Any], cand_data: dict[str, Any], conflict: bool = False
+) -> _MissingEvidenceResult:
+    """Inconclusive result for an arm with neither samples nor complete mean/std/n, or
+    (``conflict``) whose stated statistics contradict its samples.
+
+    A missing statistic is never read as 0.0, which could decide the comparison (tvl#262);
+    the result carries the code the measurement readiness check uses for the same input.
+    """
+    n_inc, mean_inc = _reported_n_and_mean(inc_data, conflict)
+    n_cand, mean_cand = _reported_n_and_mean(cand_data, conflict)
+    return _MissingEvidenceResult(
+        name=spec.name,
+        test_type="welch",
+        n_incumbent=n_inc,
+        n_candidate=n_cand,
+        mean_incumbent=mean_inc,
+        mean_candidate=mean_cand,
+        delta=None if mean_inc is None or mean_cand is None else mean_cand - mean_inc,
+        std_pooled=None,
+        t_statistic=None,
+        df=None,
+        p_value_noninf=1.0,
+        p_value_super=1.0,
+        epsilon=spec.epsilon,
+        verdict="inconclusive",
+        conflict=conflict,
+    )
+
+
+def _reported_n_and_mean(arm: dict[str, Any], conflict: bool) -> tuple[int, Any]:
+    """The n and mean an arm reports as missing-evidence evidence. On a conflict, an arm
+    with samples reports the values its samples give, not the stated ones that contradict
+    them (tvl#262)."""
+    samples = arm.get("samples")
+    if conflict and samples:
+        return len(samples), sum(samples) / len(samples)
+    return arm.get("n") or 0, arm.get("mean")
+
+
 def _test_from_samples(
     spec: ObjectiveSpec,
     inc_samples: List[float],
@@ -638,11 +787,11 @@ def _one_sided_t_tests(
     Superiority: H0: sigma * delta <= epsilon, t = (sigma * delta - epsilon) / se.
     """
     t_noninf = (signed_effect + epsilon) / se
-    p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_noninf = scipy_stats.t.sf(t_noninf, df)
     p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
     t_super = (signed_effect - epsilon) / se
-    p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
+    p_super = scipy_stats.t.sf(t_super, df)
     return t_noninf, p_noninf, p_inferior, p_super
 
 
@@ -754,13 +903,17 @@ def _test_from_stats(
     cand_data: Dict[str, Any],
 ) -> ObjectiveResult:
     """Perform t-tests from aggregated statistics."""
-    mean_inc = inc_data.get("mean", 0.0)
-    std_inc = inc_data.get("std", 0.0)
-    n_inc = inc_data.get("n", 0)
+    if _incomplete_stats(inc_data) or _incomplete_stats(cand_data):
+        return _missing_evidence_result(spec, inc_data, cand_data)
 
-    mean_cand = cand_data.get("mean", 0.0)
-    std_cand = cand_data.get("std", 0.0)
-    n_cand = cand_data.get("n", 0)
+    # _incomplete_stats above returned False, so every statistic is present and not None.
+    mean_inc = inc_data["mean"]
+    std_inc = inc_data["std"]
+    n_inc = inc_data["n"]
+
+    mean_cand = cand_data["mean"]
+    std_cand = cand_data["std"]
+    n_cand = cand_data["n"]
 
     if n_inc < 2 or n_cand < 2:
         return ObjectiveResult(
@@ -801,11 +954,11 @@ def _test_from_stats(
         df = min(n_inc, n_cand) - 1
 
     t_noninf = (sigma * delta + epsilon) / se
-    p_noninf = 1.0 - scipy_stats.t.cdf(t_noninf, df)
+    p_noninf = scipy_stats.t.sf(t_noninf, df)
     p_inferior = scipy_stats.t.cdf(t_noninf, df)
 
     t_super = (sigma * delta - epsilon) / se
-    p_super = 1.0 - scipy_stats.t.cdf(t_super, df)
+    p_super = scipy_stats.t.sf(t_super, df)
 
     return ObjectiveResult(
         name=spec.name,
@@ -879,8 +1032,8 @@ def _test_banded_objective(
     t1 = _t_statistic(mean - band_lower, se)
     t2 = _t_statistic(band_upper - mean, se)
 
-    p1 = 1.0 - scipy_stats.t.cdf(t1, df)
-    p2 = 1.0 - scipy_stats.t.cdf(t2, df)
+    p1 = scipy_stats.t.sf(t1, df)
+    p2 = scipy_stats.t.sf(t2, df)
 
     # (1 - 2α) confidence interval
     t_crit = scipy_stats.t.ppf(1 - band_alpha, df)
@@ -1174,6 +1327,26 @@ def _non_inferiority_decision(evidence: PromotionEvidence) -> Tuple[str, str]:
             "Reject",
             f"Regression beyond the allowed margin demonstrated on: {', '.join(failing)}",
         )
+    missing = [
+        name for name, r in evidence.per_objective.items()
+        if isinstance(r, _MissingEvidenceResult) and not r.conflict
+    ]
+    conflicting = [
+        name for name, r in evidence.per_objective.items()
+        if isinstance(r, _MissingEvidenceResult) and r.conflict
+    ]
+    if missing or conflicting:
+        parts = []
+        if missing:
+            parts.append(
+                f"missing_statistical_evidence: no samples or complete mean/std/n for: {', '.join(missing)}"
+            )
+        if conflicting:
+            parts.append(
+                "missing_statistical_evidence: stated statistics disagree with the samples for: "
+                f"{', '.join(conflicting)}"
+            )
+        return ("NoDecision", "; ".join(parts))
     inconclusive = _objective_names(evidence, ObjectiveResult, lambda verdict: verdict == "inconclusive")
     return (
         "NoDecision",

@@ -940,7 +940,8 @@ def _check_arms(decl: Dict[str, Any], kind: str, ctx: _CompositeCtx) -> None:
                 tuned = []
             if isinstance(tuned, list):
                 for tp_idx, tp in enumerate(tuned):
-                    if tp not in ctx.tvar_names:
+                    # Issue #230: a list or mapping entry is unhashable; check str first.
+                    if not isinstance(tp, str) or tp not in ctx.tvar_names:
                         ctx.add(
                             "invalid_tuned_param",
                             f"composite '{ctx.name}' tuned_params entry '{tp}' does not "
@@ -2644,7 +2645,10 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
                 }
             )
             return issues
-        if type_info.minimum is not None and float(numeric) < float(type_info.minimum):
+        # Range bounds are stored as binary64, so a literal that fits is compared as binary64 (as before).
+        # An integer beyond the float range is compared exactly: it lies outside every finite bound.
+        compared = float(numeric) if _fits_float(numeric) else numeric
+        if type_info.minimum is not None and compared < float(type_info.minimum):
             issues.append(
                 {
                     "code": "constraint_value_out_of_domain",
@@ -2653,7 +2657,7 @@ def _check_value_against_type(value: Any, type_info: TypeInfo, path: List[Any]) 
                     "severity": "error",
                 }
             )
-        if type_info.maximum is not None and float(numeric) > float(type_info.maximum):
+        if type_info.maximum is not None and compared > float(type_info.maximum):
             issues.append(
                 {
                     "code": "constraint_value_out_of_domain",
@@ -2878,11 +2882,20 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
             path = ["objectives", idx, "band"]
             target = band.get("target")
             if isinstance(target, list):
-                if len(target) != 2 or not all(_is_number(x) for x in target):
+                if len(target) != 2 or not all(_is_finite_number(x) for x in target):
                     issues.append(
                         {
                             "code": "invalid_band_target",
                             "message": f"Banded objective '{name}' target must be [low, high] numbers",
+                            "path": path + ["target"],
+                            "severity": "error",
+                        }
+                    )
+                elif not all(_fits_float(x) for x in target):
+                    issues.append(
+                        {
+                            "code": "invalid_band_target",
+                            "message": f"Banded objective '{name}' target bounds must be within the float range",
                             "path": path + ["target"],
                             "severity": "error",
                         }
@@ -2901,12 +2914,30 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
             elif isinstance(target, dict):
                 center = target.get("center")
                 tol = target.get("tol")
-                if not _is_number(center) or not _is_number(tol):
+                if not _is_finite_number(center) or not _is_finite_number(tol):
                     issues.append(
                         {
                             "code": "invalid_band_center_tol",
                             "message": f"Banded objective '{name}' requires numeric center/tol",
                             "path": path + ["target"],
+                            "severity": "error",
+                        }
+                    )
+                elif not _fits_float(center):
+                    issues.append(
+                        {
+                            "code": "invalid_band_center_tol",
+                            "message": f"Banded objective '{name}' center must be within the float range",
+                            "path": path + ["target", "center"],
+                            "severity": "error",
+                        }
+                    )
+                elif not _fits_float(tol):
+                    issues.append(
+                        {
+                            "code": "invalid_band_center_tol",
+                            "message": f"Banded objective '{name}' tol must be within the float range",
+                            "path": path + ["target", "tol"],
                             "severity": "error",
                         }
                     )
@@ -2930,7 +2961,7 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
 
             alpha = band.get("alpha")
-            if not _is_number(alpha) or not (0 < float(alpha) <= 1):
+            if not _is_number(alpha) or not _fits_float(alpha) or not (0 < float(alpha) <= 1):
                 issues.append(
                     {
                         "code": "invalid_band_alpha",
@@ -2961,7 +2992,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
     # An omitted alpha takes the documented default (0.05); an explicit value,
     # including null, must still be a number in (0, 1).
     alpha = policy.get("alpha", 0.05)
-    if not _is_number(alpha) or not (0 < float(alpha) < 1):
+    if not _is_number(alpha) or not _fits_float(alpha) or not (0 < float(alpha) < 1):
         issues.append(
             {
                 "code": "invalid_alpha",
@@ -3002,7 +3033,16 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
             else:
                 value = min_effect.get(name)
-                if not _is_number(value) or float(value) < 0:
+                if _is_finite_number(value) and not _fits_float(value):
+                    issues.append(
+                        {
+                            "code": "invalid_min_effect",
+                            "message": f"promotion_policy.min_effect['{name}'] must be a finite number >= 0 within the float range",
+                            "path": ["promotion_policy", "min_effect", name],
+                            "severity": "error",
+                        }
+                    )
+                elif not _is_finite_number(value) or float(value) < 0:
                     issues.append(
                         {
                             "code": "invalid_min_effect",
@@ -3057,7 +3097,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 )
             else:
                 seen_names[name] = idx
-        if not _is_number(threshold) or not (0 <= float(threshold) <= 1):
+        if not _is_number(threshold) or not _fits_float(threshold) or not (0 <= float(threshold) <= 1):
             issues.append(
                 {
                     "code": "invalid_chance_threshold",
@@ -3066,7 +3106,7 @@ def _lint_promotion_policy(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     "severity": "error",
                 }
             )
-        if not _is_number(confidence) or not (0 < float(confidence) < 1):
+        if not _is_number(confidence) or not _fits_float(confidence) or not (0 < float(confidence) < 1):
             issues.append(
                 {
                     "code": "invalid_chance_confidence",
@@ -3158,7 +3198,7 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
     budgets = exploration.get("budgets")
     if isinstance(budgets, dict):
         max_trials = budgets.get("max_trials")
-        if max_trials is not None and (not isinstance(max_trials, int) or max_trials <= 0):
+        if max_trials is not None and (not _is_int_strict(max_trials) or max_trials <= 0):
             issues.append(
                 {
                     "code": "invalid_max_trials",
@@ -3167,11 +3207,29 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
                     "severity": "error",
                 }
             )
+        max_spend = budgets.get("max_spend_usd")
+        # Issue #252: the schema bound (minimum 0) is false for NaN, so the lint is the gate.
+        # Issue #224: a positive integer beyond the float range is named as such; a negative one keeps its message.
+        if max_spend is not None and _is_number(max_spend) and max_spend > 0 and not _fits_float(max_spend):
+            message = "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range"
+        elif max_spend is not None and (not _is_finite_number(max_spend) or max_spend < 0):
+            message = "exploration.budgets.max_spend_usd must be a finite number >= 0"
+        else:
+            message = None
+        if message is not None:
+            issues.append(
+                {
+                    "code": "invalid_budget_max_spend",
+                    "message": message,
+                    "path": ["exploration", "budgets", "max_spend_usd"],
+                    "severity": "error",
+                }
+            )
 
     parallelism = exploration.get("parallelism")
     if isinstance(parallelism, dict):
         max_parallel = parallelism.get("max_parallel_trials")
-        if max_parallel is not None and (not isinstance(max_parallel, int) or max_parallel <= 0):
+        if max_parallel is not None and (not _is_int_strict(max_parallel) or max_parallel <= 0):
             issues.append(
                 {
                     "code": "invalid_parallelism",
@@ -3187,7 +3245,16 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
         if metric == "hypervolume_improvement":
             threshold = convergence.get("threshold")
             window = convergence.get("window")
-            if threshold is None or not _is_number(threshold) or float(threshold) <= 0:
+            if _is_finite_number(threshold) and not _fits_float(threshold):
+                issues.append(
+                    {
+                        "code": "invalid_convergence_threshold",
+                        "message": "hypervolume_improvement convergence requires a threshold > 0 within the float range",
+                        "path": ["exploration", "convergence", "threshold"],
+                        "severity": "error",
+                    }
+                )
+            elif threshold is None or not _is_finite_number(threshold) or float(threshold) <= 0:
                 issues.append(
                     {
                         "code": "invalid_convergence_threshold",
@@ -3196,7 +3263,7 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
                         "severity": "error",
                     }
                 )
-            if window is None or not isinstance(window, int) or window <= 0:
+            if window is None or not _is_int_strict(window) or window <= 0:
                 issues.append(
                     {
                         "code": "invalid_convergence_window",
@@ -3209,6 +3276,25 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_finite_number(value: Any) -> bool:
+    """A number that is not NaN or an infinity (issue #252: every comparison with NaN is false)."""
+    return _is_number(value) and (isinstance(value, int) or math.isfinite(value))
+
+
+def _fits_float(value: Any) -> bool:
+    """False for an integer that float() cannot represent (e.g. 10**400): a malformed value, not a crash."""
+    try:
+        float(value)
+    except OverflowError:
+        return False
+    return True
+
+
+def _display_number(value: Any) -> Any:
+    """``float(value)`` for a message, or the exact text when binary64 cannot hold it."""
+    return float(value) if _fits_float(value) else str(value)
 
 
 # -----------------------------------------------------------------------------
@@ -3417,7 +3503,7 @@ def _check_values_alignment(
         "severity": "warning",
         "message": (
             f"TVAR '{name}' has domain value {value} which is not aligned to "
-            f"precision P={precision}: {value} × {precision} = {float(exact * precision)} "
+            f"precision P={precision}: {value} × {precision} = {_display_number(exact * precision)} "
             f"is not an integer. SMT encoding soundness (Theorem 8.1) does not hold."
             f"{_precision_suggestion(exact_alignment_precision)}"
         ),
@@ -3481,7 +3567,7 @@ def _check_resolution_alignment(
 ) -> Issue:
     """Issue for a range whose (effective) resolution r has r·P ∉ ℤ."""
     exact_alignment_precision = _compute_exact_alignment_precision([resolution])
-    shown = float(resolution)
+    shown = _display_number(resolution)
     described = f"the default resolution {shown} for float ranges" if implicit else f"resolution {shown}"
     return {
         "code": "inadequate_precision",
@@ -4628,15 +4714,25 @@ def _predicate_canonical(pred: Optional[Dict[str, Any]]) -> Any:
             pred.get("correlate_by", "unit"),
         )
     if pattern == "protocol":
-        alphabet = tuple(sorted(_selector_canonical(s) for s in (pred.get("alphabet") or []) if isinstance(s, dict)))
+        # Issue #229: selectors may set different fields (tool vs status), so the
+        # canonical tuples mix None and str; sort by repr for a total, stable order.
+        alphabet = tuple(
+            sorted(
+                (_selector_canonical(s) for s in (pred.get("alphabet") or []) if isinstance(s, dict)),
+                key=repr,
+            )
+        )
         states = tuple(sorted(set(pred.get("states") or [])))
         accepting = tuple(sorted(set(pred.get("accepting") or [])))
         rejecting = tuple(sorted(set(pred.get("rejecting") or [])))
         transitions = tuple(
             sorted(
-                (t.get("from"), _selector_canonical(t.get("when") or {}), t.get("to"))
-                for t in (pred.get("transitions") or [])
-                if isinstance(t, dict)
+                (
+                    (t.get("from"), _selector_canonical(t.get("when") or {}), t.get("to"))
+                    for t in (pred.get("transitions") or [])
+                    if isinstance(t, dict)
+                ),
+                key=repr,
             )
         )
         return (

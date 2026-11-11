@@ -17,6 +17,7 @@ import yaml
 
 from tvl_tools.cli_utils import (
     add_common_args,
+    add_version_arg,
     get_format,
     handle_error,
     load_yaml_safely,
@@ -133,7 +134,11 @@ def _clause_key(clause: Any) -> str:
     return norm(clause)
 
 
-_BOUND_RE = re.compile(r"^\s*(?P<lhs>.+?)\s*(?P<op>>=|<=|>|<)\s*(?P<num>-?\d+(?:\.\d+)?)\s*$")
+# Only the ``<op> <number>`` tail is matched by regex, searched leftmost so the
+# left-hand side is the shortest prefix (as a lazy ``lhs`` would be). A single
+# pattern with ``\s*``, a lazy ``.+?`` and ``\s*`` before the operator backtracked
+# cubically on whitespace-heavy clauses with no operator tail (tvl#238).
+_BOUND_TAIL_RE = re.compile(r"(?P<op>>=|<=|>|<)\s*(?P<num>-?\d+(?:\.\d+)?)\s*$")
 
 
 def _as_bound(clause: Any) -> Optional[tuple]:
@@ -147,10 +152,22 @@ def _as_bound(clause: Any) -> Optional[tuple]:
     text = clause.get("require") if isinstance(clause, dict) else clause
     if not isinstance(text, str):
         return None
-    m = _BOUND_RE.match(text)
-    if not m:
-        return None
-    return (" ".join(m.group("lhs").split()), m.group("op"), float(m.group("num")))
+    pos = 0
+    while (m := _BOUND_TAIL_RE.search(text, pos)) is not None:
+        if _is_bound_lhs(text[: m.start()]):
+            return (" ".join(text[: m.start()].split()), m.group("op"), float(m.group("num")))
+        pos = m.start() + 1
+    return None
+
+
+def _is_bound_lhs(prefix: str) -> bool:
+    """Whether ``prefix`` is a left-hand side: optional whitespace, then at least
+    one character that is not a line break (``.`` semantics), then optional
+    whitespace."""
+    core = prefix.strip()
+    if core:
+        return "\n" not in core
+    return any(ch != "\n" for ch in prefix)
 
 
 def _tightens(base_bound: tuple, comp_bound: tuple) -> bool:
@@ -725,6 +742,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compose TVL overlay files into valid TVL modules",
     )
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to overlay or module YAML file")
     parser.add_argument(
         "--pack",

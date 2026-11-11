@@ -518,3 +518,36 @@ def test_scope_closes_during_optimization_prevents_a_later_deploy_effect(boundar
     deploy['optimizations'][-1].update(write='failed', retries_exhausted=True)
     evaluations(case)[:] = evaluations(case)[:2] + [deploy]
     assert run(case) == []
+
+
+_IDENTITY_FIELDS = {
+    'windows': ('monitor',),
+    'episodes': ('monitor',),
+    'liveness': ('monitor',),
+    'revisions': ('name',),
+    'optimizations': ('response', 'rule'),
+}
+
+
+def _identity_mutations():
+    """Issue #251: every identity field of every recorded fact, in every trace case."""
+    seen = set()
+    for name in NAMES:
+        for e_idx, evaluation in enumerate(evaluations(load_case(name))):
+            for category, fields in _IDENTITY_FIELDS.items():
+                for r_idx, _record in enumerate(evaluation.get(category, [])):
+                    for field in fields:
+                        # One probe per (category, field) per case keeps the matrix small.
+                        if (name, category, field) in seen:
+                            continue
+                        seen.add((name, category, field))
+                        yield name, e_idx, category, r_idx, field
+
+
+@pytest.mark.parametrize('bad', [[], {}, None, 1], ids=['list', 'dict', 'none', 'int'])
+@pytest.mark.parametrize('name,e_idx,category,r_idx,field', list(_identity_mutations()))
+def test_non_string_identity_field_raises_trace_error(name, e_idx, category, r_idx, field, bad):
+    case = load_case(name)
+    evaluations(case)[e_idx][category][r_idx][field] = bad
+    with pytest.raises(TraceError):
+        run(case)

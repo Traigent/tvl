@@ -9,10 +9,22 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels the superseded run. Every run that
+# is not a pull_request run (here the push to main; the expression below also covers
+# merge_group, schedule and workflow_dispatch, which this file does not declare)
+# gets a group of its own, keyed by run id: a shared group holds one pending run,
+# and GitHub cancels it when a newer one queues, even with cancel-in-progress false.
+# Re-runs keep their run id, so a re-run stays in its original run's group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   python:
     name: Python Tests
     runs-on: ubuntu-latest
+    # Observed over the last 100 successful runs: median about 5.2 min, max 7.4 min.
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -34,6 +46,8 @@ jobs:
   vscode:
     name: VS Code Extension
     runs-on: ubuntu-latest
+    # Observed: under 1 min.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -71,6 +85,9 @@ jobs:
   website:
     name: Website Build
     runs-on: ubuntu-latest
+    # Observed over the last 100 successful runs: median about 1.2 min, max 16 min. In the
+    # 16-min run the Install Playwright Chromium step alone took about 15 min.
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository

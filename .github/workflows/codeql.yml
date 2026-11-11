@@ -37,6 +37,8 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # Observed: under 2 min per language.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

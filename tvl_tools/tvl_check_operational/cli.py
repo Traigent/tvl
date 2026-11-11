@@ -10,6 +10,7 @@ from typing import Any, Dict
 from tvl.errors import TVLError
 from tvl.loader import load
 from tvl.operational import check_operational
+from tvl_tools.cli_utils import add_version_arg
 
 
 def _load_module(path: Path) -> Dict[str, Any]:
@@ -18,6 +19,7 @@ def _load_module(path: Path) -> Dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check operational feasibility of a TVL module")
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL module YAML")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON diagnostics")
     args = parser.parse_args()

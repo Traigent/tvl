@@ -8,6 +8,9 @@ import { Link, useParams } from "wouter";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
+import { downloadText } from "@/lib/download";
+import { fetchText } from "@/lib/fetchText";
+import { latestOnly } from "@/lib/latest";
 
 interface SpecConfig {
   title: string;
@@ -85,16 +88,25 @@ export default function SpecViewer() {
       return;
     }
 
-    fetch(config.filePath)
-      .then((r) => r.text())
+    // The route keeps this component mounted when only :type changes, so a slower
+    // earlier response must not land under the newly selected spec.
+    const requests = latestOnly();
+    const isCurrent = requests.begin();
+    setLoading(true);
+    setContent("");
+    fetchText(config.filePath)
       .then((text) => {
-        setContent(text);
+        if (isCurrent()) setContent(text);
       })
       .catch((err) => {
+        if (!isCurrent()) return;
         console.error("Error loading file:", err);
         toast.error("Failed to load file");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (isCurrent()) setLoading(false);
+      });
+    return () => requests.cancel();
   }, [config]);
 
   const handleCopy = () => {
@@ -105,13 +117,7 @@ export default function SpecViewer() {
   };
 
   const handleDownload = () => {
-    const element = document.createElement("a");
-    const file = new Blob([content], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = config.downloadPath.split("/").pop() || "file.txt";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    downloadText(content, config.downloadPath.split("/").pop() || "file.txt");
     toast.success("Download started");
   };
 
@@ -150,11 +156,11 @@ export default function SpecViewer() {
           <h1 className="text-3xl font-bold mb-2">{config.title}</h1>
           <p className="text-muted-foreground mb-4">{config.description}</p>
           <div className="flex gap-2">
-            <Button onClick={handleCopy} variant="outline">
+            <Button onClick={handleCopy} variant="outline" disabled={loading || !content}>
               {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
               {copied ? "Copied!" : "Copy"}
             </Button>
-            <Button onClick={handleDownload}>
+            <Button onClick={handleDownload} disabled={loading || !content}>
               <Download className="mr-2 h-4 w-4" />
               Download
             </Button>

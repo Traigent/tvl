@@ -5,7 +5,7 @@ from typing import Any
 
 from tvl.lints import lint_module, lint_pack
 from tvl.loader import is_pack_document
-from tvl_tools.cli_utils import blocking_issues, add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output
+from tvl_tools.cli_utils import blocking_issues, add_common_args, format_issue_line, get_format, handle_error, load_yaml_safely, print_output, add_version_arg
 
 
 def lint(doc: dict[str, Any], precision: int = 1000) -> list[dict[str, Any]]:
@@ -27,6 +27,7 @@ def text_renderer(data: dict[str, Any]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Lint TVL YAML for common issues")
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL YAML file")
     parser.add_argument(
         "--precision",

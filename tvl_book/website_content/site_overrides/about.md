@@ -11,7 +11,7 @@ built it so practitioners can move from concept to implementation without jumpin
 
 - **TVL Chapters** mirror the LaTeX book and provide a narrative foundation.
 - **Labs & Walkthroughs** ([labs](../book/labs.md), [walkthrough](../book/walkthrough.md)) point to runnable examples in
-  the [`Traigent/examples`](https://github.com/nimrodbusany/Traigent/tree/master/examples) directory.
+  the [`Traigent/examples`](https://github.com/Traigent/Traigent/tree/main/examples) directory.
 - **Playground** content highlights the Streamlit control center for monitoring optimization runs.
 - **Reference Sections** collect authoring workflows, prompt libraries, and glossary entries that
   support day-to-day operations.

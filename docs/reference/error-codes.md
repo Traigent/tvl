@@ -309,7 +309,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_budget_max_spend`
 - **Severity**: error
-- **Description**: `exploration.budgets.max_spend_usd` is negative.
+- **Description**: `exploration.budgets.max_spend_usd` is negative, NaN or an infinity. The linter (`tvl-validate`, `tvl-lint`) reports it too, because the schema's `minimum: 0` does not reject NaN.
 - **Example**: `budgets: { max_spend_usd: -1 }`
 - **Remediation**: Set `max_spend_usd` to 0 or a positive number; 0 means no paid spending is allowed.
 
@@ -321,8 +321,8 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `unsupported_derived_expression`
 - **Severity**: error
-- **Description**: A derived constraint is not of the form `LinExpr OP Number`, where `LinExpr` is a sum or difference of terms such as `env.context.a` or `2 * env.context.b` (and plain numbers), and OP is `<=`, `>=`, `<`, `>` or `=`.
-- **Example**: `require: "env.context.a"`
+- **Description**: A derived constraint is not of the form `LinExpr OP Number`, where `LinExpr` is a sum or difference of terms such as `env.context.a` or `2 * env.context.b` (and plain numbers), and OP is `<=`, `>=`, `<`, `>` or `=`. An integer literal too large for a float (for example `10**400` written in the constraint) is reported here, as a coefficient or as the bound. An infinite coefficient (for example `1e400` in `env.context.a * 1e400 <= 5`) is reported here too; the message names the constraint, not a symbol. The same integer as an `env.context` value is `non_numeric_derived_symbol` instead.
+- **Example**: `require: "env.context.a"`, or `require: "env.context.a * 1e400 <= 5"`
 - **Remediation**: Write the constraint as a linear expression over `env.context.*` symbols compared with a number.
 
 ### `unknown_derived_symbol`
@@ -333,8 +333,8 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `non_numeric_derived_symbol`
 - **Severity**: error
-- **Description**: An `env.context` symbol used in a derived constraint does not have a numeric value.
-- **Example**: `environment.context.region: eu` with `require: "env.context.region <= 1"`
+- **Description**: An `env.context` symbol used in a derived constraint does not have a finite numeric value. A boolean, a non-numeric string, NaN or an infinity (including the strings `"nan"` and `"inf"`) is rejected, and so is a weighted sum that overflows; such a value would otherwise satisfy or fail inequalities silently. An integer too large for a float given as an `env.context` value is reported here; the same integer written as a literal in a `require` is `unsupported_derived_expression`.
+- **Example**: `environment.context.region: eu` with `require: "env.context.region <= 1"`; `environment.context.latency_ms: .nan` with `require: "env.context.latency_ms <= 250"`
 - **Remediation**: Give the symbol a numeric value, or remove it from the constraint.
 
 ### `derived_constraint_violation`
@@ -356,7 +356,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 ### `invalid_band_target`
 - **Severity**: error
 - **Description**: Banded objective target has invalid format. A banded objective declares an acceptable range instead of a direction: `target: [low, high]`, or `{ center, tol }`, where `tol` is the tolerance radius around `center` and must be greater than 0.
-- **Example**: `band: { target: [1, "high"] }`
+- **Example**: `band: { target: [1, "high"] }`, or a bound that is NaN, an infinity (`[100, .nan]`), or an integer beyond the float range
 - **Remediation**: Use `target: [low, high]` with numeric values or `{ center: num, tol: num }`.
 
 ### `invalid_band_bounds`
@@ -367,7 +367,7 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 
 ### `invalid_band_center_tol`
 - **Severity**: error
-- **Description**: Banded objective center/tol are not numbers.
+- **Description**: Banded objective center/tol are not finite numbers (NaN and infinities are rejected), or tol is an integer beyond the float range.
 - **Example**: `band: { target: { center: "middle", tol: 5 } }`
 - **Remediation**: Use numeric values for center and tol.
 
@@ -376,6 +376,13 @@ The codes below are also reported by `tvl-check-structural` when it cannot decid
 - **Description**: Banded objective tolerance is not positive.
 - **Example**: `band: { target: { center: 100, tol: 0 } }`
 - **Remediation**: Set tol > 0.
+
+### `non_finite_observed`
+- **Severity**: error
+- **Reported by**: `tvl-measure-validate`
+- **Description**: An objective's observed value in the measurement bundle (its `mean`, the mean of its `samples`, or a legacy `observed`) is NaN or an infinity, for example a crashed or empty measurement exported as `.nan`. Every comparison with NaN is false, so the value cannot be checked against a band.
+- **Example**: `objective_values: { latency_ms: { mean: .nan, std: 5, n: 30 } }`
+- **Remediation**: Re-run the measurement and record a finite value.
 
 ### `missing_band_target`
 - **Severity**: error
@@ -439,7 +446,7 @@ The promotion policy compares a candidate with the incumbent. Under `dominance: 
 
 ### `invalid_min_effect`
 - **Severity**: error
-- **Description**: Epsilon value is not a non-negative number.
+- **Description**: Epsilon value is not a finite non-negative number (NaN and infinities are rejected), including an integer beyond the float range.
 - **Example**: `min_effect: { quality: -0.01 }`
 - **Remediation**: Set epsilon >= 0.
 
@@ -498,7 +505,7 @@ The promotion policy compares a candidate with the incumbent. Under `dominance: 
 
 ### `invalid_convergence_threshold`
 - **Severity**: error
-- **Description**: Hypervolume convergence threshold is not positive. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
+- **Description**: Hypervolume convergence threshold is not a finite number greater than 0, including an integer beyond the float range. Hypervolume measures how much of the objective space the current set of non-dominated results covers; with `metric: hypervolume_improvement`, `threshold` is the minimum improvement of that measure, over the sliding `window`, needed to continue exploring.
 - **Example**: `convergence: { metric: hypervolume_improvement, threshold: 0 }`
 - **Remediation**: Set threshold > 0.
 
@@ -1004,7 +1011,7 @@ These diagnostics indicate that the module uses features outside the formally ve
 | 0 | Success under the tool's contract (see the 1.3 tool table below) |
 | 2 | A reported issue, validation or parse failure, or an unsuccessful gate decision, as specified by the tool |
 
-TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`, which exits 5 when validation fails or it refuses a construct. Exit 1 is not a defined diagnostic outcome. Diagnostics with severity `info` never change the exit status.
+TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`, which exits 5 when validation fails or it refuses a construct. Exit 1 is not a defined diagnostic outcome. `tvl-compile-runtime` does not report an internal error (a bug in the toolchain, not a problem with the input) as one of these codes: it exits 1 with a Python traceback, and such a failure should be reported as a bug. Diagnostics with severity `info` never change the exit status.
 
 ---
 
@@ -1056,7 +1063,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `invalid_convergence_threshold` | error | Exploration | Bad threshold |
 | `invalid_convergence_window` | error | Exploration | Bad window |
 | `invalid_budget_max_trials` | error | Operational | max_trials not positive |
-| `invalid_budget_max_spend` | error | Operational | max_spend_usd negative |
+| `invalid_budget_max_spend` | error | Operational | max_spend_usd negative or not finite |
 | `invalid_budget_max_wallclock` | error | Operational | max_wallclock_s not positive |
 | `unsupported_derived_expression` | error | Operational | Derived constraint not `LinExpr OP Number` (a linear expression compared with a number) |
 | `unknown_derived_symbol` | error | Operational | env.context symbol not defined |
@@ -1064,6 +1071,7 @@ TVL tools use 0 and 2 for their documented results, except `tvl-config-validate`
 | `derived_constraint_violation` | error | Operational | Derived constraint false for the environment |
 | `duplicate_domain_value` | error | Domain | Repeated domain member |
 | `non_finite_domain_value` | error | Domain | NaN or infinity in a domain |
+| `non_finite_observed` | error | Measurement | NaN or infinity as an observed objective value |
 | `invalid_enum_domain` | error | Domain | Enum member does not match `enum[T]` |
 | `invalid_tuple_domain` | error | Domain | Bad tuple components |
 | `malformed_structural_constraint` | error | Structural | Entry is not {when,then} or {expr} |
@@ -1267,7 +1275,8 @@ A value of the wrong JSON type, for example a string where an integer is require
 |---|---|---|---|---|
 | `runtime_unresolved_alias` | error | compile | a name has no entry in the token map, the token map is missing, unreadable or malformed, or an entry breaks the one-to-one rule. The message does not say which entry. | check that the map covers every module, requirement, monitor, response, rule, environment (including the default `production`), selector `ref`, protocol state and customer checker you use |
 | `runtime_unsafe_egress` | error | compile | the compiled hosted contract failed its own closed-schema self-check, or does not correspond to your module through the token map (for example a crossed or malformed reference) | check the token map entries; if the map is right, treat it as a toolchain bug. Nothing is written. |
-| `schema_error` | error | lint, compile | a document fails its JSON Schema: an unknown key, a wrong type, or a missing always-required key | see the message path; for a rule written with `on:` rename it `trigger` |
+| `schema_error` | error | lint, compile | a document fails its JSON Schema: an unknown key, a wrong type, or a missing always-required key. In `tvl-compile-runtime`, a module or `--pack` file that is missing, unreadable or not valid YAML or JSON also reports `schema_error`. Any exception that is not a `ValueError`, `OSError` or `OverflowError` is not reported with this code: it propagates as a traceback. | see the message path; for a rule written with `on:` rename it `trigger` |
+| `io_error` | error | compile | the compiled artifacts could not be written to `--out-dir`: for example a regular file is in the way, or the directory or its parent is not writable. The message names the directory and the operating-system cause; the documents themselves are valid. Path: `out_dir`. | make `--out-dir` a writable directory, or choose another; any previous artifact pair there is left unchanged |
 
 ### Responses
 

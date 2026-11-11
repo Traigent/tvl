@@ -2,11 +2,18 @@
 
 Pins ``epsilon_pareto_gate`` (decision and the full evidence dict),
 ``_test_from_samples``, ``_test_banded_objective`` and ``_make_decision``.
-Floating-point results are compared exactly: a behaviour-preserving refactor
-must keep the arithmetic order. NaN is normalised to the string ``"nan"`` so
-it can be compared."""
+Floating-point results of the gate's own arithmetic (means, deltas, standard
+deviations, t statistics, degrees of freedom) are compared exactly: a
+behaviour-preserving refactor must keep the arithmetic order. Values that come
+from scipy distribution functions (p-values, adjusted p-values, confidence
+bounds) are compared to a relative tolerance of 1e-9, because ``scipy`` is a
+version range and its tail values drift by about 1e-12 relative between
+releases (tvl#253). NaN is normalised to the string ``"nan"`` so it can be
+compared."""
 
 # Expected values were recorded from the unchanged source before refactoring.
+# Upper-tail p-values were re-recorded when they moved from ``1 - t.cdf`` to
+# ``t.sf`` (tvl#263); no decision or verdict changed.
 
 from __future__ import annotations
 
@@ -42,6 +49,42 @@ def normalize(value):
         return value
     as_float = float(value)
     return "nan" if math.isnan(as_float) else as_float
+
+
+# Fields whose values come from scipy.stats (t/beta cdf, sf, ppf) and so depend
+# on the installed scipy release.
+SCIPY_DERIVED_KEYS = frozenset(
+    {
+        "p_value",
+        "p_value_noninf",
+        "p_value_super",
+        "p_value_inferior",
+        "p_value_lower",
+        "p_value_upper",
+        "adjusted_p_super",
+        "adjusted_p_inferior",
+        "adjusted_p_noninf",
+        "ci_lower",
+        "ci_upper",
+    }
+)
+SCIPY_REL_TOL = 1e-9
+
+
+def with_scipy_tolerance(expected):
+    """Copy of a normalised pin with scipy-derived floats wrapped in ``pytest.approx``."""
+    if isinstance(expected, dict):
+        return {
+            k: (
+                pytest.approx(v, rel=SCIPY_REL_TOL, abs=0.0)
+                if k in SCIPY_DERIVED_KEYS and isinstance(v, float)
+                else with_scipy_tolerance(v)
+            )
+            for k, v in expected.items()
+        }
+    if isinstance(expected, (list, tuple)):
+        return type(expected)(with_scipy_tolerance(v) for v in expected)
+    return expected
 
 
 def _samples(name, direction, epsilon, inc, cand, paired):
@@ -82,6 +125,14 @@ FUNCS = {
 }
 
 nan = float("nan")
+
+# gate_superiority_at_alpha sets alpha exactly equal to the superiority p-value
+# to pin the strict ``p < alpha`` comparison. The p-value comes from scipy, so it
+# is computed with the installed scipy; a recorded literal sits ~1e-12 off the
+# boundary on another scipy release and flips the decision (tvl#253).
+_SUPERIORITY_AT_ALPHA = _samples(
+    "acc", "maximize", 0.02, [0.8, 0.82, 0.79, 0.81, 0.83, 0.8], [0.81, 0.84, 0.8, 0.83, 0.85, 0.82], False
+).p_value_super
 
 
 CASES = [('samples_single_inc',
@@ -562,8 +613,8 @@ CASES = [('samples_single_inc',
     'std_pooled': 0.0005773502691910041,
     't_statistic': 212132.03435545778,
     'df': 4.0,
-    'p_value_noninf': 1e-300,
-    'p_value_super': 1e-300,
+    'p_value_noninf': 1.4814814812761506e-21,
+    'p_value_super': 1.4814814812761506e-21,
     'p_value_inferior': 1.0,
     'adjusted_p_noninf': None,
     'adjusted_p_super': None,
@@ -590,8 +641,8 @@ CASES = [('samples_single_inc',
     'ci_upper': 0.30506347430897063,
     'band_lower': 0.2,
     'band_upper': 0.4,
-    'p_value_lower': 1.266362015250877e-09,
-    'p_value_upper': 1.266362015250877e-09,
+    'p_value_lower': 1.2663620356953984e-09,
+    'p_value_upper': 1.2663620356953932e-09,
     'verdict': 'in_band'})),
  ('band_list_out_high',
   'banded',
@@ -627,7 +678,7 @@ CASES = [('samples_single_inc',
     'band_lower': 0.2,
     'band_upper': 0.4,
     'p_value_lower': 0.9999999999223893,
-    'p_value_upper': 4.107825191113079e-15,
+    'p_value_upper': 4.073556639907307e-15,
     'verdict': 'out_of_band'})),
  ('band_list_inconclusive',
   'banded',
@@ -662,8 +713,8 @@ CASES = [('samples_single_inc',
     'ci_upper': 0.3038664585086871,
     'band_lower': 0.19999999999999998,
     'band_upper': 0.4,
-    'p_value_lower': 1e-300,
-    'p_value_upper': 1e-300,
+    'p_value_lower': 5.093807946817866e-21,
+    'p_value_upper': 5.0938079468178575e-21,
     'verdict': 'in_band'})),
  ('band_dict_defaults',
   'banded',
@@ -1772,11 +1823,11 @@ CASES = [('samples_single_inc',
                                'std_pooled': 0.014719601443879732,
                                't_statistic': 7.060180864974638,
                                'df': 10.0,
-                               'p_value_noninf': 1.728098761122343e-05,
-                               'p_value_super': 1.728098761122343e-05,
+                               'p_value_noninf': 1.728098761117937e-05,
+                               'p_value_super': 1.728098761117937e-05,
                                'p_value_inferior': 0.9999827190123888,
                                'adjusted_p_noninf': None,
-                               'adjusted_p_super': 1.728098761122343e-05,
+                               'adjusted_p_super': 1.728098761117937e-05,
                                'adjusted_p_inferior': 0.9999827190123888,
                                'epsilon': 0.0,
                                'verdict': 'superior'},
@@ -1788,8 +1839,8 @@ CASES = [('samples_single_inc',
                                'ci_upper': 151.55108366749846,
                                'band_lower': 100.0,
                                'band_upper': 200.0,
-                               'p_value_lower': 1e-300,
-                               'p_value_upper': 1e-300,
+                               'p_value_lower': 3.925121258741537e-31,
+                               'p_value_upper': 3.925121258741537e-31,
                                'verdict': 'in_band'},
                        'tone': {'test_type': 'tost',
                                 'n': 5,
@@ -1799,8 +1850,8 @@ CASES = [('samples_single_inc',
                                 'ci_upper': 0.5048484239488866,
                                 'band_lower': 0.4,
                                 'band_upper': 0.6,
-                                'p_value_lower': 2.9801044982846747e-06,
-                                'p_value_upper': 2.9801044982846747e-06,
+                                'p_value_lower': 2.98010449829976e-06,
+                                'p_value_upper': 2.98010449829976e-06,
                                 'verdict': 'in_band'}},
      'chance_constraints': {},
      'summary': {'all_noninferior': True,
@@ -1835,11 +1886,11 @@ CASES = [('samples_single_inc',
                                'std_pooled': 0.014719601443879732,
                                't_statistic': 7.060180864974638,
                                'df': 10.0,
-                               'p_value_noninf': 1.728098761122343e-05,
-                               'p_value_super': 1.728098761122343e-05,
+                               'p_value_noninf': 1.728098761117937e-05,
+                               'p_value_super': 1.728098761117937e-05,
                                'p_value_inferior': 0.9999827190123888,
                                'adjusted_p_noninf': None,
-                               'adjusted_p_super': 1.728098761122343e-05,
+                               'adjusted_p_super': 1.728098761117937e-05,
                                'adjusted_p_inferior': 0.9999827190123888,
                                'epsilon': 0.0,
                                'verdict': 'superior'},
@@ -1851,7 +1902,7 @@ CASES = [('samples_single_inc',
                                'ci_upper': 251.55108366749846,
                                'band_lower': 100.0,
                                'band_upper': 200.0,
-                               'p_value_lower': 1e-300,
+                               'p_value_lower': 6.447958526784084e-45,
                                'p_value_upper': 1.0,
                                'verdict': 'out_of_band'},
                        'tone': {'test_type': 'tost',
@@ -1862,8 +1913,8 @@ CASES = [('samples_single_inc',
                                 'ci_upper': 0.5023943393043278,
                                 'band_lower': 0.4,
                                 'band_upper': 0.6,
-                                'p_value_lower': 1e-300,
-                                'p_value_upper': 1e-300,
+                                'p_value_lower': 3.925121258741537e-31,
+                                'p_value_upper': 3.925121258741537e-31,
                                 'verdict': 'in_band'}},
      'chance_constraints': {},
      'summary': {'all_noninferior': True,
@@ -1955,8 +2006,8 @@ CASES = [('samples_single_inc',
                                'ci_upper': 151.55108366749846,
                                'band_lower': 100.0,
                                'band_upper': 200.0,
-                               'p_value_lower': 1e-300,
-                               'p_value_upper': 1e-300,
+                               'p_value_lower': 3.925121258741537e-31,
+                               'p_value_upper': 3.925121258741537e-31,
                                'verdict': 'in_band'}},
      'chance_constraints': {},
      'summary': {'all_noninferior': True,
@@ -2164,9 +2215,9 @@ CASES = [('samples_single_inc',
     {'per_objective': {'acc': {'test_type': 'welch',
                                'n_incumbent': 0,
                                'n_candidate': 0,
-                               'mean_incumbent': 0.0,
-                               'mean_candidate': 0.0,
-                               'delta': 0.0,
+                               'mean_incumbent': None,
+                               'mean_candidate': None,
+                               'delta': None,
                                'std_pooled': None,
                                't_statistic': None,
                                'df': None,
@@ -2177,13 +2228,13 @@ CASES = [('samples_single_inc',
                                'adjusted_p_super': 1.0,
                                'adjusted_p_inferior': 1.0,
                                'epsilon': 0.0,
-                               'verdict': 'inconclusive'},
+                               'verdict': 'inconclusive', 'code': 'missing_statistical_evidence'},
                        'lat': {'test_type': 'welch',
                                'n_incumbent': 0,
                                'n_candidate': 0,
-                               'mean_incumbent': 0.0,
-                               'mean_candidate': 0.0,
-                               'delta': 0.0,
+                               'mean_incumbent': None,
+                               'mean_candidate': None,
+                               'delta': None,
                                'std_pooled': None,
                                't_statistic': None,
                                'df': None,
@@ -2194,13 +2245,13 @@ CASES = [('samples_single_inc',
                                'adjusted_p_super': 1.0,
                                'adjusted_p_inferior': 1.0,
                                'epsilon': 0.0,
-                               'verdict': 'inconclusive'},
+                               'verdict': 'inconclusive', 'code': 'missing_statistical_evidence'},
                        'cost': {'test_type': 'welch',
                                 'n_incumbent': 0,
                                 'n_candidate': 0,
-                                'mean_incumbent': 0.0,
-                                'mean_candidate': 0.0,
-                                'delta': 0.0,
+                                'mean_incumbent': None,
+                                'mean_candidate': None,
+                                'delta': None,
                                 'std_pooled': None,
                                 't_statistic': None,
                                 'df': None,
@@ -2211,7 +2262,7 @@ CASES = [('samples_single_inc',
                                 'adjusted_p_super': 1.0,
                                 'adjusted_p_inferior': 1.0,
                                 'epsilon': 0.0,
-                                'verdict': 'inconclusive'}},
+                                'verdict': 'inconclusive', 'code': 'missing_statistical_evidence'}},
      'chance_constraints': {},
      'summary': {'all_noninferior': False,
                  'any_superior': False,
@@ -2220,7 +2271,7 @@ CASES = [('samples_single_inc',
                  'all_chance_pass': True,
                  'adjustment_method': 'holm',
                  'fdr_controlled_at': None,
-                 'decision_reason': 'Non-inferiority not established on: acc, lat, cost'}}))),
+                 'decision_reason': 'missing_statistical_evidence: no samples or complete mean/std/n for: acc, lat, cost'}}))),
  ('gate_noninferior_not_superior',
   'gate',
   ({'objective_values': {'acc': {'mean': 0.8, 'std': 0.01, 'n': 100}}},
@@ -2239,7 +2290,7 @@ CASES = [('samples_single_inc',
                                'std_pooled': 0.01,
                                't_statistic': 35.35533905932738,
                                'df': 198.0,
-                               'p_value_noninf': 1e-300,
+                               'p_value_noninf': 8.657277062159903e-88,
                                'p_value_super': 1.0,
                                'p_value_inferior': 1.0,
                                'adjusted_p_noninf': None,
@@ -2464,8 +2515,8 @@ CASES = [('samples_single_inc',
                                'ci_upper': 0.8804422670543208,
                                'band_lower': 0.0,
                                'band_upper': 1.0,
-                               'p_value_lower': 1.5056389468526277e-10,
-                               'p_value_upper': 1.8380309056986732e-06,
+                               'p_value_lower': 1.5056388237092418e-10,
+                               'p_value_upper': 1.8380309057437155e-06,
                                'verdict': 'in_band'}},
      'chance_constraints': {},
      'summary': {'all_noninferior': True,
@@ -2530,7 +2581,7 @@ CASES = [('samples_single_inc',
   'gate',
   ({'objective_values': {'acc': {'samples': [0.8, 0.82, 0.79, 0.81, 0.83, 0.8]}}},
    {'objective_values': {'acc': {'samples': [0.81, 0.84, 0.8, 0.83, 0.85, 0.82]}}},
-   {'adjust': 'none', 'alpha': 0.6304560288468111, 'min_effect': {'acc': 0.02}},
+   {'adjust': 'none', 'alpha': _SUPERIORITY_AT_ALPHA, 'min_effect': {'acc': 0.02}},
    [{'direction': 'maximize', 'name': 'acc'}]),
   {},
   ('ok',
@@ -2574,7 +2625,21 @@ def test_pinned_case(case_id, fn, args, kwargs, expected):
         assert type(info.value).__name__ == expected[1]
         assert str(info.value) == expected[2]
     else:
-        assert normalize(func(*args, **kwargs)) == expected[1]
+        assert normalize(func(*args, **kwargs)) == with_scipy_tolerance(expected[1])
+
+
+def test_scipy_derived_floats_tolerate_library_drift():
+    """tvl#253: scipy is a version range, so its tail values drift by ~1e-12
+    relative between releases. Only scipy-derived fields get a tolerance; the
+    gate's own arithmetic stays pinned exactly."""
+    pinned = {"p_value_super": 7.722907528673328e-05, "ci_lower": 0.81, "mean": 0.5, "verdict": "superior"}
+    drifted = dict(pinned, p_value_super=7.722907528662226e-05, ci_lower=0.81 * (1 + 1e-12))
+    assert drifted == with_scipy_tolerance(pinned)
+    assert dict(pinned, p_value_super=7.7229e-05) != with_scipy_tolerance(pinned)
+    assert dict(pinned, mean=math.nextafter(0.5, 1.0)) != with_scipy_tolerance(pinned)
+    assert dict(pinned, verdict="noninferior") != with_scipy_tolerance(pinned)
+    nested = [{"per_objective": {"q": dict(pinned)}}]
+    assert [{"per_objective": {"q": drifted}}] == with_scipy_tolerance(nested)
 
 
 def test_gate_requires_scipy(monkeypatch):

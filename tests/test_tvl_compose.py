@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
+import time
 from pathlib import Path
 
 import pytest
 import yaml
 
-from tvl_tools.tvl_compose.cli import compose
+from tvl_tools.tvl_compose.cli import _as_bound, compose
 
 
 def _write_yaml(path: Path, data: dict) -> None:
@@ -866,3 +868,71 @@ def test_equivalent_bands_in_different_forms_are_not_a_widening(tmp_path: Path) 
     )
     with pytest.raises(ValueError, match="cannot widen band"):
         compose(tmp_path / "wider.overlay.yml")
+
+
+# ---------------------------------------------------------------------------
+# tvl#238: the bound regex backtracked cubically on whitespace-heavy clauses.
+# ---------------------------------------------------------------------------
+
+# The pre-fix pattern, kept only as an oracle for what ordinary clauses parse to.
+_ORACLE_BOUND_RE = re.compile(r"^\s*(?P<lhs>.+?)\s*(?P<op>>=|<=|>|<)\s*(?P<num>-?\d+(?:\.\d+)?)\s*$")
+
+
+def _oracle_as_bound(text: str):
+    m = _ORACLE_BOUND_RE.match(text)
+    if not m:
+        return None
+    return (" ".join(m.group("lhs").split()), m.group("op"), float(m.group("num")))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "env.context.eval_samples >= 3000",
+        "  env.context.eval_samples>=3000  ",
+        "env.context.timeout_ms <= 30000",
+        "x < -2.5",
+        "x > 0.25",
+        "a   b    c >= 1",
+        "x >> 3",
+        "a < b < 3",
+        "a > b >= 3",
+        "x >= 3 \n",
+        "x >= 3.5.6",
+        "x == 3",
+        "x >= y",
+        ">= 3",
+        " >= 3",
+        "x >=",
+        "",
+        "x <= -0",
+    ],
+)
+def test_as_bound_matches_the_previous_parse(text: str) -> None:
+    """Behaviour preservation: the faster parse returns what the old pattern did."""
+    assert _as_bound(text) == _oracle_as_bound(text)
+    assert _as_bound({"require": text}) == _oracle_as_bound(text)
+
+
+def test_as_bound_matches_the_previous_parse_on_random_short_clauses() -> None:
+    import random
+
+    rng = random.Random(238)
+    alphabet = "ab <>=-.01 \t\n"
+    for _ in range(20000):
+        text = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 12)))
+        assert _as_bound(text) == _oracle_as_bound(text), repr(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        " " * 1200 + "!",
+        " " * 1200 + "a" + " " * 1200 + "!",
+    ],
+    ids=["leading-spaces", "two-space-runs"],
+)
+def test_as_bound_is_fast_on_whitespace_heavy_clauses(text: str) -> None:
+    start = time.perf_counter()
+    assert _as_bound(text) is None
+    assert time.perf_counter() - start < 0.5

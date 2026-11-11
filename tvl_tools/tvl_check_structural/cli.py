@@ -19,6 +19,8 @@ from tvl.model import InvalidDomainError
 from tvl.structural_parser import StructuralParseError
 from tvl.structural_sat import check_structural
 
+from tvl_tools.cli_utils import add_version_arg
+
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
@@ -80,16 +82,20 @@ def _build_repair_candidates(
                 numeric_value = None
             if numeric_value is not None and math.isfinite(numeric_value):
                 delta = max(1.0, abs(numeric_value) * 0.1)
+                # Splice at the bound's own span (issue #247): a textual replace would edit
+                # the first occurrence, which may be inside the symbol (k1 <= 1).
+                head = expression[: numeric_match.start(3)]
+                tail = expression[numeric_match.end(3):]
                 if operator in {"<=", "<"}:
                     new_value = numeric_value + delta
-                    new_expr = expression.replace(value_str, _format_number(new_value), 1)
+                    new_expr = head + _format_number(new_value) + tail
                     intent = "relax_bound"
                     rationale.append(
                         f"Relax upper bound: {symbol} from {value_str} → {_format_number(new_value)}"
                     )
                 elif operator in {">=", ">"}:
                     new_value = numeric_value - delta
-                    new_expr = expression.replace(value_str, _format_number(new_value), 1)
+                    new_expr = head + _format_number(new_value) + tail
                     intent = "relax_bound"
                     rationale.append(
                         f"Relax lower bound: {symbol} from {value_str} → {_format_number(new_value)}"
@@ -175,11 +181,13 @@ def _witness(result: Any) -> Optional[dict[str, Any]]:
 def _build_witness_id(assignment: Optional[dict[str, Any]]) -> Optional[str]:
     if not isinstance(assignment, dict):
         return None
+    # Issue #250: a stable digest of the canonical witness, never the per-process salted hash().
+    # ensure_ascii escapes every non-ASCII character, so a lone surrogate cannot fail to encode.
     try:
-        items = tuple(sorted(assignment.items()))
+        canonical = json.dumps(assignment, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     except TypeError:
         return None
-    return f"w-{abs(hash(items)) % 1_000_000:06d}"
+    return "w-" + hashlib.sha256(canonical.encode("ascii")).hexdigest()[:16]
 
 
 def _load_module(path: Path) -> dict[str, Any]:
@@ -188,6 +196,7 @@ def _load_module(path: Path) -> dict[str, Any]:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check structural satisfiability of a TVL module")
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL module YAML")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON diagnostics")
     parser.add_argument("--candidate-file", type=Path, help="Path to repair candidate JSON", default=None)

@@ -24,7 +24,7 @@ from tvl.runtime import (
     canonical_json_str,
     compile_runtime_document,
 )
-from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, load_yaml_safely, print_output
+from tvl_tools.cli_utils import add_common_args, format_issue_line, get_format, load_yaml_safely, print_output, add_version_arg
 from tvl.diagnostics import closed_lint_issue, closed_schema_issues, runtime_syntax_issues
 from tvl.lints import lint_module, lint_pack
 from tvl.runtime_projection import token_map_template
@@ -99,6 +99,7 @@ def run_cli(
     parser = argparse.ArgumentParser(
         description="Compile a TVL module or pack into version-tagged runtime contract and local artifacts"
     )
+    add_version_arg(parser)
     parser.add_argument("file", type=Path, help="Path to TVL 1.3, 1.4 or 1.5 module or pack YAML")
     parser.add_argument("--token-map", type=Path, help="Path to tvl-token-map/1 JSON")
     parser.add_argument("--out-dir", type=Path, help="Output directory for compiled artifacts")
@@ -156,7 +157,16 @@ def run_cli(
             checker_registry_doc=checker_doc,
         )
 
-        _write_artifact_pair(args.out_dir, contract, local_prog)
+        try:
+            _write_artifact_pair(args.out_dir, contract, local_prog)
+        except OSError as exc:
+            # A local filesystem failure, not a document defect: name the directory and cause.
+            reason = exc.strerror or type(exc).__name__
+            raise RuntimeClosedError(
+                "io_error",
+                path=["out_dir"],
+                message=f"Cannot write the compiled artifacts to {args.out_dir}: {reason}",
+            ) from exc
 
         digest = canonical_json_digest(contract)
         result = {
@@ -183,7 +193,11 @@ def run_cli(
         }
         print_output(result, get_format(args), text_renderer)
         return 2, result
-    except Exception:  # noqa: BLE001
+    except Exception as exc:
+        if not isinstance(exc, (ValueError, OSError, OverflowError)):
+            # Not a malformed-input condition: a programming error must surface, not read as a document defect.
+            # OverflowError is an integer beyond the float range in a document value, a range condition like ValueError.
+            raise
         issue = {
             "code": "schema_error",
             "message": "schema_error",

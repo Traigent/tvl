@@ -2,6 +2,7 @@
 
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -34,8 +35,27 @@ def test_reason_rendering_preserves_legacy_text_and_complete_13_explanation(
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == (0 if decision == "Promote" else 2)
-    rendered_reason = closed_reason if "requirements" in module else ""
+    rendered_reason = closed_reason if "requirements" in module else reason
     assert capsys.readouterr().out == (
         f"Decision: {decision}\nReason: {rendered_reason}\n== Evidence Summary ==\n"
         + json.dumps(summary, indent=2) + "\n"
+    )
+
+
+def test_core_module_text_reason_comes_from_evidence_summary(monkeypatch, capsys):
+    """Issue #138: a module without runtime blocks prints the summary's decision_reason."""
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(sys, "argv", [
+        "tvl-ci-gate",
+        str(root / "spec/examples/rag-support-bot.tvl.yml"),
+        str(root / "spec/measurements/rag-support-bot.candidate.measure.yml"),
+        str(root / "spec/measurements/rag-support-bot.incumbent.measure.yml"),
+    ])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    reason_line = next(line for line in out.splitlines() if line.startswith("Reason:"))
+    assert reason_line == (
+        "Reason: Regression beyond the allowed margin demonstrated on: quality, latency_p95_ms"
     )

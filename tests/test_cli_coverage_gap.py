@@ -145,17 +145,24 @@ def test_microsim_bridge_cli_dry_run_success(
     assert "presets" in payload
 
 
-def test_microsim_bridge_cli_missing_spec_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Documents current behaviour: unlike the other CLIs, tvl-microsim-bridge
-    has no error handling around the spec load and lets FileNotFoundError
-    propagate (uncaught-exception exit code 1) rather than exiting 2 with a
-    diagnostic. Tracked as a follow-up, not fixed here (out of #22's scope,
-    which is coverage, not CLI error-contract parity)."""
-    monkeypatch.setattr(
-        "sys.argv", ["tvl-microsim-bridge", "/tmp/does-not-exist-tvl-22.yml", "--dry-run"]
-    )
-    with pytest.raises(FileNotFoundError):
+@pytest.mark.parametrize("defect", ["missing", "malformed"])
+def test_microsim_bridge_cli_unreadable_spec_exits_2(
+    defect: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Issue #159: a missing or unparseable spec exits 2 with a one-line
+    diagnostic and, under --dry-run, an ``{"ok": false}`` JSON payload."""
+    spec = tmp_path / "spec.yml"
+    if defect == "malformed":
+        spec.write_text("a: [1\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["tvl-microsim-bridge", str(spec), "--dry-run"])
+    with pytest.raises(SystemExit) as excinfo:
         microsim_bridge_cli.main()
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.out + captured.err
+    assert captured.err.startswith("Error: ")
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False and payload["error"]
 
 
 # --- tvl-check-operational ----------------------------------------------------
