@@ -21,10 +21,10 @@ pip install -e .
 ## Chapter Highlights
 
 ### 1. What Traigent Optimizes
-- Read `walkthrough/README.md` section “Chapter 1”.
+- Read the mock examples section of `walkthrough/README.md`.
 - Run the first example to see parameter injection in action:
   ```bash
-  TRAIGENT_MOCK_MODE=true python examples/core/hello-world/run.py
+  TRAIGENT_MOCK_MODE=true python walkthrough/mock/01_tuning_qa.py
   ```
 - Note how adaptive variables (model, temperature, retrieval depth) map directly to Chapter 2’s configuration space.
 
