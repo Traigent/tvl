@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- `--version` on all 11 console scripts (`tvl-parse`, `tvl-lint`, `tvl-validate`, `tvl-ci-gate`, `tvl-config-validate`, `tvl-measure-validate`, `tvl-check-structural`, `tvl-check-operational`, `tvl-compose`, `tvl-microsim-bridge`, `tvl-compile-runtime`): prints `<tool> <tvl-spec version>`, read from the installed package metadata, and exits 0.
+- `--version` on all 11 console scripts (`tvl-parse`, `tvl-lint`, `tvl-validate`, `tvl-ci-gate`, `tvl-config-validate`, `tvl-measure-validate`, `tvl-check-structural`, `tvl-check-operational`, `tvl-compose`, `tvl-microsim-bridge`, `tvl-compile-runtime`): prints `<tool> <tvl-spec version>`, read from the installed package metadata, and exits 0 (issue #258).
 - Guide note "Enforcing local guards" in `docs/guides/requirements-monitors-responses.md`, pointing to the Traigent SDK's `traigent.runtime` guard classes.
 - Info diagnostic `outside_proved_subset`: emitted once per construct family present (`cvars`, `policies`, `composites`) that the Lean proofs do not model. Diagnostics with the new `info` severity are printed and included in JSON output but never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
 - `tools/claim_audit`: a paragraph-level audit of the claims in the published documentation.
