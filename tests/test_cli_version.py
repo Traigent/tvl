@@ -2,6 +2,7 @@
 
 import importlib
 import importlib.metadata
+import os
 import re
 import sys
 import tomllib
@@ -10,6 +11,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+# The CLI subprocesses must import the tree under test, not whatever tvl is installed.
+TREE_ENV = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT / "python"), str(ROOT)]))
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 SCRIPTS = PYPROJECT["project"]["scripts"]
 
@@ -45,7 +48,8 @@ def test_python_dash_m_prints_the_console_script_name(script):
 
     module = SCRIPTS[script].split(":")[0]
     proc = subprocess.run(
-        [sys.executable, "-m", module, "--version"], capture_output=True, text=True, cwd=ROOT, check=False
+        [sys.executable, "-m", module, "--version"], capture_output=True, text=True, cwd=ROOT, check=False,
+        env=TREE_ENV,
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == f"{script} {importlib.metadata.version('tvl-spec')}"
@@ -56,7 +60,7 @@ def test_python_dash_m_package_main_prints_the_console_script_name():
 
     proc = subprocess.run(
         [sys.executable, "-m", "tvl_tools.microsim_bridge", "--version"],
-        capture_output=True, text=True, cwd=ROOT, check=False,
+        capture_output=True, text=True, cwd=ROOT, check=False, env=TREE_ENV,
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == f"tvl-microsim-bridge {importlib.metadata.version('tvl-spec')}"

@@ -89,6 +89,7 @@ def test_unquoted_apostrophe_reports_the_quote_not_an_interval() -> None:
 
 
 def test_config_validate_rejects_the_value_an_escaped_quote_forbids(tmp_path) -> None:
+    import os
     import subprocess
     import sys
     from pathlib import Path
@@ -108,13 +109,15 @@ def test_config_validate_rejects_the_value_an_escaped_quote_forbids(tmp_path) ->
         encoding="utf-8",
     )
     root = Path(__file__).resolve().parents[1]
+    # The CLI subprocess must import the tree under test, not whatever tvl is installed.
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(root / "python"), str(root)]))
     results = {}
     for value in ('a"b', "c"):
         config = tmp_path / f"config-{len(results)}.yml"
         config.write_text("assignments:\n  mode: " + ("'a\"b'" if value == 'a"b' else value) + "\n", encoding="utf-8")
         proc = subprocess.run(
             [sys.executable, "-m", "tvl_tools.tvl_config_validate.cli", str(module), str(config)],
-            capture_output=True, text=True, cwd=root, check=False,
+            capture_output=True, text=True, cwd=root, check=False, env=env,
         )
         assert "Traceback" not in proc.stderr
         results[value] = proc.returncode

@@ -30,7 +30,11 @@ CANDIDATE = {"id": "rc-1", "edits": [{"before": "k <= 1", "after": "k <= 3"}]}
 
 
 def _witness_id(module: Path, candidate: Path, seed: str) -> str:
-    env = {**os.environ, "PYTHONHASHSEED": seed}
+    env = {
+        **os.environ,
+        "PYTHONHASHSEED": seed,
+        "PYTHONPATH": os.pathsep.join([str(ROOT / "python"), str(ROOT)]),
+    }
     proc = subprocess.run(
         [sys.executable, "-m", "tvl_tools.tvl_check_structural.cli", str(module), "--json",
          "--candidate-file", str(candidate)],

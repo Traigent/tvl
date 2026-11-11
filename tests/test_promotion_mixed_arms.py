@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +25,8 @@ import yaml
 from tvl.promotion import ObjectiveSpec, _test_from_stats, _test_objective
 
 REPO = Path(__file__).resolve().parents[1]
+# The CLI subprocesses must import the tree under test, not whatever tvl is installed.
+TREE_ENV = dict(os.environ, PYTHONPATH=os.pathsep.join([str(REPO / "python"), str(REPO)]))
 
 INC_SAMPLES = [0.70, 0.71, 0.69, 0.70, 0.72, 0.70]
 CAND_STATS = {"mean": 0.82, "std": 0.04, "n": 200}
@@ -101,7 +104,7 @@ def test_ci_gate_reports_the_sample_arm_from_its_samples(tmp_path: Path):
         [sys.executable, "-m", "tvl_tools.tvl_ci_gate.cli",
          str(REPO / "spec/examples/rag-support-bot.tvl.yml"),
          str(tmp_path / "inc.yml"), str(tmp_path / "cand.yml"), "--json"],
-        capture_output=True, text=True, cwd=REPO, check=False,
+        capture_output=True, text=True, cwd=REPO, check=False, env=TREE_ENV,
     )
     out = json.loads(proc.stdout)
     per = out["evidence"]["per_objective"]
@@ -139,7 +142,7 @@ def _gate(tmp_path: Path, inc_quality: dict) -> tuple[dict, int]:
         [sys.executable, "-m", "tvl_tools.tvl_ci_gate.cli",
          str(REPO / "spec/examples/rag-support-bot.tvl.yml"),
          str(tmp_path / "inc.yml"), str(tmp_path / "cand.yml"), "--json"],
-        capture_output=True, text=True, cwd=REPO, check=False,
+        capture_output=True, text=True, cwd=REPO, check=False, env=TREE_ENV,
     )
     return json.loads(proc.stdout), proc.returncode
 
@@ -295,7 +298,7 @@ def _gate_cli(tmp_path: Path, inc_quality: dict, cand_quality: dict) -> tuple[di
         [sys.executable, "-m", "tvl_tools.tvl_ci_gate.cli",
          str(REPO / "spec/examples/rag-support-bot.tvl.yml"),
          str(tmp_path / "inc.yml"), str(tmp_path / "cand.yml"), "--json"],
-        capture_output=True, text=True, cwd=REPO, check=False,
+        capture_output=True, text=True, cwd=REPO, check=False, env=TREE_ENV,
     )
     return json.loads(proc.stdout), proc.returncode
 
