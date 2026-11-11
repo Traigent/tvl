@@ -121,23 +121,33 @@ def _positive_int_beyond_float(value: Any) -> bool:
 
 
 def _rhs_literal_beyond_float(expression: str) -> bool:
-    """True when the right-hand side of ``<symbol expr> OP <literal>`` is an integer beyond the float range."""
+    """True when the expression is a supported derived form whose right-hand literal is beyond the float range.
+
+    The literal is the only reason the form would fail, so the same expression with that
+    literal replaced by 0 must be accepted by the derived parser over at least one symbol.
+    Any other unsupported expression keeps the generic form message.
+    """
     expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
     try:
-        body = ast.parse(expression, mode='eval').body
+        tree = ast.parse(expression, mode='eval')
     except (SyntaxError, ValueError, RecursionError):
         return False
+    body = tree.body
     if not isinstance(body, ast.Compare) or len(body.ops) != 1:
         return False
     comp = body.comparators[0]
     if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub):
         comp = comp.operand
-    return (
+    if not (
         _is_numeric_constant(comp)
         and isinstance(comp.value, int)
         and not isinstance(comp.value, bool)
         and _literal_float(comp.value) is None
-    )
+    ):
+        return False
+    body.comparators[0] = ast.Constant(value=0)
+    symbol, operator, value, _legacy = _parse_derived_expression(ast.unparse(tree))
+    return bool(symbol) and operator is not None and value is not None
 
 
 def _safe_float(value: Any) -> Optional[float]:

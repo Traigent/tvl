@@ -371,6 +371,44 @@ class OperationalTests(unittest.TestCase):
                 self.assertEqual(len(issues), 1)
                 self.assertIn("must be of the form symbol OP value", issues[0]["message"])
 
+    def test_derived_huge_literal_in_unsupported_form_keeps_the_form_message(self) -> None:
+        # A beyond-range literal does not make an unsupported form supported: the operator, the
+        # left side and the shape still decide, so the form message stays.
+        big = 10**400
+        for expression in (
+            f"env.context.x != {big}",
+            f"env.context.x is {big}",
+            f"'abc' <= {big}",
+            f"foo(env.context.x) <= {big}",
+            f"1 <= {big}",
+        ):
+            with self.subTest(expression=expression[:24]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1}
+                doc.setdefault("constraints", {})["derived"] = [{"require": expression}]
+                issues = [i for i in check_operational(doc).issues if i["code"] == "unsupported_derived_expression"]
+                self.assertEqual(len(issues), 1)
+                self.assertIn("must be of the form symbol OP value", issues[0]["message"])
+
+    def test_derived_supported_form_with_huge_right_hand_literal_names_the_float_range(self) -> None:
+        big = 10**400
+        for expression in (
+            f"env.context.x <= {big}",
+            f"env.context.x * 2 <= {big}",
+            f"env.context.x >= -{big}",
+            f"env.context.x == {big}",
+        ):
+            with self.subTest(expression=expression[:24]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1}
+                doc.setdefault("constraints", {})["derived"] = [{"require": expression}]
+                issues = [i for i in check_operational(doc).issues if i["code"] == "unsupported_derived_expression"]
+                self.assertEqual(len(issues), 1)
+                self.assertEqual(
+                    issues[0]["message"],
+                    f"Derived constraint '{expression}' has a numeric literal beyond the float range",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
