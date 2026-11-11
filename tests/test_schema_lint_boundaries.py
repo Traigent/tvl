@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -166,12 +167,14 @@ _SHARED_BOUND_CASES = {
 
 def _cli_codes(tool: str, path: Path) -> tuple[int, set[str]]:
     """Run a CLI the way a user does and return its exit status and codes."""
+    tree_env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT / "python"), str(ROOT)]))
     proc = subprocess.run(
         [sys.executable, "-m", f"tvl_tools.{tool}.cli", str(path), "--json"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env=tree_env,
     )
     assert proc.stdout, f"{tool} printed nothing; stderr={proc.stderr[:400]}"
     payload = json.loads(proc.stdout)
