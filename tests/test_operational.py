@@ -292,6 +292,85 @@ class OperationalTests(unittest.TestCase):
                 ]
                 self.assertEqual(check_operational(doc).ok, ok)
 
+    def test_operational_max_spend_beyond_float_range_names_the_float_range(self) -> None:
+        # Issue #224: a positive integer float() cannot hold is not a finite budget; say so, do not say "must be >= 0".
+        doc = _base_module()
+        doc["exploration"]["budgets"] = {"max_spend_usd": 10**400 - 1}
+        result = check_operational(doc)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.binding_budget, "max_spend_usd")
+        issues = [i for i in result.issues if i["code"] == "invalid_budget_max_spend"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(
+            issues[0]["message"],
+            "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range",
+        )
+
+    def test_operational_max_spend_negative_beyond_float_range_keeps_the_sign_message(self) -> None:
+        doc = _base_module()
+        doc["exploration"]["budgets"] = {"max_spend_usd": -(10**400)}
+        result = check_operational(doc)
+        self.assertFalse(result.ok)
+        issues = [i for i in result.issues if i["code"] == "invalid_budget_max_spend"]
+        self.assertEqual(issues[0]["message"], "exploration.budgets.max_spend_usd must be >= 0")
+
+    def test_operational_max_spend_nan_and_infinity_keep_the_plain_message(self) -> None:
+        for value in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(value=value):
+                doc = _base_module()
+                doc["exploration"]["budgets"] = {"max_spend_usd": value}
+                result = check_operational(doc)
+                self.assertFalse(result.ok)
+                issues = [i for i in result.issues if i["code"] == "invalid_budget_max_spend"]
+                self.assertEqual(issues[0]["message"], "exploration.budgets.max_spend_usd must be >= 0")
+
+    def test_cli_max_spend_beyond_float_range_exits_2_with_the_float_range_message(self) -> None:
+        import json
+        import subprocess
+        import tempfile
+
+        doc = _base_module()
+        doc["tvars"] = [{"name": "x", "type": "int", "domain": {"range": [1, 3]}}]
+        doc["exploration"]["budgets"] = {"max_spend_usd": 10**400 - 1}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "max_spend_huge.tvl.yml"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, "-m", "tvl_tools.tvl_check_operational.cli", str(path), "--json"],
+                capture_output=True, text=True, cwd=BASE, check=False,
+            )
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn(
+            "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range",
+            proc.stdout,
+        )
+
+    def test_derived_literal_beyond_float_range_message_names_the_float_range(self) -> None:
+        # The expression is already of the form symbol OP value; the literal is the problem, so say that.
+        for expression in (f"env.context.x <= {10**400}", f"env.context.x >= -{10**400}"):
+            with self.subTest(expression=expression[-12:]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1}
+                doc.setdefault("constraints", {})["derived"] = [{"require": expression}]
+                issues = [i for i in check_operational(doc).issues if i["code"] == "unsupported_derived_expression"]
+                self.assertEqual(len(issues), 1)
+                self.assertEqual(
+                    issues[0]["message"],
+                    f"Derived constraint '{expression}' has a numeric literal beyond the float range",
+                )
+
+    def test_derived_other_unsupported_expressions_keep_the_form_message(self) -> None:
+        # Controls: neither a beyond-range literal on the left (a coefficient) nor a plain unsupported shape changes.
+        for expression in (f"env.context.x * {10**400} <= 5", "env.context.x != 5"):
+            with self.subTest(expression=expression[:24]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1}
+                doc.setdefault("constraints", {})["derived"] = [{"require": expression}]
+                issues = [i for i in check_operational(doc).issues if i["code"] == "unsupported_derived_expression"]
+                self.assertEqual(len(issues), 1)
+                self.assertIn("must be of the form symbol OP value", issues[0]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

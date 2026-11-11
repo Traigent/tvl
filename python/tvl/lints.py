@@ -2923,6 +2923,15 @@ def _lint_objectives(doc: Dict[str, Any], issues: List[Issue]) -> None:
                             "severity": "error",
                         }
                     )
+                elif not _fits_float(center):
+                    issues.append(
+                        {
+                            "code": "invalid_band_center_tol",
+                            "message": f"Banded objective '{name}' center must be within the float range",
+                            "path": path + ["target", "center"],
+                            "severity": "error",
+                        }
+                    )
                 elif not _fits_float(tol):
                     issues.append(
                         {
@@ -3200,11 +3209,18 @@ def _lint_exploration(doc: Dict[str, Any], issues: List[Issue]) -> None:
             )
         max_spend = budgets.get("max_spend_usd")
         # Issue #252: the schema bound (minimum 0) is false for NaN, so the lint is the gate.
-        if max_spend is not None and (not _is_finite_number(max_spend) or max_spend < 0):
+        # Issue #224: a positive integer beyond the float range is named as such; a negative one keeps its message.
+        if max_spend is not None and _is_number(max_spend) and max_spend > 0 and not _fits_float(max_spend):
+            message = "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range"
+        elif max_spend is not None and (not _is_finite_number(max_spend) or max_spend < 0):
+            message = "exploration.budgets.max_spend_usd must be a finite number >= 0"
+        else:
+            message = None
+        if message is not None:
             issues.append(
                 {
                     "code": "invalid_budget_max_spend",
-                    "message": "exploration.budgets.max_spend_usd must be a finite number >= 0",
+                    "message": message,
                     "path": ["exploration", "budgets", "max_spend_usd"],
                     "severity": "error",
                 }

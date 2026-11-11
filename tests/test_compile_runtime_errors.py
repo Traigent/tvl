@@ -90,6 +90,7 @@ def _constructs_base(band_form: str) -> dict:
         "strategy": {"type": "nsga2"},
         "convergence": {"metric": "hypervolume_improvement", "window": 5, "threshold": 0.01},
     }
+    module["exploration"]["budgets"] = {"max_spend_usd": 1.0}
     module["constraints"] = {"structural": [{"expr": "x >= 1"}], "derived": []}
     return _with_tokens(module, base["pack"])
 
@@ -450,10 +451,20 @@ def _set_band_tol(module: dict, value: int) -> None:
     module["objectives"][0]["band"]["target"]["tol"] = value
 
 
+def _set_band_center(module: dict, value: int) -> None:
+    module["objectives"][0]["band"]["target"]["center"] = value
+
+
+def _set_max_spend(module: dict, value: int) -> None:
+    module["exploration"]["budgets"] = {"max_spend_usd": value}
+
+
 # One row per lint site that calls float() on a document value: (base form, setter, code, path).
 LINT_SITES = [
     ("list", _set_band_target_list, "invalid_band_target", ["objectives", 0, "band", "target"]),
+    ("dict", _set_band_center, "invalid_band_center_tol", ["objectives", 0, "band", "target", "center"]),
     ("dict", _set_band_tol, "invalid_band_center_tol", ["objectives", 0, "band", "target", "tol"]),
+    ("list", _set_max_spend, "invalid_budget_max_spend", ["exploration", "budgets", "max_spend_usd"]),
     ("list", _set_band_alpha, "invalid_band_alpha", ["objectives", 0, "band", "alpha"]),
     ("list", _set_promotion_alpha, "invalid_alpha", ["promotion_policy", "alpha"]),
     ("list", _set_chance_threshold, "invalid_chance_threshold",
@@ -469,8 +480,8 @@ LINT_SITES = [
 @pytest.mark.parametrize(
     "form,setter,code,path",
     LINT_SITES,
-    ids=["band_target", "band_tol", "band_alpha", "promotion_alpha", "chance_threshold",
-         "chance_confidence", "convergence_threshold"],
+    ids=["band_target", "band_center", "band_tol", "max_spend", "band_alpha", "promotion_alpha",
+         "chance_threshold", "chance_confidence", "convergence_threshold"],
 )
 def test_lint_site_with_integer_beyond_float_range_is_a_coded_issue(
     form: str, setter, code: str, path: list, sign: int,

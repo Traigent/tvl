@@ -14,6 +14,8 @@ class BudgetSummary:
     max_trials: int | float | None
     max_spend_usd: Optional[float]
     max_wallclock_s: int | float | None
+    # True for a positive integer float() cannot hold (issue #224), so the message can say so.
+    max_spend_beyond_float: bool = False
 
 
 @dataclass
@@ -47,6 +49,7 @@ def build_operational_model(module: dict[str, Any]) -> OperationalModel:
         max_trials=_safe_int(budgets.get("max_trials")),
         max_spend_usd=_safe_float(budgets.get("max_spend_usd")),
         max_wallclock_s=_safe_int(budgets.get("max_wallclock_s")),
+        max_spend_beyond_float=_positive_int_beyond_float(budgets.get("max_spend_usd")),
     )
 
     derived_block = (module.get("constraints") or {}).get("derived") or []
@@ -106,6 +109,37 @@ def _is_infinite(value: Any) -> bool:
     return isinstance(value, float) and math.isinf(value)
 
 
+def _positive_int_beyond_float(value: Any) -> bool:
+    """True for a positive integer such as 10**400, which has no binary64 value."""
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return False
+    try:
+        float(value)
+    except OverflowError:
+        return True
+    return False
+
+
+def _rhs_literal_beyond_float(expression: str) -> bool:
+    """True when the right-hand side of ``<symbol expr> OP <literal>`` is an integer beyond the float range."""
+    expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
+    try:
+        body = ast.parse(expression, mode='eval').body
+    except (SyntaxError, ValueError, RecursionError):
+        return False
+    if not isinstance(body, ast.Compare) or len(body.ops) != 1:
+        return False
+    comp = body.comparators[0]
+    if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub):
+        comp = comp.operand
+    return (
+        _is_numeric_constant(comp)
+        and isinstance(comp.value, int)
+        and not isinstance(comp.value, bool)
+        and _literal_float(comp.value) is None
+    )
+
+
 def _safe_float(value: Any) -> Optional[float]:
     if value is None:
         return None
@@ -136,10 +170,15 @@ def _validate_budgets(budget: BudgetSummary) -> tuple[list[dict[str, Any]], Opti
     # Issue #252: written in accepting form so NaN and infinities are rejected too.
     if budget.max_spend_usd is not None and not (math.isfinite(budget.max_spend_usd) and budget.max_spend_usd >= 0):
         binding = binding or "max_spend_usd"
+        message = (
+            "exploration.budgets.max_spend_usd must be a finite number >= 0 within the float range"
+            if budget.max_spend_beyond_float
+            else "exploration.budgets.max_spend_usd must be >= 0"
+        )
         issues.append(
             {
                 "code": "invalid_budget_max_spend",
-                "message": "exploration.budgets.max_spend_usd must be >= 0",
+                "message": message,
                 "path": ["exploration", "budgets", "max_spend_usd"],
                 "severity": "error",
             }
@@ -393,6 +432,13 @@ def _derived_shape_issue(derived: DerivedConstraint, path: list[Any]) -> Optiona
             path,
         )
     if derived.symbol is None or derived.operator is None or derived.value is None:
+        if _rhs_literal_beyond_float(derived.expression):
+            # Issue #224: the form is right; the literal is what float() cannot hold.
+            return _derived_error(
+                "unsupported_derived_expression",
+                f"Derived constraint '{derived.expression}' has a numeric literal beyond the float range",
+                path,
+            )
         return _derived_error(
             "unsupported_derived_expression",
             f"Derived constraint '{derived.expression}' must be of the form symbol OP value where OP is <=, >=, <, >, or =",
