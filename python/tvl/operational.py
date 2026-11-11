@@ -120,21 +120,21 @@ def _positive_int_beyond_float(value: Any) -> bool:
     return False
 
 
-def _rhs_literal_beyond_float(expression: str) -> bool:
-    """True when the expression is a supported derived form whose right-hand literal is beyond the float range.
+def _beyond_float_probe(derived: DerivedConstraint) -> DerivedConstraint | None:
+    """Return the expression with its beyond-float right-hand literal replaced by 0, or None.
 
-    The literal is the only reason the form would fail, so the same expression with that
-    literal replaced by 0 must be accepted by the derived parser over at least one symbol.
-    Any other unsupported expression keeps the generic form message.
+    Only a comparison whose right-hand side is an integer literal beyond the float range qualifies.
+    The probe is built on the parsed tree, so no source is regenerated and re-parsed. Callers run the
+    ordinary derived checks on the probe: its issue is what a small literal would show.
     """
-    expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
+    expression = re.sub(r'(?<![=<>!])=(?![=])', '==', derived.expression)
     try:
         tree = ast.parse(expression, mode='eval')
     except (SyntaxError, ValueError, RecursionError):
-        return False
+        return None
     body = tree.body
     if not isinstance(body, ast.Compare) or len(body.ops) != 1:
-        return False
+        return None
     comp = body.comparators[0]
     if isinstance(comp, ast.UnaryOp) and isinstance(comp.op, ast.USub):
         comp = comp.operand
@@ -144,10 +144,18 @@ def _rhs_literal_beyond_float(expression: str) -> bool:
         and not isinstance(comp.value, bool)
         and _literal_float(comp.value) is None
     ):
-        return False
+        return None
     body.comparators[0] = ast.Constant(value=0)
-    symbol, operator, value, _legacy = _parse_derived_expression(ast.unparse(tree))
-    return bool(symbol) and operator is not None and value is not None
+    symbol, operator, value, legacy = _parse_derived_tree(tree)
+    if not symbol or operator is None or value is None:
+        return None
+    return DerivedConstraint(
+        expression=derived.expression,
+        symbol=symbol,
+        operator=operator,
+        value=value,
+        legacy_symbols=legacy,
+    )
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -225,20 +233,25 @@ def _parse_derived_expression(
     # Replace single `=` with `==` to support EBNF `lin_arith_expr` syntax in Python AST
     expression = re.sub(r'(?<![=<>!])=(?![=])', '==', expression)
 
-    # Guard the parse itself as well as the walk below: a sufficiently deep /
+    # Guard the parse itself as well as the walk: a sufficiently deep /
     # long chained expression can blow the stack inside ast.parse() before
-    # _walk_derived ever runs, not just inside its own recursion. One try
-    # spanning both keeps a single graceful "unparseable" exit for either
-    # failure mode.
+    # _walk_derived ever runs, not just inside its own recursion.
     try:
         tree = ast.parse(expression, mode='eval')
+    except SyntaxError:
+        return None, None, None, []
+    except RecursionError:
+        return None, None, None, []
+    return _parse_derived_tree(tree)
+
+
+def _parse_derived_tree(tree: ast.Expression) -> tuple[list | None, str | None, float | None, list[str]]:
+    try:
         comparison = _derived_comparison(tree.body)
         if comparison is None:
             return None, None, None, []
         left, op, val = comparison
         walked = _walk_derived(left)
-    except SyntaxError:
-        return None, None, None, []
     except RecursionError:
         # Defense in depth: the depth guard should prevent this, but never
         # let stack exhaustion escape as an uncaught crash of the CLI check.
@@ -441,20 +454,15 @@ def _derived_shape_issue(derived: DerivedConstraint, path: list[Any]) -> Optiona
             ),
             path,
         )
-    if derived.symbol is None or derived.operator is None or derived.value is None:
-        if _rhs_literal_beyond_float(derived.expression):
-            # Issue #224: the form is right; the literal is what float() cannot hold.
-            return _derived_error(
-                "unsupported_derived_expression",
-                f"Derived constraint '{derived.expression}' has a numeric literal beyond the float range",
-                path,
-            )
-        return _derived_error(
-            "unsupported_derived_expression",
-            f"Derived constraint '{derived.expression}' must be of the form symbol OP value where OP is <=, >=, <, >, or =",
-            path,
-        )
     return None
+
+
+def _unsupported_form_issue(derived: DerivedConstraint, path: list[Any]) -> dict[str, Any]:
+    return _derived_error(
+        "unsupported_derived_expression",
+        f"Derived constraint '{derived.expression}' must be of the form symbol OP value where OP is <=, >=, <, >, or =",
+        path,
+    )
 
 
 def _sum_derived_terms(
@@ -517,12 +525,13 @@ def _derived_violated(op: Any, numeric_value: float, val: Any) -> bool:
     return False
 
 
-def _derived_constraint_issue(
+def _derived_operand_check(
     derived: DerivedConstraint, path: list[Any], symbol_table: dict[str, Any]
-) -> Optional[dict[str, Any]]:
+) -> tuple[dict[str, Any] | None, float]:
+    """Run the shape, symbol and finiteness checks on a supported form; return the first issue and the sum."""
     shape_issue = _derived_shape_issue(derived, path)
     if shape_issue is not None:
-        return shape_issue
+        return shape_issue, 0.0
 
     invalid_symbol, numeric_value, missing, non_numeric = _sum_derived_terms(derived.symbol, symbol_table)
     if invalid_symbol is not None:
@@ -530,25 +539,52 @@ def _derived_constraint_issue(
             "derived_invalid_symbol_reference",
             f"Operational preconditions may reference only env.context.* symbols; found '{invalid_symbol}'",
             path,
-        )
+        ), 0.0
     if missing:
         return _derived_error(
             "unknown_derived_symbol",
             f"Derived constraint references unknown environment symbol(s): {', '.join(missing)}",
             path,
-        )
+        ), 0.0
     if non_numeric:
         return _derived_error(
             "non_numeric_derived_symbol",
             f"Environment symbol(s) '{', '.join(non_numeric)}' must be numeric",
             path,
-        )
+        ), 0.0
     if any(not math.isfinite(coeff) for coeff, _sym in derived.symbol):
         return _derived_error(
             "unsupported_derived_expression",
             f"Derived constraint '{derived.expression}' has a numeric literal that is not finite",
             path,
+        ), 0.0
+    return None, numeric_value
+
+
+def _derived_constraint_issue(
+    derived: DerivedConstraint, path: list[Any], symbol_table: dict[str, Any]
+) -> Optional[dict[str, Any]]:
+    if derived.symbol is None or derived.operator is None or derived.value is None:
+        shape_issue = _derived_shape_issue(derived, path)
+        if shape_issue is not None:
+            return shape_issue
+        probe = _beyond_float_probe(derived)
+        if probe is None:
+            return _unsupported_form_issue(derived, path)
+        # Issue #224: the form is right and the literal is what float() cannot hold. Any ordinary
+        # issue of the literal-0 form is what a small literal would show, so it is reported instead.
+        probe_issue, _probe_sum = _derived_operand_check(probe, path, symbol_table)
+        if probe_issue is not None:
+            return probe_issue
+        return _derived_error(
+            "unsupported_derived_expression",
+            f"Derived constraint '{derived.expression}' has a numeric literal beyond the float range",
+            path,
         )
+
+    issue, numeric_value = _derived_operand_check(derived, path, symbol_table)
+    if issue is not None:
+        return issue
 
     op = derived.operator
     val = derived.value

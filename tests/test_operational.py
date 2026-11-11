@@ -409,6 +409,94 @@ class OperationalTests(unittest.TestCase):
                     f"Derived constraint '{expression}' has a numeric literal beyond the float range",
                 )
 
+    def test_derived_long_chain_with_huge_literal_never_raises(self) -> None:
+        # Long left-nested sums compared with an integer beyond the float range must yield a coded
+        # issue. The old helper unparsed the tree and re-parsed it, which exhausted the stack at ~330 terms.
+        big = 10**400
+        for terms in (300, 330, 400, 600, 1000):
+            chain = " + ".join(["env.context.x"] * terms)
+            for literal in (big, 5):
+                with self.subTest(terms=terms, literal=str(literal)[:8]):
+                    doc = _base_module()
+                    doc["environment"]["context"] = {"x": 1}
+                    doc.setdefault("constraints", {})["derived"] = [{"require": f"{chain} <= {literal}"}]
+                    result = check_operational(doc)
+                    self.assertFalse(result.ok)
+                    self.assertEqual(len(result.issues), 1)
+                    self.assertIn(result.issues[0]["code"], ("unsupported_derived_expression", "derived_constraint_violation"))
+
+    def test_cli_derived_long_chain_with_huge_literal_exits_2_without_traceback(self) -> None:
+        import subprocess
+        import tempfile
+
+        source = (BASE / "spec" / "examples" / "cost-optimization.tvl.yml").read_text(encoding="utf-8")
+        original = "    - require: env.context.provider_input_price_usd_per_1k_tokens <= 0.05\n"
+        for terms in (300, 330, 400, 600, 1000):
+            chain = " + ".join(["env.context.provider_input_price_usd_per_1k_tokens"] * terms)
+            text = source.replace(original, original + f"    - require: {chain} <= {10**400}\n")
+            self.assertNotEqual(text, source)
+            with self.subTest(terms=terms), tempfile.TemporaryDirectory() as tmp:
+                path = pathlib.Path(tmp) / "chain_huge.tvl.yml"
+                path.write_text(text, encoding="utf-8")
+                proc = subprocess.run(
+                    [sys.executable, "-m", "tvl_tools.tvl_check_operational.cli", str(path), "--json"],
+                    capture_output=True, text=True, cwd=BASE, check=False,
+                )
+                self.assertEqual(proc.returncode, 2, proc.stderr[-2000:])
+                self.assertNotIn("Traceback", proc.stderr)
+
+    def test_derived_ordinary_issue_outranks_the_float_range_message(self) -> None:
+        # With the huge literal replaced by 0, an ordinary error (shape, symbol, finiteness) is what the
+        # user would see with a small literal; that issue is reported instead of the float-range message.
+        big = 10**400
+        cases = (
+            (f"x <= {big}", "x <= 5"),
+            (f"env.other.x <= {big}", "env.other.x <= 5"),
+            (f"env.context.x*1e400 <= {big}", "env.context.x*1e400 <= 5"),
+            (f"env.context.zz <= {big}", "env.context.zz <= 5"),
+        )
+        for huge, small in cases:
+            with self.subTest(expression=huge[:24]):
+                doc_huge = _base_module()
+                doc_huge["environment"]["context"] = {"x": 1}
+                doc_huge["constraints"] = {"derived": [{"require": huge}]}
+                doc_small = _base_module()
+                doc_small["environment"]["context"] = {"x": 1}
+                doc_small["constraints"] = {"derived": [{"require": small}]}
+                issues_huge = check_operational(doc_huge).issues
+                issues_small = check_operational(doc_small).issues
+                self.assertEqual([i["code"] for i in issues_huge], [i["code"] for i in issues_small])
+                self.assertNotIn("beyond the float range", issues_huge[0]["message"])
+                self.assertEqual(
+                    [i["message"].replace(str(big), "5") for i in issues_huge],
+                    [i["message"] for i in issues_small],
+                )
+
+    def test_derived_supported_forms_with_huge_literal_keep_the_float_range_message(self) -> None:
+        big = 10**400
+        for expression in (
+            f"env.context.x <= {big}",
+            f"env.context.x < {big}",
+            f"env.context.x > -{big}",
+            f"env.context.x * 2 <= {big}",
+            f"2 * env.context.x <= {big}",
+            f"env.context.x + env.context.y <= {big}",
+            f"-env.context.x <= {big}",
+            f"env.context.x <= -{big}",
+            f"env.context.x == {big}",
+            f"env.context.x = {big}",
+        ):
+            with self.subTest(expression=expression[:30]):
+                doc = _base_module()
+                doc["environment"]["context"] = {"x": 1, "y": 2}
+                doc.setdefault("constraints", {})["derived"] = [{"require": expression}]
+                issues = check_operational(doc).issues
+                self.assertEqual([i["code"] for i in issues], ["unsupported_derived_expression"])
+                self.assertEqual(
+                    issues[0]["message"],
+                    f"Derived constraint '{expression}' has a numeric literal beyond the float range",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
