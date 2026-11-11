@@ -26,4 +26,30 @@ describe("Examples preview ignores superseded requests (#236)", () => {
     expect(load).toBeGreaterThan(-1);
     expect(guard).toBeGreaterThan(load);
   });
+
+  it("only a successful load is written into fileContents, never a failed one", () => {
+    const load = examples.slice(examples.indexOf("const loadFileContent"), examples.indexOf("const copyToClipboard"));
+    const ok = load.indexOf("if (result.ok) {");
+    const elseAt = load.indexOf("} else {");
+    expect(ok).toBeGreaterThan(-1);
+    expect(elseAt).toBeGreaterThan(ok);
+    expect(load.match(/setFileContents\(/g)?.length ?? 0).toBe(1);
+    expect(load.slice(ok, elseAt)).toContain("setFileContents(");
+  });
+});
+
+describe("SpecViewer ignores superseded loads and keeps loading state honest (#236)", () => {
+  const spec = readFileSync(path.join(PAGES, "SpecViewer.tsx"), "utf8");
+
+  it("a response is written to content only while its request is still current", () => {
+    expect(spec).toMatch(/if \(isCurrent\(\)\) setContent\(text\);/);
+  });
+
+  it("the finally block clears loading only while its request is still current", () => {
+    expect(spec).toMatch(/\.finally\(\(\) => \{\s*if \(isCurrent\(\)\) setLoading\(false\);\s*\}\)/);
+  });
+
+  it("a failed load is ignored once superseded and otherwise shows a toast", () => {
+    expect(spec).toMatch(/\.catch\(\(err\) => \{\s*if \(!isCurrent\(\)\) return;[\s\S]*?toast\.error\("Failed to load file"\);\s*\}\)/);
+  });
 });
