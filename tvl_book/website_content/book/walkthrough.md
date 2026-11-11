@@ -9,7 +9,7 @@ linear walkthrough so you can follow along while reading Chapters 1–3.
 - Optional: set `TRAIGENT_MOCK_MODE=true` to exercise the flow without API keys.
 
 ```bash
-git clone https://github.com/nimrodbusany/Traigent.git
+git clone https://github.com/Traigent/Traigent.git
 cd Traigent
 python -m venv .venv
 source .venv/bin/activate
