@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from tvl.canonical import RuntimeClosedError, canonical_json_digest
 from tvl.diagnostics import closed_lint_issue, closed_schema_issues, runtime_syntax_issues
-from tvl.lints import _CUSTOMER_CHECKER_RE, _RUNTIME_IDENT_RE, _rule_source_monitor, lint_module, lint_pack
+from tvl.lints import _CUSTOMER_CHECKER_RE, _RUNTIME_IDENT_RE, _rule_source_monitor, _uses_17_constructs, lint_module, lint_pack
 from tvl.runtime_compose import compose_runtime_documents
 from tvl.runtime_projection import has_projected_15_construct, has_projected_reactive_construct, project_runtime_declarations, validate_projected_contract
 from tvl.schema import pack_validator, runtime_local_validator, validator as module_validator
@@ -44,6 +44,9 @@ def compile_runtime_document(
     toolchain_version: str = "1.5.0",
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[Dict[str, Any]]]:
     """Compile declarations to closed exchange artifacts; evaluation requires an external engine."""
+    if _uses_17_constructs(doc):
+        # DRAFT RFC 0011/0012: projection format /4 is not implemented; refuse rather than drop a construct.
+        raise RuntimeClosedError("unsupported_construct", construct="tvl_1_7_draft")
     is_pack = "pack" in doc and "tvl" not in doc
     if is_pack and packs:
         raise RuntimeClosedError("runtime_invalid_profile")

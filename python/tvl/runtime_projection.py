@@ -279,6 +279,10 @@ def project_runtime_declarations(
     checker_labels: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[Dict[str, Any]], List[Dict[str, str]]]:
     """Normalize and project runtime declarations to local and hosted form (§8.2, §11.4)."""
+    from tvl.lints import _uses_17_constructs
+
+    if _uses_17_constructs(dict(doc)):
+        raise RuntimeClosedError("unsupported_construct", construct="tvl_1_7_draft")
     lookup, used_tokens = _build_token_lookup(token_map)
     checker_reg: Dict[str, List[str]] = {}
     for entry in checker_labels or []:

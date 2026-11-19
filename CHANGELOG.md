@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- DRAFT TVL 1.7 constructs (RFC 0011 Part A and RFC 0012, not accepted): an `external: model_released` trigger with a sealed `match` catalogue, a `schedule: {every_days, anchor}` trigger, rule fields `admit` and `protects`, `episode.closure_scope` (`any_generation` | `since_head_move`) and rollback `target: release_rollback_target`. Version-gated: a module using them must declare `tvl_version: "1.7"` (`declared_version_below_constructs` otherwise). New lint errors: `trigger_action_unsupported`, `trigger_repeat_unsupported`, `schedule_anchor_out_of_range`, `admit_without_model_event`, `admit_tvar_type`, `admit_needs_match`, `protects_required`, `protects_without_promotion_monitor`, `protects_on_monitor_trigger`, `protects_unknown_requirement`, `release_rollback_needs_since_head_move`, `release_rollback_wrong_trigger`. `tvl-compile-runtime` refuses these constructs with `unsupported_construct` (projection format /4 is not implemented).
+- DRAFT `spec/grammar/tvl-release-acceptance.schema.json` (`tvl-release-acceptance/1`, RFC 0012 §2.2) and `tvl.release_acceptance.validate_acceptance` (`acceptance_record_invalid`).
+- DRAFT reference relation `tvl.runtime_conditions.conditions_trace` over recorded histories (external events, schedule ticks, optimize attempts, acceptance records, head generations, generation-scoped episode closure) and conformance families `conditions` and `release`, plus `external-*` and `release-*` semantic traces. It never executes an action.
+
 - Guide note "Enforcing local guards" in `docs/guides/requirements-monitors-responses.md`, pointing to the Traigent SDK's `traigent.runtime` guard classes.
 - Info diagnostic `outside_proved_subset`: emitted once per construct family present (`cvars`, `policies`, `composites`) that the Lean proofs do not model. Diagnostics with the new `info` severity are printed and included in JSON output but never affect `ok` or the exit status of `tvl-validate`, `tvl-lint` or `tvl-compose --validate`.
 - `tools/claim_audit`: a paragraph-level audit of the claims in the published documentation.

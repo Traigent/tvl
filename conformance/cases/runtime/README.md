@@ -80,3 +80,15 @@ Run the executable traces and reference-function probes with
 `.venv/bin/pytest -q tests/test_runtime_trace.py tests/test_conformance_suite.py`.
 Passing these cases establishes the recorded-history relation only; it does not
 establish controller execution, scheduling, retry policy, or effect authority.
+
+## DRAFT TVL 1.7: conditions and release acceptance (RFC 0011 Part A, RFC 0012)
+
+`input.kind: conditions` runs `python/tvl/runtime_conditions.py` over `input.history`
+(`agent`, `environment`, `origin`, `head`, optional `contract_digest`, nondecreasing
+`steps`; instants are integer hours after `origin`; see the module docstring for the
+step categories and their order). `expected` may assert `facts` (the whole ordered fact
+list), `head_generations` and `max_open_attempts`. `input.kind: acceptance` validates one
+`tvl-release-acceptance/1` record (`expected.acceptance_valid`, optional `error`).
+Directories `conditions/` and `release/` hold lint modules (valid and one invalid per
+new code) and acceptance documents; traces live in `semantic_traces/external-*.yml` and
+`release-*.yml`. The relation is pure: it never starts an attempt or writes a head.

@@ -1,0 +1,133 @@
+case_format: tvl-runtime-case/1
+family: semantic_traces
+description: 'No evaluation while ticks 0..3 pass: only the latest tick fires, at the first evaluation
+  after it; the earlier ones are skipped(coalesced).'
+spec_refs:
+- formalization/rfc-0011-tuning-conditions.md#2.4
+module:
+  tvl_version: '1.7'
+  tvl:
+    module: slice.doc_classifier
+  environment:
+    snapshot_id: '2026-11-20T00:00:00Z'
+  evaluation_set:
+    dataset: test://slice
+  tvars:
+  - name: model
+    type: enum[str]
+    domain:
+    - anthropic/claude-haiku-4-5
+    - anthropic/claude-sonnet-4-6
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: quality_floor
+    kind: rate_bound
+    unit: invocation
+    violation:
+      checker: customer:doc_label_check
+      label_in:
+      - fail
+    max_rate: 0.08
+  monitors:
+  - name: quality_prod
+    requirement: quality_floor
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      attribution: agent_key_exact_v1
+      resolution: terminal_status_v1
+      sampling:
+        mode: hash_bernoulli_committed_v1
+        rate: 0.02
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+      horizon_days: 30
+      model: iid_bernoulli_within_window_v1
+    window:
+      tumbling_hours: 24
+      grace_minutes: 0
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 168
+      closure_scope: since_head_move
+  - name: quality_gate
+    requirement: quality_floor
+    phase: promotion
+    evidence:
+      source: evaluation_set
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+  responses:
+  - name: tuning
+    rules:
+    - id: recheck
+      trigger:
+        schedule:
+          every_days: 1
+          anchor: '2026-11-20T12:00:00Z'
+      do: optimize
+      approval: human
+      deploy: if_promoted
+      protects:
+      - quality_floor
+input:
+  kind: conditions
+  history:
+    agent: agent-1
+    environment: production
+    origin: '2026-11-20T00:00:00Z'
+    head:
+      fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
+      generation: 0
+    contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    steps:
+    - instant: 80
+expected:
+  facts:
+  - instant: 80
+    fact: skipped
+    response: tuning
+    rule: recheck
+    tick: 0
+    reason: coalesced
+  - instant: 80
+    fact: skipped
+    response: tuning
+    rule: recheck
+    tick: 1
+    reason: coalesced
+  - instant: 80
+    fact: fired
+    occurrence:
+      response: tuning
+      rule: recheck
+      scope_kind: schedule
+      scope: '2'
+      j: 0
+  - instant: 80
+    fact: attempt_opened
+    attempt: A1
+    occurrence:
+      response: tuning
+      rule: recheck
+      scope_kind: schedule
+      scope: '2'
+      j: 0
+  head_generations:
+  - instant: 80
+    generation: 0
+  max_open_attempts: 1

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tvl-lang.org/schemas/tvl-release-acceptance.schema.json",
+  "title": "TVL Release Acceptance (DRAFT RFC 0012)",
+  "description": "Closed record of one human acceptance or rejection of a deploy occurrence, tvl-release-acceptance/1. Hosted: opaque references, enums, digests, integers and UTC instants only; no customer content. The 7-day expiry bound and decided_at < expires_at are checked by tvl.release_acceptance (acceptance_record_invalid).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format", "acceptance_id", "agent_ref", "environment_ref", "occurrence", "candidate_fingerprint",
+    "gate_result_digest", "contract_digest", "expected_head_generation", "rollback_target",
+    "approver_ref", "decision", "decided_at", "expires_at"
+  ],
+  "properties": {
+    "format": { "const": "tvl-release-acceptance/1" },
+    "acceptance_id": { "$ref": "#/$defs/OpaqueRef" },
+    "agent_ref": { "$ref": "#/$defs/OpaqueRef" },
+    "environment_ref": { "$ref": "#/$defs/OpaqueRef" },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["response_ref", "rule_ref", "scope_kind", "scope_ref", "occurrence"],
+      "properties": {
+        "response_ref": { "$ref": "#/$defs/OpaqueRef" },
+        "rule_ref": { "$ref": "#/$defs/OpaqueRef" },
+        "scope_kind": { "enum": ["episode", "external", "schedule"] },
+        "scope_ref": { "$ref": "#/$defs/OpaqueRef" },
+        "occurrence": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "candidate_fingerprint": { "$ref": "#/$defs/Fingerprint" },
+    "gate_result_digest": { "$ref": "#/$defs/Digest" },
+    "contract_digest": { "$ref": "#/$defs/Digest" },
+    "holdout_digest": { "$ref": "#/$defs/Digest" },
+    "expected_head_generation": { "type": "integer", "minimum": 0 },
+    "rollback_target": { "$ref": "#/$defs/Fingerprint" },
+    "repairs_episode": { "$ref": "#/$defs/OpaqueRef" },
+    "approver_ref": { "$ref": "#/$defs/OpaqueRef" },
+    "decision": { "enum": ["accept", "reject"] },
+    "decided_at": { "$ref": "#/$defs/UtcInstant" },
+    "expires_at": { "$ref": "#/$defs/UtcInstant" }
+  },
+  "$defs": {
+    "OpaqueRef": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+    "Fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "Digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "UtcInstant": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" }
+  }
+}

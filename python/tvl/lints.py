@@ -3726,12 +3726,12 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
         issues.append(
             {
                 "code": "runtime_version_required",
-                "message": "Runtime constructs and packs require tvl_version: '1.3' (or '1.4' with RFC 0004 constructs, '1.5' with RFC 0005 constructs)",
+                "message": "Runtime constructs and packs require tvl_version: '1.3' (or '1.4' with RFC 0004 constructs, '1.5' with RFC 0005 constructs, '1.7' with RFC 0011/0012 constructs)",
                 "path": ["tvl_version"],
                 "severity": "error",
             }
         )
-    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") not in {"1.3", "1.4", "1.5"}:
+    elif not isinstance(doc.get("tvl_version"), str) or doc.get("tvl_version") not in {"1.3", "1.4", "1.5", "1.7"}:
         issues.append(
             {
                 "code": "declared_version_below_constructs",
@@ -3753,6 +3753,34 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
             "message": 'Breach persistence and census aggregates require tvl_version: "1.5"',
             "path": ["tvl_version"], "severity": "error",
         })
+    elif doc.get("tvl_version") in {"1.3", "1.4", "1.5"} and _uses_17_constructs(doc):
+        issues.append({
+            "code": "declared_version_below_constructs",
+            "message": 'External and schedule triggers, admit, protects, closure_scope and release rollback require tvl_version: "1.7" (DRAFT RFC 0011/0012)',
+            "path": ["tvl_version"], "severity": "error",
+        })
+
+
+def _uses_17_constructs(doc: Dict[str, Any]) -> bool:
+    """DRAFT RFC 0011 Part A / RFC 0012: presence-based opt-in for the 1.7 constructs."""
+    monitors = doc.get("monitors")
+    for mon in monitors if isinstance(monitors, list) else []:
+        episode = mon.get("episode") if isinstance(mon, dict) else None
+        if isinstance(episode, dict) and "closure_scope" in episode:
+            return True
+    responses = doc.get("responses")
+    for resp in responses if isinstance(responses, list) else []:
+        if not isinstance(resp, dict) or not isinstance(resp.get("rules"), list):
+            continue
+        for rule in resp["rules"]:
+            if not isinstance(rule, dict):
+                continue
+            trigger = rule.get("trigger")
+            if "admit" in rule or "protects" in rule or rule.get("target") == "release_rollback_target" or (
+                isinstance(trigger, dict) and ("external" in trigger or "schedule" in trigger)
+            ):
+                return True
+    return False
 
 
 def _uses_15_constructs(doc: Dict[str, Any]) -> bool:
@@ -5409,6 +5437,15 @@ def _lint_monitors(
                     c_age = ca
             elif is_backend:
                 c_age = 24
+            if "closure_scope" in episode and episode["closure_scope"] not in _CLOSURE_SCOPES:
+                issues.append(
+                    {
+                        "code": "runtime_unknown_kind",
+                        "message": "Expected closure_scope: any_generation, since_head_move",
+                        "path": path + ["episode", "closure_scope"],
+                        "severity": "error",
+                    }
+                )
         elif is_backend:
             c_windows = 2
             c_age = 24
@@ -5842,6 +5879,8 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                         "severity": "error",
                     }
                 )
+            elif "external" in trigger or "schedule" in trigger:
+                pass  # RFC 0011 §2.3/§2.4; checked by _lint_tuning_rule below
             elif "rule" in trigger:
                 t_event = trigger.get("event")
                 _lint_outcome_trigger(doc, rule, rules_by_id, path, issues)
@@ -5921,6 +5960,7 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                                    "path": path + ["trigger", "hours"], "severity": "error"})
             _lint_reactive_guards(doc, rule, rules_by_id, mons_by_name, reqs_by_name, path, issues, guard_edges)
             _lint_persistence(rule, mons_by_name, reqs_by_name, path, issues)
+            _lint_tuning_rule(doc, rule, path, issues, mons_by_name, reqs_by_name)
 
             action = rule.get("do")
             if not isinstance(action, str) or action not in _ACTIONS:
@@ -6013,8 +6053,10 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 })
             if action == "rollback":
                 target = rule.get("target")
-                if not isinstance(target, str) or (target != "last_certified" and not _FINGERPRINT_RE.match(target)):
-                    invalid_parameter("target", "target requires last_certified or 64 lowercase hex characters")
+                if not isinstance(target, str) or (
+                    target not in {"last_certified", "release_rollback_target"} and not _FINGERPRINT_RE.match(target)
+                ):
+                    invalid_parameter("target", "target requires last_certified, release_rollback_target or 64 lowercase hex characters")
             elif "target" in rule:
                 invalid_parameter("target", "target is permitted only on rollback")
 
@@ -6120,7 +6162,9 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                         }
                     )
                 elif deploy == "if_promoted":
-                    if t_event not in _DEPLOY_EPISODE_EVENTS:
+                    if t_event not in _DEPLOY_EPISODE_EVENTS and not (
+                        isinstance(trigger, dict) and ("external" in trigger or "schedule" in trigger)
+                    ):
                         issues.append(
                             {
                                 "code": "runtime_invalid_ladder",
@@ -6192,6 +6236,130 @@ def _rule_source_monitor(rule: Dict[str, Any], rules: Dict[str, Any]) -> Optiona
         target = rules.get(trigger["rule"]) if isinstance(trigger["rule"], str) else None
         trigger = target.get("trigger") if isinstance(target, dict) and target.get("do") == "optimize" else None
     return trigger.get("monitor") if isinstance(trigger, dict) and isinstance(trigger.get("monitor"), str) else None
+
+
+_EXTERNAL_KINDS = {"model_released"}
+_PROVIDER_FAMILIES = ["anthropic", "openai", "google", "meta", "mistral", "amazon"]
+_MODEL_TIERS = ["small", "medium", "large"]
+_CONDITION_ACTIONS = {"notify", "open_next_step", "optimize"}
+_UTC_INSTANT_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
+_CLOSURE_SCOPES = {"any_generation", "since_head_move"}
+
+
+def parse_utc_instant(value: Any) -> Optional[Any]:
+    """Parse a whole-second RFC 3339 UTC instant ("Z" offset); None if malformed."""
+    from datetime import datetime, timezone
+
+    if not isinstance(value, str) or not _UTC_INSTANT_RE.match(value):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _lint_tuning_rule(doc: Dict[str, Any], rule: Dict[str, Any], path: List[Any], issues: List[Issue],
+                      mons: Dict[str, Any], reqs: Dict[str, Any]) -> None:
+    """DRAFT RFC 0011 Part A (§2.1-§2.7) and RFC 0012 §2.5 rule-level diagnostics."""
+    trigger = rule.get("trigger")
+    action = rule.get("do")
+
+    def err(code: str, message: str, sub: List[Any]) -> None:
+        issues.append({"code": code, "message": message, "path": path + sub, "severity": "error"})
+
+    if not isinstance(trigger, dict):
+        return
+    external = "external" in trigger
+    schedule = "schedule" in trigger
+    conditional = external or schedule
+    if conditional:
+        if external and schedule or set(trigger) - {"external", "match", "schedule"} or (schedule and "match" in trigger):
+            err("runtime_invalid_ladder", "An external trigger has external and optional match; a schedule trigger only schedule", ["trigger"])
+        if action not in _CONDITION_ACTIONS:
+            err("trigger_action_unsupported", "External and schedule triggers permit notify, open_next_step or optimize", ["do"])
+        if external:
+            if trigger.get("external") not in _EXTERNAL_KINDS:
+                err("runtime_unknown_kind", "Unknown external event kind", ["trigger", "external"])
+            match = trigger.get("match")
+            if "match" in trigger:
+                if not isinstance(match, dict) or set(match) - {"provider_family", "tier"}:
+                    err("runtime_invalid_profile", "match has only provider_family and tier lists", ["trigger", "match"])
+                else:
+                    for key, choices in (("provider_family", _PROVIDER_FAMILIES), ("tier", _MODEL_TIERS)):
+                        if key in match and (not isinstance(match[key], list) or any(
+                                not isinstance(v, str) or v not in choices for v in match[key])):
+                            err("runtime_unknown_kind", "match values must come from the sealed catalogue", ["trigger", "match", key])
+            if "repeat_after_hours" in rule or "max_repeats" in rule:
+                err("trigger_repeat_unsupported", "One external event gives one occurrence; repeats are not supported", ["trigger"])
+        else:
+            sched = trigger.get("schedule")
+            if not isinstance(sched, dict) or set(sched) != {"every_days", "anchor"}:
+                err("runtime_invalid_profile", "schedule requires exactly every_days and anchor", ["trigger", "schedule"])
+            else:
+                days = sched["every_days"]
+                if not _is_int_strict(days) or not 1 <= days <= 366:
+                    err("runtime_invalid_profile", "every_days must be an integer in 1..366", ["trigger", "schedule", "every_days"])
+                anchor = parse_utc_instant(sched["anchor"])
+                snapshot = (doc.get("environment") or {}).get("snapshot_id") if isinstance(doc.get("environment"), dict) else None
+                snap = parse_utc_instant(snapshot)
+                limit_ok = True
+                if anchor is not None and snap is not None:
+                    try:
+                        limit = snap.replace(year=snap.year + 1)
+                    except ValueError:  # 29 February
+                        limit = snap.replace(year=snap.year + 1, day=28)
+                    limit_ok = anchor <= limit
+                if anchor is None or not limit_ok:
+                    err("schedule_anchor_out_of_range", "anchor must be a whole-second UTC instant at most one year after environment.snapshot_id", ["trigger", "schedule", "anchor"])
+    # admit (§2.5)
+    if "admit" in rule:
+        admit = rule["admit"]
+        model_event = external and trigger.get("external") == "model_released"
+        if action != "optimize" or not model_event:
+            err("admit_without_model_event", "admit requires an optimize rule with an external model_released trigger", ["admit"])
+        tvar = admit.get("tvar") if isinstance(admit, dict) else None
+        tvars = {t["name"]: t for t in (doc.get("tvars") or []) if isinstance(t, dict) and isinstance(t.get("name"), str)}
+        decl = tvars.get(tvar) if isinstance(tvar, str) else None
+        typ = decl.get("type") if isinstance(decl, dict) else None
+        if not isinstance(admit, dict) or set(admit) != {"tvar"} or decl is None or not isinstance(typ, str) or \
+                not re.match(r"^enum\[\s*str\s*\]$", typ):
+            err("admit_tvar_type", "admit.tvar must name a tvar of type enum[str]", ["admit", "tvar"])
+        if model_event:
+            match = trigger.get("match")
+            present = isinstance(match, dict) and any(
+                isinstance(match.get(k), list) and match[k] for k in ("provider_family", "tier"))
+            if not present:
+                err("admit_needs_match", "admit requires a match with at least one non-empty field", ["admit"])
+    # protects (§2.6)
+    if "protects" in rule:
+        if not conditional:
+            err("protects_on_monitor_trigger", "protects is only for external and schedule triggers", ["protects"])
+        else:
+            protects = rule["protects"]
+            if not isinstance(protects, list):
+                err("runtime_invalid_profile", "protects must be a list of requirement names", ["protects"])
+            else:
+                for idx, name in enumerate(protects):
+                    req = reqs.get(name) if isinstance(name, str) else None
+                    if req is None:
+                        err("protects_unknown_requirement", "protects names an undeclared runtime requirement", ["protects", idx])
+                    elif not any(isinstance(m, dict) and m.get("phase") == "promotion" and m.get("requirement") == name
+                                 for m in mons.values()):
+                        err("protects_without_promotion_monitor", "A protected requirement needs a promotion monitor", ["protects", idx])
+    if conditional and action == "optimize" and rule.get("deploy") == "if_promoted":
+        if not isinstance(rule.get("protects"), list) or not rule["protects"]:
+            err("protects_required", "deploy: if_promoted on an external or schedule trigger requires protects", ["protects"])
+    # release rollback (RFC 0012 §2.5)
+    if action == "rollback" and rule.get("target") == "release_rollback_target":
+        mon = mons.get(trigger.get("monitor")) if isinstance(trigger.get("monitor"), str) else None
+        if mon is None or trigger.get("event") != "recovery_overdue":
+            err("release_rollback_wrong_trigger", "release_rollback_target requires a recovery_overdue trigger", ["target"])
+        else:
+            req = reqs.get(mon.get("requirement")) if isinstance(mon.get("requirement"), str) else None
+            of_mon = mons.get(req.get("of")) if isinstance(req, dict) and isinstance(req.get("of"), str) else None
+            episode = of_mon.get("episode") if isinstance(of_mon, dict) else None
+            if not isinstance(episode, dict) or episode.get("closure_scope") != "since_head_move":
+                err("release_rollback_needs_since_head_move", "The trigger's monitor needs closure_scope: since_head_move", ["target"])
 
 
 def _lint_outcome_trigger(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict[str, Any],
