@@ -45,7 +45,7 @@
     },
     "tvl_version": {
       "type": ["string", "number"],
-      "description": "Declared language version; runtime lints require 1.7 (DRAFT, RFC 0011 Part A and RFC 0012) for external and schedule triggers, admit, protects, closure_scope and release rollback, 1.5 for breach persistence and census aggregates, 1.4 for reactive outcomes and guards, otherwise 1.3, 1.4 or 1.5."
+      "description": "Declared language version; runtime lints require 1.7 (DRAFT, RFC 0011 Part A and RFC 0012) for external and schedule triggers, admit, protects and closure_scope, 1.5 for breach persistence and census aggregates, 1.4 for reactive outcomes and guards, otherwise 1.3, 1.4 or 1.5."
     },
     "environment": {
       "type": "object",

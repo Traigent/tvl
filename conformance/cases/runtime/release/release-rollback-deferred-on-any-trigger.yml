@@ -1,12 +1,12 @@
 case_format: tvl-runtime-case/1
 family: release
-description: release_rollback_target on a trigger other than recovery_overdue is rejected.
+description: release_rollback_target on an episode_opened trigger is rejected as deferred; the former trigger and scope diagnostics no longer exist.
 spec_refs:
-- formalization/rfc-0012-release-acceptance.md#2.6
+- formalization/rfc-0012-release-acceptance.md#2.5
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -30,7 +30,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -100,5 +100,5 @@ input:
   kind: lint
 expected:
   diagnostics:
-  - code: release_rollback_wrong_trigger
+  - code: release_rollback_deferred
     severity: error

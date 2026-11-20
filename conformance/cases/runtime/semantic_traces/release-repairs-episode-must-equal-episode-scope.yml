@@ -8,7 +8,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -32,7 +32,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -101,13 +101,6 @@ module:
       do: optimize
       approval: standing
       deploy: if_promoted
-    - id: undo
-      trigger:
-        monitor: recover_monitor
-        event: recovery_overdue
-      do: rollback
-      approval: human
-      target: release_rollback_target
 input:
   kind: conditions
   history:
@@ -119,14 +112,14 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 24
+    - instant: 86400
       windows:
       - monitor: quality_prod
         start: 0
-        end: 24
+        end: 86400
         verdict: BREACHED
         head_generation: 0
-    - instant: 25
+    - instant: 90000
       optimizations:
       - attempt: A1
         fact: finished
@@ -138,7 +131,7 @@ input:
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET
-    - instant: 26
+    - instant: 93600
       acceptances:
       - record:
           format: tvl-release-acceptance/1
@@ -210,17 +203,17 @@ input:
         approver_authorized: true
 expected:
   facts:
-  - instant: 24
+  - instant: 86400
     fact: window
     closure: breached
     monitor: quality_prod
     start: 0
-  - instant: 24
+  - instant: 86400
     fact: episode_opened
     monitor: quality_prod
     episode: EP1
     opening_generation: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
@@ -228,7 +221,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
@@ -236,7 +229,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: attempt_opened
     attempt: A1
     occurrence:
@@ -245,7 +238,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: held
     occurrence:
       response: tuning
@@ -254,11 +247,11 @@ expected:
       scope: EP1
       j: 0
     reason: repair_open
-  - instant: 25
+  - instant: 90000
     fact: optimization_finished
     attempt: A1
     outcome: promoted
-  - instant: 25
+  - instant: 90000
     fact: deploy_awaiting
     attempt: A1
     occurrence:
@@ -268,26 +261,26 @@ expected:
       scope: EP1
       j: 0
     candidate: 111111111111111111111111111111111111111111111111111111111111111b
-  - instant: 26
+  - instant: 93600
     fact: acceptance
     acceptance: R1
     result: invalid
     reason: binding_mismatch
-  - instant: 26
+  - instant: 93600
     fact: acceptance
     acceptance: R2
     result: invalid
     reason: binding_mismatch
-  - instant: 26
+  - instant: 93600
     fact: acceptance
     acceptance: R3
     result: written
     generation: 1
-  - instant: 26
+  - instant: 93600
     fact: attempt_closed
     attempt: A1
     reason: deploy_written
-  - instant: 26
+  - instant: 93600
     fact: attempt_opened
     attempt: A2
     occurrence:
@@ -297,10 +290,10 @@ expected:
       scope: EP1
       j: 0
   head_generations:
-  - instant: 24
+  - instant: 86400
     generation: 0
-  - instant: 25
+  - instant: 90000
     generation: 0
-  - instant: 26
+  - instant: 93600
     generation: 1
   max_open_attempts: 1

@@ -2,27 +2,28 @@
 
 A sibling of ``tvl.runtime_trace`` (RFC 0004), reusing its closed-record helpers and its
 optimize-outcome rule. One history is for one agent and environment. It is a pure,
-deterministic relation: windows, events, attempt facts, acceptance records and recovery
-facts go in; derived facts come out. No clock is read and no action is started.
+deterministic relation: windows, events, attempt facts, acceptance records
+go in; derived facts come out. No clock is read and no action is started.
 
-Instants are integer lifecycle hours after ``history.origin`` (a whole-second UTC instant,
-hour 0). The same convention as ``runtime_trace`` is kept: step instants are
-nonnegative, nondecreasing hours; several steps may share an instant and are processed in
-order. Event ``issued_at`` is an integer hour and may be negative (before the origin).
-Module instants (schedule ``anchor``, acceptance ``decided_at``/``expires_at``) are UTC
-strings, compared exactly in seconds against ``origin + 3600 * hour``.
+Instants are whole seconds after ``history.origin`` (a whole-second UTC instant, second 0;
+RFC 0011 §2.2 item 1): step instants are nonnegative, nondecreasing integers; several steps
+may share an instant and are processed in order. Event ``issued_at`` is an integer and may
+be negative (before the origin). Window bounds are seconds too, aligned to
+``3600 * tumbling_hours``. Module instants (schedule ``anchor``, acceptance
+``decided_at``/``expires_at``) are UTC strings, compared exactly in seconds against
+``origin + seconds``. Nothing is rounded to hours.
 
-Within one step the order is: windows, recovery facts, schedule clock evaluation,
+Within one step the order is: windows, schedule clock evaluation,
 attempt facts (approvals, finishes, deploy-gate rechecks), derived scope closures, acceptance records, external
 events in (issued_at, issuer, event_id) order (RFC 0011 §2.2 item 5), then dispatch of
 pending occurrences in (trigger instant, response, rule id) order (§2.7).
 
 Recorded, not recomputed (as in ``runtime_trace``): window verdicts, the gate join inputs
-of each candidate, platform authentication of events and acceptances, approver authority,
-recovery_overdue transitions and the positive rollback-target evidence ``target_eligible: true`` (§2.13 item 11). Computed here:
-breached-configuration sets per open episode (RFC 0011 §2.13 item 5), rollback eligibility, episode
+of each candidate, platform authentication of events and acceptances and approver authority.
+Computed here: breached-configuration sets per open episode (RFC 0011 §2.13 item 5), episode
 opening, closure counting under ``closure_scope``, event admission, occurrence firing,
 holds, attempt serialization, search domains, acceptance checks and head writes.
+Release rollback is deferred out of TVL 1.7 (RFC 0012 §2.5) and is not part of this relation.
 """
 
 from __future__ import annotations
@@ -34,10 +35,11 @@ from tvl.canonical import canonical_json_digest
 from tvl.lints import _parse_collection, lint_module, parse_utc_instant
 from tvl.promotion_join import join_promotion_decisions
 from tvl.release_acceptance import validate_acceptance
-from tvl.runtime_trace import TraceError, _enum, _hour, _optimize_outcome, _require, _shape
+from tvl.runtime_trace import TraceError, _enum, _optimize_outcome, _require, _shape
 
-LATE_HOURS = 72
-EXTERNAL_SCOPE_HOURS = 30 * 24
+HOUR = 3600
+LATE_SECONDS = 72 * HOUR
+EXTERNAL_SCOPE_SECONDS = 30 * 24 * HOUR
 _FAMILIES = "anthropic openai google meta mistral amazon"
 _TIERS = "small medium large"
 
@@ -62,6 +64,10 @@ def _version(module: dict) -> tuple[int, int]:
     text = str(module.get("tvl_version", "1.3"))
     major, _, minor = text.partition(".")
     return int(major), int(minor or 0)
+
+
+def _second(value: Any) -> None:
+    _require(type(value) is int and value >= 0, "instants must be nonnegative integer seconds")
 
 
 class _Attempt:
@@ -115,8 +121,6 @@ class _Run:
         self.attempt_count = 0
         self.last_tick: dict[tuple[str, str], int] = {}
         self.consumed: set[str] = set()
-        self.releases: list[dict] = []  # consumed accepts: write generation, repairs_episode, rollback_target
-        self.rolled_back: set[str] = set()
         self.seen_windows: set[tuple[str, int]] = set()
         self.fire_count = 0
         self.max_open = 0
@@ -127,16 +131,17 @@ class _Run:
     def emit(self, fact: str, **fields: Any) -> None:
         self.facts.append({"instant": self.now, "fact": fact, **fields})
 
-    def at(self, hour: int) -> datetime:
-        return self.origin + timedelta(hours=hour)
+    def at(self, second: int) -> datetime:
+        return self.origin + timedelta(seconds=second)
 
     def head(self) -> tuple[int, str]:
         return self.heads[-1][1], self.heads[-1][2]
 
-    def generation_at(self, hour: int) -> int:
+    def generation_at(self, second: int) -> int:
+        """The generation serving at an instant: a head installed at ``t`` serves from ``t`` on."""
         gen = self.heads[0][1]
         for instant, generation, _ in self.heads:
-            if instant <= hour:
+            if instant <= second:
                 gen = generation
         return gen
 
@@ -188,17 +193,15 @@ class _Run:
     # -- scopes -----------------------------------------------------------------------------
     def scope_active(self, occ: dict) -> bool:
         kind = occ["scope_kind"]
-        if occ["scope"] in self.rolled_back and kind == "episode":
-            return False
         if kind == "episode":
             ep = self.episode_list[occ["scope"]]
             return ep["open"]
         if kind == "external":
-            return self.now - occ["admitted_at"] < EXTERNAL_SCOPE_HOURS
+            return self.now - occ["admitted_at"] < EXTERNAL_SCOPE_SECONDS
         # schedule: until the next tick
         spec = self.find_rule(occ["response"], occ["rule"])["trigger"]["schedule"]
         nxt = self.tick_seconds(spec, int(occ["scope"]) + 1)
-        return self.now * 3600 < nxt
+        return self.now < nxt
 
     def tick_seconds(self, spec: dict, k: int) -> int:
         anchor = parse_utc_instant(spec["anchor"])
@@ -224,8 +227,7 @@ class _Run:
         self.pending.sort(key=lambda o: (o["trigger_instant"], o["response"], o["rule"], o["seq"]))
         for occ in list(self.pending):
             if not self.scope_active(occ):
-                reason = "rolled_back" if occ["scope"] in self.rolled_back else (
-                    "expired" if occ["scope_kind"] != "episode" else "scope_closed")
+                reason = "expired" if occ["scope_kind"] != "episode" else "scope_closed"
                 self.pending.remove(occ)
                 self.emit("dropped", occurrence=self.occ_ref(occ), reason=reason)
                 continue
@@ -285,9 +287,9 @@ class _Run:
         name = rec["monitor"]
         _require(name in self.monitors and self.monitors[name]["phase"] == "runtime", "window needs a runtime monitor")
         monitor = self.monitors[name]
-        width = monitor["window"]["tumbling_hours"]
+        width = monitor["window"]["tumbling_hours"] * HOUR  # seconds
         for bound in (rec["start"], rec["end"]):
-            _hour(bound)
+            _second(bound)
         _require(rec["end"] - rec["start"] == width and rec["start"] % width == 0, "window must be one aligned tumbling window")
         _require(rec["end"] <= self.now, "window ends after evaluation")
         _enum(rec["verdict"], "MET BREACHED UNKNOWN")
@@ -296,7 +298,9 @@ class _Run:
         start_gen, end_gen = self.generation_at(rec["start"]), self.generation_at(rec["end"] - 1)
         _require(start_gen <= rec["head_generation"] <= end_gen,
                  "window head_generation outside the generations served during the window")
-        mixed = rec["head_generation"] != start_gen
+        # Mixed (RFC 0012 §2.4 Counting): the head moved inside the window, or the report names a generation other than
+        # the one in effect at the window's start.
+        mixed = start_gen != end_gen or rec["head_generation"] != start_gen
         episode_decl = monitor.get("episode") or {}
         scope_mode = episode_decl.get("closure_scope", "any_generation")
         ep = self.episodes.get(name)
@@ -307,8 +311,10 @@ class _Run:
         if rec["verdict"] == "BREACHED":
             if ep is None:
                 self.episode_count += 1
+                # The opening generation is the greatest generation that served the breaching window (RFC 0012 §2.4),
+                # not the head at report arrival: a delayed report after a deploy must not raise it.
                 ep = {"id": f"EP{self.episode_count}", "monitor": name, "open": True, "count": 0, "ends": [],
-                      "opening_generation": self.head()[0], "breached": set(), "last_start": None}
+                      "opening_generation": end_gen, "breached": set(), "last_start": None, "last_gen": None}
                 self.episodes[name] = ep
                 self.episode_list[ep["id"]] = ep
                 ep["breached"].update(self.served_fingerprints(start_gen, end_gen))
@@ -340,52 +346,20 @@ class _Run:
             return
         if ep["count"] and rec["start"] != ep["last_start"] + width:  # a gap: closure needs consecutive windows
             ep["count"], ep["ends"] = 0, []
-        ep["last_start"] = rec["start"]
+        if ep["count"] and scope_mode == "since_head_move" and rec["head_generation"] != ep["last_gen"]:
+            # the run must be of one repair generation: a generation change restarts the count at this window
+            ep["count"], ep["ends"] = 0, []
+        ep["last_start"], ep["last_gen"] = rec["start"], rec["head_generation"]
         ep["count"] += 1
         ep["ends"].append(rec["end"])
         need = episode_decl["closure_windows"]
         self.emit("window", closure="counts", progress=min(ep["count"], need), of=need, **fields)
-        if ep["count"] >= need and all(self.now - e <= episode_decl["closure_max_age_hours"] for e in ep["ends"][-need:]):
+        max_age = episode_decl["closure_max_age_hours"] * HOUR
+        if ep["count"] >= need and all(self.now - e <= max_age for e in ep["ends"][-need:]):
             ep["open"] = False
             del self.episodes[name]
             self.emit("episode_resolved", monitor=name, episode=ep["id"])
             self.close_scope("episode", ep["id"])
-
-    def recovery(self, rec: dict) -> None:
-        _shape(rec, "monitor episode event approval", "target_eligible")
-        _require("target_eligible" not in rec or type(rec["target_eligible"]) is bool, "target_eligible must be boolean")
-        _enum(rec["event"], "overdue")
-        _enum(rec["approval"], "granted declined")
-        mon = self.monitors.get(rec["monitor"])
-        _require(mon is not None and self.requirements[mon["requirement"]]["kind"] == "recovery_time",
-                 "recovery fact needs a recovery_time monitor")
-        _require(rec["episode"] in self.episode_list, "unknown episode")
-        episode = rec["episode"]
-        self.emit("recovery_overdue", monitor=rec["monitor"], episode=episode)
-        for response, rule in self.rules:
-            t = rule["trigger"]
-            if rule["do"] != "rollback" or t.get("monitor") != rec["monitor"] or t.get("event") != "recovery_overdue":
-                continue
-            if rule.get("target") != "release_rollback_target":
-                continue
-            if rec["approval"] != "granted":
-                self.emit("rollback", result="declined", episode=episode)
-                continue
-            gen, _ = self.head()
-            release = next((r for r in reversed(self.releases) if r["repairs_episode"] == episode and r["generation"] == gen), None)
-            if release is None:
-                self.emit("rollback", result="rollback_no_bound_release", episode=episode)
-            elif rec.get("target_eligible") is not True or release["rollback_target"] in self.breached_fingerprints():
-                self.emit("rollback", result="held(target_ineligible)", episode=episode)
-            else:
-                self.heads.append((self.now, gen + 1, release["rollback_target"]))
-                self.rolled_back.add(episode)
-                self.emit("rollback", result="written", episode=episode, generation=gen + 1, fingerprint=release["rollback_target"])
-                for a in self.open_attempts():
-                    if a.occ["scope_kind"] == "episode" and a.occ["scope"] == episode:
-                        a.scope_closed = True
-                        if a.awaiting_deploy or not a.approved:
-                            self.close(a, "rolled_back")
 
     # -- schedule ---------------------------------------------------------------------------
     def clock(self) -> None:
@@ -394,7 +368,7 @@ class _Run:
             if spec is None:
                 continue
             first = self.tick_seconds(spec, 0)
-            now_s = self.now * 3600
+            now_s = self.now
             if now_s < first:
                 continue
             latest = (now_s - first) // (spec["every_days"] * 86400)
@@ -543,8 +517,6 @@ class _Run:
         generation, _ = self.head()
         self.heads.append((self.now, generation + 1, doc["candidate_fingerprint"]))
         self.consumed.add(ident)
-        self.releases.append({"generation": generation + 1, "rollback_target": doc["rollback_target"],
-                              "repairs_episode": doc.get("repairs_episode")})
         result("written", generation=generation + 1)
         self.close(target, "deploy_written")
 
@@ -554,7 +526,7 @@ class _Run:
         _enum(ev["kind"], "model_released")
         for key in ("event_id", "issuer"):
             _require(isinstance(ev[key], str) and ev[key], "event ids are nonempty strings")
-        _require(type(ev["issued_at"]) is int, "issued_at is an integer hour")
+        _require(type(ev["issued_at"]) is int, "issued_at is an integer number of seconds after the origin")
         _require(type(ev["catalogue_revision"]) is int and ev["catalogue_revision"] >= 1, "catalogue_revision positive")
         _require(type(ev["authenticated"]) is bool, "authenticated must be boolean")
         sub = ev["subject"]
@@ -570,7 +542,7 @@ class _Run:
             return self.emit("event", event=name, result="rejected(unauthenticated)")
         if (ev["issuer"], ev["event_id"]) in self.seen_events:
             return self.emit("event", event=name, result="redelivery")
-        if self.now - ev["issued_at"] > LATE_HOURS:
+        if self.now - ev["issued_at"] > LATE_SECONDS:
             return self.emit("event", event=name, result="rejected(late)")
         self.seen_events.add((ev["issuer"], ev["event_id"]))
         self.emit("event", event=name, result="admitted")
@@ -596,16 +568,14 @@ class _Run:
         heads_out: list[dict] = []
         previous = 0
         for step in self.history_steps:
-            _shape(step, "instant", "windows recovery optimizations acceptances events")
-            _hour(step["instant"])
+            _shape(step, "instant", "windows optimizations acceptances events")
+            _second(step["instant"])
             _require(step["instant"] >= previous, "step instants must not decrease")
             previous = self.now = step["instant"]
-            for category in ("windows", "recovery", "optimizations", "acceptances", "events"):
+            for category in ("windows", "optimizations", "acceptances", "events"):
                 _require(isinstance(step.get(category, []), list), "step facts must be lists")
             for rec in step.get("windows", []):
                 self.window(rec)
-            for rec in step.get("recovery", []):
-                self.recovery(rec)
             self.clock()
             for rec in step.get("optimizations", []):
                 self.optimization(rec)

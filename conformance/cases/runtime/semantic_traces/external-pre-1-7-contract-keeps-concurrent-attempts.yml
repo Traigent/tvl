@@ -8,7 +8,7 @@ spec_refs:
 module:
   tvl_version: '1.5'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -32,7 +32,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -97,26 +97,26 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 24
+    - instant: 86400
       windows:
       - monitor: quality_prod
         start: 0
-        end: 24
+        end: 86400
         verdict: BREACHED
         head_generation: 0
 expected:
   facts:
-  - instant: 24
+  - instant: 86400
     fact: window
     closure: breached
     monitor: quality_prod
     start: 0
-  - instant: 24
+  - instant: 86400
     fact: episode_opened
     monitor: quality_prod
     episode: EP1
     opening_generation: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
@@ -124,7 +124,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
@@ -132,7 +132,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: attempt_opened
     attempt: A1
     occurrence:
@@ -141,7 +141,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: attempt_opened
     attempt: A2
     occurrence:
@@ -151,6 +151,6 @@ expected:
       scope: EP1
       j: 0
   head_generations:
-  - instant: 24
+  - instant: 86400
     generation: 0
   max_open_attempts: 2

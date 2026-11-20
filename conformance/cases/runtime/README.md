@@ -85,7 +85,7 @@ establish controller execution, scheduling, retry policy, or effect authority.
 
 `input.kind: conditions` runs `python/tvl/runtime_conditions.py` over `input.history`
 (`agent`, `environment`, `origin`, `head`, optional `contract_digest`, nondecreasing
-`steps`; instants are integer hours after `origin`; see the module docstring for the
+`steps`; instants, window bounds and `issued_at` are whole seconds after `origin`; see the module docstring for the
 step categories and their order). `expected` may assert `facts` (the whole ordered fact
 list), `head_generations` and `max_open_attempts`. `input.kind: acceptance` validates one
 `tvl-release-acceptance/1` record (`expected.acceptance_valid`, optional `error`).

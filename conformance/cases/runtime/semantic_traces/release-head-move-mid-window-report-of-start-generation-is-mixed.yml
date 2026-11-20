@@ -1,12 +1,14 @@
 case_format: tvl-runtime-case/1
 family: semantic_traces
-description: A declined rollback approval writes nothing.
+description: The head moved inside the window [24h, 48h) but the report names the starting generation; the window
+  is still mixed, never an unmixed window of the old generation.
 spec_refs:
-- formalization/rfc-0012-release-acceptance.md#2.5
+- formalization/rfc-0011-tuning-conditions.md#2.2
+- formalization/rfc-0012-release-acceptance.md#2.4
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -30,15 +32,10 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
-  - name: recover
-    kind: recovery_time
-    unit: episode
-    of: quality_prod
-    within_hours: 96
   monitors:
   - name: quality_prod
     requirement: quality_floor
@@ -75,30 +72,16 @@ module:
       method: clopper_pearson_rational_v2
       confidence: 0.95
       false_alarm_budget: 0.05
-  - name: recover_monitor
-    requirement: recover
-    phase: runtime
-    evidence:
-      source: episodes
-    decision:
-      method: exact_count_v1
   responses:
   - name: tuning
     rules:
-    - id: a_fix
+    - id: on_breach
       trigger:
         monitor: quality_prod
         event: episode_opened
       do: optimize
       approval: standing
       deploy: if_promoted
-    - id: undo
-      trigger:
-        monitor: recover_monitor
-        event: recovery_overdue
-      do: rollback
-      approval: human
-      target: release_rollback_target
 input:
   kind: conditions
   history:
@@ -110,14 +93,14 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 24
+    - instant: 86400
       windows:
       - monitor: quality_prod
         start: 0
-        end: 24
+        end: 86400
         verdict: BREACHED
         head_generation: 0
-    - instant: 25
+    - instant: 90000
       optimizations:
       - attempt: A1
         fact: finished
@@ -129,7 +112,7 @@ input:
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET
-    - instant: 26
+    - instant: 109800
       acceptances:
       - record:
           format: tvl-release-acceptance/1
@@ -138,7 +121,7 @@ input:
           environment_ref: production
           occurrence:
             response_ref: tuning
-            rule_ref: a_fix
+            rule_ref: on_breach
             scope_kind: episode
             scope_ref: EP1
             occurrence: 0
@@ -149,84 +132,118 @@ input:
           rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
           approver_ref: approver-1
           decision: accept
-          decided_at: '2026-11-21T00:00:00Z'
-          expires_at: '2026-11-22T00:00:00Z'
+          decided_at: '2026-11-20T00:00:00Z'
+          expires_at: '2026-11-27T00:00:00Z'
           repairs_episode: EP1
         authenticated: true
         approver_authorized: true
-    - instant: 130
-      recovery:
-      - monitor: recover_monitor
-        episode: EP1
-        event: overdue
-        approval: declined
+    - instant: 172800
+      windows:
+      - monitor: quality_prod
+        start: 86400
+        end: 172800
+        verdict: MET
+        head_generation: 0
+    - instant: 259200
+      windows:
+      - monitor: quality_prod
+        start: 172800
+        end: 259200
+        verdict: MET
+        head_generation: 1
+    - instant: 345600
+      windows:
+      - monitor: quality_prod
+        start: 259200
+        end: 345600
+        verdict: MET
+        head_generation: 1
 expected:
   facts:
-  - instant: 24
+  - instant: 86400
     fact: window
     closure: breached
     monitor: quality_prod
     start: 0
-  - instant: 24
+  - instant: 86400
     fact: episode_opened
     monitor: quality_prod
     episode: EP1
     opening_generation: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
-      rule: a_fix
+      rule: on_breach
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: attempt_opened
     attempt: A1
     occurrence:
       response: tuning
-      rule: a_fix
+      rule: on_breach
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 25
+  - instant: 90000
     fact: optimization_finished
     attempt: A1
     outcome: promoted
-  - instant: 25
+  - instant: 90000
     fact: deploy_awaiting
     attempt: A1
     occurrence:
       response: tuning
-      rule: a_fix
+      rule: on_breach
       scope_kind: episode
       scope: EP1
       j: 0
     candidate: 111111111111111111111111111111111111111111111111111111111111111b
-  - instant: 26
+  - instant: 109800
     fact: acceptance
     acceptance: R1
     result: written
     generation: 1
-  - instant: 26
+  - instant: 109800
     fact: attempt_closed
     attempt: A1
     reason: deploy_written
-  - instant: 130
-    fact: recovery_overdue
-    monitor: recover_monitor
-    episode: EP1
-  - instant: 130
-    fact: rollback
-    result: declined
+  - instant: 172800
+    fact: window
+    closure: UNKNOWN(mixed_generation)
+    monitor: quality_prod
+    start: 86400
+  - instant: 259200
+    fact: window
+    closure: counts
+    progress: 1
+    of: 2
+    monitor: quality_prod
+    start: 172800
+  - instant: 345600
+    fact: window
+    closure: counts
+    progress: 2
+    of: 2
+    monitor: quality_prod
+    start: 259200
+  - instant: 345600
+    fact: episode_resolved
+    monitor: quality_prod
     episode: EP1
   head_generations:
-  - instant: 24
+  - instant: 86400
     generation: 0
-  - instant: 25
+  - instant: 90000
     generation: 0
-  - instant: 26
+  - instant: 109800
     generation: 1
-  - instant: 130
+  - instant: 172800
+    generation: 1
+  - instant: 259200
+    generation: 1
+  - instant: 345600
     generation: 1
   max_open_attempts: 1

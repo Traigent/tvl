@@ -7,7 +7,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -31,7 +31,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -108,40 +108,40 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 24
+    - instant: 86400
       windows:
       - monitor: quality_prod
         start: 0
-        end: 24
+        end: 86400
         verdict: BREACHED
         head_generation: 0
-    - instant: 30
+    - instant: 108000
       events:
       - kind: model_released
         event_id: E1
         issuer: P
-        issued_at: 29
+        issued_at: 104400
         catalogue_revision: 1
         subject:
           model_ref: anthropic/claude-haiku-5-5
           provider_family: anthropic
           tier: small
         authenticated: true
-    - instant: 749
-    - instant: 751
+    - instant: 2696400
+    - instant: 2703600
 expected:
   facts:
-  - instant: 24
+  - instant: 86400
     fact: window
     closure: breached
     monitor: quality_prod
     start: 0
-  - instant: 24
+  - instant: 86400
     fact: episode_opened
     monitor: quality_prod
     episode: EP1
     opening_generation: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
@@ -149,7 +149,7 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: attempt_opened
     attempt: A1
     occurrence:
@@ -158,13 +158,13 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 30
+  - instant: 108000
     fact: event
     event:
       issuer: P
       event_id: E1
     result: admitted
-  - instant: 30
+  - instant: 108000
     fact: fired
     occurrence:
       response: tuning
@@ -174,7 +174,7 @@ expected:
         issuer: P
         event_id: E1
       j: 0
-  - instant: 30
+  - instant: 108000
     fact: held
     occurrence:
       response: tuning
@@ -185,7 +185,7 @@ expected:
         event_id: E1
       j: 0
     reason: repair_open
-  - instant: 751
+  - instant: 2703600
     fact: dropped
     occurrence:
       response: tuning
@@ -197,12 +197,12 @@ expected:
       j: 0
     reason: expired
   head_generations:
-  - instant: 24
+  - instant: 86400
     generation: 0
-  - instant: 30
+  - instant: 108000
     generation: 0
-  - instant: 749
+  - instant: 2696400
     generation: 0
-  - instant: 751
+  - instant: 2703600
     generation: 0
   max_open_attempts: 1

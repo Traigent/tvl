@@ -10,7 +10,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -34,7 +34,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -104,33 +104,33 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 10
+    - instant: 36000
       events:
       - kind: model_released
         event_id: E1
         issuer: P
-        issued_at: 9
+        issued_at: 32400
         catalogue_revision: 1
         subject:
           model_ref: anthropic/claude-haiku-5-5
           provider_family: anthropic
           tier: small
         authenticated: true
-    - instant: 731
-    - instant: 732
+    - instant: 2631600
+    - instant: 2635200
       optimizations:
       - attempt: A1
         fact: approval
         state: granted
 expected:
   facts:
-  - instant: 10
+  - instant: 36000
     fact: event
     event:
       issuer: P
       event_id: E1
     result: admitted
-  - instant: 10
+  - instant: 36000
     fact: fired
     occurrence: &id001
       response: tuning
@@ -140,11 +140,11 @@ expected:
         issuer: P
         event_id: E1
       j: 0
-  - instant: 10
+  - instant: 36000
     fact: attempt_opened
     attempt: A1
     occurrence: *id001
-  - instant: 10
+  - instant: 36000
     fact: search_domain
     attempt: A1
     tvar: model
@@ -152,20 +152,20 @@ expected:
     - anthropic/claude-haiku-4-5
     - anthropic/claude-sonnet-4-6
     - anthropic/claude-haiku-5-5
-  - instant: 731
+  - instant: 2631600
     fact: attempt_closed
     attempt: A1
     reason: scope_expired
-  - instant: 732
+  - instant: 2635200
     fact: attempt_fact
     attempt: A1
     kind: approval
     result: ignored(scope_closed)
   head_generations:
-  - instant: 10
+  - instant: 36000
     generation: 0
-  - instant: 731
+  - instant: 2631600
     generation: 0
-  - instant: 732
+  - instant: 2635200
     generation: 0
   max_open_attempts: 1

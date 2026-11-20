@@ -1,15 +1,13 @@
 case_format: tvl-runtime-case/1
 family: semantic_traces
-description: 'RFC 0012 2.5: R2 repaired EP1 and is the head; its rollback target F1 served only after
-  EP1 opened and never in a BREACHED window of it (EP1''s breached set is {F0}), so the rollback restores
-  F1 at generation 3 because the history records target_eligible: true (RFC 0011 §2.13 item 11).'
+description: 'Under since_head_move two consecutive MET windows of different generations (1 then 2) do not close
+  the episode: a generation change restarts the count, and two consecutive windows of generation 2 close it.'
 spec_refs:
-- formalization/rfc-0012-release-acceptance.md#2.5
-- formalization/rfc-0011-tuning-conditions.md#2.13
+- formalization/rfc-0012-release-acceptance.md#2.4
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -33,15 +31,10 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
-  - name: recover
-    kind: recovery_time
-    unit: episode
-    of: quality_prod
-    within_hours: 96
   monitors:
   - name: quality_prod
     requirement: quality_floor
@@ -78,37 +71,32 @@ module:
       method: clopper_pearson_rational_v2
       confidence: 0.95
       false_alarm_budget: 0.05
-  - name: recover_monitor
-    requirement: recover
-    phase: runtime
-    evidence:
-      source: episodes
-    decision:
-      method: exact_count_v1
   responses:
   - name: tuning
     rules:
-    - id: a_fix
+    - id: on_new_model
+      trigger:
+        external: model_released
+        match:
+          provider_family:
+          - anthropic
+          tier:
+          - small
+          - medium
+      do: optimize
+      approval: standing
+      deploy: if_promoted
+      admit:
+        tvar: model
+      protects:
+      - quality_floor
+    - id: on_breach
       trigger:
         monitor: quality_prod
         event: episode_opened
       do: optimize
       approval: standing
       deploy: if_promoted
-    - id: b_fix
-      trigger:
-        monitor: quality_prod
-        event: episode_opened
-      do: optimize
-      approval: standing
-      deploy: if_promoted
-    - id: undo
-      trigger:
-        monitor: recover_monitor
-        event: recovery_overdue
-      do: rollback
-      approval: human
-      target: release_rollback_target
 input:
   kind: conditions
   history:
@@ -120,14 +108,14 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 24
+    - instant: 86400
       windows:
       - monitor: quality_prod
         start: 0
-        end: 24
+        end: 86400
         verdict: BREACHED
         head_generation: 0
-    - instant: 25
+    - instant: 90000
       optimizations:
       - attempt: A1
         fact: finished
@@ -139,7 +127,7 @@ input:
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET
-    - instant: 26
+    - instant: 93600
       acceptances:
       - record:
           format: tvl-release-acceptance/1
@@ -148,7 +136,7 @@ input:
           environment_ref: production
           occurrence:
             response_ref: tuning
-            rule_ref: a_fix
+            rule_ref: on_breach
             scope_kind: episode
             scope_ref: EP1
             occurrence: 0
@@ -160,23 +148,41 @@ input:
           approver_ref: approver-1
           decision: accept
           decided_at: '2026-11-20T00:00:00Z'
-          expires_at: '2026-11-22T00:00:00Z'
+          expires_at: '2026-11-27T00:00:00Z'
           repairs_episode: EP1
         authenticated: true
         approver_authorized: true
-    - instant: 27
+    - instant: 216000
+      events:
+      - kind: model_released
+        event_id: E1
+        issuer: P
+        issued_at: 212400
+        catalogue_revision: 1
+        subject:
+          model_ref: anthropic/claude-haiku-5-5
+          provider_family: anthropic
+          tier: small
+        authenticated: true
+    - instant: 223200
       optimizations:
       - attempt: A2
         fact: finished
         completion: normal
         candidates:
         - evidence_valid: true
-          fingerprint: 222222222222222222222222222222222222222222222222222222222222222c
-          gate_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          fingerprint: 111111111111111111111111111111111111111111111111111111111111111c
+          gate_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET
-    - instant: 28
+    - instant: 259200
+      windows:
+      - monitor: quality_prod
+        start: 172800
+        end: 259200
+        verdict: MET
+        head_generation: 1
       acceptances:
       - record:
           format: tvl-release-acceptance/1
@@ -185,151 +191,187 @@ input:
           environment_ref: production
           occurrence:
             response_ref: tuning
-            rule_ref: b_fix
-            scope_kind: episode
-            scope_ref: EP1
+            rule_ref: on_new_model
+            scope_kind: external
+            scope_ref: ext:cb7b8407952d38e48eda00aaa286e7f58dbe02de4bc7927ae3d23893dc040325
             occurrence: 0
-          candidate_fingerprint: 222222222222222222222222222222222222222222222222222222222222222c
-          gate_result_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111c
+          gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
           expected_head_generation: 1
           rollback_target: 111111111111111111111111111111111111111111111111111111111111111b
           approver_ref: approver-1
           decision: accept
           decided_at: '2026-11-20T00:00:00Z'
-          expires_at: '2026-11-22T00:00:00Z'
-          repairs_episode: EP1
+          expires_at: '2026-11-27T00:00:00Z'
         authenticated: true
         approver_authorized: true
-    - instant: 130
-      recovery:
-      - monitor: recover_monitor
-        episode: EP1
-        event: overdue
-        approval: granted
-        target_eligible: true
+    - instant: 345600
+      windows:
+      - monitor: quality_prod
+        start: 259200
+        end: 345600
+        verdict: MET
+        head_generation: 2
+    - instant: 432000
+      windows:
+      - monitor: quality_prod
+        start: 345600
+        end: 432000
+        verdict: MET
+        head_generation: 2
 expected:
   facts:
-  - instant: 24
+  - instant: 86400
     fact: window
     closure: breached
     monitor: quality_prod
     start: 0
-  - instant: 24
+  - instant: 86400
     fact: episode_opened
     monitor: quality_prod
     episode: EP1
     opening_generation: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
-      rule: a_fix
+      rule: on_breach
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
-    fact: fired
-    occurrence:
-      response: tuning
-      rule: b_fix
-      scope_kind: episode
-      scope: EP1
-      j: 0
-  - instant: 24
+  - instant: 86400
     fact: attempt_opened
     attempt: A1
     occurrence:
       response: tuning
-      rule: a_fix
+      rule: on_breach
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
-    fact: held
-    occurrence:
-      response: tuning
-      rule: b_fix
-      scope_kind: episode
-      scope: EP1
-      j: 0
-    reason: repair_open
-  - instant: 25
+  - instant: 90000
     fact: optimization_finished
     attempt: A1
     outcome: promoted
-  - instant: 25
+  - instant: 90000
     fact: deploy_awaiting
     attempt: A1
     occurrence:
       response: tuning
-      rule: a_fix
+      rule: on_breach
       scope_kind: episode
       scope: EP1
       j: 0
     candidate: 111111111111111111111111111111111111111111111111111111111111111b
-  - instant: 26
+  - instant: 93600
     fact: acceptance
     acceptance: R1
     result: written
     generation: 1
-  - instant: 26
+  - instant: 93600
     fact: attempt_closed
     attempt: A1
     reason: deploy_written
-  - instant: 26
+  - instant: 216000
+    fact: event
+    event:
+      issuer: P
+      event_id: E1
+    result: admitted
+  - instant: 216000
+    fact: fired
+    occurrence:
+      response: tuning
+      rule: on_new_model
+      scope_kind: external
+      scope:
+        issuer: P
+        event_id: E1
+      j: 0
+  - instant: 216000
     fact: attempt_opened
     attempt: A2
     occurrence:
       response: tuning
-      rule: b_fix
-      scope_kind: episode
-      scope: EP1
+      rule: on_new_model
+      scope_kind: external
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
-  - instant: 27
+  - instant: 216000
+    fact: search_domain
+    attempt: A2
+    tvar: model
+    domain:
+    - anthropic/claude-haiku-4-5
+    - anthropic/claude-sonnet-4-6
+    - anthropic/claude-haiku-5-5
+  - instant: 223200
     fact: optimization_finished
     attempt: A2
     outcome: promoted
-  - instant: 27
+  - instant: 223200
     fact: deploy_awaiting
     attempt: A2
     occurrence:
       response: tuning
-      rule: b_fix
-      scope_kind: episode
-      scope: EP1
+      rule: on_new_model
+      scope_kind: external
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
-    candidate: 222222222222222222222222222222222222222222222222222222222222222c
-  - instant: 28
+    candidate: 111111111111111111111111111111111111111111111111111111111111111c
+  - instant: 259200
+    fact: window
+    closure: counts
+    progress: 1
+    of: 2
+    monitor: quality_prod
+    start: 172800
+  - instant: 259200
     fact: acceptance
     acceptance: R2
     result: written
     generation: 2
-  - instant: 28
+  - instant: 259200
     fact: attempt_closed
     attempt: A2
     reason: deploy_written
-  - instant: 130
-    fact: recovery_overdue
-    monitor: recover_monitor
+  - instant: 345600
+    fact: window
+    closure: counts
+    progress: 1
+    of: 2
+    monitor: quality_prod
+    start: 259200
+  - instant: 432000
+    fact: window
+    closure: counts
+    progress: 2
+    of: 2
+    monitor: quality_prod
+    start: 345600
+  - instant: 432000
+    fact: episode_resolved
+    monitor: quality_prod
     episode: EP1
-  - instant: 130
-    fact: rollback
-    result: written
-    episode: EP1
-    generation: 3
-    fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
   head_generations:
-  - instant: 24
+  - instant: 86400
     generation: 0
-  - instant: 25
+  - instant: 90000
     generation: 0
-  - instant: 26
+  - instant: 93600
     generation: 1
-  - instant: 27
+  - instant: 216000
     generation: 1
-  - instant: 28
+  - instant: 223200
+    generation: 1
+  - instant: 259200
     generation: 2
-  - instant: 130
-    generation: 3
+  - instant: 345600
+    generation: 2
+  - instant: 432000
+    generation: 2
   max_open_attempts: 1

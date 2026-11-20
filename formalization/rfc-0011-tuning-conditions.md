@@ -11,6 +11,16 @@
 
 Existing-text handles are repository paths at `origin/main` commit `674d9aa2a4340115600e837ac28d8538d2b57867`.
 
+**Implementation status.** The reference relation (`python/tvl/runtime_conditions.py`) and the validator
+(`python/tvl/lints.py`) implement Part A only. Part B is specified for review and has no validator, relation, case or
+proof yet.
+
+| Section | Content | In the reference relation and validator |
+|---|---|---|
+| §2.1–§2.7 (Part A) | external and schedule triggers, `admit`, `protects`, one open repair per agent | implemented, with conformance cases and Lean statements |
+| §2.12, §2.13 (Part A rows) | Part A diagnostics and clarifications | implemented |
+| §2.8–§2.11 (Part B) | `when`, `silent_for`, `fired_count`, `cooldown_hours`, `hold_timeout_hours`, simultaneous-rule ranking | **specified, not yet implemented** |
+
 This RFC has two parts. **Part A** (§2.1–§2.7) is the first slice and is complete on its own: a sealed external-event
 trigger and a schedule trigger that start an `optimize` repair, with new-model admission and one open repair per
 agent. **Part B** (§2.8–§2.12) adds the condition algebra (composition, sequence, absence, rate) and anti-oscillation
@@ -64,7 +74,9 @@ configuration; an external event or a clock tick is not such evidence.
 ### 2.2 Time model and event envelope (normative)
 
 1. **One clock.** Every instant in this RFC is a UTC instant on the evaluator's clock, in whole seconds. Lifecycle hours
-   (RFC 0003) are derived from it as today.
+   (RFC 0003) are derived from it as today. The reference relation takes every instant of a history (evaluation
+   instants, window bounds, `issued_at`) as a whole number of seconds after the history's origin and never rounds one to
+   an hour (§2.13 item 12).
 2. **Event envelope.** An external event is a closed record
    `{kind, event_id, issuer, issued_at, catalogue_revision, subject}` where `event_id` is an opaque id unique per
    issuer, `issuer` is a platform issuer ref, `issued_at` a UTC instant, `catalogue_revision` a positive integer and
@@ -156,7 +168,7 @@ while another attempt is open does not start an attempt: its occurrence is recor
 This serializes spending: two triggers can never run two concurrent optimizations of one agent. Budgets per occurrence
 are those of RFC 0010 (`run_budget`); a rolling per-agent cap is proposed as an RFC 0010 amendment.
 
-### 2.8 Part B — conditions (`when`)
+### 2.8 Part B — conditions (`when`) — specified, not yet implemented by the reference relation
 
 ```ebnf
 rule       = rec(…, ["when": cond], ["hold_timeout_hours": pos_int], ["cooldown_hours": pos_int]) ;
@@ -183,7 +195,7 @@ UNDECIDED when its source is UNKNOWN or unreachable. The effect depends on the a
 `head_moved_within_hours: h` is TRUE iff the agent's head moved (deploy or rollback) in (t − h, t]. Together with a
 monitor trigger these express sequences ("a breach opened within 48 h of a deploy").
 
-### 2.9 Part B — absence and rate triggers
+### 2.9 Part B — absence and rate triggers — specified, not yet implemented by the reference relation
 
 ```ebnf
 monitor_trigger = rec("monitor": ident, "event": event_name, ["hours": pos_int]) ;
@@ -195,14 +207,14 @@ event_name      = … | "silent_for" | "fired_count" ;
 - `fired_count` on an outcome trigger: `trigger: {rule: r, event: fired_count, count: n, days: d}` fires when rule r has
   started its n-th attempt within d days. Notify-only. This is the escalation for flapping repairs.
 
-### 2.10 Part B — cooldown
+### 2.10 Part B — cooldown — specified, not yet implemented by the reference relation
 
 `cooldown_hours: c` on an `optimize` rule: an occurrence is `held(cooldown)` while the agent's last optimize ATTEMPT
 (started by any rule) finished less than c hours ago, or its head moved less than c hours ago. Measuring from the
 attempt, not the deploy, keeps a series of rejected candidates from spending repeatedly. Under composition the larger
 cooldown wins.
 
-### 2.11 Part B — simultaneous rules
+### 2.11 Part B — simultaneous rules — specified, not yet implemented by the reference relation
 
 When several rules of one agent fire at one instant, service effects are ordered by action rank
 `rollback > suspend > degrade > throttle > optimize > open_next_step > notify`, then by (response name, rule id). An
@@ -222,8 +234,8 @@ optimize that would start while a rollback of the same instant is pending is `he
 | `protects_without_promotion_monitor` | E | a `protects` requirement with no promotion monitor |
 | `protects_on_monitor_trigger` | E | `protects` on a monitor trigger |
 | `protects_unknown_requirement` | E | a `protects` name that is not a runtime requirement of the module |
-| `when_on_unsupported_action` | E | `when` on rollback, throttle, degrade, suspend, block_action, halt_unit (Part B) |
-| `cooldown_not_optimize` | E | `cooldown_hours` on a rule that is not `optimize` (Part B) |
+| `when_on_unsupported_action` | E | `when` on rollback, throttle, degrade, suspend, block_action, halt_unit (Part B; not yet emitted by the validator) |
+| `cooldown_not_optimize` | E | `cooldown_hours` on a rule that is not `optimize` (Part B; not yet emitted by the validator) |
 
 
 ### 2.13 Clarifications fixed by the reference relation (normative)
@@ -231,7 +243,7 @@ optimize that would start while a rollback of the same instant is pending is `he
 1. **Order of event checks.** An arriving event is checked in this order: authentication (an unauthenticated copy is
    recorded `rejected(unauthenticated)` and not remembered, so a later authentic copy with the same id is admitted);
    redelivery of an admitted (issuer, event_id); lateness; then matching.
-2. **Order within an instant.** Window reports, recovery facts, the schedule clock, attempt facts, acceptances, then
+2. **Order within an instant.** Window reports, the schedule clock, attempt facts, acceptances, then
    admitted events in (issued_at, issuer, event_id) order; finally pending occurrences start in
    (trigger instant, response name, rule id) order.
 3. **Schedule shape.** `every_days` outside 1–366 and malformed schedule mappings are `runtime_invalid_profile`.
@@ -239,10 +251,10 @@ optimize that would start while a rollback of the same instant is pending is `he
    occurrence; if the gate result is recomputed at the time of the effect and is no longer `Promote`, the deploy is
    refused with reason `gate_not_promote`.
 5. **Breached configurations.** For each open episode, the configurations that *breached in it* are the head fingerprint
-   serving when the episode opened and every head fingerprint that served during a BREACHED window of the episode. A
-   deploy whose candidate is one of them is refused (`candidate_breached_in_open_episode`); a rollback whose target is
-   one of them holds (RFC 0012 §2.5). Eligibility is computed from the recorded history; the absence of a recorded
-   eligibility fact never makes a target eligible.
+   serving the BREACHED window that opened it and every head fingerprint that served during a BREACHED window of the
+   episode. A deploy whose candidate is one of them is refused (`candidate_breached_in_open_episode`). Release rollback,
+   which would need a target outside this set, is deferred (RFC 0012 §2.5). The set is computed from the recorded
+   history.
 6. **Scope end releases the lock.** When an external or schedule scope stops requiring intervention while its attempt
    is open — awaiting its optimization approval, optimizing, or awaiting a deploy — no further service effect of the
    occurrence takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`), releasing the
@@ -254,16 +266,21 @@ optimize that would start while a rollback of the same instant is pending is `he
    (`scope_closed`), not as `deploy_refused`.
 8. **Spanning windows.** Windows are half-open `[start, end)` (RFC 0003 §6.2). A BREACHED window counts as having been
    served by every head generation in effect at some instant in `[start, end)`; a generation installed exactly at `end`
-   did not serve it.
+   did not serve it. A window inside which the head moved is *mixed* (RFC 0012 §2.4).
 9. **Window redelivery.** A second report for the same (monitor, window start) is a redelivery: the first report stands,
    whatever the second says, and the redelivery changes no count.
 10. **External scope refs.** The hosted `scope_ref` of an external scope is `ext:` followed by the lowercase hex SHA-256
     of `{"event_id": …, "issuer": …}` under the canonical digest of RFC 0003 §11.4 (`tvl.canonical.canonical_json_digest`): fixed length, injective for all practical purposes, and
     within the 128-character reference limit.
-11. **Rollback eligibility needs positive evidence.** A rollback target is eligible only if the history records positive
-    eligibility evidence for it at the time of the effect (`target_eligible: true`, standing for the RFC 0003 §7.2 target
-    checks: certificate validity, compatibility with current requirements, presence in the store) **and** it did not
-    breach in an open episode (item 5). Missing evidence holds the rollback (`held(target_ineligible)`).
+11. **Rollback eligibility (deferred).** The rule that a rollback target needs positive eligibility evidence and must not
+    have breached in an open episode belonged to release rollback, which is deferred out of TVL 1.7 (RFC 0012 §2.5).
+12. **Whole-second clock.** The reference relation's instants are whole seconds after the history origin: a head
+    installed at second `t` serves from `t` on, a window `[start, end)` has `end − start = 3600 · tumbling_hours`, and
+    lateness (72 hours) and the external scope bound (30 days) are compared in seconds. A history never rounds an
+    instant to an hour.
+13. **Opening generation.** An episode's opening generation, and its first breached configurations, come from the
+    BREACHED window that opened it (the head generation at that window's last second), not from the head at the time the
+    report arrives (RFC 0012 §2.4).
 
 ## 3. Compatibility
 

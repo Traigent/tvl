@@ -6,7 +6,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -30,7 +30,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -94,15 +94,15 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 11
-    - instant: 12
-    - instant: 13
-    - instant: 30
-    - instant: 31
-    - instant: 37
+    - instant: 39600
+    - instant: 43200
+    - instant: 46800
+    - instant: 108000
+    - instant: 111600
+    - instant: 133200
 expected:
   facts:
-  - instant: 12
+  - instant: 43200
     fact: fired
     occurrence:
       response: tuning
@@ -110,7 +110,7 @@ expected:
       scope_kind: schedule
       scope: '0'
       j: 0
-  - instant: 12
+  - instant: 43200
     fact: attempt_opened
     attempt: A1
     occurrence:
@@ -119,7 +119,7 @@ expected:
       scope_kind: schedule
       scope: '0'
       j: 0
-  - instant: 37
+  - instant: 133200
     fact: fired
     occurrence:
       response: tuning
@@ -127,11 +127,11 @@ expected:
       scope_kind: schedule
       scope: '1'
       j: 0
-  - instant: 37
+  - instant: 133200
     fact: attempt_closed
     attempt: A1
     reason: scope_expired
-  - instant: 37
+  - instant: 133200
     fact: attempt_opened
     attempt: A2
     occurrence:
@@ -141,16 +141,16 @@ expected:
       scope: '1'
       j: 0
   head_generations:
-  - instant: 11
+  - instant: 39600
     generation: 0
-  - instant: 12
+  - instant: 43200
     generation: 0
-  - instant: 13
+  - instant: 46800
     generation: 0
-  - instant: 30
+  - instant: 108000
     generation: 0
-  - instant: 31
+  - instant: 111600
     generation: 0
-  - instant: 37
+  - instant: 133200
     generation: 0
   max_open_attempts: 1

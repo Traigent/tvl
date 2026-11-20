@@ -7,7 +7,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -32,7 +32,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -102,32 +102,32 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 5
+    - instant: 18000
       events:
       - kind: model_released
         event_id: E1
         issuer: P
-        issued_at: 3
+        issued_at: 10800
         catalogue_revision: 1
         subject:
           model_ref: anthropic/claude-haiku-5-5
           provider_family: anthropic
           tier: small
         authenticated: true
-    - instant: 5
+    - instant: 18000
       optimizations:
       - attempt: A1
         fact: approval
         state: granted
 expected:
   facts:
-  - instant: 5
+  - instant: 18000
     fact: event
     event:
       issuer: P
       event_id: E1
     result: admitted
-  - instant: 5
+  - instant: 18000
     fact: fired
     occurrence:
       response: tuning
@@ -137,7 +137,7 @@ expected:
         issuer: P
         event_id: E1
       j: 0
-  - instant: 5
+  - instant: 18000
     fact: attempt_opened
     attempt: A1
     occurrence:
@@ -148,7 +148,7 @@ expected:
         issuer: P
         event_id: E1
       j: 0
-  - instant: 5
+  - instant: 18000
     fact: search_domain
     attempt: A1
     tvar: model
@@ -157,6 +157,6 @@ expected:
     - anthropic/claude-sonnet-4-6
     - anthropic/claude-haiku-5-5
   head_generations:
-  - instant: 5
+  - instant: 18000
     generation: 0
   max_open_attempts: 1

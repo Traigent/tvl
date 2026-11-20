@@ -6,7 +6,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -30,7 +30,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -91,10 +91,10 @@ input:
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
     - instant: 0
-    - instant: 1
-    - instant: 24
-    - instant: 25
-    - instant: 48
+    - instant: 3600
+    - instant: 86400
+    - instant: 90000
+    - instant: 172800
 expected:
   facts:
   - instant: 0
@@ -113,7 +113,7 @@ expected:
       scope_kind: schedule
       scope: '0'
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence:
       response: tuning
@@ -121,7 +121,7 @@ expected:
       scope_kind: schedule
       scope: '1'
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: notified
     occurrence:
       response: tuning
@@ -129,7 +129,7 @@ expected:
       scope_kind: schedule
       scope: '1'
       j: 0
-  - instant: 48
+  - instant: 172800
     fact: fired
     occurrence:
       response: tuning
@@ -137,7 +137,7 @@ expected:
       scope_kind: schedule
       scope: '2'
       j: 0
-  - instant: 48
+  - instant: 172800
     fact: notified
     occurrence:
       response: tuning
@@ -148,12 +148,12 @@ expected:
   head_generations:
   - instant: 0
     generation: 0
-  - instant: 1
+  - instant: 3600
     generation: 0
-  - instant: 24
+  - instant: 86400
     generation: 0
-  - instant: 25
+  - instant: 90000
     generation: 0
-  - instant: 48
+  - instant: 172800
     generation: 0
   max_open_attempts: 0

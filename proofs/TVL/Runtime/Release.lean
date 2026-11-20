@@ -1,7 +1,8 @@
 /- TVL 1.7 (DRAFT), RFC 0012, formal semantics §16.7-§16.9.
    The agent head, acceptance consumption with an atomic compare, generation-scoped episode
-   closure, and release rollback. Authentication, approver authority, gate re-evaluation and
-   eligibility evidence are recorded inputs, never recomputed (as in the reference relation). -/
+   closure. Release rollback is deferred out of TVL 1.7 (RFC 0012 §2.5) and is not modelled.
+   Authentication, approver authority and gate re-evaluation are recorded inputs, never
+   recomputed (as in the reference relation). -/
 import Mathlib
 
 namespace TVL.Runtime.Release
@@ -64,10 +65,9 @@ instance (a : Accept) (t : Nat) : Decidable (Usable a t) := by unfold Usable; in
 /-- A head move, with the evidence it was written under. -/
 inductive Move where
   | deploy (a : Accept) (w : Awaiting) (t : Nat) (newGen : Nat)
-  | rollback (episode : Nat) (target : Nat) (newGen : Nat)
   deriving DecidableEq, Repr
 
-/-- A consumed accept that wrote the head (the release of §2.5): the generation it wrote, the
+/-- A consumed accept that wrote the head (a release): the generation it wrote, the
 rollback target it bound and the episode it repaired. -/
 structure Rel where
   gen : Nat
@@ -82,9 +82,8 @@ structure RState where
   consumed : List Nat
   moves : List Move
   releases : List Rel
-  rolledBack : List Nat
 
-def RState.init (h : Head) : RState := ⟨h, [(h.gen, h.fp)], [], [], [], []⟩
+def RState.init (h : Head) : RState := ⟨h, [(h.gen, h.fp)], [], [], []⟩
 
 def fpAt (s : RState) (g : Nat) : Option Nat := (s.history.find? (fun p => p.1 = g)).map (·.2)
 
@@ -132,8 +131,7 @@ def effect (c : Ctx) (w : Awaiting) (s : RState) (a : Accept) : Result × RState
         history := (s.head.gen + 1, a.cand) :: s.history,
         consumed := a.id :: s.consumed,
         moves := .deploy a w c.now (s.head.gen + 1) :: s.moves,
-        releases := ⟨s.head.gen + 1, a.rbTarget, a.repairs⟩ :: s.releases,
-        rolledBack := s.rolledBack })
+        releases := ⟨s.head.gen + 1, a.rbTarget, a.repairs⟩ :: s.releases })
 
 /-- Processing one acceptance against the (at most one) deploy occurrence awaiting it. -/
 def acceptStep (c : Ctx) (w : Option Awaiting) (s : RState) (a : Accept) : Result × RState :=
@@ -144,33 +142,11 @@ def acceptStep (c : Ctx) (w : Option Awaiting) (s : RState) (a : Accept) : Resul
     | none => (.ignored, s)
     | some w' => effect c w' s a
 
-/-- Release rollback (§2.5): resolve the bound release, check eligibility with positive
-evidence, then write with the atomic compare: expected generation is the generation the
-release wrote, which must be the current head's. -/
-inductive RbResult where
-  | noBoundRelease | heldTargetIneligible | written
-  deriving DecidableEq, Repr
-
-def rollbackStep (eligible : Bool) (breached : List Nat) (s : RState) (ep : Nat) :
-    RbResult × RState :=
-  match s.releases.find? (fun r => r.repairs = some ep ∧ r.gen = s.head.gen) with
-  | none => (.noBoundRelease, s)
-  | some r =>
-    if eligible = false ∨ r.rbTarget ∈ breached then (.heldTargetIneligible, s)
-    else
-      (.written,
-        { s with head := ⟨r.rbTarget, s.head.gen + 1⟩,
-                 history := (s.head.gen + 1, r.rbTarget) :: s.history,
-                 moves := .rollback ep r.rbTarget (s.head.gen + 1) :: s.moves,
-                 rolledBack := ep :: s.rolledBack })
-
 inductive Cmd where
   | acceptance (c : Ctx) (w : Option Awaiting) (a : Accept)
-  | rollback (eligible : Bool) (breached : List Nat) (ep : Nat)
 
 def cmdStep (s : RState) : Cmd → RState
   | .acceptance c w a => (acceptStep c w s a).2
-  | .rollback e b ep => (rollbackStep e b s ep).2
 
 def releaseRun (h : Head) (cmds : List Cmd) : RState :=
   cmds.foldl cmdStep (RState.init h)
@@ -183,7 +159,7 @@ private theorem foldl_invariant {α β : Type} (P : β → Prop) (f : β → α 
   | cons a l ih => exact ih (f b a) (hstep b a h)
 
 def deployIds (ms : List Move) : List Nat :=
-  ms.filterMap (fun m => match m with | .deploy a _ _ _ => some a.id | _ => none)
+  ms.filterMap (fun m => match m with | .deploy a _ _ _ => some a.id)
 
 /-- Invariants of every reachable state. -/
 def RInv (s : RState) : Prop :=
@@ -193,9 +169,7 @@ def RInv (s : RState) : Prop :=
   -- no acceptance authorized two writes
   (deployIds s.moves).Nodup ∧
   -- no release is ahead of the head
-  (∀ r ∈ s.releases, r.gen ≤ s.head.gen) ∧
-  -- right after a rollback, no release sits at the head
-  (∀ ep t g, s.moves.head? = some (Move.rollback ep t g) → ∀ r ∈ s.releases, r.gen < s.head.gen)
+  (∀ r ∈ s.releases, r.gen ≤ s.head.gen)
 
 theorem RInv_init (h : Head) : RInv (RState.init h) := by
   simp [RInv, RState.init, deployIds]
@@ -222,33 +196,33 @@ theorem pre_none {c : Ctx} {s : RState} {a : Accept} (h : pre c s a = none) :
 theorem effect_inv (c : Ctx) (w : Awaiting) (s : RState) (a : Accept)
     (hnc : a.id ∉ s.consumed) (hu : Usable a c.now) (h : RInv s) :
     RInv (effect c w s a).2 := by
-  obtain ⟨hA, hB, hC, hD⟩ := h
+  obtain ⟨hA, hB, hC⟩ := h
   unfold effect
   by_cases h5 : ¬ Binds a w
-  · rw [if_pos h5]; exact ⟨hA, hB, hC, hD⟩
+  · rw [if_pos h5]; exact ⟨hA, hB, hC⟩
   rw [if_neg h5]
   have h5' : Binds a w := not_not.mp h5
   by_cases h6 : a.accept = false
   · rw [if_pos h6]
-    refine ⟨?_, hB, hC, hD⟩
+    refine ⟨?_, hB, hC⟩
     intro a' w' t g hm
     obtain ⟨x1, x2, x3, x4⟩ := hA a' w' t g hm
     exact ⟨x1, x2, x3, List.mem_cons_of_mem _ x4⟩
   rw [if_neg h6]
   have h6' : a.accept = true := by simpa using h6
   by_cases h7 : c.gatePromote = false
-  · rw [if_pos h7]; exact ⟨hA, hB, hC, hD⟩
+  · rw [if_pos h7]; exact ⟨hA, hB, hC⟩
   rw [if_neg h7]
   by_cases h8 : s.head.gen ≠ a.expGen
-  · rw [if_pos h8]; exact ⟨hA, hB, hC, hD⟩
+  · rw [if_pos h8]; exact ⟨hA, hB, hC⟩
   rw [if_neg h8]
   by_cases h9 : s.head.fp ≠ a.rbTarget
-  · rw [if_pos h9]; exact ⟨hA, hB, hC, hD⟩
+  · rw [if_pos h9]; exact ⟨hA, hB, hC⟩
   rw [if_neg h9]
   by_cases h10 : a.cand ∈ c.breached
-  · rw [if_pos h10]; exact ⟨hA, hB, hC, hD⟩
+  · rw [if_pos h10]; exact ⟨hA, hB, hC⟩
   rw [if_neg h10]
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
   · intro a' w'' t g hm
     rcases List.mem_cons.mp hm with hm | hm
     · injection hm with e1 e2 e3 e4
@@ -270,13 +244,10 @@ theorem effect_inv (c : Ctx) (w : Awaiting) (s : RState) (a : Accept)
       have := (hA a' w' t g hm).2.2.2
       rw [hm2] at this
       exact hnc this
-    | rollback _ _ _ => simp at hm2
   · intro r hr
     rcases List.mem_cons.mp hr with hr | hr
     · subst hr; simp
     · have := hC r hr; simp only []; omega
-  · intro ep t g hm
-    simp at hm
 
 theorem acceptStep_inv (c : Ctx) (w : Option Awaiting) (s : RState) (a : Accept)
     (h : RInv s) : RInv (acceptStep c w s a).2 := by
@@ -290,33 +261,12 @@ theorem acceptStep_inv (c : Ctx) (w : Option Awaiting) (s : RState) (a : Accept)
       obtain ⟨hnc, _, _, hu, _⟩ := pre_none hp
       exact effect_inv c w' s a hnc hu h
 
-theorem rollbackStep_inv (eligible : Bool) (breached : List Nat) (s : RState) (ep : Nat)
-    (h : RInv s) : RInv (rollbackStep eligible breached s ep).2 := by
-  obtain ⟨hA, hB, hC, hD⟩ := h
-  unfold rollbackStep
-  split
-  · exact ⟨hA, hB, hC, hD⟩
-  · rename_i r hr
-    split
-    · exact ⟨hA, hB, hC, hD⟩
-    · refine ⟨?_, ?_, ?_, ?_⟩
-      · intro a' w' t g hm
-        rcases List.mem_cons.mp hm with hm | hm
-        · cases hm
-        · exact hA a' w' t g hm
-      · simpa [deployIds] using hB
-      · intro r' hr'
-        have := hC r' hr'; simp; omega
-      · intro ep' t' g' _ r' hr'
-        have := hC r' hr'; simp; omega
-
 theorem releaseRun_inv (h : Head) (cmds : List Cmd) : RInv (releaseRun h cmds) := by
   unfold releaseRun
   apply foldl_invariant (P := RInv)
   · intro s c hs
     cases c with
     | acceptance c w a => exact acceptStep_inv c w s a hs
-    | rollback e b ep => exact rollbackStep_inv e b s ep hs
   · exact RInv_init h
 
 /-- `deploy_needs_matching_acceptance` (RFC 0012 §2.3; §4). In every reachable state, every
@@ -460,21 +410,28 @@ structure EpState where
   seen : List Nat
   run : Nat
   last : Option Nat
+  /-- the generation of the last counted window -/
+  lastGen : Option Nat
 
-def EpState.init : EpState := ⟨[], 0, none⟩
+def EpState.init : EpState := ⟨[], 0, none, none⟩
 
 /-- One window report. A second report for the same window start is a redelivery that changes
 nothing (§2.13 item 9 of RFC 0011). Any non-qualifying window resets the count; a qualifying
 window extends it only when its start is `width` after the previous counted start
-(consecutive), else it starts a new count of one. Windows are half-open `[start, start+width)`. -/
+(consecutive) and, under `since_head_move`, its generation equals the previous counted
+window's generation; else it starts a new count of one (a change of generation resets the
+count). Windows are half-open `[start, start+width)`. -/
 def winStep (sc : ClosureScope) (openGen width : Nat) (e : EpState) (w : Win) : EpState :=
   if w.start ∈ e.seen then e
   else if Qual sc openGen w then
     { seen := w.start :: e.seen,
-      run := (match e.last with | some l => if w.start = l + width then e.run + 1 else 1
-                                | none => 1),
-      last := some w.start }
-  else { seen := w.start :: e.seen, run := 0, last := none }
+      run := (match e.last with
+              | some l => if w.start = l + width ∧ (sc = .sinceHeadMove → e.lastGen = some w.gen)
+                          then e.run + 1 else 1
+              | none => 1),
+      last := some w.start,
+      lastGen := some w.gen }
+  else { seen := w.start :: e.seen, run := 0, last := none, lastGen := none }
 
 def closureRun (sc : ClosureScope) (openGen width : Nat) (ws : List Win) : EpState :=
   ws.foldl (winStep sc openGen width) EpState.init
@@ -521,6 +478,15 @@ theorem window_redelivery_noop (sc : ClosureScope) (openGen width : Nat) (e : Ep
     (h : w.start ∈ e.seen) : winStep sc openGen width e w = e := by
   simp [winStep, h]
 
+/-- Under `since_head_move`, a qualifying window of a generation different from the previous
+counted window's restarts the count at one (RFC 0012 §2.4 Counting). -/
+theorem generation_change_resets (openGen width : Nat) (e : EpState) (w : Win) (l : Nat)
+    (hnew : w.start ∉ e.seen) (hq : Qual .sinceHeadMove openGen w)
+    (hl : e.last = some l) (hg : e.lastGen ≠ some w.gen) :
+    (winStep .sinceHeadMove openGen width e w).run = 1 := by
+  unfold winStep
+  simp [hnew, hq, hl, hg]
+
 theorem qual_sinceHeadMove_iff (openGen : Nat) (w : Win) :
     Qual .sinceHeadMove openGen w ↔ w.verdict = .met ∧ ¬ w.mixed ∧ openGen < w.gen := by
   simp [Qual]
@@ -551,63 +517,3 @@ theorem since_head_move_closure (openGen width need : Nat) (ws : List Win) :
     have := (hq.2 rfl).2
     omega
   omega
-
-/-! ## 16.9 Rollback of a release (RFC 0012 §2.5) -/
-
-/-- Rollback needs positive eligibility evidence (RFC 0011 §2.13 item 11). -/
-theorem rollback_needs_positive_evidence (breached : List Nat) (s : RState) (ep : Nat) :
-    (rollbackStep false breached s ep).1 ≠ .written := by
-  unfold rollbackStep
-  split <;> simp
-
-/-- A rollback is bound to the release that repaired its episode and that wrote the current
-head; the written head is that release's `rollback_target`. -/
-theorem rollback_target_is_bound (eligible : Bool) (breached : List Nat) (s : RState) (ep : Nat)
-    (h : (rollbackStep eligible breached s ep).1 = .written) :
-    ∃ r ∈ s.releases, r.repairs = some ep ∧ r.gen = s.head.gen ∧
-      (rollbackStep eligible breached s ep).2.head = ⟨r.rbTarget, s.head.gen + 1⟩ := by
-  by_cases hnone : s.releases.find? (fun r => r.repairs = some ep ∧ r.gen = s.head.gen) = none
-  · unfold rollbackStep at h; rw [hnone] at h; simp at h
-  · obtain ⟨r, hf⟩ := Option.ne_none_iff_exists'.mp hnone
-    have hmem := List.mem_of_find?_eq_some hf
-    have hp := List.find?_some hf
-    simp only [decide_eq_true_eq] at hp
-    by_cases hc : eligible = false ∨ r.rbTarget ∈ breached
-    · unfold rollbackStep at h; rw [hf] at h; simp [hc] at h
-    · refine ⟨r, hmem, hp.1, hp.2, ?_⟩
-      unfold rollbackStep; rw [hf]; simp [hc]
-
-/-- `no_rollback_of_rollback` (RFC 0012 §2.5; §4). In every reachable state whose last head
-move is a rollback, any later rollback attempt finds no bound release and changes nothing:
-the head generation written by a rollback is not the generation of any consumed accept
-record. Class: SUBSTANTIVE (needs the invariant that no release sits at the head after a
-rollback, proved over arbitrary command sequences). -/
-theorem no_rollback_of_rollback (h : Head) (cmds : List Cmd) (ep t g : Nat)
-    (hlast : (releaseRun h cmds).moves.head? = some (Move.rollback ep t g))
-    (eligible : Bool) (breached : List Nat) (ep' : Nat) :
-    rollbackStep eligible breached (releaseRun h cmds) ep' =
-      (.noBoundRelease, releaseRun h cmds) := by
-  have hD := (releaseRun_inv h cmds).2.2.2 ep t g hlast
-  unfold rollbackStep
-  have hnone : (releaseRun h cmds).releases.find?
-      (fun r => r.repairs = some ep' ∧ r.gen = (releaseRun h cmds).head.gen) = none := by
-    rw [List.find?_eq_none]
-    intro r hr
-    have := hD r hr
-    simp only [decide_eq_true_eq]
-    omega
-  rw [hnone]
-
-/-- A written rollback records its episode as rolled back; the start rule of RFC 0011 §2.7
-reads that record, so no `optimize` of the episode starts afterwards (RFC 0012 §2.5). -/
-theorem rollback_closes_episode (eligible : Bool) (breached : List Nat) (s : RState) (ep : Nat)
-    (h : (rollbackStep eligible breached s ep).1 = .written) :
-    ep ∈ (rollbackStep eligible breached s ep).2.rolledBack := by
-  by_cases hnone : s.releases.find? (fun r => r.repairs = some ep ∧ r.gen = s.head.gen) = none
-  · unfold rollbackStep at h; rw [hnone] at h; simp at h
-  · obtain ⟨r, hf⟩ := Option.ne_none_iff_exists'.mp hnone
-    by_cases hc : eligible = false ∨ r.rbTarget ∈ breached
-    · unfold rollbackStep at h; rw [hf] at h; simp [hc] at h
-    · unfold rollbackStep; rw [hf]; simp [hc]
-
-end TVL.Runtime.Release

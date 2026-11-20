@@ -1,12 +1,12 @@
 case_format: tvl-runtime-case/1
-family: semantic_traces
-description: 'No consumed accept record repaired the episode: the rollback does not take place (rollback_no_bound_release).'
+family: release
+description: release_rollback_target is rejected as deferred whatever the monitor closure_scope is.
 spec_refs:
 - formalization/rfc-0012-release-acceptance.md#2.5
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -30,7 +30,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -65,7 +65,7 @@ module:
     episode:
       closure_windows: 2
       closure_max_age_hours: 168
-      closure_scope: since_head_move
+      closure_scope: any_generation
   - name: quality_gate
     requirement: quality_floor
     phase: promotion
@@ -100,69 +100,8 @@ module:
       approval: human
       target: release_rollback_target
 input:
-  kind: conditions
-  history:
-    agent: agent-1
-    environment: production
-    origin: '2026-11-20T00:00:00Z'
-    head:
-      fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
-      generation: 0
-    contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-    steps:
-    - instant: 24
-      windows:
-      - monitor: quality_prod
-        start: 0
-        end: 24
-        verdict: BREACHED
-        head_generation: 0
-    - instant: 130
-      recovery:
-      - monitor: recover_monitor
-        episode: EP1
-        event: overdue
-        approval: granted
+  kind: lint
 expected:
-  facts:
-  - instant: 24
-    fact: window
-    closure: breached
-    monitor: quality_prod
-    start: 0
-  - instant: 24
-    fact: episode_opened
-    monitor: quality_prod
-    episode: EP1
-    opening_generation: 0
-  - instant: 24
-    fact: fired
-    occurrence:
-      response: tuning
-      rule: a_fix
-      scope_kind: episode
-      scope: EP1
-      j: 0
-  - instant: 24
-    fact: attempt_opened
-    attempt: A1
-    occurrence:
-      response: tuning
-      rule: a_fix
-      scope_kind: episode
-      scope: EP1
-      j: 0
-  - instant: 130
-    fact: recovery_overdue
-    monitor: recover_monitor
-    episode: EP1
-  - instant: 130
-    fact: rollback
-    result: rollback_no_bound_release
-    episode: EP1
-  head_generations:
-  - instant: 24
-    generation: 0
-  - instant: 130
-    generation: 0
-  max_open_attempts: 1
+  diagnostics:
+  - code: release_rollback_deferred
+    severity: error

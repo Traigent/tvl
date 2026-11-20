@@ -3756,7 +3756,7 @@ def _lint_runtime_version(doc: Dict[str, Any], issues: List[Issue]) -> None:
     elif doc.get("tvl_version") in {"1.3", "1.4", "1.5"} and _uses_17_constructs(doc):
         issues.append({
             "code": "declared_version_below_constructs",
-            "message": 'External and schedule triggers, admit, protects, closure_scope and release rollback require tvl_version: "1.7" (DRAFT RFC 0011/0012)',
+            "message": 'External and schedule triggers, admit, protects and closure_scope require tvl_version: "1.7" (DRAFT RFC 0011/0012)',
             "path": ["tvl_version"], "severity": "error",
         })
 
@@ -3776,7 +3776,7 @@ def _uses_17_constructs(doc: Dict[str, Any]) -> bool:
             if not isinstance(rule, dict):
                 continue
             trigger = rule.get("trigger")
-            if "admit" in rule or "protects" in rule or rule.get("target") == "release_rollback_target" or (
+            if "admit" in rule or "protects" in rule or (
                 isinstance(trigger, dict) and ("external" in trigger or "schedule" in trigger)
             ):
                 return True
@@ -6053,10 +6053,19 @@ def _lint_responses(doc: Dict[str, Any], issues: List[Issue]) -> None:
                 })
             if action == "rollback":
                 target = rule.get("target")
-                if not isinstance(target, str) or (
-                    target not in {"last_certified", "release_rollback_target"} and not _FINGERPRINT_RE.match(target)
+                if target == "release_rollback_target":
+                    # RFC 0012 §2.5: release rollback is deferred out of TVL 1.7 (its bound target is always a
+                    # configuration that breached in the open episode it repairs).
+                    issues.append({
+                        "code": "release_rollback_deferred",
+                        "message": "target: release_rollback_target is deferred out of TVL 1.7 (RFC 0012 §2.5); use last_certified or a certified fingerprint",
+                        "path": path + ["target"],
+                        "severity": "error",
+                    })
+                elif not isinstance(target, str) or (
+                    target != "last_certified" and not _FINGERPRINT_RE.match(target)
                 ):
-                    invalid_parameter("target", "target requires last_certified, release_rollback_target or 64 lowercase hex characters")
+                    invalid_parameter("target", "target requires last_certified or 64 lowercase hex characters")
             elif "target" in rule:
                 invalid_parameter("target", "target is permitted only on rollback")
 
@@ -6381,17 +6390,6 @@ def _lint_tuning_rule(doc: Dict[str, Any], rule: Dict[str, Any], path: List[Any]
     if conditional and action == "optimize" and rule.get("deploy") == "if_promoted":
         if not isinstance(rule.get("protects"), list) or not rule["protects"]:
             err("protects_required", "deploy: if_promoted on an external or schedule trigger requires protects", ["protects"])
-    # release rollback (RFC 0012 §2.5)
-    if action == "rollback" and rule.get("target") == "release_rollback_target":
-        mon = mons.get(trigger.get("monitor")) if isinstance(trigger.get("monitor"), str) else None
-        if mon is None or trigger.get("event") != "recovery_overdue":
-            err("release_rollback_wrong_trigger", "release_rollback_target requires a recovery_overdue trigger", ["target"])
-        else:
-            req = reqs.get(mon.get("requirement")) if isinstance(mon.get("requirement"), str) else None
-            of_mon = mons.get(req.get("of")) if isinstance(req, dict) and isinstance(req.get("of"), str) else None
-            episode = of_mon.get("episode") if isinstance(of_mon, dict) else None
-            if not isinstance(episode, dict) or episode.get("closure_scope") != "since_head_move":
-                err("release_rollback_needs_since_head_move", "The trigger's monitor needs closure_scope: since_head_move", ["target"])
 
 
 def _lint_outcome_trigger(doc: Dict[str, Any], rule: Dict[str, Any], rules: Dict[str, Any],

@@ -743,7 +743,7 @@ implementation. The CI workflow above is the check of the full library.
 `TVL/Runtime/Conditions.lean` and `TVL/Runtime/Release.lean`, imported by `Main.lean`, model the
 **draft** RFCs 0011 (Part A) and 0012 as step functions over finite lists of recorded inputs
 (formal semantics §16). Authentication, approver authority, window verdicts, the effect-time gate
-recheck and rollback-eligibility evidence are inputs, never recomputed. The two files are separate
+recheck are inputs, never recomputed. Release rollback is deferred out of TVL 1.7 (RFC 0012 §2.5) and is not modelled. The two files are separate
 state machines; Release takes the awaiting deploy occurrence as an input. Draft status means these
 statements track draft text and may change at acceptance. The Lean name `admitTvar` stands for the
 `admit` construct because CI rejects that word. No `sorry`, `admit` or `axiom` is used.
@@ -762,9 +762,7 @@ statements track draft text and may change at acceptance. The Lean name `admitTv
 | `deploy_needs_matching_acceptance` | SUBSTANTIVE | In every reachable state each deploy move has an accept with equal bindings, usable at the effect time, consumed, and no acceptance wrote twice. |
 | `consumed_record_writes_nothing`, `stale_acceptance_writes_nothing`, `stale_generation_refused`, `write_advances_head` | BY-CONSTRUCTION | Guards of `acceptStep`/`effect`: a consumed record or a generation mismatch writes nothing; a write moves the head by exactly one generation. |
 | `since_head_move_closure` | SUBSTANTIVE | The closure count never exceeds the number of qualifying windows (MET, not mixed, generation above the opening one); old-generation windows alone cannot close. Redelivery and gaps included. |
-| `old_generation_resets`, `window_redelivery_noop` | BY-CONSTRUCTION | One-step facts about `winStep`. |
-| `no_rollback_of_rollback` | SUBSTANTIVE | After a rollback no consumed accept sits at the head, so any later rollback finds no bound release; needs the invariant over arbitrary command sequences. |
-| `rollback_needs_positive_evidence`, `rollback_target_is_bound`, `rollback_closes_episode` | BY-CONSTRUCTION | Shape of `rollbackStep`. |
+| `old_generation_resets`, `generation_change_resets`, `window_redelivery_noop` | BY-CONSTRUCTION | One-step facts about `winStep`: an old-generation window resets the count; under `since_head_move` a qualifying window of a different generation than the last counted one restarts the count at one; a redelivery changes nothing. |
 
 **Not modelled and not claimed.** `when_restricts_instances` and everything in RFC 0011 Part B; the gate
 join and its recomputation; signature verification and approver roles; `closure_max_age_hours`; the static

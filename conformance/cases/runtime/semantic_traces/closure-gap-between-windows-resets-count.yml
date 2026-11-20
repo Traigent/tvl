@@ -7,7 +7,7 @@ spec_refs:
 module:
   tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -31,7 +31,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -81,47 +81,47 @@ input:
       generation: 0
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     steps:
-    - instant: 24
+    - instant: 86400
       windows:
       - monitor: quality_prod
         start: 0
-        end: 24
+        end: 86400
         verdict: BREACHED
         head_generation: 0
-    - instant: 48
+    - instant: 172800
       windows:
       - monitor: quality_prod
-        start: 24
-        end: 48
+        start: 86400
+        end: 172800
         verdict: MET
         head_generation: 0
-    - instant: 96
+    - instant: 345600
       windows:
       - monitor: quality_prod
-        start: 72
-        end: 96
+        start: 259200
+        end: 345600
         verdict: MET
         head_generation: 0
-    - instant: 120
+    - instant: 432000
       windows:
       - monitor: quality_prod
-        start: 96
-        end: 120
+        start: 345600
+        end: 432000
         verdict: MET
         head_generation: 0
 expected:
   facts:
-  - instant: 24
+  - instant: 86400
     fact: window
     closure: breached
     monitor: quality_prod
     start: 0
-  - instant: 24
+  - instant: 86400
     fact: episode_opened
     monitor: quality_prod
     episode: EP1
     opening_generation: 0
-  - instant: 24
+  - instant: 86400
     fact: fired
     occurrence: &id001
       response: tuning
@@ -129,41 +129,41 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 24
+  - instant: 86400
     fact: notified
     occurrence: *id001
-  - instant: 48
+  - instant: 172800
     fact: window
     closure: counts
     progress: 1
     of: 2
     monitor: quality_prod
-    start: 24
-  - instant: 96
+    start: 86400
+  - instant: 345600
     fact: window
     closure: counts
     progress: 1
     of: 2
     monitor: quality_prod
-    start: 72
-  - instant: 120
+    start: 259200
+  - instant: 432000
     fact: window
     closure: counts
     progress: 2
     of: 2
     monitor: quality_prod
-    start: 96
-  - instant: 120
+    start: 345600
+  - instant: 432000
     fact: episode_resolved
     monitor: quality_prod
     episode: EP1
   head_generations:
-  - instant: 24
+  - instant: 86400
     generation: 0
-  - instant: 48
+  - instant: 172800
     generation: 0
-  - instant: 96
+  - instant: 345600
     generation: 0
-  - instant: 120
+  - instant: 432000
     generation: 0
   max_open_attempts: 0

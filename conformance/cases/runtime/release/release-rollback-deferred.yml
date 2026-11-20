@@ -1,12 +1,13 @@
 case_format: tvl-runtime-case/1
 family: release
-description: release_rollback_target in a module declaring 1.5 is rejected.
+description: release_rollback_target is deferred out of TVL 1.7 and rejected even where its former conditions hold.
 spec_refs:
+- formalization/rfc-0012-release-acceptance.md#2.5
 - formalization/rfc-0012-release-acceptance.md#2.6
 module:
-  tvl_version: '1.5'
+  tvl_version: '1.7'
   tvl:
-    module: slice.doc_classifier
+    module: slice.ticket_router
   environment:
     snapshot_id: '2026-11-20T00:00:00Z'
   evaluation_set:
@@ -30,7 +31,7 @@ module:
     kind: rate_bound
     unit: invocation
     violation:
-      checker: customer:doc_label_check
+      checker: customer:ticket_route_check
       label_in:
       - fail
     max_rate: 0.08
@@ -65,6 +66,7 @@ module:
     episode:
       closure_windows: 2
       closure_max_age_hours: 168
+      closure_scope: since_head_move
   - name: quality_gate
     requirement: quality_floor
     phase: promotion
@@ -102,5 +104,5 @@ input:
   kind: lint
 expected:
   diagnostics:
-  - code: declared_version_below_constructs
+  - code: release_rollback_deferred
     severity: error

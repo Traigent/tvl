@@ -2,8 +2,7 @@
    Abstract step-function model of the merged input stream, external and schedule
    triggers, missed-tick coalescing, the pending queue with one open repair, and new-model
    admission. Facts the platform records (authentication, window verdicts, approvals) are
-   inputs; no clock is read. Instants are whole numbers (hours for events, any fixed unit
-   for the schedule). The TVL admission construct is named `admitTvar` here because its
+   inputs; no clock is read. Instants are whole seconds (RFC 0011 §2.2 item 1). The TVL admission construct is named `admitTvar` here because its
    keyword is a banned tactic name in this tree (CI rejects it). -/
 import Mathlib
 
@@ -37,7 +36,7 @@ structure Subject where
   deriving DecidableEq, Repr
 
 /-- The closed envelope. `authentic` records the platform's signature verification (RFC 0011
-§2.2 item 3); the evaluator does not recompute it. `issuedAt` is an integer lifecycle hour. -/
+§2.2 item 3); the evaluator does not recompute it. `issuedAt` is an integer number of seconds. -/
 structure Event where
   issuer : Nat
   eid : Nat
@@ -61,8 +60,8 @@ theorem selector_absent_matches_any (s : Subject) :
     (Selector.mk none none).accepts s = true := by
   simp [Selector.accepts]
 
-/-- RFC 0011 §2.2 item 4: lateness bound in hours. -/
-def lateBound : Int := 72
+/-- RFC 0011 §2.2 item 4: lateness bound, 72 hours in seconds. -/
+def lateBound : Int := 72 * 3600
 
 inductive EventResult where
   | rejectedUnauthenticated | redelivery | rejectedLate | admitted

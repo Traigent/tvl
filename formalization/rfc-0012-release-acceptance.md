@@ -23,7 +23,7 @@ generation)". Three things a regulated team needs are not fixed by that text.
    state can be applied after another deploy changed it.
 3. **Recovery can be claimed on the old configuration.** Episode closure counts MET windows (§6.12); windows measured
    before the deploy, on the configuration that breached, can count towards closing the episode the deploy was meant
-   to repair. Rollback after a failed recovery has no bound target.
+   to repair. (A rollback after a failed recovery is also unspecified; it is deferred to a later revision, §2.5.)
 
 ## 2. Design
 
@@ -48,7 +48,7 @@ A closed record, hosted, with no customer content:
 | `contract_digest` | `sha256:` digest | the contract under which the gate ran |
 | `holdout_digest` | `sha256:` digest, optional | RFC 0008 holdout identity, when the module declares one |
 | `expected_head_generation` | non-negative integer | the generation the approver saw; the deploy writes only if the head is still at it |
-| `rollback_target` | fingerprint | the configuration a rollback of this release restores; MUST equal the head fingerprint at `expected_head_generation` |
+| `rollback_target` | fingerprint | the head fingerprint the approver saw; MUST equal the head fingerprint at `expected_head_generation`. It binds the head this acceptance replaces; TVL 1.7 defines no rollback that uses it (§2.5) |
 | `repairs_episode` | opaque ref, optional | the episode this release was deployed to repair (present when the occurrence's scope is an episode) |
 | `approver_ref` | opaque ref | the person; their authority is checked by the platform at the time of the effect |
 | `decision` | `"accept" | "reject"` | |
@@ -77,46 +77,56 @@ episode = rec("closure_windows": pos_int, "closure_max_age_hours": pos_int,
               ["closure_scope": "any_generation" | "since_head_move"]) ;   (* default any_generation *)
 ```
 
-Window reports carry `head_generation`, the generation that served the window's units (a window whose units span two
-generations reports the later one and is UNKNOWN(mixed_generation) for closure under `since_head_move`). Under
-`since_head_move`, only windows whose generation is greater than the episode's generation at opening count towards
+Window reports carry `head_generation`, the generation that served the window's units. A window whose units span two
+generations reports the later one and is UNKNOWN(mixed_generation) for closure under `since_head_move`. Under
+`since_head_move`, only windows whose generation is greater than the episode's opening generation count towards
 closure and towards `recovery_recovered`. So an episode is closed only by evidence about a configuration that moved the
 head after it opened. `any_generation` keeps RFC 0003 meaning, which already requires `closure_windows` **consecutive** MET windows (RFC 0003 §6.12); the redelivery and gap rules of RFC 0011 §2.13 items 8–9 apply under both scopes.
 
-**Counting.** A window is *mixed* when its reported `head_generation` differs from the head generation at the window's
-start. Closure under `since_head_move` needs `closure_windows` **consecutive** qualifying windows (MET, not mixed, and of
-a generation greater than the opening generation); any other window — BREACHED, UNKNOWN, mixed, or of an older
-generation — resets the count. The opening generation is the head generation at the instant the episode opens.
+**Counting.** All instants are whole seconds and windows are half-open `[start, end)` (RFC 0011 §2.13 items 8 and 12). A
+window is *mixed* when the head moved inside it (the head generation at its start differs from the head generation at
+its last second), or when its reported `head_generation` differs from the head generation at its start. A head
+installed exactly at `end` did not serve the window. Closure under `since_head_move` needs `closure_windows`
+**consecutive** qualifying windows of **one and the same** generation, where a qualifying window is MET, not mixed, and
+of a generation greater than the opening generation. Any other window — BREACHED, UNKNOWN, mixed, or of an older
+generation — resets the count, and a qualifying window whose generation differs from the previously counted window's
+restarts the count at one: a generation change resets progress, so evidence about two different later configurations
+never adds up.
 
+**Opening generation.** The opening generation of an episode is the greatest generation that served the BREACHED window
+that opened it, that is, the head generation at that window's last second. It is *not* the head generation at the
+instant the breach report arrives: a report delivered after a deploy still names the configuration that breached, so a
+later generation can close the episode.
 
-### 2.5 Rollback of a release
+### 2.5 Rollback of a release (deferred)
 
-A `rollback` rule with `target: release_rollback_target` (new target value) is allowed only on `recovery_overdue` of a
-`recovery_time` requirement whose `of` monitor has `closure_scope: since_head_move`
-(`release_rollback_needs_since_head_move`, `release_rollback_wrong_trigger`). Its target is resolved from the
-**release that repaired the overdue obligation's episode**: the consumed accept record whose `repairs_episode` is that
-episode and whose write is the current head. If there is none (the head was moved since by another release or
-rollback), the rollback does not take place and is recorded as `rollback_no_bound_release`. The bound
-`rollback_target` must still pass every eligibility check of RFC 0003 §7.2 at the time of the effect — in particular it
-is not a configuration that breached in an open episode; otherwise the rollback holds (`held(target_ineligible)`) and
-the rule's outcome is notified, never substituted by another target. Its effect uses the same atomic compare: expected
-generation = the generation written by that release. A rollback is terminal for its episode's repairs: no `optimize`
-of the same episode starts after it (the episode stays open until closed by §2.4). Rolling back a rollback is not
-expressible.
+Release rollback is **not part of TVL 1.7**. An earlier draft added `target: release_rollback_target` for a `rollback`
+rule on `recovery_overdue`, resolved to the `rollback_target` of the release that repaired the overdue episode. That
+design contradicts itself. `rollback_target` is the head fingerprint at `expected_head_generation` (§2.2), which is the
+configuration that was serving when the episode breached, and RFC 0011 §2.13 item 5 holds any target that breached in
+an open episode. In the flow the rule exists for (a configuration breaches, an episode opens, a repair is deployed, the
+episode is still open when recovery is overdue) the bound target is always one that breached in an open episode, so the
+rollback could never take place. A later revision will define release rollback together with a target that is eligible
+by construction (for example a configuration certified before the episode) and the positive eligibility evidence it
+needs (formerly RFC 0011 §2.13 item 11).
+
+In 1.7 a rule with `target: release_rollback_target` is rejected with `release_rollback_deferred`. Other rollback
+targets (`last_certified`, a certified fingerprint) keep their RFC 0003 meaning. The `rollback_target` field of the
+acceptance record stays: it binds the head the approver saw (§2.2, §2.3), which keeps an acceptance from being applied
+to a different production state.
 
 ### 2.6 Diagnostics
 
 | Code | Sev | Condition |
 |---|---|---|
-| `release_rollback_needs_since_head_move` | E | `target: release_rollback_target` without `closure_scope: since_head_move` on the trigger's monitor |
-| `release_rollback_wrong_trigger` | E | `target: release_rollback_target` on a trigger other than `recovery_overdue` |
+| `release_rollback_deferred` | E | `target: release_rollback_target` (release rollback is deferred out of TVL 1.7, §2.5) |
 | `acceptance_record_invalid` | E | a `tvl-release-acceptance/1` document fails its schema or `expires_at − decided_at > 7 days` (tool `tvl-validate-acceptance`) |
 
 ## 3. Compatibility
 
 Conservative: `closure_scope` defaults to `any_generation`, the RFC 0003 meaning; existing deploy approvals that already
 bound a generation are conforming. The acceptance record is a new document type with its own schema. Projection: format
-/4 (RFC 0011) carries `closure_scope` and the new rollback target.
+/4 (RFC 0011) carries `closure_scope`.
 
 ## 4. Semantics and proofs
 
@@ -127,7 +137,10 @@ Formal semantics §16.6–§16.8. Lean, `proofs/TVL/Runtime/Release.lean`:
 - `stale_acceptance_writes_nothing`: if the head moved after the approver's generation, the deploy writes nothing.
 - `since_head_move_closure`: under `since_head_move`, no window from a generation at or below the opening generation
   contributes to closure.
-- `no_rollback_of_rollback`.
+- `generation_change_resets`: under `since_head_move`, a qualifying window of a generation different from the last
+  counted window's restarts the count at one.
+
+Release rollback has no statement in 1.7 (§2.5).
 
 ## 5. Conformance
 
@@ -135,18 +148,23 @@ Acceptance documents: valid accept, valid reject, expired, over-long expiry, unk
 acceptance advances the head once, a redelivery writes nothing; (2) an acceptance for generation g after another deploy
 moved the head to g+1 is refused with `stale_generation`; (3) a reject closes the occurrence without a write; (4) under
 `since_head_move`, MET windows from the old generation do not close the episode, MET windows from the new generation do;
-(5) recovery overdue → rollback restores `rollback_target`, then no further optimize in the episode; lints: one case per
-diagnostic.
+(5) a head move inside a window makes that window mixed, whether the report names the later or the starting generation;
+(6) a breach report delivered after a deploy opens the episode at the breaching generation, and the newer generation
+closes it; (7) two consecutive MET windows of different later generations do not close the episode, two of one
+generation do; lints: one case per diagnostic, including `release_rollback_deferred` for every former form of the
+rollback target.
 
 ## 6. Alternatives considered
 
-1. **Leave the record to profiles.** Rejected: the owner rule that every release has a recorded human acceptance must be
-   checkable across platforms.
+1. **Leave the record to profiles.** Rejected: a recorded human acceptance for every release is only checkable across
+   platforms if the record is fixed.
 2. **Generation-free compare (fingerprint compare).** Rejected: an ABA sequence (A → B → A) would pass.
-3. **Automatic rollback without acceptance.** Kept bounded: rollback restores only the target bound by the human who
-   accepted the release, so no new configuration enters production without a person.
+3. **Automatic rollback to the pre-release head.** Rejected for 1.7 (§2.5): the pre-release head is the configuration that
+   breached, so it can never be an eligible target while the episode is open. Restoring a configuration without a
+   person is also a production change; a later design must say who authorizes it.
 
 ## 7. Open questions
 
 1. Approver authority model (roles) is platform-defined; should TVL name a minimum (two-person rule for `critical`)?
-2. Expiry bound (7 days) — owner input.
+2. Expiry bound: is 7 days the right maximum lifetime of an acceptance, and should a module be able to shorten it?
+3. Release rollback (§2.5): which configuration is a sound target, and which evidence marks it eligible?

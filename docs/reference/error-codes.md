@@ -1334,8 +1334,7 @@ any 1.7 construct with `unsupported_construct`, because projection format /4 is 
 | `protects_without_promotion_monitor` | a `protects` requirement with no promotion monitor |
 | `protects_on_monitor_trigger` | `protects` on a trigger that is not external or schedule |
 | `protects_unknown_requirement` | a `protects` name that is not a requirement of the module |
-| `release_rollback_needs_since_head_move` | `target: release_rollback_target` where the trigger monitor's `of` monitor lacks `closure_scope: since_head_move` |
-| `release_rollback_wrong_trigger` | `target: release_rollback_target` on a trigger other than `recovery_overdue` |
+| `release_rollback_deferred` | `target: release_rollback_target`; release rollback is deferred out of TVL 1.7 (RFC 0012 §2.5) |
 | `acceptance_record_invalid` | a `tvl-release-acceptance/1` document fails its schema, or `expires_at` is not after `decided_at`, or `expires_at - decided_at` exceeds 7 days (`tvl.release_acceptance.validate_acceptance`) |
 | `declared_version_below_constructs` (reused) | a 1.7 construct in a module that declares 1.3, 1.4 or 1.5 |
 | `runtime_version_required` (reused) | a 1.7 construct in a module with no `tvl_version` |

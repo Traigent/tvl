@@ -2437,7 +2437,7 @@ embedding are specification obligations here, not claims of checked runtime impl
 
 This section specifies the recorded-history semantics of the draft [RFC 0011](rfc-0011-tuning-conditions.md)
 Part A (external and schedule triggers, new-model admission, one open repair per agent) and the draft
-[RFC 0012](rfc-0012-release-acceptance.md) (release acceptance, generation-scoped recovery, release rollback). Both
+[RFC 0012](rfc-0012-release-acceptance.md) (release acceptance, generation-scoped recovery; release rollback is deferred, §16.9). Both
 RFCs are **DRAFT**, not accepted; nothing here is part of an accepted TVL version, and the numbering may change at
 acceptance. Part B of RFC 0011 (the `when` algebra, absence and rate triggers, cooldown) is not formalized here.
 Section 15 is not used. The Lean statements are in `proofs/TVL/Runtime/Conditions.lean` (§16.2–§16.6, §16.10) and
@@ -2446,9 +2446,9 @@ Section 15 is not used. The Lean statements are in `proofs/TVL/Runtime/Condition
 RFC text differ, the RFC text governs this section.
 
 **Conventions.** As in §12 and §13, authentication of events and acceptances, approver authority, window verdicts,
-the promotion-gate join at effect time, and positive rollback-target evidence are **recorded facts**: inputs to the
+and the promotion-gate join at effect time are **recorded facts**: inputs to the
 relation, never recomputed. No clock is read. Every definition below is a pure step function over a finite list of
-inputs. Event instants are integer lifecycle hours; schedule ticks and acceptance instants are whole seconds. One
+inputs. Every instant is a whole number of seconds (RFC 0011 §2.2 item 1); window bounds are multiples of `3600 · tumbling_hours`. One
 history is for one (agent, deployment environment).
 
 ### 16.1 Event envelope, selector and admission checks
@@ -2460,16 +2460,16 @@ records that the platform verified the issuer's signature. A selector (`match`) 
 list of enum values. The selector *accepts* a subject iff every present field contains the subject's value; an absent
 field accepts any value; a present empty list accepts nothing. (Lean: `Selector.accepts`, `selector_absent_matches_any`.)
 
-**Definition 16.2 (Arrival classification).** (RFC 0011 §2.2 items 3–4, §2.13 item 1.) At an evaluation hour `now`
+**Definition 16.2 (Arrival classification).** (RFC 0011 §2.2 items 3–4, §2.13 item 1.) At an evaluation instant `now` (seconds)
 with the set `seen` of admitted (issuer, event id) pairs, an arriving event is classified by the first applicable
 rule, in this order: not authentic → `rejected(unauthenticated)` (not remembered); (issuer, event id) in `seen` →
-`redelivery`; `now − issued_at > 72` → `rejected(late)`; otherwise `admitted`. Only an admitted event extends `seen`
+`redelivery`; `now − issued_at > 72 · 3600` → `rejected(late)`; otherwise `admitted`. Only an admitted event extends `seen`
 and fires. (Lean: `classify`, `nonadmitted_fires_nothing`, `unauthenticated_not_remembered`.)
 
 ### 16.2 The merged, totally ordered input stream
 
 **Definition 16.3 (Instant order).** (RFC 0011 §2.2 item 5, §2.13 item 2.) Within one evaluation instant, inputs are
-processed in this order: window reports, recovery facts, the schedule clock, attempt facts, derived scope closures,
+processed in this order: window reports, the schedule clock, attempt facts, derived scope closures,
 acceptance records, then external events, and finally the start of pending occurrences. External events of one
 instant are ordered by (issued_at, issuer, event id), ties kept in arrival order (a stable sort). A *stream* is the
 list of instants in nondecreasing order with this inner order, so every trace is a total order. (Lean: `Step`,
@@ -2528,12 +2528,12 @@ present non-empty field, `enum[str]` tvar) are validator rules, not part of this
 ### 16.7 The head and acceptance consumption
 
 **Definition 16.9 (Head).** (RFC 0012 §2.1.) The head of an (agent, environment) is a pair (fingerprint, generation).
-Every move (deploy or rollback) installs a fingerprint and increases the generation by exactly 1; the history of
+Every move (a deploy; rollback is deferred, §16.9) installs a fingerprint and increases the generation by exactly 1; the history of
 (generation, fingerprint) pairs is kept. (Lean: `Head`, `RState`.)
 
 **Definition 16.10 (Acceptance record, usability).** (RFC 0012 §2.2.) An acceptance carries agent, environment,
 occurrence reference, candidate fingerprint, gate-result digest, contract digest, optional holdout digest, expected head
-generation g, rollback target τ, optional repaired episode, decision, and instants `decided_at`, `expires_at`. It is
+generation g, bound head fingerprint τ (`rollback_target`), optional repaired episode, decision, and instants `decided_at`, `expires_at`. It is
 *usable* at effect time t iff `decided_at ≤ t < expires_at` and `expires_at − decided_at ≤ 7 days`. It *binds* the
 awaiting deploy occurrence iff agent, environment, occurrence, candidate, gate digest, contract digest and holdout
 digest are equal to the occurrence's. (Lean: `Accept`, `Awaiting`, `Binds`, `Usable`.)
@@ -2553,28 +2553,27 @@ recorded. A refusal changes nothing. (Lean: `pre`, `effect`, `acceptStep`; `depl
 
 ### 16.8 Generation-scoped closure
 
-**Definition 16.12 (Closure counting).** (RFC 0012 §2.4; RFC 0011 §2.13 items 8–9.) Windows are half-open
-`[start, start + width)`. A window report has a start, a verdict, the reported head generation γ, and the head
-generation σ at the window's start; it is *mixed* iff γ ≠ σ. Let ω be the head generation at the instant the episode
-opened. A report *qualifies* under `any_generation` iff its verdict is MET, and under `since_head_move` iff it is MET,
-not mixed and γ > ω. A second report for a window start already seen is a redelivery and changes nothing. Any other
-non-qualifying report resets the count to 0; a qualifying report extends the count by 1 iff its start is exactly
-`width` after the previously counted start, and otherwise restarts it at 1. The episode closes when the count reaches
-`closure_windows` (> 0). The age bound `closure_max_age_hours` only further restricts closure and is not modelled.
-(Lean: `Win`, `Qual`, `winStep`, `closureRun`, `Closed`; `since_head_move_closure`, `old_generation_resets`,
-`window_redelivery_noop`.)
+**Definition 16.12 (Closure counting).** (RFC 0012 §2.4; RFC 0011 §2.13 items 8–9, 12–13.) Windows are half-open
+`[start, start + width)`, in seconds. A window report has a start, a verdict, the reported head generation γ, the head
+generation σ at the window's start and the head generation σ′ at its last second; it is *mixed* iff σ ≠ σ′ (the head
+moved inside the window) or γ ≠ σ. Let ω be the *opening generation* of the episode: the greatest generation that served
+the breaching window that opened it (σ′ of that window), not the head at the time its report arrived. A report
+*qualifies* under `any_generation` iff its verdict is MET, and under `since_head_move` iff it is MET, not mixed and
+γ > ω. A second report for a window start already seen is a redelivery and changes nothing. Any other non-qualifying
+report resets the count to 0; under `any_generation` a qualifying report extends the count by 1 iff its start is
+exactly `width` after the previously counted start, and otherwise restarts it at 1; under `since_head_move` it also
+needs γ to equal the generation of the previously counted window, otherwise it restarts the count at 1 (a change of
+generation resets the count). The episode closes when the count reaches `closure_windows` (> 0). The age bound
+`closure_max_age_hours` only further restricts closure and is not modelled. (Lean: `Win`, `Qual`, `winStep`,
+`closureRun`, `Closed`; `since_head_move_closure`, `old_generation_resets`, `generation_change_resets`,
+`window_redelivery_noop`. The Lean `Win.mixed` models only the γ ≠ σ half; the head-moved-inside half is enforced by
+the reference relation and covered by conformance cases, not proved.)
 
-### 16.9 Release rollback
+### 16.9 Release rollback (deferred)
 
-**Definition 16.13 (Bound rollback).** (RFC 0012 §2.5; RFC 0011 §2.13 items 5, 11.) On `recovery_overdue` for episode
-ε with a granted approval, the *bound release* is the consumed accept record that repaired ε and wrote the current head
-(its written generation equals the head generation). If there is none the rollback does not take place
-(`rollback_no_bound_release`). If the history lacks positive eligibility evidence for the bound target, or the target
-is in the breached set, the rollback holds (`held(target_ineligible)`) and no other target is substituted. Otherwise
-the rollback writes the head (target, generation + 1) under the same atomic compare (expected generation = the bound
-release's), and records ε as rolled back, so no `optimize` of ε starts afterwards. A rollback records no release.
-(Lean: `Rel`, `rollbackStep`; `no_rollback_of_rollback`, `rollback_needs_positive_evidence`,
-`rollback_target_is_bound`, `rollback_closes_episode`.)
+Release rollback is **deferred** out of TVL 1.7 (RFC 0012 §2.5) and has no semantics in this section. A rule with
+`target: release_rollback_target` is a validator error (`release_rollback_deferred`); the relation never writes a head
+other than by an accepted deploy (§16.7).
 
 ### 16.10 Properties, limits and embedding
 
@@ -2587,7 +2586,7 @@ release's), and records ε as rolled back, so no `optimize` of ε starts afterwa
 | `deploy_needs_matching_acceptance` | RFC 0012 §2.3, §4 | Release | Every head move by a deploy has a consumed, usable accept with equal bindings, once. |
 | `stale_acceptance_writes_nothing` | RFC 0012 §2.3, §4 | Release | A generation mismatch changes no head, move log or release. |
 | `since_head_move_closure` | RFC 0012 §2.4, §4 | Release | Closure needs `closure_windows` windows of a later generation; older ones contribute nothing. |
-| `no_rollback_of_rollback` | RFC 0012 §2.5, §4 | Release | After a rollback, no further rollback finds a bound release. |
+| `generation_change_resets` | RFC 0012 §2.4, §4 | Release | Under `since_head_move`, a qualifying window of a different generation than the last counted one restarts the count at one. |
 
 Not modelled: the gate join itself (§12.7, §13), signature verification, approver roles, the per-occurrence budgets of
 RFC 0010, the `closure_max_age_hours` bound, the parsing and static diagnostics of RFC 0011 §2.12 and RFC 0012 §2.6, and
@@ -2596,7 +2595,7 @@ Release takes the awaiting deploy occurrence as an input rather than reading the
 the reference relation to these definitions is checked by cases, not proved.
 
 **Conservative embedding obligation.** A valid TVL 1.6 module or pack contains no external or schedule trigger, no
-`admit`, no `protects`, no `closure_scope` and no `release_rollback_target`; its denotations, canonical artifact bytes
+`admit`, no `protects`, and no `closure_scope`; its denotations, canonical artifact bytes
 and digests are unchanged by the embedding into 1.7 (RFC 0011 §3). The Lean content is: with no external rule no
 external occurrence fires (`no_external_rules_no_firing`), and a stream without triggers starts no attempt
 (`no_trigger_no_attempt`); the gate and runtime-output equalities of `conservative_extension` (`Extension.lean`)

@@ -20,6 +20,7 @@ from tvl.runtime_trace import TraceError
 from tvl.yaml_safe import safe_load
 
 CASES = Path(__file__).resolve().parents[1] / "conformance/cases/runtime"
+H = 3600  # instants are whole seconds after the origin; the hand-derived oracle rows are written in hours
 
 
 def _case(relative: str) -> dict:
@@ -57,36 +58,36 @@ def test_slice_oracle_rows():
     def key(event: dict) -> str:  # event identities are (issuer, event_id) mappings
         return f"{event['issuer']}:{event['event_id']}"
 
-    events = {key(f["event"]): (f["instant"], f["result"]) for f in _facts(result, "event") if f["instant"] != 11}
-    assert events["P:E1"] == (10, "admitted")                      # row 1
-    assert (11, "redelivery") in {(f["instant"], f["result"]) for f in _facts(result, "event")}  # row 2
+    events = {key(f["event"]): (f["instant"], f["result"]) for f in _facts(result, "event") if f["instant"] != 11 * H}
+    assert events["P:E1"] == (10 * H, "admitted")                  # row 1
+    assert (11 * H, "redelivery") in {(f["instant"], f["result"]) for f in _facts(result, "event")}  # row 2
     assert {key(f["event"]) for f in _facts(result, "no_match")} == {"P:E2", "P:E3"}                   # rows 3-4
-    assert events["P:E4"] == (14, "rejected(unauthenticated)")     # row 5
-    assert events["P:E5"] == (15, "rejected(late)")                # row 6
+    assert events["P:E4"] == (14 * H, "rejected(unauthenticated)")     # row 5
+    assert events["P:E5"] == (15 * H, "rejected(late)")                # row 6
     domain = _facts(result, "search_domain")
     assert len(domain) == 1 and domain[0]["domain"][-1] == "anthropic/claude-haiku-5-5"            # row 1
     held = _facts(result, "held")
-    assert [(f["instant"], f["reason"]) for f in held] == [(24, "repair_open")]                    # row 7
+    assert [(f["instant"], f["reason"]) for f in held] == [(24 * H, "repair_open")]                    # row 7
     opened = {f["attempt"]: f["instant"] for f in _facts(result, "attempt_opened")}
     closed = {f["attempt"]: f["instant"] for f in _facts(result, "attempt_closed")}
-    assert opened == {"A1": 10, "A2": 31} and closed == {"A1": 31, "A2": 41}                      # rows 8-9, 12
+    assert opened == {"A1": 10 * H, "A2": 31 * H} and closed == {"A1": 31 * H, "A2": 41 * H}                      # rows 8-9, 12
     writes = [f for f in _facts(result, "acceptance") if f["result"] == "written"]
-    assert [(f["instant"], f["acceptance"], f["generation"]) for f in writes] == [(31, "R1", 1)]  # row 9
+    assert [(f["instant"], f["acceptance"], f["generation"]) for f in writes] == [(31 * H, "R1", 1)]  # row 9
     assert [f["result"] for f in _facts(result, "acceptance")] == ["written", "consumed", "refused"]  # rows 9, 10, 12
     assert _facts(result, "acceptance")[2]["reason"] == "stale_generation"
     windows = {f["start"]: f["closure"] for f in _facts(result, "window")}
-    assert windows[24] == "UNKNOWN(mixed_generation)"                                              # row 13
-    assert [(f["instant"], f["progress"]) for f in _facts(result, "window") if f["closure"] == "counts"] == [(72, 1), (96, 2)]
-    assert [(f["instant"], f["episode"]) for f in _facts(result, "episode_resolved")] == [(96, "EP1")]  # row 15
+    assert windows[24 * H] == "UNKNOWN(mixed_generation)"                                              # row 13
+    assert [(f["instant"], f["progress"]) for f in _facts(result, "window") if f["closure"] == "counts"] == [(72 * H, 1), (96 * H, 2)]
+    assert [(f["instant"], f["episode"]) for f in _facts(result, "episode_resolved")] == [(96 * H, "EP1")]  # row 15
     assert result["max_open_attempts"] == 1
-    assert [g["generation"] for g in result["head_generations"] if g["instant"] in (30, 31, 96)] == [0, 1, 1]
+    assert [g["generation"] for g in result["head_generations"] if g["instant"] in (30 * H, 31 * H, 96 * H)] == [0, 1, 1]
 
 
-def test_counterfactual_any_generation_closes_at_h72():
+def test_counterfactual_any_generation_closes_at_hour_72():
     module, history = _slice()
     module["monitors"][0]["episode"]["closure_scope"] = "any_generation"
     result = conditions_trace(module, history)
-    assert [f["instant"] for f in _facts(result, "episode_resolved")] == [72]
+    assert [f["instant"] for f in _facts(result, "episode_resolved")] == [72 * H]
 
 
 def test_evaluator_is_deterministic_and_pure():
@@ -101,7 +102,7 @@ def test_events_at_one_instant_are_ordered_by_issue_time():
     facts = conditions_trace(case["module"], case["input"]["history"])["facts"]
     opened = [f for f in facts if f["fact"] == "attempt_opened"]
     assert opened[0]["occurrence"]["scope"] == {"issuer": "P", "event_id": "E1"}  # issued_at 3 before issued_at 4
-    assert [f["fact"] for f in facts if f["instant"] == 5 and f["fact"] == "held"] == ["held"]
+    assert [f["fact"] for f in facts if f["instant"] == 5 * H and f["fact"] == "held"] == ["held"]
 
 
 def test_three_missed_ticks_coalesce_into_one_firing():
@@ -118,7 +119,7 @@ def test_pre_17_contract_is_not_serialized():
 
 def test_gate_join_must_cover_every_promotion_monitor():
     module, history = _slice()
-    step = next(s for s in history["steps"] if s["instant"] == 30)
+    step = next(s for s in history["steps"] if s["instant"] == 30 * H)
     step["optimizations"][0]["candidates"][0]["monitor_verdicts"] = {}
     with pytest.raises(TraceError):
         conditions_trace(module, history)
@@ -137,25 +138,6 @@ def test_history_validation_is_closed():
     history["steps"][0]["events"][0]["subject"]["tier"] = "huge"
     with pytest.raises(TraceError):
         conditions_trace(module, history)
-
-
-@pytest.mark.parametrize("name", [
-    "release-recovery-overdue-rolls-back-to-non-breached-target", "release-rollback-without-bound-release",
-    "release-recovery-overdue-holds-when-bound-target-breached",
-    "release-rollback-target-ineligible-holds", "release-rollback-declined-writes-nothing"])
-def test_rollback_results(name):
-    case = _case(f"semantic_traces/{name}.yml")
-    facts = conditions_trace(case["module"], case["input"]["history"])["facts"]
-    result = [f["result"] for f in facts if f["fact"] == "rollback"]
-    assert result == [{"release-recovery-overdue-rolls-back-to-non-breached-target": "written",
-                       "release-recovery-overdue-holds-when-bound-target-breached": "held(target_ineligible)",
-                       "release-rollback-without-bound-release": "rollback_no_bound_release",
-                       "release-rollback-target-ineligible-holds": "held(target_ineligible)",
-                       "release-rollback-declined-writes-nothing": "declined"}[name]]
-    written = name.endswith("non-breached-target")
-    assert bool(_facts({"facts": facts}, "rollback")[0].get("fingerprint")) is written
-    if written:
-        assert [f for f in facts if f["fact"] == "dropped"] == []  # no other repair of EP1 was pending
 
 
 def test_acceptance_documents():
@@ -197,24 +179,17 @@ def test_acceptance_without_history_contract_digest_is_a_trace_error():
     conditions_trace(case["module"], history)
 
 
-def test_rollback_needs_recorded_positive_eligibility_evidence():
-    # RFC 0011 2.13 item 11: only target_eligible: true permits; false or absence holds.
-    case = _case("semantic_traces/release-recovery-overdue-rolls-back-to-non-breached-target.yml")
-    history = copy.deepcopy(case["input"]["history"])
-    assert history["steps"][-1]["recovery"][0]["target_eligible"] is True
-    absent = copy.deepcopy(history)
-    del absent["steps"][-1]["recovery"][0]["target_eligible"]
-    assert [f["result"] for f in _facts(conditions_trace(case["module"], absent), "rollback")] == ["held(target_ineligible)"]
-    explicit_false = copy.deepcopy(history)
-    explicit_false["steps"][-1]["recovery"][0]["target_eligible"] = False
-    assert [f["result"] for f in _facts(conditions_trace(case["module"], explicit_false), "rollback")] == ["held(target_ineligible)"]
-    explicit_true = copy.deepcopy(history)
-    explicit_true["steps"][-1]["recovery"][0]["target_eligible"] = True
-    assert [f["result"] for f in _facts(conditions_trace(case["module"], explicit_true), "rollback")] == ["written"]
-    bad = copy.deepcopy(history)
-    bad["steps"][-1]["recovery"][0]["target_eligible"] = "yes"
-    with pytest.raises(TraceError):
-        conditions_trace(case["module"], bad)
+def test_release_rollback_is_deferred_out_of_17():
+    # RFC 0012 §2.5: the bound target is always a configuration that breached in the open episode it repairs.
+    for name in ("release-rollback-deferred", "release-rollback-deferred-on-any-trigger",
+                 "release-rollback-deferred-any-generation-scope"):
+        module = _case(f"release/{name}.yml")["module"]
+        assert "release_rollback_deferred" in _codes(module), name
+    module, _ = _slice()
+    module["responses"][0]["rules"].append(
+        {"id": "undo", "trigger": {"monitor": "quality_prod", "event": "episode_opened"}, "do": "rollback",
+         "approval": "human", "target": "last_certified"})
+    assert "release_rollback_deferred" not in _codes(module)  # other rollback targets are unaffected
 
 
 def _trace_case(name: str) -> tuple[dict, dict]:
@@ -279,3 +254,30 @@ def test_holdout_digest_mismatch_is_binding_mismatch():
     module, history = _trace_case("release-holdout-digest-must-match-candidate-bundle")
     results = {f["acceptance"]: f.get("reason", f["result"]) for f in _facts(conditions_trace(module, history), "acceptance")}
     assert results == {"R1": "binding_mismatch", "R2": "binding_mismatch", "R3": "written"}
+
+
+def test_head_move_inside_a_window_makes_it_mixed_at_second_precision():
+    # The deploy is installed at 30h 30m, inside the window [24h, 48h): no hour rounding may hide it.
+    for name in ("release-head-move-mid-window-is-mixed", "release-head-move-mid-window-report-of-start-generation-is-mixed"):
+        module, history = _trace_case(name)
+        result = conditions_trace(module, history)
+        written = [f for f in _facts(result, "acceptance") if f["result"] == "written"]
+        assert [f["instant"] for f in written] == [30 * H + 1800]
+        windows = {f["start"]: f["closure"] for f in _facts(result, "window")}
+        assert windows[24 * H] == "UNKNOWN(mixed_generation)"
+        assert windows[48 * H] == "counts"
+
+
+def test_delayed_breach_report_opens_the_episode_at_the_breaching_generation():
+    module, history = _trace_case("release-delayed-breach-report-after-deploy-uses-breaching-generation")
+    result = conditions_trace(module, history)
+    assert [f["opening_generation"] for f in _facts(result, "episode_opened")] == [0]  # head was already 1 at report time
+    assert [f["instant"] for f in _facts(result, "episode_resolved")] == [96 * H]
+
+
+def test_closure_needs_consecutive_windows_of_one_generation():
+    module, history = _trace_case("release-since-head-move-generation-change-resets-closure-count")
+    result = conditions_trace(module, history)
+    progress = [(f["instant"], f["progress"]) for f in _facts(result, "window") if f["closure"] == "counts"]
+    assert progress == [(72 * H, 1), (96 * H, 1), (120 * H, 2)]  # generation 1 then 2 restarts the count
+    assert [f["instant"] for f in _facts(result, "episode_resolved")] == [120 * H]

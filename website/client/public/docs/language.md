@@ -724,7 +724,7 @@ Construct version compatibility (runtime version lint checks feature presence):
 | Only TVL 1.3 runtime constructs, or a pack without later features | 1.3 | `"1.3"`, `"1.4"`, `"1.5"` |
 | RFC 0004 reactive outcomes or guards | 1.4 | `"1.4"`, `"1.5"` |
 | RFC 0005 persistence or census aggregates | 1.5 | `"1.5"` |
-| DRAFT RFC 0011 Part A / RFC 0012: external or schedule triggers, `admit`, `protects`, `closure_scope`, `release_rollback_target` | 1.7 | `"1.7"` (not yet in a released version; `tvl-compile-runtime` refuses them with `unsupported_construct`) |
+| DRAFT RFC 0011 Part A / RFC 0012: external or schedule triggers, `admit`, `protects`, `closure_scope` | 1.7 | `"1.7"` (not yet in a released version; `tvl-compile-runtime` refuses them with `unsupported_construct`) |
 
 These are document declarations, not compiled wire-contract versions. For modules without runtime blocks, this lint does not enforce `tvl_version` or the older extension minima; that absence of a diagnostic does not change the versions in which constructs were introduced.
 
