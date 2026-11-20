@@ -88,7 +88,11 @@ configuration; an external event or a clock tick is not such evidence.
    a later event is recorded as `rejected(late)` and fires nothing. Two events with the same (issuer, event_id) are one
    event; the second is a redelivery (RFC 0003 §7.4 item 1).
 5. **Order.** Events and evaluations at the same instant are ordered: evaluations first (window verdicts, episodes),
-   then admitted events in (issued_at, issuer, event_id) order. This makes every trace a total order.
+   then admitted events in (issued_at, issuer, event_id) order. This makes every trace a total order. The order is a
+   property of the whole second, not of how a history is split into steps: the events of consecutive event-only steps
+   with the same instant are merged and ordered once before any of them is processed or dispatched, so splitting the
+   same events across equal-second steps gives the same facts. A step of that instant that carries evaluations (window
+   verdicts, attempt facts, acceptances) is a later observation of the instant and ends the batch.
 
 ### 2.3 External trigger `model_released`
 
@@ -165,7 +169,10 @@ while another attempt is open does not start an attempt: its occurrence is recor
 - for an external or schedule trigger, the occurrence remains pending under the same rule;
 - pending occurrences start in (trigger instant, response name, rule id) order.
 
-This serializes spending: two triggers can never run two concurrent optimizations of one agent. Budgets per occurrence
+This serializes spending: two triggers can never run two concurrent optimizations of one agent. The lock is held by
+the optimization itself, not only by the open attempt: an attempt whose scope ends (§2.13 item 6) while its approved
+optimization is still running loses its deploy eligibility immediately, but the lock stays until that run's finish
+record (a confirmed cancellation is a finish record), so a second attempt never starts spending before then. Budgets per occurrence
 are those of RFC 0010 (`run_budget`); a rolling per-agent cap is proposed as an RFC 0010 amendment.
 
 ### 2.8 Part B — conditions (`when`) — specified, not yet implemented by the reference relation
@@ -257,9 +264,11 @@ optimize that would start while a rollback of the same instant is pending is `he
    history.
 6. **Scope end releases the lock.** When an external or schedule scope stops requiring intervention while its attempt
    is open — awaiting its optimization approval, optimizing, or awaiting a deploy — no further service effect of the
-   occurrence takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`), releasing the
-   one-open-repair lock of §2.7. An optimization already running is not interrupted by TVL; its result is recorded
-   and yields no deploy.
+   occurrence takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`); its deploy eligibility
+   expires at once. If nothing was spending (awaiting approval or awaiting a deploy) the one-open-repair lock of §2.7 is
+   released at that instant. An optimization already running is not interrupted by TVL: its result is recorded and
+   yields no deploy, and the lock is held until its finish record or a confirmed cancellation, so the next occurrence
+   stays `held(repair_open)` until then.
 7. **Timing of derived closures.** A scope end or expiry that falls between evaluations takes effect at the first
    evaluation at or after it, **before** that evaluation's acceptances. A pending deploy whose scope has closed never takes
    place and produces no outcome event (RFC 0004 §2.2); a later acceptance for it is recorded as ignored
@@ -281,6 +290,10 @@ optimize that would start while a rollback of the same instant is pending is `he
 13. **Opening generation.** An episode's opening generation, and its first breached configurations, come from the
     BREACHED window that opened it (the head generation at that window's last second), not from the head at the time the
     report arrives (RFC 0012 §2.4).
+14. **Closure counts only after the latest breach.** A MET or UNKNOWN report for a window that starts before the episode's latest
+    BREACHED window is recorded (`not_counted(before_breach)`) and neither counts toward resolution nor changes the
+    count, under every `closure_scope`: delayed healthy reports for windows older than a breach cannot show recovery
+    from it. Resolution needs `closure_windows` consecutive qualifying windows after the latest breaching window.
 
 ## 3. Compatibility
 
@@ -311,12 +324,17 @@ the firing relation of each trigger; the pending-occurrence queue of §2.7; and 
   `nonadmitted_fires_nothing`, `unauthenticated_not_remembered`, `held_while_open`, `dispatch_starts_minimal`,
   `abort_releases_lock`, `no_external_rules_no_firing`, `no_trigger_no_attempt`.
 
-Not proved in Lean, and enforced only by the Python reference relation and the conformance cases of §5: the three-valued
-`when` evaluation and `when_restricts_instances` (Part B; for a fixed sequence of trigger instances, adding a conjunct
-to `when` of a spending rule never adds a started attempt; the statement over full traces is false, because
-suppressing an attempt removes its cooldown and can enable a later one); the order among input classes other than
-events within an instant; the gate join and its recomputation; signature verification and approver roles; the static
-diagnostics; RFC 0010 budgets; and that `python/tvl/runtime_conditions.py` implements these definitions.
+Not proved in Lean: the three-valued `when` evaluation and `when_restricts_instances` (Part B, §2.8-§2.9, specified and
+not implemented: neither the Python reference relation nor the conformance cases evaluate `when`; for a fixed
+sequence of trigger instances, adding a conjunct to `when` of a spending rule would never add a started attempt, but the
+statement over full traces is false, because suppressing an attempt removes its cooldown and can enable a later one);
+the order among input classes other than events within an instant, and the merge of an instant's events across steps
+(`merged_order_total` orders one list of events; the batching of steps is exercised by a conformance case only); the gate
+join and its recomputation; approver roles; the static diagnostics; RFC 0010 budgets; and that
+`python/tvl/runtime_conditions.py` implements these definitions. Part A behaviour that Python and the §5 conformance
+cases do enforce includes admission, ordering, serialization, scope closure and closure counting. Signature
+verification is not performed by the relation: it consumes a recorded `authenticated` result for events and
+acceptances, and the platform is responsible for verifying signatures (and approver authority) before recording it.
 `conservative_extension` (`Extension.lean`) concerns the 1.3 embedding and was not extended to 1.7; the 1.7
 embedding claim rests on `no_external_rules_no_firing` and `no_trigger_no_attempt`.
 

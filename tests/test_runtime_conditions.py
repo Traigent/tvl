@@ -1,7 +1,7 @@
 """DRAFT RFC 0011 Part A / RFC 0012: lints, acceptance documents and the conditions relation.
 
-The slice assertions below are written from the hand-derived oracle rows (SLICE-TRACE
-revision 2), not copied from the evaluator's output.
+The slice assertions below are written from hand-derived oracle rows, not copied from the
+evaluator's output.
 """
 
 from __future__ import annotations

@@ -351,7 +351,11 @@ instance : IsTrans Occ occLE := ⟨fun a b c => by unfold occLE; omega⟩
 /-- An attempt is the optimization AND its possible deploy (RFC 0004 §2.2); it is open while
 it runs and while a deploy occurrence awaits acceptance. -/
 inductive Status where
-  | running | awaitingDeploy | closed
+  | running | awaitingDeploy
+  /-- the scope ended while the approved optimization still runs (RFC 0011 §2.13 item 6): no deploy
+      is possible any more, but the spending lock stays until the run's finish record -/
+  | draining
+  | closed
   deriving DecidableEq, Repr
 
 structure Attempt where
@@ -379,6 +383,9 @@ inductive Input where
   | optimizeFinished (deploy : Bool)
   /-- the deploy was written, refused, rejected, expired with its scope, or never took place -/
   | deployClosed
+  /-- the scope of an attempt whose approved optimization is running ended: it stops being
+      deploy-eligible but keeps the lock until it finishes (RFC 0011 §2.7, §2.13 item 6) -/
+  | scopeEndRunning
   /-- approval declined/expired, failure outcome, or an external or schedule scope that stopped
       requiring intervention while the attempt is open in any phase (RFC 0011 §2.13 item 6) -/
   | abort
@@ -386,7 +393,11 @@ inductive Input where
   | dispatch
 
 def finishOpt (deploy : Bool) (a : Attempt) : Attempt :=
-  if a.status = .running then ⟨a.occ, if deploy then .awaitingDeploy else .closed⟩ else a
+  if a.status = .running then ⟨a.occ, if deploy then .awaitingDeploy else .closed⟩
+  else if a.status = .draining then ⟨a.occ, .closed⟩ else a
+
+def drainRunning (a : Attempt) : Attempt :=
+  if a.status = .running then ⟨a.occ, .draining⟩ else a
 
 def closeDeploy (a : Attempt) : Attempt :=
   if a.status = .awaitingDeploy then ⟨a.occ, .closed⟩ else a
@@ -410,6 +421,7 @@ def repairStep (s : RepairState) : Input → RepairState
   | .drop q => { s with pending := s.pending.filter (fun o => o.seq ≠ q) }
   | .optimizeFinished d => { s with attempts := s.attempts.map (finishOpt d) }
   | .deployClosed => { s with attempts := s.attempts.map closeDeploy }
+  | .scopeEndRunning => { s with attempts := s.attempts.map drainRunning }
   | .abort => { s with attempts := s.attempts.map closeAny }
   | .dispatch => dispatch s
 
@@ -443,6 +455,11 @@ theorem repairStep_inv (s : RepairState) (i : Input) (h : RepairInv s) :
     refine ⟨fun hs => le_trans (openCount_map _ ?_ _) (h1 hs), h2⟩
     intro a ha
     unfold closeDeploy Attempt.isOpen at *
+    split_ifs at ha <;> simp_all
+  | scopeEndRunning =>
+    refine ⟨fun hs => le_trans (openCount_map _ ?_ _) (h1 hs), h2⟩
+    intro a ha
+    unfold drainRunning Attempt.isOpen at *
     split_ifs at ha <;> simp_all
   | abort =>
     refine ⟨fun hs => le_trans (openCount_map _ ?_ _) (h1 hs), h2⟩
@@ -506,13 +523,31 @@ theorem held_while_open (s : RepairState) (hs : s.serialize = true) (ho : s.open
     dispatch s = s := by
   simp [dispatch, hs, ho]
 
-/-- Scope end (or any abort) releases the one-open-repair lock (RFC 0011 §2.13 item 6): after
-`abort` no attempt is open, so the next dispatch may start the head of the queue. -/
+/-- An abort (approval declined or expired, a failure outcome, or a scope that ended while nothing
+was spending) releases the one-open-repair lock (RFC 0011 §2.13 item 6): after `abort` no attempt
+is open, so the next dispatch may start the head of the queue. A scope that ends while an approved
+optimization runs is `scopeEndRunning`, which does not release it (`scope_end_running_keeps_lock`). -/
 theorem abort_releases_lock (s : RepairState) : (repairStep s .abort).openCount = 0 := by
   simp only [repairStep, RepairState.openCount, List.countP_map]
   rw [List.countP_eq_zero]
   intro a _
   simp [closeAny, Attempt.isOpen]
+
+/-- A scope ending while the approved optimization runs keeps the lock: the open count does not
+drop, so `dispatch` starts nothing (`held_while_open`) until the run's finish record. -/
+theorem scope_end_running_keeps_lock (s : RepairState) :
+    (repairStep s .scopeEndRunning).openCount = s.openCount := by
+  have h : ∀ a, (drainRunning a).isOpen = a.isOpen := by
+    intro a
+    unfold drainRunning Attempt.isOpen
+    split_ifs <;> simp_all
+  simp only [repairStep, RepairState.openCount, List.countP_map]
+  exact List.countP_congr (fun a _ => by simp [Function.comp_apply, h a])
+
+/-- The finish record of a draining attempt closes it and releases the lock; it yields no deploy. -/
+theorem finish_releases_draining (d : Bool) (o : Occ) :
+    finishOpt d ⟨o, .draining⟩ = ⟨o, .closed⟩ := by
+  simp [finishOpt]
 
 /-- A result arriving for an attempt that already closed (for example after its scope ended)
 changes nothing: it yields no deploy and starts nothing (RFC 0011 §2.13 items 6-7). -/
@@ -601,6 +636,7 @@ theorem no_trigger_no_attempt (serialize : Bool) (inputs : List Input)
       | drop q => simpa [repairStep] using h1
       | optimizeFinished d => simp [repairStep, h1]
       | deployClosed => simp [repairStep, h1]
+      | scopeEndRunning => simp [repairStep, h1]
       | abort => simp [repairStep, h1]
       | dispatch =>
         unfold repairStep dispatch
@@ -610,6 +646,7 @@ theorem no_trigger_no_attempt (serialize : Bool) (inputs : List Input)
       | drop q => simp [repairStep, h2]
       | optimizeFinished d => simpa [repairStep] using h2
       | deployClosed => simpa [repairStep] using h2
+      | scopeEndRunning => simpa [repairStep] using h2
       | abort => simpa [repairStep] using h2
       | dispatch =>
         unfold repairStep dispatch

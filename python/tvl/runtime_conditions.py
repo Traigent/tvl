@@ -13,7 +13,9 @@ be negative (before the origin). Window bounds are seconds too, aligned to
 ``decided_at``/``expires_at``) are UTC strings, compared exactly in seconds against
 ``origin + seconds``. Nothing is rounded to hours.
 
-Within one step the order is: windows, schedule clock evaluation,
+Events of consecutive event-only steps sharing one whole-second instant are buffered and ordered once, so the
+facts do not depend on how those events are split into steps; a step of that instant that carries windows,
+optimizations or acceptances ends the batch. Within one step the order is: windows, schedule clock evaluation,
 attempt facts (approvals, finishes, deploy-gate rechecks), derived scope closures, acceptance records, external
 events in (issued_at, issuer, event_id) order (RFC 0011 §2.2 item 5), then dispatch of
 pending occurrences in (trigger instant, response, rule id) order (§2.7).
@@ -83,6 +85,8 @@ class _Attempt:
         self.scope_closed = False
         self.open = True
         self.closed_reason: str | None = None
+        # scope ended while the optimization ran: deploy eligibility is gone, the spending lock is not
+        self.lock_held = False
 
 
 class _Run:
@@ -154,6 +158,10 @@ class _Run:
 
     def open_attempts(self) -> list[_Attempt]:
         return [a for a in self.attempts if a.open]
+
+    def lock_holders(self) -> list[_Attempt]:
+        """Attempts holding the one-open-repair lock: open ones, and superseded ones whose optimization still runs."""
+        return [a for a in self.attempts if a.open or a.lock_held]
 
     @staticmethod
     def render_scope(occ: dict) -> Any:
@@ -231,14 +239,14 @@ class _Run:
                 self.pending.remove(occ)
                 self.emit("dropped", occurrence=self.occ_ref(occ), reason=reason)
                 continue
-            if self.serialize and self.open_attempts():
+            if self.serialize and self.lock_holders():
                 if not occ["held"]:
                     occ["held"] = True
                     self.emit("held", occurrence=self.occ_ref(occ), reason="repair_open")
                 continue
             self.pending.remove(occ)
             self.start(occ)
-        self.max_open = max(self.max_open, len(self.open_attempts()))
+        self.max_open = max(self.max_open, len(self.lock_holders()))
 
     def start(self, occ: dict) -> None:
         rule = self.find_rule(occ["response"], occ["rule"])
@@ -280,6 +288,9 @@ class _Run:
             if (a.occ["scope_kind"] != "episode" or a.awaiting_deploy) and not self.scope_active(a.occ):
                 a.scope_closed = True
                 self.close(a, "scope_expired")
+                # RFC 0011 §2.13 item 6: an optimization already spending is not interrupted by TVL, so the
+                # lock stays until its finish record (a confirmed cancellation is a finish record)
+                a.lock_held = a.approved and not a.finished
 
     # -- windows and episodes ---------------------------------------------------------------
     def window(self, rec: dict) -> None:
@@ -314,7 +325,8 @@ class _Run:
                 # The opening generation is the greatest generation that served the breaching window (RFC 0012 §2.4),
                 # not the head at report arrival: a delayed report after a deploy must not raise it.
                 ep = {"id": f"EP{self.episode_count}", "monitor": name, "open": True, "count": 0, "ends": [],
-                      "opening_generation": end_gen, "breached": set(), "last_start": None, "last_gen": None}
+                      "opening_generation": end_gen, "breached": set(), "last_start": None, "last_gen": None,
+                      "last_breach_start": rec["start"]}
                 self.episodes[name] = ep
                 self.episode_list[ep["id"]] = ep
                 ep["breached"].update(self.served_fingerprints(start_gen, end_gen))
@@ -326,11 +338,16 @@ class _Run:
                         self.fire(response, rule, "episode", ep["id"], {})
             else:
                 ep["count"], ep["ends"] = 0, []
+                ep["last_breach_start"] = max(ep["last_breach_start"], rec["start"])
                 ep["breached"].update(self.served_fingerprints(start_gen, end_gen))
                 self.emit("window", closure="breached", **fields)
             return
         if ep is None:
             self.emit("window", closure="no_episode", **fields)
+            return
+        if rec["start"] < ep["last_breach_start"]:
+            # a delayed report for a window before the latest breaching window cannot show recovery from it
+            self.emit("window", closure="not_counted(before_breach)", **fields)
             return
         if rec["verdict"] == "UNKNOWN":
             ep["count"], ep["ends"] = 0, []
@@ -387,6 +404,11 @@ class _Run:
         fact = rec["fact"]
         if not attempt.open and attempt.closed_reason == "scope_expired":
             # RFC 0011 §2.13 item 6: a result or approval for an attempt whose scope ended is recorded, never acted on
+            if fact == "finished" and attempt.lock_held:
+                _shape(rec, "attempt fact completion candidates")
+                _enum(rec["completion"], "normal error cancelled cost_limit")
+                attempt.lock_held = False
+                attempt.finished = True
             return self.emit("attempt_fact", attempt=attempt.name, kind=fact, result="ignored(scope_closed)")
         _require(attempt.open, "fact for a closed attempt")
         if fact == "approval":
@@ -496,7 +518,7 @@ class _Run:
                 or doc["gate_result_digest"] != target.promoted["gate_digest"] \
                 or doc["contract_digest"] != self.contract_digest \
                 or doc["agent_code_version"] != target.promoted["code_version"] \
-                or ("holdout_digest" in target.promoted and doc.get("holdout_digest") != target.promoted["holdout_digest"]) \
+                or doc.get("holdout_digest") != target.promoted.get("holdout_digest") \
                 or doc.get("repairs_episode") != (target.occ["scope"] if target.occ["scope_kind"] == "episode" else None):
             return result("invalid", "binding_mismatch")
         if doc["decision"] == "reject":
@@ -574,7 +596,8 @@ class _Run:
         _require(isinstance(self.history_steps, list), "steps must be a list")
         heads_out: list[dict] = []
         previous = 0
-        for step in self.history_steps:
+        instant_events: list[dict] = []
+        for index, step in enumerate(self.history_steps):
             _shape(step, "instant", "windows optimizations acceptances events")
             _second(step["instant"])
             _require(step["instant"] >= previous, "step instants must not decrease")
@@ -584,14 +607,25 @@ class _Run:
             for rec in step.get("windows", []):
                 self.window(rec)
             self.clock()
+            self.release_expired_scopes()  # derived closures precede attempt facts and acceptances (RFC 0011 §2.13 item 7)
             for rec in step.get("optimizations", []):
                 self.optimization(rec)
-            self.release_expired_scopes()  # derived closures precede acceptances (RFC 0011 §2.13 item 7)
             for rec in step.get("acceptances", []):
                 self.acceptance(rec)
-            events = step.get("events", [])
-            for ev in sorted(events, key=self.event):
+            instant_events.extend(step.get("events", []))
+            for ev in step.get("events", []):
+                self.event(ev)  # validate now; order and process once the whole instant is in
+            nxt = self.history_steps[index + 1] if index + 1 < len(self.history_steps) else None
+            if isinstance(nxt, dict) and nxt.get("instant") == self.now \
+                    and not any(nxt.get(c) for c in ("windows", "optimizations", "acceptances")):
+                # a following step of the same instant that only delivers events joins this batch: the instant's
+                # events are ordered across all of them (RFC 0011 §2.2 item 5). A step that carries evaluations
+                # is a later observation of the instant and ends the batch.
+                self.dispatch()
+                continue
+            for ev in sorted(instant_events, key=self.event):
                 self.process_event(ev)
+            instant_events = []
             self.dispatch()
             if heads_out and heads_out[-1]["instant"] == self.now:
                 heads_out.pop()
