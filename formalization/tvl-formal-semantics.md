@@ -2433,6 +2433,186 @@ omission is `runtime_version_required`, incompatibility `declared_version_below_
 Completion soundness, the subset/no-new-look arguments, exact comparison equivalence and this
 embedding are specification obligations here, not claims of checked runtime implementation.
 
+## 16. Tuning conditions and release acceptance (TVL 1.7, DRAFT)
+
+This section specifies the recorded-history semantics of the draft [RFC 0011](rfc-0011-tuning-conditions.md)
+Part A (external and schedule triggers, new-model admission, one open repair per agent) and the draft
+[RFC 0012](rfc-0012-release-acceptance.md) (release acceptance, generation-scoped recovery; release rollback is deferred, §16.9). Both
+RFCs are **DRAFT**, not accepted; nothing here is part of an accepted TVL version, and the numbering may change at
+acceptance. Part B of RFC 0011 (the `when` algebra, absence and rate triggers, cooldown) is not formalized here.
+Section 15 is not used. The Lean statements are in `proofs/TVL/Runtime/Conditions.lean` (§16.2–§16.6, §16.10) and
+`proofs/TVL/Runtime/Release.lean` (§16.7–§16.9); their classification (SUBSTANTIVE, BY-CONSTRUCTION, OPEN) is in
+`proofs/PROOF_SUMMARY.md`. The executable reference relation is `python/tvl/runtime_conditions.py`; where it and the
+RFC text differ, the RFC text governs this section.
+
+**Conventions.** As in §12 and §13, authentication of events and acceptances, approver authority, window verdicts,
+and the promotion-gate join at effect time are **recorded facts**: inputs to the
+relation, never recomputed. No clock is read. Every definition below is a pure step function over a finite list of
+inputs. Every instant is a whole number of seconds (RFC 0011 §2.2 item 1); window bounds are multiples of `3600 · tumbling_hours`. One
+history is for one (agent, deployment environment).
+
+### 16.1 Event envelope, selector and admission checks
+
+**Definition 16.1 (Event, selector).** (RFC 0011 §2.2 item 2, §2.3.) An event is the closed record
+(kind, issuer, event id, issued_at, catalogue revision, subject, authentic), where the subject is
+(model_ref, provider_family, tier) with `provider_family` and `tier` in the sealed catalogue enums, and `authentic`
+records that the platform verified the issuer's signature. A selector (`match`) has two optional fields, each a
+list of enum values. The selector *accepts* a subject iff every present field contains the subject's value; an absent
+field accepts any value; a present empty list accepts nothing. (Lean: `Selector.accepts`, `selector_absent_matches_any`.)
+
+**Definition 16.2 (Arrival classification).** (RFC 0011 §2.2 items 3–4, §2.13 item 1.) At an evaluation instant `now` (seconds)
+with the set `seen` of admitted (issuer, event id) pairs, an arriving event is classified by the first applicable
+rule, in this order: not authentic → `rejected(unauthenticated)` (not remembered); (issuer, event id) in `seen` →
+`redelivery`; `now − issued_at > 72 · 3600` → `rejected(late)`; otherwise `admitted`. Only an admitted event extends `seen`
+and fires. (Lean: `classify`, `nonadmitted_fires_nothing`, `unauthenticated_not_remembered`.)
+
+### 16.2 The merged, totally ordered input stream
+
+**Definition 16.3 (Instant order).** (RFC 0011 §2.2 item 5, §2.13 item 2.) Within one evaluation instant, inputs are
+processed in this order: window reports, the schedule clock, derived scope closures, attempt facts (approvals,
+starts, finish records, deploy-gate rechecks), derived scope closures again, acceptance records, then external
+events, and finally one start of pending occurrences. External events of one
+instant are ordered by (issued_at, issuer, event id), ties kept in arrival order (a stable sort); the events of
+consecutive event-only steps with the same instant form one batch ordered as a whole, and the start of pending
+occurrences runs once after the batch, never while events of the instant are still unordered. A *stream* is the
+list of instants in nondecreasing order with this inner order, so every trace is a total order. (Lean: `Step`,
+`evLE`, `orderEvents`; `merged_order_total`: the event order is a permutation of the input and pairwise sorted. The
+order among the other input classes is realized by the sequential composition of the step functions in §16.3–§16.9 and
+is not itself a Lean statement.)
+
+### 16.3 External scope and firing relation
+
+**Definition 16.4 (External scope firing).** (RFC 0011 §2.3.) A rule with trigger `{external: model_released, match: m}`
+and id ρ fires at an admitted event e iff `m` accepts e's subject. The firing creates the occurrence with key
+(ρ, issuer, event id) and occurrence index 0 (`repeat_after_hours` is rejected statically, so there is no later
+occurrence). The firing relation on a stream is the least relation closed under this rule applied to each admitted
+event in the order of §16.2. The scope requires intervention until its attempt finishes or until 30 days after
+admission, whichever is first. (Lean: `ExtState`, `extStep`, `extInstant`, `extRun`; `external_event_unique`.)
+
+### 16.4 Schedule scope and missed-tick coalescing
+
+**Definition 16.5 (Schedule firing and coalescing).** (RFC 0011 §2.4.) A schedule `{every_days: d, anchor: t₀}` has
+ticks tₖ = t₀ + k·d days, k ≥ 0. Let `done` be the least tick index not yet decided (initially 0). At a clock reading
+`now`, if some tick has passed, let L be the greatest k with tₖ ≤ now. If L ≥ `done`, tick L *fires* (scope kind
+`schedule`, identity (response, rule id, L)), every k with `done` ≤ k < L is recorded `skipped(coalesced)`, and
+`done` becomes L + 1; otherwise nothing happens. Ticks are never replayed. The scope requires intervention until the
+next tick or until the attempt finishes. (Lean: `latestTick`, `SchedState`, `schedStep`, `schedRun`;
+`schedule_tick_unique`, `schedule_coalesces`.)
+
+### 16.5 Pending occurrences, attempts and one open repair
+
+**Definition 16.6 (Attempt and pending queue).** (RFC 0011 §2.7; attempt identity of Definition 13.1, closure of
+Definition 13.2.) An *attempt* is the optimization and its possible deploy. Its status is `running`,
+`awaitingDeploy`, `draining` or `closed`; it is *open* unless `closed`. A `draining` attempt is one whose scope ended
+while its optimization had started: it is no longer deploy-eligible but it keeps the one-open-repair lock until its
+finish record. A *pending occurrence* is an occurrence of an `optimize`
+rule that fired and has not started; the queue is kept sorted by (trigger instant, response name, rule id), ties by
+admission order. The input alphabet is: a trigger fires (enqueue in order); a pending occurrence's scope ends (drop);
+the optimization finishes (a `running` attempt becomes `awaitingDeploy` if a promoted candidate awaits acceptance,
+else `closed`; other attempts are unchanged); the deploy closes (written, refused, rejected, expired, or never takes
+place: `awaitingDeploy` becomes `closed`); an abort (approval declined or expired, a failure outcome, or an external or
+schedule scope that stopped requiring intervention while no optimization had started, RFC 0011 §2.13 item 6: every
+open attempt except a `draining` one becomes `closed`: an ordinary abort, such as a late approval expiry, never
+closes or releases a draining attempt); a scope end while an optimization has started (every `running` attempt becomes
+`draining`; the lock is retained); and dispatch. The finish of a `draining` attempt closes it, yields no deploy, and
+releases the lock; its record is validated in full like any finish record (including every candidate's evidence flag and
+join inputs), and a malformed record is rejected and releases nothing. A recorded approval of an attempt with
+`approval: standing` is not a start; only the attempt fact `started` (or a finish record) starts it. A result arriving for a closed attempt changes nothing (RFC 0011 §2.13 item 7).
+
+**Definition 16.7 (Dispatch, serialization).** (RFC 0011 §2.7.) For an agent whose registered contract declares
+`tvl_version` 1.7 or later, dispatch starts nothing while any attempt is open (a `draining` attempt is open) (each pending occurrence is
+`held(repair_open)`), and otherwise starts the first pending occurrence, which then opens a `running` attempt. For
+earlier versions dispatch starts every pending occurrence (the RFC 0003 meaning, unchanged). (Lean: `Status`,
+`Attempt`, `Occ`, `occLE`, `Input`, `repairStep`, `dispatch`, `repairRun`; `one_open_repair`, `held_while_open`,
+`dispatch_starts_minimal`, `abort_releases_lock`, `result_after_close_is_ignored`.)
+
+### 16.6 New-model admission
+
+**Definition 16.8 (Occurrence search space).** (RFC 0011 §2.5.) Let `declared` map each tvar to its declared domain,
+`v` be the tvar named by `admit`, and `r` the `model_ref` of the event that fired the occurrence. The occurrence's
+space is `declared` except at `v`, where it is `declared(v)` if `r ∈ declared(v)`, and `declared(v) ++ [r]` otherwise.
+The contract digest is unchanged. (Lean: `searchDomain`, `admitTvar`, `admit_extends_only_named_tvar`; the Lean name
+`admitTvar` avoids the banned tactic name used by the proof CI.) The static conditions on `admit` (`match` with a
+present non-empty field, `enum[str]` tvar) are validator rules, not part of this relation.
+
+### 16.7 The head and acceptance consumption
+
+**Definition 16.9 (Head).** (RFC 0012 §2.1.) The head of an (agent, environment) is a pair (fingerprint, generation).
+Every move (a deploy; rollback is deferred, §16.9) installs a fingerprint and increases the generation by exactly 1; the history of
+(generation, fingerprint) pairs is kept. (Lean: `Head`, `RState`.)
+
+**Definition 16.10 (Acceptance record, usability).** (RFC 0012 §2.2.) An acceptance carries agent, environment,
+occurrence reference, candidate fingerprint, gate-result digest, contract digest (which covers the configuration space), agent code version, optional holdout digest, expected head
+generation g, bound head fingerprint τ (`rollback_target`), optional repaired episode, decision, and instants `decided_at`, `expires_at`. It is
+*usable* at effect time t iff `decided_at ≤ t < expires_at` and `expires_at − decided_at ≤ 7 days`. It *binds* the
+awaiting deploy occurrence iff agent, environment, occurrence, candidate, gate digest, contract digest, agent code version and holdout
+digest are equal to the occurrence's. (Lean: `Accept`, `Awaiting`, `Binds`, `Usable`.)
+
+**Definition 16.11 (Acceptance consumption, atomic compare).** (RFC 0012 §2.3; RFC 0011 §2.13 items 4–5, 7.) Given the
+recorded facts (authenticated, approver authorized, gate re-evaluated at effect time, set of configurations that
+breached in an open episode), an acceptance record `a` presented at effect time t is handled by the first applicable
+rule: `a`'s id is already consumed → no effect; not authenticated or approver not authorized → invalid; not usable at t
+→ invalid; the head fingerprint recorded at generation g is not τ → invalid; no deploy occurrence awaiting → ignored
+(a closed scope is the `scope_closed` case of §2.13 item 7); bindings differ → invalid; a `reject` → recorded and the
+record consumed, the head unchanged; an `accept` whose recomputed gate is not Promote → refused (`gate_not_promote`);
+head generation ≠ g → refused (`stale_generation`); head fingerprint ≠ τ → refused; the agent code version serving at t ≠ the acceptance's → refused (`code_version_mismatch`); candidate in the breached set →
+refused (`candidate_breached_in_open_episode`); otherwise the **atomic write**: the head becomes (candidate,
+generation + 1), the record is consumed, the move and the release (generation written, τ, repaired episode) are
+recorded. A refusal changes nothing. (Lean: `pre`, `effect`, `acceptStep`; `deploy_needs_matching_acceptance`,
+`consumed_record_writes_nothing`, `stale_acceptance_writes_nothing`, `stale_generation_refused`, `code_version_refused`, `write_advances_head`.)
+
+### 16.8 Generation-scoped closure
+
+**Definition 16.12 (Closure counting).** (RFC 0012 §2.4; RFC 0011 §2.13 items 8–9, 12–13.) Windows are half-open
+`[start, start + width)`, in seconds. A window report has a start, a verdict, the reported head generation γ, the head
+generation σ at the window's start and the head generation σ′ at its last second; it is *mixed* iff σ ≠ σ′ (the head
+moved inside the window) or γ ≠ σ. Let ω be the *opening generation* of the episode: the greatest generation that served
+the breaching window that opened it (σ′ of that window), not the head at the time its report arrived. A report
+*qualifies* under `any_generation` iff its verdict is MET, and under `since_head_move` iff it is MET, not mixed and
+γ > ω. A second report for a window start already seen is a redelivery and changes nothing. Any other non-qualifying
+report resets the count to 0; under `any_generation` a qualifying report extends the count by 1 iff its start is
+exactly `width` after the previously counted start, and otherwise restarts it at 1; under `since_head_move` it also
+needs γ to equal the generation of the previously counted window, otherwise it restarts the count at 1 (a change of
+generation resets the count). The episode closes when the count reaches `closure_windows` (> 0). The age bound
+`closure_max_age_hours` only further restricts closure and is not modelled. (Lean: `Win`, `Qual`, `winStep`,
+`closureRun`, `Closed`; `since_head_move_closure`, `old_generation_resets`, `generation_change_resets`,
+`window_redelivery_noop`. The Lean `Win.mixed` models only the γ ≠ σ half; the head-moved-inside half is enforced by
+the reference relation and covered by conformance cases, not proved.)
+
+### 16.9 Release rollback (deferred)
+
+Release rollback is **deferred** out of TVL 1.7 (RFC 0012 §2.5) and has no semantics in this section. A rule with
+`target: release_rollback_target` is a validator error (`release_rollback_deferred`); the relation never writes a head
+other than by an accepted deploy (§16.7).
+
+### 16.10 Properties, limits and embedding
+
+| Statement | Source | Lean | Meaning |
+|---|---|---|---|
+| `schedule_tick_unique` | RFC 0011 §2.4, §4 | Conditions | Each tick index fires at most once, never also skipped, for any sequence of readings. |
+| `external_event_unique` | RFC 0011 §2.2–2.3, §4 | Conditions | Redeliveries of one (issuer, event id) give one occurrence per matching rule. |
+| `one_open_repair` | RFC 0011 §2.7, §4 | Conditions | For a 1.7 agent, at most one attempt is open after any input sequence. |
+| `admit_extends_only_named_tvar` | RFC 0011 §2.5, §4 | Conditions | The occurrence's space differs from the declared one only at `v`, and only by the event's model ref. |
+| `deploy_needs_matching_acceptance` | RFC 0012 §2.3, §4 | Release | Every head move by a deploy has a consumed, usable accept with equal bindings, once. |
+| `stale_acceptance_writes_nothing` | RFC 0012 §2.3, §4 | Release | A generation mismatch changes no head, move log or release. |
+| `since_head_move_closure` | RFC 0012 §2.4, §4 | Release | Closure needs `closure_windows` windows of a later generation; older ones contribute nothing. |
+| `generation_change_resets` | RFC 0012 §2.4, §4 | Release | Under `since_head_move`, a qualifying window of a different generation than the last counted one restarts the count at one. |
+
+Not modelled: the gate join itself (§12.7, §13), signature verification, approver roles, the per-occurrence budgets of
+RFC 0010, the `closure_max_age_hours` bound, the parsing and static diagnostics of RFC 0011 §2.12 and RFC 0012 §2.6, and
+Part B of RFC 0011 (`when_restricts_instances` is therefore not stated). The two models are separate state machines:
+Release takes the awaiting deploy occurrence as an input rather than reading the attempt of §16.5. The conformance of
+the reference relation to these definitions is checked by cases, not proved.
+
+**Conservative embedding obligation.** A valid TVL 1.6 module or pack contains no external or schedule trigger, no
+`admit`, no `protects`, and no `closure_scope`; its denotations, canonical artifact bytes
+and digests are unchanged by the embedding into 1.7 (RFC 0011 §3). The Lean content is: with no external rule no
+external occurrence fires (`no_external_rules_no_firing`), and a stream without triggers starts no attempt
+(`no_trigger_no_attempt`); the gate and runtime-output equalities of `conservative_extension` (`Extension.lean`)
+concern the 1.3 embedding of legacy modules, are unaffected because 1.7 adds no input to the gate join, and need no
+change. Readers of 1.6 and earlier refuse each new construct with `unsupported_construct`; this refusal is a reader
+behaviour, not a theorem.
+
 ---
 
 ## Appendix A: Notation Summary

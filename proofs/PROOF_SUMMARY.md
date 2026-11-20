@@ -59,7 +59,9 @@ proofs/
         ├── History.lean, Declarations.lean, Compose.lean, Compiler.lean
         ├── Extension.lean, Backend.lean, BinomialGeneric.lean, BinomialLaw.lean
         ├── Guards.lean       # TVL 1.4 (RFC 0004)
-        └── Persistence.lean  # TVL 1.5 (RFC 0005)
+        ├── Persistence.lean  # TVL 1.5 (RFC 0005)
+        ├── Conditions.lean   # TVL 1.7 DRAFT (RFC 0011 Part A)
+        └── Release.lean      # TVL 1.7 DRAFT (RFC 0012)
 ```
 
 ---
@@ -735,3 +737,36 @@ lake env lean TVL/Runtime/Persistence.lean
 
 These are mathematical checks of the Lean model, not evidence about any runtime
 implementation. The CI workflow above is the check of the full library.
+
+## RFC 0011 Part A and RFC 0012: tuning conditions and release acceptance (TVL 1.7, DRAFT)
+
+`TVL/Runtime/Conditions.lean` and `TVL/Runtime/Release.lean`, imported by `Main.lean`, model the
+**draft** RFCs 0011 (Part A) and 0012 as step functions over finite lists of recorded inputs
+(formal semantics §16). Authentication, approver authority, window verdicts, the effect-time gate
+recheck are inputs, never recomputed. Release rollback is deferred out of TVL 1.7 (RFC 0012 §2.5) and is not modelled. The two files are separate
+state machines; Release takes the awaiting deploy occurrence as an input. Draft status means these
+statements track draft text and may change at acceptance. The Lean name `admitTvar` stands for the
+`admit` construct because CI rejects that word. No `sorry`, `admit` or `axiom` is used.
+
+| Statement | Class | Scope |
+|---|---|---|
+| `schedule_tick_unique` | SUBSTANTIVE | Over any sequence of clock readings (any order, repeats), the fired ticks are duplicate-free and disjoint from the skipped ones; invariant induction on the `done` watermark. |
+| `schedule_coalesces` | SUBSTANTIVE | After a reading whose latest passed tick is L, every tick up to L is decided exactly once; no replay. |
+| `external_event_unique` | SUBSTANTIVE | Over any stream, no occurrence key (rule, issuer, event id) is fired twice, given distinct rule ids; redelivery is excluded by the `seen` set. |
+| `merged_order_total` | BY-CONSTRUCTION | The (issued_at, issuer, event id) order of one instant's events is a sorted permutation (Mathlib insertion sort). The order among the other input classes within an instant is not a Lean statement. |
+| `nonadmitted_fires_nothing`, `unauthenticated_not_remembered`, `selector_absent_matches_any` | BY-CONSTRUCTION | Shape of `classify`, `extStep` and `Selector.accepts`. |
+| `one_open_repair` | SUBSTANTIVE | For a 1.7 agent, at most one attempt is open after any sequence of triggers, drops, results, deploy closures, aborts and dispatches. The attempt includes its deploy. |
+| `held_while_open`, `dispatch_starts_minimal`, `abort_releases_lock`, `result_after_close_is_ignored` | BY-CONSTRUCTION | Properties read off `dispatch`, the sorted queue and the status maps. |
+| `admit_extends_only_named_tvar` | BY-CONSTRUCTION | The occurrence space differs from the declared space only at the named tvar, by exactly the event's model ref. |
+| `no_external_rules_no_firing`, `no_trigger_no_attempt` | BY-CONSTRUCTION | The 1.7 step functions are inert without 1.7 rules or triggers (the embedding fragment of RFC 0011 §3). |
+| `deploy_needs_matching_acceptance` | SUBSTANTIVE | In every reachable state each deploy move has an accept with equal bindings, usable at the effect time, consumed, and no acceptance wrote twice. |
+| `consumed_record_writes_nothing`, `stale_acceptance_writes_nothing`, `stale_generation_refused`, `code_version_refused`, `write_advances_head` | BY-CONSTRUCTION | Guards of `acceptStep`/`effect`: a consumed record or a generation or serving-code-version mismatch writes nothing; a write moves the head by exactly one generation. |
+| `since_head_move_closure` | SUBSTANTIVE | The closure count never exceeds the number of qualifying windows (MET, not mixed, generation above the opening one); old-generation windows alone cannot close. Redelivery and gaps included. |
+| `old_generation_resets`, `generation_change_resets`, `window_redelivery_noop` | BY-CONSTRUCTION | One-step facts about `winStep`: an old-generation window resets the count; under `since_head_move` a qualifying window of a different generation than the last counted one restarts the count at one; a redelivery changes nothing. |
+
+**Not modelled and not claimed.** `when_restricts_instances` and everything in RFC 0011 Part B; the gate
+join and its recomputation; signature verification and approver roles; `closure_max_age_hours`; the static
+diagnostics; RFC 0010 budgets; the order among input classes other than events within an instant; and any
+claim that `python/tvl/runtime_conditions.py` implements these definitions (checked by conformance cases,
+not proved). `conservative_extension` in `Extension.lean` concerns the 1.3 embedding and needed no change.
+There are no new OPEN theorems or admitted proofs.

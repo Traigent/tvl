@@ -1,0 +1,167 @@
+case_format: tvl-runtime-case/1
+family: semantic_traces
+description: 'RFC 0012 2.4 (consecutive windows) and RFC 0003 7.4 item 1: the window [24,48) reported
+  twice counts once, so closure stays at 1 of 2; the next distinct adjacent window makes 2 of 2.'
+spec_refs:
+- formalization/rfc-0012-release-acceptance.md#2.4
+module:
+  tvl_version: '1.7'
+  tvl:
+    module: slice.ticket_router
+  environment:
+    snapshot_id: '2026-11-20T00:00:00Z'
+  evaluation_set:
+    dataset: test://slice
+  tvars:
+  - name: model
+    type: enum[str]
+    domain:
+    - anthropic/claude-haiku-4-5
+    - anthropic/claude-sonnet-4-6
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: quality_floor
+    kind: rate_bound
+    unit: invocation
+    violation:
+      checker: customer:ticket_route_check
+      label_in:
+      - fail
+    max_rate: 0.08
+  monitors:
+  - name: quality_prod
+    requirement: quality_floor
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      attribution: agent_key_exact_v1
+      resolution: terminal_status_v1
+      sampling:
+        mode: hash_bernoulli_committed_v1
+        rate: 0.02
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+      horizon_days: 30
+      model: iid_bernoulli_within_window_v1
+    window:
+      tumbling_hours: 24
+      grace_minutes: 0
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 168
+      closure_scope: any_generation
+  responses:
+  - name: tuning
+    rules:
+    - id: tell
+      trigger:
+        monitor: quality_prod
+        event: episode_opened
+      do: notify
+input:
+  kind: conditions
+  history:
+    agent: agent-1
+    environment: production
+    origin: '2026-11-20T00:00:00Z'
+    head:
+      fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
+      generation: 0
+    contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    steps:
+    - instant: 86400
+      windows:
+      - monitor: quality_prod
+        start: 0
+        end: 86400
+        verdict: BREACHED
+        head_generation: 0
+    - instant: 172800
+      windows:
+      - monitor: quality_prod
+        start: 86400
+        end: 172800
+        verdict: MET
+        head_generation: 0
+    - instant: 176400
+      windows:
+      - monitor: quality_prod
+        start: 86400
+        end: 172800
+        verdict: MET
+        head_generation: 0
+    - instant: 259200
+      windows:
+      - monitor: quality_prod
+        start: 172800
+        end: 259200
+        verdict: MET
+        head_generation: 0
+expected:
+  facts:
+  - instant: 86400
+    fact: window
+    closure: breached
+    monitor: quality_prod
+    start: 0
+  - instant: 86400
+    fact: episode_opened
+    monitor: quality_prod
+    episode: EP1
+    opening_generation: 0
+  - instant: 86400
+    fact: fired
+    occurrence: &id001
+      response: tuning
+      rule: tell
+      scope_kind: episode
+      scope: EP1
+      j: 0
+  - instant: 86400
+    fact: notified
+    occurrence: *id001
+  - instant: 172800
+    fact: window
+    closure: counts
+    progress: 1
+    of: 2
+    monitor: quality_prod
+    start: 86400
+  - instant: 176400
+    fact: window
+    closure: redelivery
+    monitor: quality_prod
+    start: 86400
+  - instant: 259200
+    fact: window
+    closure: counts
+    progress: 2
+    of: 2
+    monitor: quality_prod
+    start: 172800
+  - instant: 259200
+    fact: episode_resolved
+    monitor: quality_prod
+    episode: EP1
+  head_generations:
+  - instant: 86400
+    generation: 0
+  - instant: 172800
+    generation: 0
+  - instant: 176400
+    generation: 0
+  - instant: 259200
+    generation: 0
+  max_open_attempts: 0

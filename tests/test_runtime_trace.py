@@ -12,7 +12,9 @@ from tvl.runtime_trace import TraceError, _delivered, notification_trace
 from tvl.yaml_safe import safe_load
 
 CASES = Path(__file__).resolve().parents[1] / 'conformance/cases/runtime/semantic_traces'
-NAMES = sorted(path.stem for path in CASES.glob('*.yml'))
+# semantic_traces/ also holds DRAFT RFC 0011/0012 `conditions` traces (tests/test_runtime_conditions.py).
+NAMES = sorted(path.stem for path in CASES.glob('*.yml')
+               if safe_load(path.read_text())['input']['kind'] == 'trace')
 
 
 def load_case(name):

@@ -1,0 +1,330 @@
+case_format: tvl-runtime-case/1
+family: semantic_traces
+description: 'RFC 0011 2.13 item 8: windows are half-open [start, end). A BREACHED
+  window [24,48) reported at hour 49 after F1 was deployed at hour 48 was served only
+  by F0, so F1 is not breached in EP1 and a later deploy of F1 is written at generation
+  2 (not refused as candidate_breached_in_open_episode).'
+spec_refs:
+- formalization/rfc-0011-tuning-conditions.md#2.13
+- formalization/rfc-0003-runtime-requirements-monitors-responses.md#6.2
+module:
+  tvl_version: '1.7'
+  tvl:
+    module: slice.ticket_router
+  environment:
+    snapshot_id: '2026-11-20T00:00:00Z'
+  evaluation_set:
+    dataset: test://slice
+  tvars:
+  - name: model
+    type: enum[str]
+    domain:
+    - anthropic/claude-haiku-4-5
+    - anthropic/claude-sonnet-4-6
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: quality_floor
+    kind: rate_bound
+    unit: invocation
+    violation:
+      checker: customer:ticket_route_check
+      label_in:
+      - fail
+    max_rate: 0.08
+  - name: recover
+    kind: recovery_time
+    unit: episode
+    of: quality_prod
+    within_hours: 96
+  monitors:
+  - name: quality_prod
+    requirement: quality_floor
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      attribution: agent_key_exact_v1
+      resolution: terminal_status_v1
+      sampling:
+        mode: hash_bernoulli_committed_v1
+        rate: 0.02
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+      horizon_days: 30
+      model: iid_bernoulli_within_window_v1
+    window:
+      tumbling_hours: 24
+      grace_minutes: 0
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 168
+      closure_scope: since_head_move
+  - name: quality_gate
+    requirement: quality_floor
+    phase: promotion
+    evidence:
+      source: evaluation_set
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+  - name: recover_monitor
+    requirement: recover
+    phase: runtime
+    evidence:
+      source: episodes
+    decision:
+      method: exact_count_v1
+  responses:
+  - name: tuning
+    rules:
+    - id: a_fix
+      trigger:
+        monitor: quality_prod
+        event: episode_opened
+      do: optimize
+      approval: standing
+      deploy: if_promoted
+    - id: b_fix
+      trigger:
+        monitor: quality_prod
+        event: episode_opened
+      do: optimize
+      approval: standing
+      deploy: if_promoted
+input:
+  kind: conditions
+  history:
+    agent: agent-1
+    environment: production
+    origin: '2026-11-20T00:00:00Z'
+    head:
+      fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
+      generation: 0
+    contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    steps:
+    - instant: 86400
+      windows:
+      - monitor: quality_prod
+        start: 0
+        end: 86400
+        verdict: BREACHED
+        head_generation: 0
+    - instant: 90000
+      optimizations:
+      - attempt: A1
+        fact: finished
+        completion: normal
+        candidates:
+        - evidence_valid: true
+          fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
+          gate_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          code_version: 'src:0123456789abcdef'
+          legacy_decision: Promote
+          monitor_verdicts:
+            quality_gate: MET
+    - instant: 172800
+      acceptances:
+      - record:
+          format: tvl-release-acceptance/1
+          acceptance_id: R1
+          agent_ref: agent-1
+          environment_ref: production
+          occurrence:
+            response_ref: tuning
+            rule_ref: a_fix
+            scope_kind: episode
+            scope_ref: EP1
+            occurrence: 0
+          candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
+          gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          agent_code_version: 'src:0123456789abcdef'
+          expected_head_generation: 0
+          rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
+          approver_ref: approver-1
+          decision: accept
+          decided_at: '2026-11-20T00:00:00Z'
+          expires_at: '2026-11-27T00:00:00Z'
+          repairs_episode: EP1
+        authenticated: true
+        approver_authorized: true
+        serving_code_version: 'src:0123456789abcdef'
+    - instant: 176400
+      windows:
+      - monitor: quality_prod
+        start: 86400
+        end: 172800
+        verdict: BREACHED
+        head_generation: 0
+    - instant: 180000
+      optimizations:
+      - attempt: A2
+        fact: finished
+        completion: normal
+        candidates:
+        - evidence_valid: true
+          fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
+          gate_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          code_version: 'src:0123456789abcdef'
+          legacy_decision: Promote
+          monitor_verdicts:
+            quality_gate: MET
+    - instant: 183600
+      acceptances:
+      - record:
+          format: tvl-release-acceptance/1
+          acceptance_id: R2
+          agent_ref: agent-1
+          environment_ref: production
+          occurrence:
+            response_ref: tuning
+            rule_ref: b_fix
+            scope_kind: episode
+            scope_ref: EP1
+            occurrence: 0
+          candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
+          gate_result_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          agent_code_version: 'src:0123456789abcdef'
+          expected_head_generation: 1
+          rollback_target: 111111111111111111111111111111111111111111111111111111111111111b
+          approver_ref: approver-1
+          decision: accept
+          decided_at: '2026-11-20T00:00:00Z'
+          expires_at: '2026-11-27T00:00:00Z'
+          repairs_episode: EP1
+        authenticated: true
+        approver_authorized: true
+        serving_code_version: 'src:0123456789abcdef'
+expected:
+  facts:
+  - instant: 86400
+    fact: window
+    closure: breached
+    monitor: quality_prod
+    start: 0
+  - instant: 86400
+    fact: episode_opened
+    monitor: quality_prod
+    episode: EP1
+    opening_generation: 0
+  - instant: 86400
+    fact: fired
+    occurrence:
+      response: tuning
+      rule: a_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+  - instant: 86400
+    fact: fired
+    occurrence:
+      response: tuning
+      rule: b_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+  - instant: 86400
+    fact: attempt_opened
+    attempt: A1
+    occurrence:
+      response: tuning
+      rule: a_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+  - instant: 86400
+    fact: held
+    occurrence:
+      response: tuning
+      rule: b_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+    reason: repair_open
+  - instant: 90000
+    fact: optimization_finished
+    attempt: A1
+    outcome: promoted
+  - instant: 90000
+    fact: deploy_awaiting
+    attempt: A1
+    occurrence:
+      response: tuning
+      rule: a_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+    candidate: 111111111111111111111111111111111111111111111111111111111111111b
+  - instant: 172800
+    fact: acceptance
+    acceptance: R1
+    result: written
+    generation: 1
+  - instant: 172800
+    fact: attempt_closed
+    attempt: A1
+    reason: deploy_written
+  - instant: 172800
+    fact: attempt_opened
+    attempt: A2
+    occurrence:
+      response: tuning
+      rule: b_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+  - instant: 176400
+    fact: window
+    closure: breached
+    monitor: quality_prod
+    start: 86400
+  - instant: 180000
+    fact: optimization_finished
+    attempt: A2
+    outcome: promoted
+  - instant: 180000
+    fact: deploy_awaiting
+    attempt: A2
+    occurrence:
+      response: tuning
+      rule: b_fix
+      scope_kind: episode
+      scope: EP1
+      j: 0
+    candidate: 111111111111111111111111111111111111111111111111111111111111111b
+  - instant: 183600
+    fact: acceptance
+    acceptance: R2
+    result: written
+    generation: 2
+  - instant: 183600
+    fact: attempt_closed
+    attempt: A2
+    reason: deploy_written
+  head_generations:
+  - instant: 86400
+    generation: 0
+  - instant: 90000
+    generation: 0
+  - instant: 172800
+    generation: 1
+  - instant: 176400
+    generation: 1
+  - instant: 180000
+    generation: 1
+  - instant: 183600
+    generation: 2
+  max_open_attempts: 1

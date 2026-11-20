@@ -1,0 +1,184 @@
+case_format: tvl-runtime-case/1
+family: semantic_traces
+description: 'RFC 0011 2.13 item 6: A1 is approved and optimizing when E1''s scope ends (720 h after admission
+  at 10). The attempt closes (scope_expired) at the first step after hour 730, without interrupting the
+  optimization; its promoted result at 732 is recorded as ignored (scope_closed) and yields no deploy_awaiting.'
+spec_refs:
+- formalization/rfc-0011-tuning-conditions.md#2.3
+- formalization/rfc-0011-tuning-conditions.md#2.13
+- formalization/rfc-0011-tuning-conditions.md#2.7
+module:
+  tvl_version: '1.7'
+  tvl:
+    module: slice.ticket_router
+  environment:
+    snapshot_id: '2026-11-20T00:00:00Z'
+  evaluation_set:
+    dataset: test://slice
+  tvars:
+  - name: model
+    type: enum[str]
+    domain:
+    - anthropic/claude-haiku-4-5
+    - anthropic/claude-sonnet-4-6
+  objectives:
+  - name: quality
+    direction: maximize
+  promotion_policy:
+    dominance: epsilon_pareto
+    alpha: 0.05
+    min_effect:
+      quality: 0.02
+  requirements:
+  - name: quality_floor
+    kind: rate_bound
+    unit: invocation
+    violation:
+      checker: customer:ticket_route_check
+      label_in:
+      - fail
+    max_rate: 0.08
+  monitors:
+  - name: quality_prod
+    requirement: quality_floor
+    phase: runtime
+    evidence:
+      source: customer_side
+      deployment_environment: production
+      attribution: agent_key_exact_v1
+      resolution: terminal_status_v1
+      sampling:
+        mode: hash_bernoulli_committed_v1
+        rate: 0.02
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+      min_samples: 200
+      max_unresolved_fraction: 0.05
+      horizon_days: 30
+      model: iid_bernoulli_within_window_v1
+    window:
+      tumbling_hours: 24
+      grace_minutes: 0
+    episode:
+      closure_windows: 2
+      closure_max_age_hours: 168
+      closure_scope: since_head_move
+  - name: quality_gate
+    requirement: quality_floor
+    phase: promotion
+    evidence:
+      source: evaluation_set
+    decision:
+      method: clopper_pearson_rational_v2
+      confidence: 0.95
+      false_alarm_budget: 0.05
+  responses:
+  - name: tuning
+    rules:
+    - id: on_new_model
+      trigger:
+        external: model_released
+        match:
+          provider_family:
+          - anthropic
+          tier:
+          - small
+          - medium
+      do: optimize
+      approval: human
+      deploy: if_promoted
+      admit:
+        tvar: model
+      protects:
+      - quality_floor
+input:
+  kind: conditions
+  history:
+    agent: agent-1
+    environment: production
+    origin: '2026-11-20T00:00:00Z'
+    head:
+      fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
+      generation: 0
+    contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    steps:
+    - instant: 36000
+      events:
+      - kind: model_released
+        event_id: E1
+        issuer: P
+        issued_at: 32400
+        catalogue_revision: 1
+        subject:
+          model_ref: anthropic/claude-haiku-5-5
+          provider_family: anthropic
+          tier: small
+        authenticated: true
+    - instant: 36000
+      optimizations:
+      - attempt: A1
+        fact: approval
+        state: granted
+    - instant: 2631600
+    - instant: 2635200
+      optimizations:
+      - attempt: A1
+        fact: finished
+        completion: normal
+        candidates:
+        - evidence_valid: true
+          fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
+          gate_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          code_version: 'src:0123456789abcdef'
+          legacy_decision: Promote
+          monitor_verdicts:
+            quality_gate: MET
+expected:
+  facts:
+  - instant: 36000
+    fact: event
+    event:
+      issuer: P
+      event_id: E1
+    result: admitted
+  - instant: 36000
+    fact: fired
+    occurrence: &id001
+      response: tuning
+      rule: on_new_model
+      scope_kind: external
+      scope:
+        issuer: P
+        event_id: E1
+      j: 0
+  - instant: 36000
+    fact: attempt_opened
+    attempt: A1
+    occurrence: *id001
+  - instant: 36000
+    fact: search_domain
+    attempt: A1
+    tvar: model
+    domain:
+    - anthropic/claude-haiku-4-5
+    - anthropic/claude-sonnet-4-6
+    - anthropic/claude-haiku-5-5
+  - instant: 2631600
+    fact: attempt_closed
+    attempt: A1
+    reason: scope_expired
+  - instant: 2635200
+    fact: attempt_fact
+    attempt: A1
+    kind: finished
+    result: ignored(scope_closed)
+  head_generations:
+  - instant: 36000
+    generation: 0
+  - instant: 2631600
+    generation: 0
+  - instant: 2635200
+    generation: 0
+  max_open_attempts: 1

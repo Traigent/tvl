@@ -708,7 +708,7 @@ passes; `tvl-lint` runs no schema. Use `tvl-validate`.
 
 | Key | Where | Type | Notes |
 |---|---|---|---|
-| `tvl_version` | module root, pack root | string `"1.3"`, `"1.4"` or `"1.5"`, subject to the minima below | **required** as soon as `requirements`, `monitors` or `responses` appears (even empty) and in every pack. Absent: `runtime_version_required`. Unsupported, numeric or below-minimum values: `declared_version_below_constructs`. The schema accepts a string or a number so the lint can give the specific code. |
+| `tvl_version` | module root, pack root | string `"1.3"`, `"1.4"`, `"1.5"` or DRAFT `"1.7"`, subject to the minima below | **required** as soon as `requirements`, `monitors` or `responses` appears (even empty) and in every pack. Absent: `runtime_version_required`. Unsupported, numeric or below-minimum values: `declared_version_below_constructs`. The schema accepts a string or a number so the lint can give the specific code. |
 | `requirements` | module root, pack root | list of requirement | optional in a module, required in a pack |
 | `monitors` | module root, pack root | list of monitor | optional in a module, required in a pack |
 | `responses` | module root, pack root | list of response | optional in both |
@@ -724,6 +724,7 @@ Construct version compatibility (runtime version lint checks feature presence):
 | Only TVL 1.3 runtime constructs, or a pack without later features | 1.3 | `"1.3"`, `"1.4"`, `"1.5"` |
 | RFC 0004 reactive outcomes or guards | 1.4 | `"1.4"`, `"1.5"` |
 | RFC 0005 persistence or census aggregates | 1.5 | `"1.5"` |
+| DRAFT RFC 0011 Part A / RFC 0012: external or schedule triggers, `admit`, `protects`, `closure_scope` | 1.7 | `"1.7"` (not yet in a released version; `tvl-compile-runtime` refuses them with `unsupported_construct`) |
 
 These are document declarations, not compiled wire-contract versions. For modules without runtime blocks, this lint does not enforce `tvl_version` or the older extension minima; that absence of a diagnostic does not change the versions in which constructs were introduced.
 

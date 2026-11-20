@@ -1315,6 +1315,32 @@ Reactive constructs require quoted `tvl_version` "1.4" or later ("1.5" is also a
 | `tvl-compile-runtime` | both files written, or token-map template printed (warnings allowed) | any error |
 | `tvl-ci-gate module incumbent candidate` | `Promote` | `Reject`, `NoDecision`, `Error` (an undefined check such as `zero_trials`), not ready, or any error |
 
+## TVL 1.7 diagnostics (DRAFT)
+
+**DRAFT.** These diagnostics belong to [RFC 0011](../../formalization/rfc-0011-tuning-conditions.md) Part A and
+[RFC 0012](../../formalization/rfc-0012-release-acceptance.md), which are not accepted; names and meanings may change.
+All rows have severity error and are reported by `lint` unless noted. `tvl-compile-runtime` refuses a document that uses
+any 1.7 construct with `unsupported_construct`, because projection format /4 is not implemented.
+
+| Code | Condition |
+|---|---|
+| `trigger_action_unsupported` | an external or schedule trigger with an action other than `notify`, `open_next_step`, `optimize` |
+| `trigger_repeat_unsupported` | `repeat_after_hours` or `max_repeats` on an external trigger |
+| `schedule_anchor_out_of_range` | `anchor` is not a whole-second UTC instant (`...Z`), or is more than one year after `environment.snapshot_id` |
+| `admit_without_model_event` | `admit` on a rule that is not `optimize` with an external `model_released` trigger |
+| `admit_tvar_type` | `admit.tvar` missing, undeclared, or not of type `enum[str]` |
+| `admit_needs_match` | `admit` without a `match` that has at least one present, non-empty field |
+| `protects_required` | external or schedule `optimize` with `deploy: if_promoted` and no non-empty `protects` |
+| `protects_without_promotion_monitor` | a `protects` requirement with no promotion monitor |
+| `protects_on_monitor_trigger` | `protects` on a trigger that is not external or schedule |
+| `protects_unknown_requirement` | a `protects` name that is not a requirement of the module |
+| `release_rollback_deferred` | `target: release_rollback_target`; release rollback is deferred out of TVL 1.7 (RFC 0012 §2.5) |
+| `acceptance_record_invalid` | a `tvl-release-acceptance/1` document fails its schema, or `expires_at` is not after `decided_at`, or `expires_at - decided_at` exceeds 7 days (`tvl.release_acceptance.validate_acceptance`) |
+| `declared_version_below_constructs` (reused) | a 1.7 construct in a module that declares 1.3, 1.4 or 1.5 |
+| `runtime_version_required` (reused) | a 1.7 construct in a module with no `tvl_version` |
+| `runtime_unknown_kind` (reused) | an external kind, `match` value or `closure_scope` outside its sealed enumeration |
+| `runtime_invalid_profile` (reused) | a malformed `schedule` record, or `every_days` outside 1..366 |
+
 ## TVL 1.5 diagnostics
 
 These diagnostics are specified by [RFC 0005 §2.6](../../formalization/rfc-0005-persistence-and-census-aggregates.md#26-schemas-and-diagnostics).

@@ -27,7 +27,9 @@ def _check(condition: bool, message: str = "Runtime conformance assertion failed
 _ALLOWED_EXPECTED_KEYS_BY_KIND = {'compose': {'absent_diagnostics', 'floor_matches', 'error', 'composed_fields'},
  'trace': {'notifications'},
  'join': {'promotion_decision', 'error'},
- 'lint': {'absent_diagnostics', 'diagnostics'},
+ 'lint': {'absent_diagnostics', 'diagnostics', 'no_errors'},
+ 'conditions': {'facts', 'head_generations', 'max_open_attempts'},
+ 'acceptance': {'acceptance_valid', 'error'},
  'measurement': {'normalized_monitor_outcomes', 'readiness_issues'},
  'projection': {'forbidden_substrings', 'projected_fields', 'contract_digest', 'error'},
  'roundtrip': {'backend_profile',
@@ -126,6 +128,28 @@ def run_runtime_conformance_case(case, *, case_path=None):
         if "absent_diagnostics" in expected:
             for a in expected["absent_diagnostics"]:
                 _check(a not in got_codes, f"Unexpected diagnostic {a}")
+        if "no_errors" in expected:
+            errors = sorted(i["code"] for i in issues if i["severity"] == "error")
+            _check((not errors) is expected["no_errors"], f"Error diagnostics present: {errors}")
+        return
+
+    if kind == "conditions":
+        from tvl.runtime_conditions import conditions_trace
+        _check(set(inp) == {"kind", "history"}, "Unknown conditions input key")
+        _check("module" in case, "Conditions trace needs a module")
+        actual = conditions_trace(case["module"], inp["history"])
+        for key in expected:
+            _check(actual[key] == expected[key],
+                   f"{key} mismatch: actual={actual[key]!r}, expected={expected[key]!r}")
+        return
+
+    if kind == "acceptance":
+        from tvl.release_acceptance import validate_acceptance
+        _check(set(inp) == {"kind", "record"}, "Unknown acceptance input key")
+        issues = validate_acceptance(inp["record"])
+        _check((not issues) is expected["acceptance_valid"], f"Acceptance validity mismatch: {issues}")
+        if "error" in expected:
+            _check({i["code"] for i in issues} == {expected["error"]}, "Acceptance error code mismatch")
         return
 
     if kind == "projection":
@@ -478,6 +502,8 @@ LANGUAGE_FAMILY_GLOBS = {'language/codec': ('latency_roundtrip/*.yml',),
 _ALLOWED_EXPECTED_KEYS_BY_KIND["schema"] = {"schema_valid"}
 LANGUAGE_FAMILY_GLOBS["language/report_shape"] = ("report_schema/*.yml",)
 LANGUAGE_FAMILY_GLOBS["language/semantic_trace"] = ("semantic_traces/*.yml",)
+LANGUAGE_FAMILY_GLOBS["language/conditions"] = ("conditions/*.yml",)
+LANGUAGE_FAMILY_GLOBS["language/release"] = ("release/*.yml",)
 _ALLOWED_EXPECTED_KEYS_BY_KIND.update({
     "persistence": {"persistence"},
     "aggregate": {"aggregate"},

@@ -1,0 +1,33 @@
+case_format: tvl-runtime-case/1
+family: release
+description: expires_at - decided_at above 7 days is invalid.
+spec_refs:
+- formalization/rfc-0012-release-acceptance.md#2.2
+- formalization/rfc-0012-release-acceptance.md#2.6
+module: {}
+input:
+  kind: acceptance
+  record:
+    format: tvl-release-acceptance/1
+    acceptance_id: R1
+    agent_ref: agent-1
+    environment_ref: production
+    occurrence:
+      response_ref: tuning
+      rule_ref: on_new_model
+      scope_kind: external
+      scope_ref: P:E1
+      occurrence: 0
+    candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
+    gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    agent_code_version: 'src:0123456789abcdef'
+    expected_head_generation: 0
+    rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
+    approver_ref: approver-1
+    decision: accept
+    decided_at: '2026-11-20T00:00:00Z'
+    expires_at: '2026-11-27T00:00:01Z'
+expected:
+  acceptance_valid: false
+  error: acceptance_record_invalid
