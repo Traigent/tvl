@@ -406,11 +406,13 @@ class _Run:
             _require(isinstance(rec["candidates"], list), "candidates must be a list")
             converted, winner = [], None
             for cand in rec["candidates"]:
-                _shape(cand, "evidence_valid", "fingerprint gate_digest legacy_decision monitor_verdicts holdout_digest")
+                _shape(cand, "evidence_valid", "fingerprint gate_digest code_version legacy_decision monitor_verdicts holdout_digest")
                 if cand["evidence_valid"] is True:
-                    _require(set(cand) - {"holdout_digest"} == {"evidence_valid", "fingerprint", "gate_digest", "legacy_decision",
-                                                                "monitor_verdicts"},
-                             "valid candidate needs fingerprint, gate digest and promotion join inputs")
+                    _require(set(cand) - {"holdout_digest"} == {"evidence_valid", "fingerprint", "gate_digest", "code_version",
+                                                                "legacy_decision", "monitor_verdicts"},
+                             "valid candidate needs fingerprint, gate digest, code version and promotion join inputs")
+                    _require(isinstance(cand["code_version"], str) and cand["code_version"],
+                             "code_version must be a nonempty string")
                     _require("holdout_digest" not in cand or (isinstance(cand["holdout_digest"], str) and cand["holdout_digest"]),
                              "holdout_digest must be a nonempty string")
                     verdicts = self.gate_inputs(cand["monitor_verdicts"])
@@ -447,8 +449,10 @@ class _Run:
 
     # -- acceptances ------------------------------------------------------------------------
     def acceptance(self, rec: dict) -> None:
-        _require(isinstance(rec, dict) and {"record", "authenticated", "approver_authorized"} == set(rec),
-                 "acceptance input needs record, authenticated, approver_authorized")
+        _require(isinstance(rec, dict) and {"record", "authenticated", "approver_authorized", "serving_code_version"} == set(rec),
+                 "acceptance input needs record, authenticated, approver_authorized, serving_code_version")
+        _require(isinstance(rec["serving_code_version"], str) and rec["serving_code_version"],
+                 "serving_code_version must be a nonempty string")
         doc = rec["record"]
         _require(type(rec["authenticated"]) is bool and type(rec["approver_authorized"]) is bool, "booleans expected")
         ident = doc.get("acceptance_id") if isinstance(doc, dict) else None
@@ -491,6 +495,7 @@ class _Run:
                 or doc["candidate_fingerprint"] != target.promoted["fingerprint"] \
                 or doc["gate_result_digest"] != target.promoted["gate_digest"] \
                 or doc["contract_digest"] != self.contract_digest \
+                or doc["agent_code_version"] != target.promoted["code_version"] \
                 or ("holdout_digest" in target.promoted and doc.get("holdout_digest") != target.promoted["holdout_digest"]) \
                 or doc.get("repairs_episode") != (target.occ["scope"] if target.occ["scope_kind"] == "episode" else None):
             return result("invalid", "binding_mismatch")
@@ -508,6 +513,8 @@ class _Run:
                 refusal = "stale_generation"
             elif fingerprint != doc["rollback_target"]:
                 refusal = "rollback_target_mismatch"
+            elif doc["agent_code_version"] != rec["serving_code_version"]:
+                refusal = "code_version_mismatch"
             elif doc["candidate_fingerprint"] in self.breached_fingerprints():
                 refusal = "candidate_breached_in_open_episode"
         if refusal:

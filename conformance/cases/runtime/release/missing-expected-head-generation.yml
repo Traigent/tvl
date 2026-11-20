@@ -21,6 +21,7 @@ input:
     candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
     gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    agent_code_version: 'src:0123456789abcdef'
     rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
     approver_ref: approver-1
     decision: accept

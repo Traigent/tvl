@@ -45,7 +45,8 @@ A closed record, hosted, with no customer content:
 | `occurrence` | closed record | (response ref, rule ref, scope kind, scope ref, occurrence j) of the deploy occurrence (RFC 0003 §7.6 item 1), all as hosted opaque references |
 | `candidate_fingerprint` | fingerprint | the configuration accepted |
 | `gate_result_digest` | `sha256:` digest | the promotion-gate result the approver saw |
-| `contract_digest` | `sha256:` digest | the contract under which the gate ran |
+| `contract_digest` | `sha256:` digest | the contract under which the gate ran. The contract covers the configuration space (the tvars and their domains), so this digest is the acceptance's binding to the configuration space |
+| `agent_code_version` | opaque id, REQUIRED | the agent code the candidate and the incumbent were measured on: an opaque identifier such as a VCS revision or a code digest. It is a code identifier, never customer content |
 | `holdout_digest` | `sha256:` digest, optional | RFC 0008 holdout identity, when the module declares one |
 | `expected_head_generation` | non-negative integer | the generation the approver saw; the deploy writes only if the head is still at it |
 | `rollback_target` | fingerprint | the head fingerprint the approver saw; MUST equal the head fingerprint at `expected_head_generation`. It binds the head this acceptance replaces; TVL 1.7 defines no rollback that uses it (§2.5) |
@@ -61,13 +62,19 @@ fails any check is ignored and recorded as `acceptance_invalid`.
 ### 2.3 Deploy semantics (normative refinement of RFC 0003 §7.6 items 2–3)
 
 Under `approval: human`, a deploy occurrence takes effect only with an authenticated `accept` record whose `agent_ref`,
-`environment_ref`, `occurrence`, `candidate_fingerprint`, `gate_result_digest` and `contract_digest` equal the
-occurrence's (and `holdout_digest` its bundle's, when declared), that is usable at the effect time (§2.2), and whose
+`environment_ref`, `occurrence`, `candidate_fingerprint`, `gate_result_digest`, `contract_digest` (which covers the
+configuration space) and `agent_code_version` equal the occurrence's (and `holdout_digest` its bundle's, when declared), that is usable at the effect time (§2.2), and whose
 approver is authorized at the time of the effect. The platform then, **atomically** for that (agent, environment) head:
 checks that the head generation equals `expected_head_generation` and that the head fingerprint equals
 `rollback_target`; writes the candidate as head with generation + 1; consumes the record. If the
 generation differs, nothing is written and the occurrence finishes as `deploy_refused` (RFC 0004 outcome) with reason
-`stale_generation`. A consumed record never authorizes a second write. Under `approval: standing`, the grant record of
+`stale_generation`. The promotion gate result of the deploy occurrence records the agent code version on which the
+candidate and the incumbent were measured; an acceptance whose `agent_code_version` differs from it fails the binding
+check and is ignored as `acceptance_invalid` (`binding_mismatch`), like every other binding. Inside the same atomic
+compare, the platform also checks that the agent code version serving, or about to serve, the head equals the
+acceptance's `agent_code_version`; if it differs, nothing is written and the occurrence finishes as `deploy_refused`
+with reason `code_version_mismatch`. An acceptance therefore binds the candidate fingerprint, the gate-result digest,
+the configuration-space digest and the agent code version. A consumed record never authorizes a second write. Under `approval: standing`, the grant record of
 RFC 0003 §7.6 item 2 carries the same fields, `expected_head_generation` included.
 
 ### 2.4 Generation-scoped recovery (`closure_scope`)
@@ -137,7 +144,7 @@ Formal semantics §16.6–§16.8. Lean, `proofs/TVL/Runtime/Release.lean`:
 - `since_head_move_closure` (substantive): under `since_head_move`, the closure count never exceeds the number of
   qualifying windows (MET, not mixed, generation above the opening one); windows of old generations alone cannot close.
 - By construction, read off the guards of `acceptStep` and `effect`: `consumed_record_writes_nothing`,
-  `stale_acceptance_writes_nothing`, `stale_generation_refused` (a generation mismatch writes nothing),
+  `stale_acceptance_writes_nothing`, `stale_generation_refused` (a generation mismatch writes nothing), `code_version_refused` (a serving code version different from the accepted one is refused and writes nothing),
   `write_advances_head` (a write moves the head by exactly one generation), `old_generation_resets`,
   `generation_change_resets` (under `since_head_move` a qualifying window of a generation different from the last
   counted one restarts the count at one) and `window_redelivery_noop`.
@@ -149,14 +156,16 @@ Release rollback has no statement in 1.7 (§2.5).
 
 ## 5. Conformance
 
-Acceptance documents: valid accept, valid reject, expired, over-long expiry, unknown field. Semantic traces: (1) valid
+Acceptance documents: valid accept, valid reject, expired, over-long expiry, unknown field, missing `agent_code_version`. Semantic traces: (1) valid
 acceptance advances the head once, a redelivery writes nothing; (2) an acceptance for generation g after another deploy
 moved the head to g+1 is refused with `stale_generation`; (3) a reject closes the occurrence without a write; (4) under
 `since_head_move`, MET windows from the old generation do not close the episode, MET windows from the new generation do;
 (5) a head move inside a window makes that window mixed, whether the report names the later or the starting generation;
 (6) a breach report delivered after a deploy opens the episode at the breaching generation, and the newer generation
 closes it; (7) two consecutive MET windows of different later generations do not close the episode, two of one
-generation do; lints: one case per diagnostic, including `release_rollback_deferred` for every former form of the
+generation do; (8) an acceptance whose `agent_code_version` differs from the gate result's is ignored with `binding_mismatch`;
+(9) an acceptance presented while a different code version is serving is refused with `code_version_mismatch` and the head
+stays; lints: one case per diagnostic, including `release_rollback_deferred` for every former form of the
 rollback target.
 
 ## 6. Alternatives considered

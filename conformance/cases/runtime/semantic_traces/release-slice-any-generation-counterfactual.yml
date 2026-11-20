@@ -201,6 +201,7 @@ input:
         - evidence_valid: true
           fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          code_version: 'src:0123456789abcdef'
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET
@@ -220,6 +221,7 @@ input:
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          agent_code_version: 'src:0123456789abcdef'
           expected_head_generation: 0
           rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
           approver_ref: approver-1
@@ -228,6 +230,7 @@ input:
           expires_at: '2026-11-27T00:00:00Z'
         authenticated: true
         approver_authorized: true
+        serving_code_version: 'src:0123456789abcdef'
     - instant: 111600
       optimizations:
       - attempt: A2
@@ -249,6 +252,7 @@ input:
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          agent_code_version: 'src:0123456789abcdef'
           expected_head_generation: 0
           rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
           approver_ref: approver-1
@@ -257,6 +261,7 @@ input:
           expires_at: '2026-11-27T00:00:00Z'
         authenticated: true
         approver_authorized: true
+        serving_code_version: 'src:0123456789abcdef'
     - instant: 144000
       optimizations:
       - attempt: A2
@@ -266,6 +271,7 @@ input:
         - evidence_valid: true
           fingerprint: 222222222222222222222222222222222222222222222222222222222222222c
           gate_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          code_version: 'src:0123456789abcdef'
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET
@@ -285,6 +291,7 @@ input:
           candidate_fingerprint: 222222222222222222222222222222222222222222222222222222222222222c
           gate_result_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          agent_code_version: 'src:0123456789abcdef'
           expected_head_generation: 0
           rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
           approver_ref: approver-1
@@ -294,6 +301,7 @@ input:
           repairs_episode: EP1
         authenticated: true
         approver_authorized: true
+        serving_code_version: 'src:0123456789abcdef'
     - instant: 172800
       windows:
       - monitor: quality_prod

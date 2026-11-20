@@ -16,7 +16,7 @@ structure Head where
   deriving DecidableEq, Repr
 
 /-- The deploy occurrence awaiting an acceptance, with the bindings an acceptance must equal
-(§2.3). `holdout` is the bundle's holdout digest when the module declares one. -/
+(§2.3). `code` is the agent code version the candidate and incumbent were measured on. `holdout` is the bundle's holdout digest when the module declares one. -/
 structure Awaiting where
   agent : Nat
   env : Nat
@@ -24,6 +24,7 @@ structure Awaiting where
   cand : Nat
   gate : Nat
   contract : Nat
+  code : Nat
   holdout : Option Nat
   deriving DecidableEq, Repr
 
@@ -36,6 +37,7 @@ structure Accept where
   cand : Nat
   gate : Nat
   contract : Nat
+  code : Nat
   holdout : Option Nat
   expGen : Nat
   rbTarget : Nat
@@ -49,7 +51,7 @@ structure Accept where
 declares none, the record carries none. -/
 def Binds (a : Accept) (w : Awaiting) : Prop :=
   a.agent = w.agent ∧ a.env = w.env ∧ a.occ = w.occ ∧ a.cand = w.cand ∧
-  a.gate = w.gate ∧ a.contract = w.contract ∧ a.holdout = w.holdout
+  a.gate = w.gate ∧ a.contract = w.contract ∧ a.code = w.code ∧ a.holdout = w.holdout
 
 instance (a : Accept) (w : Awaiting) : Decidable (Binds a w) := by unfold Binds; infer_instance
 
@@ -89,17 +91,18 @@ def fpAt (s : RState) (g : Nat) : Option Nat := (s.history.find? (fun p => p.1 =
 
 /-- Facts recorded outside TVL at the instant of one acceptance: effect time, platform
 authentication, approver authority, the gate re-evaluation at effect time (RFC 0011 §2.13 item
-4) and the configurations that breached in an open episode (§2.13 item 5). -/
+4), the agent code version serving at effect time (`serving`) and the configurations that breached in an open episode (§2.13 item 5). -/
 structure Ctx where
   now : Nat
   authentic : Bool
   authorized : Bool
   gatePromote : Bool
+  serving : Nat
   breached : List Nat
 
 inductive Result where
   | consumedRecord | invalid | ignored | rejectRecorded
-  | refusedStale | refusedRollbackMismatch | refusedGate | refusedBreached
+  | refusedStale | refusedRollbackMismatch | refusedCode | refusedGate | refusedBreached
   | written
   deriving DecidableEq, Repr
 
@@ -115,7 +118,7 @@ def pre (c : Ctx) (s : RState) (a : Accept) : Option Result :=
 
 /-- Effect of an acceptance that passed `pre` against its awaiting deploy occurrence: equal
 bindings; a reject is recorded and consumed; for an accept, the effect-time gate recheck and
-the atomic compare of §2.3 (generation, then head fingerprint against `rollback_target`), the
+the atomic compare of §2.3 (generation, head fingerprint against `rollback_target`, serving agent code version against the accepted one), the
 breached-configuration refusal, and only then the write of head, generation + 1 and the
 consumption of the record. -/
 def effect (c : Ctx) (w : Awaiting) (s : RState) (a : Accept) : Result × RState :=
@@ -124,6 +127,7 @@ def effect (c : Ctx) (w : Awaiting) (s : RState) (a : Accept) : Result × RState
   else if c.gatePromote = false then (.refusedGate, s)
   else if s.head.gen ≠ a.expGen then (.refusedStale, s)
   else if s.head.fp ≠ a.rbTarget then (.refusedRollbackMismatch, s)
+  else if c.serving ≠ a.code then (.refusedCode, s)
   else if a.cand ∈ c.breached then (.refusedBreached, s)
   else
     (.written,
@@ -219,6 +223,9 @@ theorem effect_inv (c : Ctx) (w : Awaiting) (s : RState) (a : Accept)
   by_cases h9 : s.head.fp ≠ a.rbTarget
   · rw [if_pos h9]; exact ⟨hA, hB, hC⟩
   rw [if_neg h9]
+  by_cases h9c : c.serving ≠ a.code
+  · rw [if_pos h9c]; exact ⟨hA, hB, hC⟩
+  rw [if_neg h9c]
   by_cases h10 : a.cand ∈ c.breached
   · rw [if_pos h10]; exact ⟨hA, hB, hC⟩
   rw [if_neg h10]
@@ -335,6 +342,15 @@ theorem stale_generation_refused (c : Ctx) (w' : Awaiting) (s : RState) (a : Acc
     (acceptStep c (some w') s a).1 = .refusedStale := by
   simp [acceptStep, hp, effect, h6, h7, h8, hstale]
 
+/-- A valid accept whose agent code version differs from the one serving at effect time is
+refused with `code_version_mismatch`, and writes nothing (RFC 0012 §2.3). -/
+theorem code_version_refused (c : Ctx) (w' : Awaiting) (s : RState) (a : Accept)
+    (hp : pre c s a = none) (h6 : Binds a w') (h7 : a.accept = true)
+    (h8 : c.gatePromote = true) (hg : s.head.gen = a.expGen) (hf : s.head.fp = a.rbTarget)
+    (hc : c.serving ≠ a.code) :
+    acceptStep c (some w') s a = (.refusedCode, s) := by
+  simp [acceptStep, hp, effect, h6, h7, h8, hg, hf, hc]
+
 theorem effect_written (c : Ctx) (w : Awaiting) (s : RState) (a : Accept)
     (h : (effect c w s a).1 = .written) :
     (effect c w s a).2.head = ⟨a.cand, s.head.gen + 1⟩ ∧ s.head.gen = a.expGen := by
@@ -354,6 +370,9 @@ theorem effect_written (c : Ctx) (w : Awaiting) (s : RState) (a : Accept)
   by_cases h9 : s.head.fp ≠ a.rbTarget
   · rw [if_pos h9] at h; simp at h
   rw [if_neg h9] at h ⊢
+  by_cases h9c : c.serving ≠ a.code
+  · rw [if_pos h9c] at h; simp at h
+  rw [if_neg h9c] at h ⊢
   by_cases h10 : a.cand ∈ c.breached
   · rw [if_pos h10] at h; simp at h
   rw [if_neg h10]

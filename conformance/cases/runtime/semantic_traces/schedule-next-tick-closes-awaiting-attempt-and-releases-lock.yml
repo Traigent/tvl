@@ -112,6 +112,7 @@ input:
         - evidence_valid: true
           fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          code_version: 'src:0123456789abcdef'
           legacy_decision: Promote
           monitor_verdicts:
             quality_gate: MET

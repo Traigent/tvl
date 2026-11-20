@@ -2532,10 +2532,10 @@ Every move (a deploy; rollback is deferred, §16.9) installs a fingerprint and i
 (generation, fingerprint) pairs is kept. (Lean: `Head`, `RState`.)
 
 **Definition 16.10 (Acceptance record, usability).** (RFC 0012 §2.2.) An acceptance carries agent, environment,
-occurrence reference, candidate fingerprint, gate-result digest, contract digest, optional holdout digest, expected head
+occurrence reference, candidate fingerprint, gate-result digest, contract digest (which covers the configuration space), agent code version, optional holdout digest, expected head
 generation g, bound head fingerprint τ (`rollback_target`), optional repaired episode, decision, and instants `decided_at`, `expires_at`. It is
 *usable* at effect time t iff `decided_at ≤ t < expires_at` and `expires_at − decided_at ≤ 7 days`. It *binds* the
-awaiting deploy occurrence iff agent, environment, occurrence, candidate, gate digest, contract digest and holdout
+awaiting deploy occurrence iff agent, environment, occurrence, candidate, gate digest, contract digest, agent code version and holdout
 digest are equal to the occurrence's. (Lean: `Accept`, `Awaiting`, `Binds`, `Usable`.)
 
 **Definition 16.11 (Acceptance consumption, atomic compare).** (RFC 0012 §2.3; RFC 0011 §2.13 items 4–5, 7.) Given the
@@ -2545,11 +2545,11 @@ rule: `a`'s id is already consumed → no effect; not authenticated or approver 
 → invalid; the head fingerprint recorded at generation g is not τ → invalid; no deploy occurrence awaiting → ignored
 (a closed scope is the `scope_closed` case of §2.13 item 7); bindings differ → invalid; a `reject` → recorded and the
 record consumed, the head unchanged; an `accept` whose recomputed gate is not Promote → refused (`gate_not_promote`);
-head generation ≠ g → refused (`stale_generation`); head fingerprint ≠ τ → refused; candidate in the breached set →
+head generation ≠ g → refused (`stale_generation`); head fingerprint ≠ τ → refused; the agent code version serving at t ≠ the acceptance's → refused (`code_version_mismatch`); candidate in the breached set →
 refused (`candidate_breached_in_open_episode`); otherwise the **atomic write**: the head becomes (candidate,
 generation + 1), the record is consumed, the move and the release (generation written, τ, repaired episode) are
 recorded. A refusal changes nothing. (Lean: `pre`, `effect`, `acceptStep`; `deploy_needs_matching_acceptance`,
-`consumed_record_writes_nothing`, `stale_acceptance_writes_nothing`, `stale_generation_refused`, `write_advances_head`.)
+`consumed_record_writes_nothing`, `stale_acceptance_writes_nothing`, `stale_generation_refused`, `code_version_refused`, `write_advances_head`.)
 
 ### 16.8 Generation-scoped closure
 
