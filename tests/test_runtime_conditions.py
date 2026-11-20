@@ -54,10 +54,13 @@ def test_slice_module_is_lint_clean_and_requires_version_17():
 def test_slice_oracle_rows():
     module, history = _slice()
     result = conditions_trace(module, history)
-    events = {f["event"]: (f["instant"], f["result"]) for f in _facts(result, "event") if f["instant"] != 11}
+    def key(event: dict) -> str:  # event identities are (issuer, event_id) mappings
+        return f"{event['issuer']}:{event['event_id']}"
+
+    events = {key(f["event"]): (f["instant"], f["result"]) for f in _facts(result, "event") if f["instant"] != 11}
     assert events["P:E1"] == (10, "admitted")                      # row 1
     assert (11, "redelivery") in {(f["instant"], f["result"]) for f in _facts(result, "event")}  # row 2
-    assert {f["event"] for f in _facts(result, "no_match")} == {"P:E2", "P:E3"}                   # rows 3-4
+    assert {key(f["event"]) for f in _facts(result, "no_match")} == {"P:E2", "P:E3"}                   # rows 3-4
     assert events["P:E4"] == (14, "rejected(unauthenticated)")     # row 5
     assert events["P:E5"] == (15, "rejected(late)")                # row 6
     domain = _facts(result, "search_domain")
@@ -97,7 +100,7 @@ def test_events_at_one_instant_are_ordered_by_issue_time():
     case = _case("semantic_traces/external-two-events-serialize-by-issue-order.yml")
     facts = conditions_trace(case["module"], case["input"]["history"])["facts"]
     opened = [f for f in facts if f["fact"] == "attempt_opened"]
-    assert opened[0]["occurrence"]["scope"] == "P:E1"  # issued_at 3 before issued_at 4
+    assert opened[0]["occurrence"]["scope"] == {"issuer": "P", "event_id": "E1"}  # issued_at 3 before issued_at 4
     assert [f["fact"] for f in facts if f["instant"] == 5 and f["fact"] == "held"] == ["held"]
 
 
@@ -137,20 +140,22 @@ def test_history_validation_is_closed():
 
 
 @pytest.mark.parametrize("name", [
-    "release-recovery-overdue-rolls-back-to-bound-target", "release-rollback-without-bound-release",
+    "release-recovery-overdue-rolls-back-to-non-breached-target", "release-rollback-without-bound-release",
+    "release-recovery-overdue-holds-when-bound-target-breached",
     "release-rollback-target-ineligible-holds", "release-rollback-declined-writes-nothing"])
 def test_rollback_results(name):
     case = _case(f"semantic_traces/{name}.yml")
     facts = conditions_trace(case["module"], case["input"]["history"])["facts"]
     result = [f["result"] for f in facts if f["fact"] == "rollback"]
-    assert result == [{"release-recovery-overdue-rolls-back-to-bound-target": "written",
+    assert result == [{"release-recovery-overdue-rolls-back-to-non-breached-target": "written",
+                       "release-recovery-overdue-holds-when-bound-target-breached": "held(target_ineligible)",
                        "release-rollback-without-bound-release": "rollback_no_bound_release",
                        "release-rollback-target-ineligible-holds": "held(target_ineligible)",
                        "release-rollback-declined-writes-nothing": "declined"}[name]]
-    written = name.startswith("release-recovery")
+    written = name.endswith("non-breached-target")
     assert bool(_facts({"facts": facts}, "rollback")[0].get("fingerprint")) is written
     if written:
-        assert [(f["occurrence"]["rule"], f["reason"]) for f in facts if f["fact"] == "dropped"] == [("c_fix", "rolled_back")]
+        assert [f for f in facts if f["fact"] == "dropped"] == []  # no other repair of EP1 was pending
 
 
 def test_acceptance_documents():
@@ -178,3 +183,32 @@ def test_lint_message_paths_are_closed():
     module["responses"][0]["rules"][0]["trigger"]["match"] = {"provider_family": ["customer text"]}
     issue = next(i for i in lint_module(module) if i["code"] == "runtime_unknown_kind")
     assert "customer text" not in issue["message"]
+
+
+def test_acceptance_without_history_contract_digest_is_a_trace_error():
+    case = _case("semantic_traces/release-contract-digest-mismatch-is-ignored.yml")
+    history = copy.deepcopy(case["input"]["history"])
+    del history["contract_digest"]
+    with pytest.raises(TraceError):
+        conditions_trace(case["module"], history)
+    # without any acceptance the digest is not needed
+    for step in history["steps"]:
+        step.pop("acceptances", None)
+    conditions_trace(case["module"], history)
+
+
+def test_recorded_target_eligible_false_holds_and_absence_never_permits():
+    # RFC 0011 2.13 item 5: eligibility is computed from the history; an explicit false only narrows it.
+    case = _case("semantic_traces/release-recovery-overdue-rolls-back-to-non-breached-target.yml")
+    history = copy.deepcopy(case["input"]["history"])
+    assert "target_eligible" not in history["steps"][-1]["recovery"][0]
+    explicit_false = copy.deepcopy(history)
+    explicit_false["steps"][-1]["recovery"][0]["target_eligible"] = False
+    assert [f["result"] for f in _facts(conditions_trace(case["module"], explicit_false), "rollback")] == ["held(target_ineligible)"]
+    explicit_true = copy.deepcopy(history)
+    explicit_true["steps"][-1]["recovery"][0]["target_eligible"] = True
+    assert [f["result"] for f in _facts(conditions_trace(case["module"], explicit_true), "rollback")] == ["written"]
+    bad = copy.deepcopy(history)
+    bad["steps"][-1]["recovery"][0]["target_eligible"] = "yes"
+    with pytest.raises(TraceError):
+        conditions_trace(case["module"], bad)

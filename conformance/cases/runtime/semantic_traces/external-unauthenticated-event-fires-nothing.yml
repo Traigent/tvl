@@ -116,7 +116,9 @@ expected:
   facts:
   - instant: 5
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: rejected(unauthenticated)
   head_generations:
   - instant: 5

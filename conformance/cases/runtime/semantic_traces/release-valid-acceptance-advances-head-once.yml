@@ -142,7 +142,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: P:E1
+            scope_ref: 1:P:E1
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -166,7 +166,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: P:E1
+            scope_ref: 1:P:E1
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -183,7 +183,9 @@ expected:
   facts:
   - instant: 5
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: admitted
   - instant: 5
     fact: fired
@@ -191,7 +193,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: attempt_opened
@@ -200,7 +204,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: search_domain
@@ -221,7 +227,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
     candidate: 111111111111111111111111111111111111111111111111111111111111111b
   - instant: 9

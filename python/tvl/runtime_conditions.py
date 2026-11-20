@@ -19,7 +19,8 @@ pending occurrences in (trigger instant, response, rule id) order (§2.7).
 
 Recorded, not recomputed (as in ``runtime_trace``): window verdicts, the gate join inputs
 of each candidate, platform authentication of events and acceptances, approver authority,
-recovery_overdue transitions and rollback-target eligibility. Computed here: episode
+recovery_overdue transitions and an optional explicit ``target_eligible: false``. Computed here:
+breached-configuration sets per open episode (RFC 0011 §2.13 item 5), rollback eligibility, episode
 opening, closure counting under ``closure_scope``, event admission, occurrence firing,
 holds, attempt serialization, search domains, acceptance checks and head writes.
 """
@@ -29,7 +30,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from tvl.lints import lint_module, parse_utc_instant
+from tvl.lints import _parse_collection, lint_module, parse_utc_instant
 from tvl.promotion_join import join_promotion_decisions
 from tvl.release_acceptance import validate_acceptance
 from tvl.runtime_trace import TraceError, _enum, _hour, _optimize_outcome, _require, _shape
@@ -98,6 +99,8 @@ class _Run:
         self.consumed: set[str] = set()
         self.releases: list[dict] = []  # consumed accepts: write generation, repairs_episode, rollback_target
         self.rolled_back: set[str] = set()
+        self.seen_windows: set[tuple[str, int]] = set()
+        self.fire_count = 0
         self.max_open = 0
         self.history_steps = history["steps"]
         del snap
@@ -119,6 +122,10 @@ class _Run:
                 gen = generation
         return gen
 
+    def served_fingerprints(self, first: int, last: int) -> set[str]:
+        """Head fingerprints that served any generation in first..last."""
+        return {f for _, g, f in self.heads if first <= g <= last}
+
     def fingerprint_of(self, generation: int) -> str | None:
         return next((f for _, g, f in self.heads if g == generation), None)
 
@@ -126,8 +133,30 @@ class _Run:
         return [a for a in self.attempts if a.open]
 
     @staticmethod
-    def occ_ref(occ: dict) -> dict:
-        return {k: occ[k] for k in ("response", "rule", "scope_kind", "scope", "j")}
+    def render_scope(occ: dict) -> Any:
+        """Injective rendering of a scope identity in facts (an external scope is a mapping, RFC 0011 §2.3)."""
+        if occ["scope_kind"] == "external":
+            issuer, event_id = occ["scope"]
+            return {"issuer": issuer, "event_id": event_id}
+        return occ["scope"]
+
+    @staticmethod
+    def scope_ref(occ: dict) -> str:
+        """The opaque ``scope_ref`` an acceptance record uses for this scope; injective in the identity."""
+        if occ["scope_kind"] == "external":
+            issuer, event_id = occ["scope"]
+            return f"{len(issuer)}:{issuer}:{event_id}"
+        return occ["scope"]
+
+    @classmethod
+    def occ_ref(cls, occ: dict) -> dict:
+        ref = {k: occ[k] for k in ("response", "rule", "scope_kind", "j")}
+        ref["scope"] = cls.render_scope(occ)
+        return {k: ref[k] for k in ("response", "rule", "scope_kind", "scope", "j")}
+
+    def breached_fingerprints(self) -> set[str]:
+        """Configurations that breached in some open episode of the agent (RFC 0011 §2.13 item 5)."""
+        return set().union(*(ep["breached"] for ep in self.episodes.values())) if self.episodes else set()
 
     def find_rule(self, response: str, rule_id: str) -> dict:
         for name, rule in self.rules:
@@ -165,8 +194,9 @@ class _Run:
         key = (response, rule["id"], scope_kind, scope, 0)
         if key in self.occurrences:
             return  # one scope, one occurrence 0 (redelivery / duplicate tick)
+        self.fire_count += 1
         occ = {"response": response, "rule": rule["id"], "scope_kind": scope_kind, "scope": scope, "j": 0,
-               "trigger_instant": self.now, "held": False, "state": "pending", **extra}
+               "trigger_instant": self.now, "held": False, "state": "pending", "seq": self.fire_count, **extra}
         self.occurrences[key] = occ
         self.emit("fired", occurrence=self.occ_ref(occ))
         if rule["do"] == "optimize":
@@ -175,7 +205,8 @@ class _Run:
             self.emit("notified", occurrence=self.occ_ref(occ))
 
     def dispatch(self) -> None:
-        self.pending.sort(key=lambda o: (o["trigger_instant"], o["response"], o["rule"], o["scope"], o["j"]))
+        # (trigger instant, response, rule id), ties in admission order (RFC 0011 §2.7, §2.13 item 2)
+        self.pending.sort(key=lambda o: (o["trigger_instant"], o["response"], o["rule"], o["seq"]))
         for occ in list(self.pending):
             if not self.scope_active(occ):
                 reason = "rolled_back" if occ["scope"] in self.rolled_back else (
@@ -201,7 +232,9 @@ class _Run:
         self.emit("attempt_opened", attempt=attempt.name, occurrence=self.occ_ref(occ))
         if "admit" in rule:
             tvar = rule["admit"]["tvar"]
-            domain = list(self.tvars[tvar]["domain"])
+            values = _parse_collection(self.tvars[tvar]["domain"])
+            _require(values is not None and all(isinstance(v, str) for v in values), "admit tvar domain must list model refs")
+            domain = list(values)  # type: ignore[arg-type]
             ref = occ["model_ref"]
             self.emit("search_domain", attempt=attempt.name, tvar=tvar,
                       domain=domain if ref in domain else domain + [ref])
@@ -218,6 +251,12 @@ class _Run:
                     # nothing started that must still record a result: the effect never takes place
                     if a.awaiting_deploy or not a.approved:
                         self.close(a, "scope_closed")
+
+    def release_expired_scopes(self) -> None:
+        """A deploy awaiting a scope that stopped requiring intervention never takes place (RFC 0011 §2.13 item 6)."""
+        for a in self.open_attempts():
+            if a.awaiting_deploy and not self.scope_active(a.occ):
+                self.close(a, "scope_expired")
 
     # -- windows and episodes ---------------------------------------------------------------
     def window(self, rec: dict) -> None:
@@ -240,13 +279,17 @@ class _Run:
         scope_mode = episode_decl.get("closure_scope", "any_generation")
         ep = self.episodes.get(name)
         fields: dict[str, Any] = {"monitor": name, "start": rec["start"]}
+        if (name, rec["start"]) in self.seen_windows:  # a redelivered window report counts once (RFC 0003 §7.4 item 1)
+            return self.emit("window", closure="redelivery", **fields)
+        self.seen_windows.add((name, rec["start"]))
         if rec["verdict"] == "BREACHED":
             if ep is None:
                 self.episode_count += 1
                 ep = {"id": f"EP{self.episode_count}", "monitor": name, "open": True, "count": 0, "ends": [],
-                      "opening_generation": self.head()[0]}
+                      "opening_generation": self.head()[0], "breached": {self.head()[1]}, "last_start": None}
                 self.episodes[name] = ep
                 self.episode_list[ep["id"]] = ep
+                ep["breached"].update(self.served_fingerprints(start_gen, end_gen))
                 self.emit("window", closure="breached", **fields)
                 self.emit("episode_opened", monitor=name, episode=ep["id"], opening_generation=ep["opening_generation"])
                 for response, rule in self.rules:
@@ -255,6 +298,7 @@ class _Run:
                         self.fire(response, rule, "episode", ep["id"], {})
             else:
                 ep["count"], ep["ends"] = 0, []
+                ep["breached"].update(self.served_fingerprints(start_gen, end_gen))
                 self.emit("window", closure="breached", **fields)
             return
         if ep is None:
@@ -272,6 +316,9 @@ class _Run:
             ep["count"], ep["ends"] = 0, []
             self.emit("window", closure="not_counted(old_generation)", **fields)
             return
+        if ep["count"] and rec["start"] != ep["last_start"] + width:  # a gap: closure needs consecutive windows
+            ep["count"], ep["ends"] = 0, []
+        ep["last_start"] = rec["start"]
         ep["count"] += 1
         ep["ends"].append(rec["end"])
         need = episode_decl["closure_windows"]
@@ -284,6 +331,7 @@ class _Run:
 
     def recovery(self, rec: dict) -> None:
         _shape(rec, "monitor episode event approval", "target_eligible")
+        _require("target_eligible" not in rec or type(rec["target_eligible"]) is bool, "target_eligible must be boolean")
         _enum(rec["event"], "overdue")
         _enum(rec["approval"], "granted declined")
         mon = self.monitors.get(rec["monitor"])
@@ -305,7 +353,7 @@ class _Run:
             release = next((r for r in reversed(self.releases) if r["repairs_episode"] == episode and r["generation"] == gen), None)
             if release is None:
                 self.emit("rollback", result="rollback_no_bound_release", episode=episode)
-            elif not rec.get("target_eligible", True):
+            elif rec.get("target_eligible") is False or release["rollback_target"] in self.breached_fingerprints():
                 self.emit("rollback", result="held(target_ineligible)", episode=episode)
             else:
                 self.heads.append((self.now, gen + 1, release["rollback_target"]))
@@ -402,6 +450,8 @@ class _Run:
         doc = rec["record"]
         _require(type(rec["authenticated"]) is bool and type(rec["approver_authorized"]) is bool, "booleans expected")
         ident = doc.get("acceptance_id") if isinstance(doc, dict) else None
+        _require(isinstance(self.contract_digest, str) and self.contract_digest,
+                 "the history must carry the authoritative contract_digest to evaluate acceptances (RFC 0012 §2.3)")
 
         def result(res: str, reason: str | None = None, **more: Any) -> None:
             extra = {"reason": reason} if reason else {}
@@ -426,13 +476,14 @@ class _Run:
         occ_rec = doc["occurrence"]
         target = next((a for a in self.open_attempts() if a.awaiting_deploy and a.occ["response"] == occ_rec["response_ref"]
                        and a.occ["rule"] == occ_rec["rule_ref"] and a.occ["scope_kind"] == occ_rec["scope_kind"]
-                       and a.occ["scope"] == occ_rec["scope_ref"] and a.occ["j"] == occ_rec["occurrence"]), None)
+                       and self.scope_ref(a.occ) == occ_rec["scope_ref"] and a.occ["j"] == occ_rec["occurrence"]), None)
         if target is None:
             return result("invalid", "no_deploy_awaiting")
         if (doc["agent_ref"], doc["environment_ref"]) != (self.agent, self.environment) \
                 or doc["candidate_fingerprint"] != target.promoted["fingerprint"] \
                 or doc["gate_result_digest"] != target.promoted["gate_digest"] \
-                or (self.contract_digest is not None and doc["contract_digest"] != self.contract_digest):
+                or doc["contract_digest"] != self.contract_digest \
+                or doc.get("repairs_episode") != (target.occ["scope"] if target.occ["scope_kind"] == "episode" else None):
             return result("invalid", "binding_mismatch")
         if doc["decision"] == "reject":
             self.consumed.add(ident)
@@ -450,6 +501,8 @@ class _Run:
                 refusal = "stale_generation"
             elif fingerprint != doc["rollback_target"]:
                 refusal = "rollback_target_mismatch"
+            elif doc["candidate_fingerprint"] in self.breached_fingerprints():
+                refusal = "candidate_breached_in_open_episode"
         if refusal:
             result("refused", refusal)
             self.emit("outcome", attempt=target.name, event="deploy_refused", reason=refusal)
@@ -479,7 +532,7 @@ class _Run:
         return (ev["issued_at"], ev["issuer"], ev["event_id"])
 
     def process_event(self, ev: dict) -> None:
-        name = f"{ev['issuer']}:{ev['event_id']}"
+        name = {"issuer": ev["issuer"], "event_id": ev["event_id"]}
         if not ev["authenticated"]:
             return self.emit("event", event=name, result="rejected(unauthenticated)")
         if (ev["issuer"], ev["event_id"]) in self.seen_events:
@@ -500,7 +553,7 @@ class _Run:
             if sub["tier"] not in match.get("tier", [sub["tier"]]):
                 continue
             matched = True
-            self.fire(response, rule, "external", name, {"model_ref": sub["model_ref"], "admitted_at": self.now})
+            self.fire(response, rule, "external", (ev["issuer"], ev["event_id"]), {"model_ref": sub["model_ref"], "admitted_at": self.now})
         if not matched:
             self.emit("no_match", event=name)
 
@@ -525,6 +578,7 @@ class _Run:
                 self.optimization(rec)
             for rec in step.get("acceptances", []):
                 self.acceptance(rec)
+            self.release_expired_scopes()
             events = step.get("events", [])
             for ev in sorted(events, key=self.event):
                 self.process_event(ev)

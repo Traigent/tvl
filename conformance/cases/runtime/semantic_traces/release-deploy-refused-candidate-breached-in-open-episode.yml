@@ -1,10 +1,12 @@
 case_format: tvl-runtime-case/1
 family: semantic_traces
-description: 'Recovery overdue after a release: the rollback restores the accept record''s rollback_target;
-  the repair of the episode that was still pending never starts.'
+description: 'RFC 0011 2.6 item 3.4 and 2.13 item 5: the configuration serving when EP1 opened (F0) breached
+  in the open episode. A2''s candidate is F0 and the head, generation and rollback target all match, so
+  only the breached-configuration check can refuse it.'
 spec_refs:
-- formalization/rfc-0012-release-acceptance.md#2.5
-- formalization/rfc-0012-release-acceptance.md#5
+- formalization/rfc-0011-tuning-conditions.md#2.6
+- formalization/rfc-0011-tuning-conditions.md#2.13
+- formalization/rfc-0012-release-acceptance.md#2.3
 module:
   tvl_version: '1.7'
   tvl:
@@ -100,12 +102,7 @@ module:
         event: episode_opened
       do: optimize
       approval: standing
-    - id: c_fix
-      trigger:
-        monitor: quality_prod
-        event: episode_opened
-      do: optimize
-      approval: standing
+      deploy: if_promoted
     - id: undo
       trigger:
         monitor: recover_monitor
@@ -163,17 +160,48 @@ input:
           rollback_target: 000000000000000000000000000000000000000000000000000000000000000a
           approver_ref: approver-1
           decision: accept
-          decided_at: '2026-11-21T00:00:00Z'
+          decided_at: '2026-11-20T00:00:00Z'
           expires_at: '2026-11-22T00:00:00Z'
           repairs_episode: EP1
         authenticated: true
         approver_authorized: true
-    - instant: 130
-      recovery:
-      - monitor: recover_monitor
-        episode: EP1
-        event: overdue
-        approval: granted
+    - instant: 27
+      optimizations:
+      - attempt: A2
+        fact: finished
+        completion: normal
+        candidates:
+        - evidence_valid: true
+          fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
+          gate_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          legacy_decision: Promote
+          monitor_verdicts:
+            quality_gate: MET
+    - instant: 28
+      acceptances:
+      - record:
+          format: tvl-release-acceptance/1
+          acceptance_id: R2
+          agent_ref: agent-1
+          environment_ref: production
+          occurrence:
+            response_ref: tuning
+            rule_ref: b_fix
+            scope_kind: episode
+            scope_ref: EP1
+            occurrence: 0
+          candidate_fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
+          gate_result_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          contract_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          expected_head_generation: 1
+          rollback_target: 111111111111111111111111111111111111111111111111111111111111111b
+          approver_ref: approver-1
+          decision: accept
+          decided_at: '2026-11-20T00:00:00Z'
+          expires_at: '2026-11-22T00:00:00Z'
+          repairs_episode: EP1
+        authenticated: true
+        approver_authorized: true
 expected:
   facts:
   - instant: 24
@@ -203,14 +231,6 @@ expected:
       scope: EP1
       j: 0
   - instant: 24
-    fact: fired
-    occurrence:
-      response: tuning
-      rule: c_fix
-      scope_kind: episode
-      scope: EP1
-      j: 0
-  - instant: 24
     fact: attempt_opened
     attempt: A1
     occurrence:
@@ -224,15 +244,6 @@ expected:
     occurrence:
       response: tuning
       rule: b_fix
-      scope_kind: episode
-      scope: EP1
-      j: 0
-    reason: repair_open
-  - instant: 24
-    fact: held
-    occurrence:
-      response: tuning
-      rule: c_fix
       scope_kind: episode
       scope: EP1
       j: 0
@@ -269,25 +280,34 @@ expected:
       scope_kind: episode
       scope: EP1
       j: 0
-  - instant: 130
-    fact: recovery_overdue
-    monitor: recover_monitor
-    episode: EP1
-  - instant: 130
-    fact: rollback
-    result: written
-    episode: EP1
-    generation: 2
-    fingerprint: 000000000000000000000000000000000000000000000000000000000000000a
-  - instant: 130
-    fact: dropped
+  - instant: 27
+    fact: optimization_finished
+    attempt: A2
+    outcome: promoted
+  - instant: 27
+    fact: deploy_awaiting
+    attempt: A2
     occurrence:
       response: tuning
-      rule: c_fix
+      rule: b_fix
       scope_kind: episode
       scope: EP1
       j: 0
-    reason: rolled_back
+    candidate: 000000000000000000000000000000000000000000000000000000000000000a
+  - instant: 28
+    fact: acceptance
+    acceptance: R2
+    result: refused
+    reason: candidate_breached_in_open_episode
+  - instant: 28
+    fact: outcome
+    attempt: A2
+    event: deploy_refused
+    reason: candidate_breached_in_open_episode
+  - instant: 28
+    fact: attempt_closed
+    attempt: A2
+    reason: deploy_refused
   head_generations:
   - instant: 24
     generation: 0
@@ -295,6 +315,8 @@ expected:
     generation: 0
   - instant: 26
     generation: 1
-  - instant: 130
-    generation: 2
+  - instant: 27
+    generation: 1
+  - instant: 28
+    generation: 1
   max_open_attempts: 1

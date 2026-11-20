@@ -6258,6 +6258,38 @@ def parse_utc_instant(value: Any) -> Optional[Any]:
         return None
 
 
+_RFC3339_RE = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})$")
+
+
+def _parse_rfc3339(value: Any) -> Optional[Any]:
+    """Parse any RFC 3339 date-time (``Z`` or numeric offset, optional fraction) to an aware UTC datetime.
+
+    ``environment.snapshot_id`` is only constrained to ``format: date-time`` by the schema, so
+    ``+00:00`` and fractional seconds are admissible there (unlike schedule anchors, RFC 0011 §2.1).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    if not isinstance(value, str):
+        return None
+    m = _RFC3339_RE.match(value)
+    if m is None:
+        return None
+    year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
+    zone = m.group(8)
+    try:
+        offset = timedelta(0)
+        if zone not in ("Z", "z"):
+            hh, mm = int(zone[1:3]), int(zone[4:6])
+            if hh > 23 or mm > 59:
+                return None
+            offset = timedelta(hours=hh, minutes=mm) * (1 if zone[0] == "+" else -1)
+        micro = int((m.group(7) or "0")[:6].ljust(6, "0"))
+        return datetime(year, month, day, hour, minute, second, micro, tzinfo=timezone.utc) - offset
+    except (ValueError, OverflowError):
+        return None
+
+
 def _lint_tuning_rule(doc: Dict[str, Any], rule: Dict[str, Any], path: List[Any], issues: List[Issue],
                       mons: Dict[str, Any], reqs: Dict[str, Any]) -> None:
     """DRAFT RFC 0011 Part A (§2.1-§2.7) and RFC 0012 §2.5 rule-level diagnostics."""
@@ -6301,8 +6333,8 @@ def _lint_tuning_rule(doc: Dict[str, Any], rule: Dict[str, Any], path: List[Any]
                     err("runtime_invalid_profile", "every_days must be an integer in 1..366", ["trigger", "schedule", "every_days"])
                 anchor = parse_utc_instant(sched["anchor"])
                 snapshot = (doc.get("environment") or {}).get("snapshot_id") if isinstance(doc.get("environment"), dict) else None
-                snap = parse_utc_instant(snapshot)
-                limit_ok = True
+                snap = _parse_rfc3339(snapshot)
+                limit_ok = snap is not None  # an unparseable snapshot fails closed
                 if anchor is not None and snap is not None:
                     try:
                         limit = snap.replace(year=snap.year + 1)

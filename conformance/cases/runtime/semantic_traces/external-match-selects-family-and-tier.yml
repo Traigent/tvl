@@ -139,7 +139,9 @@ expected:
   facts:
   - instant: 5
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: admitted
   - instant: 5
     fact: fired
@@ -147,7 +149,9 @@ expected:
       response: tuning
       rule: any_tier
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: notified
@@ -155,11 +159,15 @@ expected:
       response: tuning
       rule: any_tier
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 6
     fact: event
-    event: P:E2
+    event:
+      issuer: P
+      event_id: E2
     result: admitted
   - instant: 6
     fact: fired
@@ -167,7 +175,9 @@ expected:
       response: tuning
       rule: only_large
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 6
     fact: notified
@@ -175,15 +185,21 @@ expected:
       response: tuning
       rule: only_large
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 7
     fact: event
-    event: P:E3
+    event:
+      issuer: P
+      event_id: E3
     result: admitted
   - instant: 7
     fact: no_match
-    event: P:E3
+    event:
+      issuer: P
+      event_id: E3
   head_generations:
   - instant: 5
     generation: 0

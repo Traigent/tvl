@@ -238,6 +238,23 @@ optimize that would start while a rollback of the same instant is pending is `he
 4. **Gate at effect time.** A candidate whose gate join is not `Promote` when its optimization finishes yields no deploy
    occurrence; if the gate result is recomputed at the time of the effect and is no longer `Promote`, the deploy is
    refused with reason `gate_not_promote`.
+5. **Breached configurations.** For each open episode, the configurations that *breached in it* are the head fingerprint
+   serving when the episode opened and every head fingerprint that served during a BREACHED window of the episode. A
+   deploy whose candidate is one of them is refused (`candidate_breached_in_open_episode`); a rollback whose target is
+   one of them holds (RFC 0012 §2.5). Eligibility is computed from the recorded history; the absence of a recorded
+   eligibility fact never makes a target eligible.
+6. **Scope end releases the lock.** When an external or schedule scope stops requiring intervention while its attempt
+   awaits a deploy, the deploy never takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`),
+   releasing the one-open-repair lock of §2.7.
+7. **Timing of derived closures.** A scope end or expiry that falls between evaluations takes effect at the first
+   evaluation at or after it, after that evaluation's acceptances; an acceptance in that same evaluation is refused
+   (`scope_closed`).
+8. **Spanning windows.** A BREACHED window whose units span several head generations counts every generation from its
+   start generation to its end generation as having served during it.
+9. **Window redelivery.** A second report for the same (monitor, window start) is a redelivery: the first report stands,
+   whatever the second says, and the redelivery changes no count.
+10. **External scope refs.** The hosted `scope_ref` of an external scope is the injective string
+    `<length of issuer>:<issuer>:<event_id>`.
 
 ## 3. Compatibility
 

@@ -129,11 +129,15 @@ expected:
   facts:
   - instant: 80
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: rejected(late)
   - instant: 81
     fact: event
-    event: P:E2
+    event:
+      issuer: P
+      event_id: E2
     result: admitted
   - instant: 81
     fact: fired
@@ -141,7 +145,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 81
     fact: attempt_opened
@@ -150,7 +156,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 81
     fact: search_domain

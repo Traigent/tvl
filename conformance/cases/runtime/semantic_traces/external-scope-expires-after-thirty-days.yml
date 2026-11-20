@@ -160,7 +160,9 @@ expected:
       j: 0
   - instant: 30
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: admitted
   - instant: 30
     fact: fired
@@ -168,7 +170,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 30
     fact: held
@@ -176,7 +180,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
     reason: repair_open
   - instant: 751
@@ -185,7 +191,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
     reason: expired
   head_generations:

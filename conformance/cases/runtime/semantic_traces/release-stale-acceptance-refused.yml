@@ -142,7 +142,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: P:E1
+            scope_ref: 1:P:E1
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -195,7 +195,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: P:E2
+            scope_ref: 1:P:E2
             occurrence: 0
           candidate_fingerprint: 222222222222222222222222222222222222222222222222222222222222222c
           gate_result_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -212,7 +212,9 @@ expected:
   facts:
   - instant: 5
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: admitted
   - instant: 5
     fact: fired
@@ -220,7 +222,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: attempt_opened
@@ -229,7 +233,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: search_domain
@@ -250,7 +256,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
     candidate: 111111111111111111111111111111111111111111111111111111111111111b
   - instant: 9
@@ -264,7 +272,9 @@ expected:
     reason: deploy_written
   - instant: 10
     fact: event
-    event: P:E2
+    event:
+      issuer: P
+      event_id: E2
     result: admitted
   - instant: 10
     fact: fired
@@ -272,7 +282,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 10
     fact: attempt_opened
@@ -281,7 +293,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 10
     fact: search_domain
@@ -302,7 +316,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
     candidate: 222222222222222222222222222222222222222222222222222222222222222c
   - instant: 12

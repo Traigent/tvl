@@ -141,7 +141,9 @@ expected:
   facts:
   - instant: 5
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: admitted
   - instant: 5
     fact: fired
@@ -149,7 +151,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: attempt_opened
@@ -158,7 +162,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 5
     fact: search_domain
@@ -182,7 +188,9 @@ expected:
     reason: optimize_no_candidate
   - instant: 7
     fact: event
-    event: P:E2
+    event:
+      issuer: P
+      event_id: E2
     result: admitted
   - instant: 7
     fact: fired
@@ -190,7 +198,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 7
     fact: attempt_opened
@@ -199,7 +209,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E2
+      scope:
+        issuer: P
+        event_id: E2
       j: 0
   - instant: 7
     fact: search_domain

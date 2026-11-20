@@ -215,7 +215,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: P:E1
+            scope_ref: 1:P:E1
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -244,7 +244,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: P:E1
+            scope_ref: 1:P:E1
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -319,7 +319,9 @@ expected:
   facts:
   - instant: 10
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: admitted
   - instant: 10
     fact: fired
@@ -327,7 +329,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 10
     fact: attempt_opened
@@ -336,7 +340,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
   - instant: 10
     fact: search_domain
@@ -348,29 +354,43 @@ expected:
     - anthropic/claude-haiku-5-5
   - instant: 11
     fact: event
-    event: P:E1
+    event:
+      issuer: P
+      event_id: E1
     result: redelivery
   - instant: 12
     fact: event
-    event: P:E2
+    event:
+      issuer: P
+      event_id: E2
     result: admitted
   - instant: 12
     fact: no_match
-    event: P:E2
+    event:
+      issuer: P
+      event_id: E2
   - instant: 13
     fact: event
-    event: P:E3
+    event:
+      issuer: P
+      event_id: E3
     result: admitted
   - instant: 13
     fact: no_match
-    event: P:E3
+    event:
+      issuer: P
+      event_id: E3
   - instant: 14
     fact: event
-    event: P:E4
+    event:
+      issuer: P
+      event_id: E4
     result: rejected(unauthenticated)
   - instant: 15
     fact: event
-    event: P:E5
+    event:
+      issuer: P
+      event_id: E5
     result: rejected(late)
   - instant: 24
     fact: window
@@ -410,7 +430,9 @@ expected:
       response: tuning
       rule: on_new_model
       scope_kind: external
-      scope: P:E1
+      scope:
+        issuer: P
+        event_id: E1
       j: 0
     candidate: 111111111111111111111111111111111111111111111111111111111111111b
   - instant: 31
