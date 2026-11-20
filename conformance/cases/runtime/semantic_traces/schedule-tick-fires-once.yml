@@ -1,6 +1,6 @@
 case_format: tvl-runtime-case/1
 family: semantic_traces
-description: Repeated evaluations inside one tick interval fire the tick once; the next tick fires k+1.
+description: Repeated evaluations inside one tick interval fire the tick once; the next tick fires k+1 and, its scope ended, closes the still-unapproved A1 (RFC 0011 §2.13 item 6) and opens A2.
 spec_refs:
 - formalization/rfc-0011-tuning-conditions.md#2.4
 module:
@@ -128,14 +128,18 @@ expected:
       scope: '1'
       j: 0
   - instant: 37
-    fact: held
+    fact: attempt_closed
+    attempt: A1
+    reason: scope_expired
+  - instant: 37
+    fact: attempt_opened
+    attempt: A2
     occurrence:
       response: tuning
       rule: recheck
       scope_kind: schedule
       scope: '1'
       j: 0
-    reason: repair_open
   head_generations:
   - instant: 11
     generation: 0

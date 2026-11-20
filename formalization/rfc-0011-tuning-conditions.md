@@ -244,8 +244,10 @@ optimize that would start while a rollback of the same instant is pending is `he
    one of them holds (RFC 0012 §2.5). Eligibility is computed from the recorded history; the absence of a recorded
    eligibility fact never makes a target eligible.
 6. **Scope end releases the lock.** When an external or schedule scope stops requiring intervention while its attempt
-   awaits a deploy, the deploy never takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`),
-   releasing the one-open-repair lock of §2.7.
+   is open — awaiting its optimization approval, optimizing, or awaiting a deploy — no further service effect of the
+   occurrence takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`), releasing the
+   one-open-repair lock of §2.7. An optimization already running is not interrupted by TVL; its result is recorded
+   and yields no deploy.
 7. **Timing of derived closures.** A scope end or expiry that falls between evaluations takes effect at the first
    evaluation at or after it, **before** that evaluation's acceptances. A pending deploy whose scope has closed never takes
    place and produces no outcome event (RFC 0004 §2.2); a later acceptance for it is recorded as ignored

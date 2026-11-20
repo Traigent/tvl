@@ -55,7 +55,7 @@ A closed record, hosted, with no customer content:
 | `decided_at`, `expires_at` | UTC instants | `expires_at − decided_at ≤ 7 days`; the record is usable only for an effect at t with `decided_at ≤ t < expires_at` |
 
 A `reject` record is subject to the same authentication, approver-authority and binding checks as an `accept` (§2.3);
-a matching, valid `reject` closes the deploy occurrence without a deploy and nothing in production changes. A record that
+a matching, valid `reject` closes the deploy occurrence without a deploy, is consumed like an accept (it never decides a second occurrence), and nothing in production changes. A record that
 fails any check is ignored and recorded as `acceptance_invalid`.
 
 ### 2.3 Deploy semantics (normative refinement of RFC 0003 §7.6 items 2–3)
@@ -81,7 +81,7 @@ Window reports carry `head_generation`, the generation that served the window's 
 generations reports the later one and is UNKNOWN(mixed_generation) for closure under `since_head_move`). Under
 `since_head_move`, only windows whose generation is greater than the episode's generation at opening count towards
 closure and towards `recovery_recovered`. So an episode is closed only by evidence about a configuration that moved the
-head after it opened. `any_generation` keeps RFC 0003 meaning.
+head after it opened. `any_generation` keeps RFC 0003 meaning, which already requires `closure_windows` **consecutive** MET windows (RFC 0003 §6.12); the redelivery and gap rules of RFC 0011 §2.13 items 8–9 apply under both scopes.
 
 **Counting.** A window is *mixed* when its reported `head_generation` differs from the head generation at the window's
 start. Closure under `since_head_move` needs `closure_windows` **consecutive** qualifying windows (MET, not mixed, and of

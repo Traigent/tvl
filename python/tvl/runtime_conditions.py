@@ -42,6 +42,22 @@ _FAMILIES = "anthropic openai google meta mistral amazon"
 _TIERS = "small medium large"
 
 
+__all__ = ["conditions_trace", "occurrence_status", "scope_ref"]
+
+
+def scope_ref(scope_kind: str, scope: Any) -> str:
+    """The hosted ``scope_ref`` of a scope identity (RFC 0011 §2.13 item 10).
+
+    ``external``: ``scope`` is ``(issuer, event_id)`` or the fact rendering ``{"issuer", "event_id"}``; the result is
+    ``ext:`` plus the SHA-256 hex of ``{"event_id", "issuer"}`` under the canonical digest. ``episode`` (episode id)
+    and ``schedule`` (tick index) scopes are their own opaque ref, as a string.
+    """
+    if scope_kind == "external":
+        issuer, event_id = (scope["issuer"], scope["event_id"]) if isinstance(scope, dict) else scope
+        return "ext:" + canonical_json_digest({"event_id": event_id, "issuer": issuer})
+    return str(scope)
+
+
 def _version(module: dict) -> tuple[int, int]:
     text = str(module.get("tvl_version", "1.3"))
     major, _, minor = text.partition(".")
@@ -145,10 +161,7 @@ class _Run:
     @staticmethod
     def scope_ref(occ: dict) -> str:
         """The opaque ``scope_ref`` an acceptance record uses for this scope; injective in the identity."""
-        if occ["scope_kind"] == "external":
-            issuer, event_id = occ["scope"]
-            return "ext:" + canonical_json_digest({"event_id": event_id, "issuer": issuer})  # RFC 0011 §2.13 item 10
-        return occ["scope"]
+        return scope_ref(occ["scope_kind"], occ["scope"])
 
     @classmethod
     def occ_ref(cls, occ: dict) -> dict:
@@ -256,9 +269,14 @@ class _Run:
                         self.close(a, "scope_closed")
 
     def release_expired_scopes(self) -> None:
-        """A deploy awaiting a scope that stopped requiring intervention never takes place (RFC 0011 §2.13 item 6)."""
+        """An open attempt whose external or schedule scope stopped requiring intervention closes (RFC 0011 §2.13 item 6).
+
+        Any phase: awaiting approval, optimizing (not interrupted; its result is later ignored) or awaiting a deploy.
+        Episode scopes keep their own closure rules (``close_scope``) and only release a pending deploy here.
+        """
         for a in self.open_attempts():
-            if a.awaiting_deploy and not self.scope_active(a.occ):
+            if (a.occ["scope_kind"] != "episode" or a.awaiting_deploy) and not self.scope_active(a.occ):
+                a.scope_closed = True
                 self.close(a, "scope_expired")
 
     # -- windows and episodes ---------------------------------------------------------------
@@ -392,8 +410,11 @@ class _Run:
     def optimization(self, rec: dict) -> None:
         _shape(rec, "attempt fact", "state completion candidates legacy_decision monitor_verdicts")
         attempt = self.attempt(rec["attempt"])
-        _require(attempt.open, "fact for a closed attempt")
         fact = rec["fact"]
+        if not attempt.open and attempt.closed_reason == "scope_expired":
+            # RFC 0011 §2.13 item 6: a result or approval for an attempt whose scope ended is recorded, never acted on
+            return self.emit("attempt_fact", attempt=attempt.name, kind=fact, result="ignored(scope_closed)")
+        _require(attempt.open, "fact for a closed attempt")
         if fact == "approval":
             _shape(rec, "attempt fact state")
             _enum(rec["state"], "granted declined expired")
@@ -411,10 +432,13 @@ class _Run:
             _require(isinstance(rec["candidates"], list), "candidates must be a list")
             converted, winner = [], None
             for cand in rec["candidates"]:
-                _shape(cand, "evidence_valid", "fingerprint gate_digest legacy_decision monitor_verdicts")
+                _shape(cand, "evidence_valid", "fingerprint gate_digest legacy_decision monitor_verdicts holdout_digest")
                 if cand["evidence_valid"] is True:
-                    _require(set(cand) == {"evidence_valid", "fingerprint", "gate_digest", "legacy_decision", "monitor_verdicts"},
+                    _require(set(cand) - {"holdout_digest"} == {"evidence_valid", "fingerprint", "gate_digest", "legacy_decision",
+                                                                "monitor_verdicts"},
                              "valid candidate needs fingerprint, gate digest and promotion join inputs")
+                    _require("holdout_digest" not in cand or (isinstance(cand["holdout_digest"], str) and cand["holdout_digest"]),
+                             "holdout_digest must be a nonempty string")
                     verdicts = self.gate_inputs(cand["monitor_verdicts"])
                     converted.append({"evidence_valid": True, "legacy_decision": cand["legacy_decision"], "monitor_verdicts": verdicts})
                     if winner is None and join_promotion_decisions(cand["legacy_decision"], verdicts) == "Promote":
@@ -493,6 +517,7 @@ class _Run:
                 or doc["candidate_fingerprint"] != target.promoted["fingerprint"] \
                 or doc["gate_result_digest"] != target.promoted["gate_digest"] \
                 or doc["contract_digest"] != self.contract_digest \
+                or ("holdout_digest" in target.promoted and doc.get("holdout_digest") != target.promoted["holdout_digest"]) \
                 or doc.get("repairs_episode") != (target.occ["scope"] if target.occ["scope_kind"] == "episode" else None):
             return result("invalid", "binding_mismatch")
         if doc["decision"] == "reject":
@@ -604,3 +629,46 @@ def conditions_trace(module: dict, history: dict) -> dict:
     ``{instant, generation}`` per distinct step instant (generation after that instant).
     """
     return _Run(module, history).run()
+
+
+def occurrence_status(module: dict, history: dict, occurrence: dict) -> dict:
+    """State of one occurrence after evaluating ``history`` (evaluated at the last step's instant).
+
+    ``occurrence`` is an occurrence reference as rendered in facts: ``response``, ``rule``, ``scope_kind``, ``scope``
+    (an external scope is ``{"issuer", "event_id"}``) and ``j``. Returns ``{scope_active, attempt, phase,
+    closed_reason}``: ``phase`` is ``awaiting_approval``, ``optimizing``, ``awaiting_deploy`` or ``closed`` (``None``
+    with ``attempt`` ``None`` when no attempt has opened); ``closed_reason`` is the ``attempt_closed`` reason.
+    An occurrence that never fired has ``scope_active`` false.
+    """
+    run = _Run(module, history)
+    facts = run.run()["facts"]
+    want = _Run.occ_ref({"response": occurrence["response"], "rule": occurrence["rule"],
+                         "scope_kind": occurrence["scope_kind"], "scope": _raw_scope(occurrence), "j": occurrence["j"]})
+    occ = next((o for o in run.occurrences.values() if run.occ_ref(o) == want), None)
+    status: dict = {"scope_active": False, "attempt": None, "phase": None, "closed_reason": None}
+    if occ is None:
+        return status
+    status["scope_active"] = bool(run.scope_active(occ))
+    opened = [f["attempt"] for f in facts if f["fact"] == "attempt_opened" and f["occurrence"] == want]
+    if not opened:
+        return status
+    attempt = run.attempt(opened[-1])
+    status["attempt"] = attempt.name
+    if not attempt.open:
+        status["phase"], status["closed_reason"] = "closed", attempt.closed_reason
+    elif attempt.awaiting_deploy:
+        status["phase"] = "awaiting_deploy"
+    elif attempt.approved and not attempt.finished:
+        status["phase"] = "optimizing"
+    else:
+        status["phase"] = "awaiting_approval"
+    return status
+
+
+def _raw_scope(occurrence: dict) -> Any:
+    scope = occurrence["scope"]
+    if occurrence["scope_kind"] == "external" and isinstance(scope, dict):
+        return (scope["issuer"], scope["event_id"])
+    if occurrence["scope_kind"] == "external":
+        return tuple(scope)
+    return str(scope)

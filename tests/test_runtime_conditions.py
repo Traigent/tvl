@@ -15,7 +15,7 @@ from tvl.canonical import RuntimeClosedError
 from tvl.lints import lint_module
 from tvl.release_acceptance import validate_acceptance
 from tvl.runtime_compiler import compile_runtime_document
-from tvl.runtime_conditions import conditions_trace
+from tvl.runtime_conditions import conditions_trace, occurrence_status, scope_ref
 from tvl.runtime_trace import TraceError
 from tvl.yaml_safe import safe_load
 
@@ -215,3 +215,67 @@ def test_rollback_needs_recorded_positive_eligibility_evidence():
     bad["steps"][-1]["recovery"][0]["target_eligible"] = "yes"
     with pytest.raises(TraceError):
         conditions_trace(case["module"], bad)
+
+
+def _trace_case(name: str) -> tuple[dict, dict]:
+    case = _case(f"semantic_traces/{name}.yml")
+    return copy.deepcopy(case["module"]), copy.deepcopy(case["input"]["history"])
+
+
+_E1 = {"response": "tuning", "rule": "on_new_model", "scope_kind": "external", "scope": {"issuer": "P", "event_id": "E1"}, "j": 0}
+
+
+def test_scope_ref_forms():
+    from tvl.canonical import canonical_json_digest
+
+    expected = "ext:" + canonical_json_digest({"event_id": "E1", "issuer": "P"})
+    assert scope_ref("external", ("P", "E1")) == expected == scope_ref("external", {"issuer": "P", "event_id": "E1"})
+    assert scope_ref("episode", "EP1") == "EP1"
+    assert scope_ref("schedule", 3) == "3"
+    assert scope_ref("external", ("P", "E2")) != expected
+
+
+def test_occurrence_status_unapproved_attempt_expires_then_approval_is_ignored():
+    module, history = _trace_case("external-scope-expiry-closes-unapproved-attempt-and-ignores-late-approval")
+    history["steps"] = history["steps"][:1]
+    assert occurrence_status(module, history, _E1) == {
+        "scope_active": True, "attempt": "A1", "phase": "awaiting_approval", "closed_reason": None}
+    module, history = _trace_case("external-scope-expiry-closes-unapproved-attempt-and-ignores-late-approval")
+    assert occurrence_status(module, history, _E1) == {
+        "scope_active": False, "attempt": "A1", "phase": "closed", "closed_reason": "scope_expired"}
+
+
+def test_occurrence_status_optimizing_then_expired_without_deploy():
+    module, history = _trace_case("external-scope-expiry-closes-optimizing-attempt-and-its-result-yields-no-deploy")
+    history["steps"] = history["steps"][:2]
+    assert occurrence_status(module, history, _E1)["phase"] == "optimizing"
+    module, history = _trace_case("external-scope-expiry-closes-optimizing-attempt-and-its-result-yields-no-deploy")
+    status = occurrence_status(module, history, _E1)
+    assert (status["phase"], status["closed_reason"], status["scope_active"]) == ("closed", "scope_expired", False)
+    assert not _facts(conditions_trace(module, history), "deploy_awaiting")
+
+
+def test_occurrence_status_awaiting_deploy_and_unknown_occurrence():
+    module, history = _trace_case("external-scope-expiry-closes-awaiting-attempt-and-releases-lock")
+    history["steps"] = history["steps"][:3]
+    assert occurrence_status(module, history, _E1)["phase"] == "awaiting_deploy"
+    gone = {**_E1, "scope": {"issuer": "P", "event_id": "nope"}}
+    assert occurrence_status(module, history, gone) == {
+        "scope_active": False, "attempt": None, "phase": None, "closed_reason": None}
+
+
+def test_occurrence_status_schedule_scope_ends_at_next_tick():
+    module, history = _trace_case("schedule-next-tick-closes-awaiting-attempt-and-releases-lock")
+    tick0 = {"response": "tuning", "rule": "recheck", "scope_kind": "schedule", "scope": "0", "j": 0}
+    history["steps"] = history["steps"][:2]  # hour 0 fired, hour 1 approved
+    assert occurrence_status(module, history, tick0) == {
+        "scope_active": True, "attempt": "A1", "phase": "optimizing", "closed_reason": None}
+    module, history = _trace_case("schedule-next-tick-closes-awaiting-attempt-and-releases-lock")
+    assert occurrence_status(module, history, tick0) == {
+        "scope_active": False, "attempt": "A1", "phase": "closed", "closed_reason": "scope_expired"}
+
+
+def test_holdout_digest_mismatch_is_binding_mismatch():
+    module, history = _trace_case("release-holdout-digest-must-match-candidate-bundle")
+    results = {f["acceptance"]: f.get("reason", f["result"]) for f in _facts(conditions_trace(module, history), "acceptance")}
+    assert results == {"R1": "binding_mismatch", "R2": "binding_mismatch", "R3": "written"}
