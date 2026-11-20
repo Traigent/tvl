@@ -271,10 +271,13 @@ optimize that would start while a rollback of the same instant is pending is `he
    one-open-repair lock of §2.7 is released at that instant. An optimization that has *started* is not interrupted by
    TVL: its result is recorded and yields no deploy, and the lock is held until its finish record or a confirmed
    cancellation, so the next occurrence stays `held(repair_open)` until then. A finish record for such a run is
-   validated exactly as a normal finish record; a malformed one is rejected and releases nothing.
+   validated in full exactly as a normal finish record (every candidate's evidence flag and join inputs included); a
+   malformed one is rejected and releases nothing. A late approval fact (granted, declined or expired) for such a run is
+   recorded as ignored: only a validated finish record or a confirmed cancellation releases the lock.
    An optimization *starts* when its approval is granted (`approval` fact, `state: granted`), or when the optimizer
    reports it with the attempt fact `{attempt: <name>, fact: started}`; a finish record implies it. A standing
-   approval (`approval: standing`) approves an attempt at creation but does not start it, so a standing attempt whose
+   approval (`approval: standing`) approves an attempt at creation, and a later recorded approval fact for it is still
+   not a start, so a standing attempt whose
    optimizer never reported a start does not hold the lock after its scope ends. The `started` fact is valid only for an
    approved, unfinished, open attempt, and is recorded as ignored for an attempt closed by scope end.
 7. **Timing of derived closures.** A scope end or expiry that falls between evaluations takes effect at the first

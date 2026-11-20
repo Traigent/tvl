@@ -294,7 +294,7 @@ def test_split_and_unsplit_instant_with_due_schedule_give_identical_facts():
 
 def test_malformed_finish_of_a_superseded_run_is_rejected_and_keeps_the_lock():
     case = _case("semantic_traces/schedule-next-tick-keeps-spending-lock-until-running-optimization-finishes.yml")
-    for bad in ({"candidates": None}, {"candidates": "x"}, {"completion": "bogus"}):
+    for bad in ({"candidates": None}, {"candidates": "x"}, {"completion": "bogus"}, {"candidates": [{"evidence_valid": "no"}]}):
         history = copy.deepcopy(case["input"]["history"])
         history["steps"][-1]["optimizations"][0].update(bad)
         with pytest.raises(TraceError):

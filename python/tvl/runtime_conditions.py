@@ -89,7 +89,7 @@ class _Attempt:
         self.closed_reason: str | None = None
         # scope ended while the optimization ran: deploy eligibility is gone, the spending lock is not
         self.lock_held = False
-        # an optimization actually began (a granted approval, a `started` fact, or a finish record implies it)
+        # an optimization actually began (a granted human approval, a `started` fact, or a finish record; not a standing approval)
         self.started = False
 
 
@@ -420,7 +420,11 @@ class _Run:
             _enum(rec["state"], "granted declined expired")
             _require(not attempt.finished, "approval after the optimization finished")
             if rec["state"] == "granted":
-                attempt.approved = attempt.started = True
+                attempt.approved = True
+                # A human grant authorizes the optimizer to begin at once. A standing approval is recorded at creation
+                # and says nothing about spending: only a `started` fact (or a finish record) starts such an attempt.
+                if self.find_rule(attempt.occ["response"], attempt.occ["rule"]).get("approval", "human") == "human":
+                    attempt.started = True
             else:
                 attempt.declined = True
                 self.emit("approval", attempt=attempt.name, state=rec["state"])
@@ -433,8 +437,7 @@ class _Run:
         elif fact == "finished":
             _shape(rec, "attempt fact completion candidates")
             _require(attempt.approved and not attempt.finished, "optimization not running")
-            converted, winner = self.finish_record(rec)
-            event, promoted = _optimize_outcome(rec["completion"], converted)
+            winner, event, promoted = self.finish_record(rec)
             attempt.finished = attempt.started = True
             rule = self.find_rule(attempt.occ["response"], attempt.occ["rule"])
             self.emit("optimization_finished", attempt=attempt.name, outcome="promoted" if promoted else event)
@@ -455,8 +458,8 @@ class _Run:
         else:
             raise TraceError("unknown optimize fact")
 
-    def finish_record(self, rec: dict) -> tuple[list, dict | None]:
-        """Validate a finish record and return its converted candidates and the first promotable one.
+    def finish_record(self, rec: dict) -> tuple[dict | None, str | None, bool]:
+        """Fully validate a finish record; return the first promotable candidate, the outcome event and whether one promoted.
 
         Shared by the normal finish path and by the finish of a superseded (draining) run: a malformed record is
         rejected (TraceError) in both, so it can never release the spending lock.
@@ -480,7 +483,8 @@ class _Run:
                     winner = cand
             else:
                 converted.append(dict(cand))
-        return converted, winner
+        event, promoted = _optimize_outcome(rec["completion"], converted)
+        return winner, event, promoted
 
     def gate_inputs(self, verdicts: Any) -> list[str]:
         _require(isinstance(verdicts, dict) and sorted(verdicts) == self.promotion_monitors,

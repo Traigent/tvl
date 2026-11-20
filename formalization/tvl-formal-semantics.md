@@ -2512,9 +2512,12 @@ the optimization finishes (a `running` attempt becomes `awaitingDeploy` if a pro
 else `closed`; other attempts are unchanged); the deploy closes (written, refused, rejected, expired, or never takes
 place: `awaitingDeploy` becomes `closed`); an abort (approval declined or expired, a failure outcome, or an external or
 schedule scope that stopped requiring intervention while no optimization had started, RFC 0011 §2.13 item 6: every
-open attempt becomes `closed`); a scope end while an optimization has started (every `running` attempt becomes
+open attempt except a `draining` one becomes `closed`: an ordinary abort, such as a late approval expiry, never
+closes or releases a draining attempt); a scope end while an optimization has started (every `running` attempt becomes
 `draining`; the lock is retained); and dispatch. The finish of a `draining` attempt closes it, yields no deploy, and
-releases the lock; its record is validated like any finish record. A result arriving for a closed attempt changes nothing (RFC 0011 §2.13 item 7).
+releases the lock; its record is validated in full like any finish record (including every candidate's evidence flag and
+join inputs), and a malformed record is rejected and releases nothing. A recorded approval of an attempt with
+`approval: standing` is not a start; only the attempt fact `started` (or a finish record) starts it. A result arriving for a closed attempt changes nothing (RFC 0011 §2.13 item 7).
 
 **Definition 16.7 (Dispatch, serialization).** (RFC 0011 §2.7.) For an agent whose registered contract declares
 `tvl_version` 1.7 or later, dispatch starts nothing while any attempt is open (a `draining` attempt is open) (each pending occurrence is

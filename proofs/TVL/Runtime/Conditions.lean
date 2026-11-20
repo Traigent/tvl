@@ -403,7 +403,11 @@ def drainRunning (a : Attempt) : Attempt :=
 def closeDeploy (a : Attempt) : Attempt :=
   if a.status = .awaitingDeploy then ⟨a.occ, .closed⟩ else a
 
-def closeAny (a : Attempt) : Attempt := ⟨a.occ, .closed⟩
+/-- An ordinary abort closes every attempt except a draining one: a superseded run that already
+started is released only by its validated finish record or a confirmed cancellation (`finishOpt`),
+never by a late approval expiry (RFC 0011 §2.13 item 6). -/
+def closeAny (a : Attempt) : Attempt :=
+  if a.status = .draining then a else ⟨a.occ, .closed⟩
 
 /-- Dispatch: under serialization nothing starts while any attempt is open (the occurrence
 stays pending, `held(repair_open)`); otherwise the first pending occurrence in start order
@@ -466,7 +470,7 @@ theorem repairStep_inv (s : RepairState) (i : Input) (h : RepairInv s) :
     refine ⟨fun hs => le_trans (openCount_map _ ?_ _) (h1 hs), h2⟩
     intro a ha
     unfold closeAny Attempt.isOpen at *
-    simp at ha
+    split_ifs at ha <;> simp_all
   | dispatch =>
     simp only [repairStep, dispatch]
     split
@@ -526,13 +530,18 @@ theorem held_while_open (s : RepairState) (hs : s.serialize = true) (ho : s.open
 
 /-- An abort (approval declined or expired, a failure outcome, or a scope that ended while nothing
 was spending) releases the one-open-repair lock (RFC 0011 §2.13 item 6): after `abort` no attempt
-is open, so the next dispatch may start the head of the queue. A scope that ends while an approved
+is open (given none was draining), so the next dispatch may start the head of the queue. A scope that ends while an approved
 optimization runs is `scopeEndRunning`, which does not release it (`scope_end_running_keeps_lock`). -/
-theorem abort_releases_lock (s : RepairState) : (repairStep s .abort).openCount = 0 := by
+theorem abort_releases_lock (s : RepairState) (h : ∀ a ∈ s.attempts, a.status ≠ .draining) :
+    (repairStep s .abort).openCount = 0 := by
   simp only [repairStep, RepairState.openCount, List.countP_map]
   rw [List.countP_eq_zero]
-  intro a _
-  simp [closeAny, Attempt.isOpen]
+  intro a ha
+  simp [closeAny, Attempt.isOpen, h a ha]
+
+/-- An ordinary abort leaves a draining attempt untouched: it keeps the lock. -/
+theorem abort_keeps_draining (o : Occ) : closeAny ⟨o, .draining⟩ = ⟨o, .draining⟩ := by
+  simp [closeAny]
 
 /-- A scope ending while the approved optimization runs keeps the lock: the open count does not
 drop, so `dispatch` starts nothing (`held_while_open`) until the run's finish record. -/
