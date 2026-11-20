@@ -141,7 +141,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: 1:P:E1
+            scope_ref: ext:cb7b8407952d38e48eda00aaa286e7f58dbe02de4bc7927ae3d23893dc040325
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

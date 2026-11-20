@@ -141,7 +141,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: 1:P:E1
+            scope_ref: ext:cb7b8407952d38e48eda00aaa286e7f58dbe02de4bc7927ae3d23893dc040325
             occurrence: 0
           candidate_fingerprint: 222222222222222222222222222222222222222222222222222222222222222c
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -163,7 +163,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: 1:P:E1
+            scope_ref: ext:cb7b8407952d38e48eda00aaa286e7f58dbe02de4bc7927ae3d23893dc040325
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -185,7 +185,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: 1:P:E1
+            scope_ref: ext:cb7b8407952d38e48eda00aaa286e7f58dbe02de4bc7927ae3d23893dc040325
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -207,7 +207,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: 1:P:E1
+            scope_ref: ext:cb7b8407952d38e48eda00aaa286e7f58dbe02de4bc7927ae3d23893dc040325
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -229,7 +229,7 @@ input:
             response_ref: tuning
             rule_ref: on_new_model
             scope_kind: external
-            scope_ref: 1:P:E9
+            scope_ref: ext:c85c4361dd4def371e7cccc63e0e34c4ca83e88ebc1e51a2593ea12344a186c4
             occurrence: 0
           candidate_fingerprint: 111111111111111111111111111111111111111111111111111111111111111b
           gate_result_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

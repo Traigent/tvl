@@ -2,7 +2,7 @@ case_format: tvl-runtime-case/1
 family: semantic_traces
 description: 'RFC 0012 2.5: R2 repaired EP1 and is the head; its rollback target F1 served only after
   EP1 opened and never in a BREACHED window of it (EP1''s breached set is {F0}), so the rollback restores
-  F1 at generation 3.'
+  F1 at generation 3 because the history records target_eligible: true (RFC 0011 §2.13 item 11).'
 spec_refs:
 - formalization/rfc-0012-release-acceptance.md#2.5
 - formalization/rfc-0011-tuning-conditions.md#2.13
@@ -207,6 +207,7 @@ input:
         episode: EP1
         event: overdue
         approval: granted
+        target_eligible: true
 expected:
   facts:
   - instant: 24

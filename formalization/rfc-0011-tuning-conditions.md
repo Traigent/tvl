@@ -247,14 +247,21 @@ optimize that would start while a rollback of the same instant is pending is `he
    awaits a deploy, the deploy never takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`),
    releasing the one-open-repair lock of §2.7.
 7. **Timing of derived closures.** A scope end or expiry that falls between evaluations takes effect at the first
-   evaluation at or after it, after that evaluation's acceptances; an acceptance in that same evaluation is refused
-   (`scope_closed`).
-8. **Spanning windows.** A BREACHED window whose units span several head generations counts every generation from its
-   start generation to its end generation as having served during it.
+   evaluation at or after it, **before** that evaluation's acceptances. A pending deploy whose scope has closed never takes
+   place and produces no outcome event (RFC 0004 §2.2); a later acceptance for it is recorded as ignored
+   (`scope_closed`), not as `deploy_refused`.
+8. **Spanning windows.** Windows are half-open `[start, end)` (RFC 0003 §6.2). A BREACHED window counts as having been
+   served by every head generation in effect at some instant in `[start, end)`; a generation installed exactly at `end`
+   did not serve it.
 9. **Window redelivery.** A second report for the same (monitor, window start) is a redelivery: the first report stands,
    whatever the second says, and the redelivery changes no count.
-10. **External scope refs.** The hosted `scope_ref` of an external scope is the injective string
-    `<length of issuer>:<issuer>:<event_id>`.
+10. **External scope refs.** The hosted `scope_ref` of an external scope is `ext:` followed by the lowercase hex SHA-256
+    of `{"event_id": …, "issuer": …}` under the canonical digest of RFC 0003 §11.4 (`tvl.canonical.canonical_json_digest`): fixed length, injective for all practical purposes, and
+    within the 128-character reference limit.
+11. **Rollback eligibility needs positive evidence.** A rollback target is eligible only if the history records positive
+    eligibility evidence for it at the time of the effect (`target_eligible: true`, standing for the RFC 0003 §7.2 target
+    checks: certificate validity, compatibility with current requirements, presence in the store) **and** it did not
+    breach in an open episode (item 5). Missing evidence holds the rollback (`held(target_ineligible)`).
 
 ## 3. Compatibility
 

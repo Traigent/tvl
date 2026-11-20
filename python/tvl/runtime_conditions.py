@@ -13,13 +13,13 @@ Module instants (schedule ``anchor``, acceptance ``decided_at``/``expires_at``) 
 strings, compared exactly in seconds against ``origin + 3600 * hour``.
 
 Within one step the order is: windows, recovery facts, schedule clock evaluation,
-attempt facts (approvals, finishes, deploy-gate rechecks), acceptance records, external
+attempt facts (approvals, finishes, deploy-gate rechecks), derived scope closures, acceptance records, external
 events in (issued_at, issuer, event_id) order (RFC 0011 §2.2 item 5), then dispatch of
 pending occurrences in (trigger instant, response, rule id) order (§2.7).
 
 Recorded, not recomputed (as in ``runtime_trace``): window verdicts, the gate join inputs
 of each candidate, platform authentication of events and acceptances, approver authority,
-recovery_overdue transitions and an optional explicit ``target_eligible: false``. Computed here:
+recovery_overdue transitions and the positive rollback-target evidence ``target_eligible: true`` (§2.13 item 11). Computed here:
 breached-configuration sets per open episode (RFC 0011 §2.13 item 5), rollback eligibility, episode
 opening, closure counting under ``closure_scope``, event admission, occurrence firing,
 holds, attempt serialization, search domains, acceptance checks and head writes.
@@ -30,6 +30,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from tvl.canonical import canonical_json_digest
 from tvl.lints import _parse_collection, lint_module, parse_utc_instant
 from tvl.promotion_join import join_promotion_decisions
 from tvl.release_acceptance import validate_acceptance
@@ -59,6 +60,7 @@ class _Attempt:
         self.recheck: str | None = None
         self.scope_closed = False
         self.open = True
+        self.closed_reason: str | None = None
 
 
 class _Run:
@@ -145,7 +147,7 @@ class _Run:
         """The opaque ``scope_ref`` an acceptance record uses for this scope; injective in the identity."""
         if occ["scope_kind"] == "external":
             issuer, event_id = occ["scope"]
-            return f"{len(issuer)}:{issuer}:{event_id}"
+            return "ext:" + canonical_json_digest({"event_id": event_id, "issuer": issuer})  # RFC 0011 §2.13 item 10
         return occ["scope"]
 
     @classmethod
@@ -241,6 +243,7 @@ class _Run:
 
     def close(self, attempt: _Attempt, reason: str) -> None:
         attempt.open = False
+        attempt.closed_reason = reason
         self.emit("attempt_closed", attempt=attempt.name, reason=reason)
 
     def close_scope(self, kind: str, scope: str) -> None:
@@ -271,7 +274,8 @@ class _Run:
         _require(rec["end"] <= self.now, "window ends after evaluation")
         _enum(rec["verdict"], "MET BREACHED UNKNOWN")
         _require(type(rec["head_generation"]) is int, "head_generation must be an integer")
-        start_gen, end_gen = self.generation_at(rec["start"]), self.generation_at(rec["end"])
+        # half-open [start, end): a generation installed exactly at end did not serve the window (RFC 0011 §2.13 item 8)
+        start_gen, end_gen = self.generation_at(rec["start"]), self.generation_at(rec["end"] - 1)
         _require(start_gen <= rec["head_generation"] <= end_gen,
                  "window head_generation outside the generations served during the window")
         mixed = rec["head_generation"] != start_gen
@@ -286,7 +290,7 @@ class _Run:
             if ep is None:
                 self.episode_count += 1
                 ep = {"id": f"EP{self.episode_count}", "monitor": name, "open": True, "count": 0, "ends": [],
-                      "opening_generation": self.head()[0], "breached": {self.head()[1]}, "last_start": None}
+                      "opening_generation": self.head()[0], "breached": set(), "last_start": None}
                 self.episodes[name] = ep
                 self.episode_list[ep["id"]] = ep
                 ep["breached"].update(self.served_fingerprints(start_gen, end_gen))
@@ -353,7 +357,7 @@ class _Run:
             release = next((r for r in reversed(self.releases) if r["repairs_episode"] == episode and r["generation"] == gen), None)
             if release is None:
                 self.emit("rollback", result="rollback_no_bound_release", episode=episode)
-            elif rec.get("target_eligible") is False or release["rollback_target"] in self.breached_fingerprints():
+            elif rec.get("target_eligible") is not True or release["rollback_target"] in self.breached_fingerprints():
                 self.emit("rollback", result="held(target_ineligible)", episode=episode)
             else:
                 self.heads.append((self.now, gen + 1, release["rollback_target"]))
@@ -478,6 +482,12 @@ class _Run:
                        and a.occ["rule"] == occ_rec["rule_ref"] and a.occ["scope_kind"] == occ_rec["scope_kind"]
                        and self.scope_ref(a.occ) == occ_rec["scope_ref"] and a.occ["j"] == occ_rec["occurrence"]), None)
         if target is None:
+            closed = any(a.closed_reason in ("scope_expired", "scope_closed") and a.awaiting_deploy
+                         and a.occ["response"] == occ_rec["response_ref"] and a.occ["rule"] == occ_rec["rule_ref"]
+                         and a.occ["scope_kind"] == occ_rec["scope_kind"] and self.scope_ref(a.occ) == occ_rec["scope_ref"]
+                         and a.occ["j"] == occ_rec["occurrence"] for a in self.attempts)
+            if closed:  # RFC 0011 §2.13 item 7: closure precedes acceptances and yields no outcome (RFC 0004 §2.2)
+                return result("ignored(scope_closed)")
             return result("invalid", "no_deploy_awaiting")
         if (doc["agent_ref"], doc["environment_ref"]) != (self.agent, self.environment) \
                 or doc["candidate_fingerprint"] != target.promoted["fingerprint"] \
@@ -491,9 +501,7 @@ class _Run:
             return self.close(target, "deploy_rejected")
         # accept: effect-time checks (RFC 0003 §7.6 item 3 with the originating scope, RFC 0012 §2.3)
         refusal = None
-        if not self.scope_active(target.occ) or target.scope_closed:
-            refusal = "scope_closed"
-        elif target.recheck is not None and target.recheck != "Promote":
+        if target.recheck is not None and target.recheck != "Promote":
             refusal = "gate_not_promote"
         else:
             generation, fingerprint = self.head()
@@ -576,9 +584,9 @@ class _Run:
             self.clock()
             for rec in step.get("optimizations", []):
                 self.optimization(rec)
+            self.release_expired_scopes()  # derived closures precede acceptances (RFC 0011 §2.13 item 7)
             for rec in step.get("acceptances", []):
                 self.acceptance(rec)
-            self.release_expired_scopes()
             events = step.get("events", [])
             for ev in sorted(events, key=self.event):
                 self.process_event(ev)

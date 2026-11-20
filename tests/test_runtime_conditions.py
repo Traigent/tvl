@@ -197,11 +197,14 @@ def test_acceptance_without_history_contract_digest_is_a_trace_error():
     conditions_trace(case["module"], history)
 
 
-def test_recorded_target_eligible_false_holds_and_absence_never_permits():
-    # RFC 0011 2.13 item 5: eligibility is computed from the history; an explicit false only narrows it.
+def test_rollback_needs_recorded_positive_eligibility_evidence():
+    # RFC 0011 2.13 item 11: only target_eligible: true permits; false or absence holds.
     case = _case("semantic_traces/release-recovery-overdue-rolls-back-to-non-breached-target.yml")
     history = copy.deepcopy(case["input"]["history"])
-    assert "target_eligible" not in history["steps"][-1]["recovery"][0]
+    assert history["steps"][-1]["recovery"][0]["target_eligible"] is True
+    absent = copy.deepcopy(history)
+    del absent["steps"][-1]["recovery"][0]["target_eligible"]
+    assert [f["result"] for f in _facts(conditions_trace(case["module"], absent), "rollback")] == ["held(target_ineligible)"]
     explicit_false = copy.deepcopy(history)
     explicit_false["steps"][-1]["recovery"][0]["target_eligible"] = False
     assert [f["result"] for f in _facts(conditions_trace(case["module"], explicit_false), "rollback")] == ["held(target_ineligible)"]
