@@ -132,13 +132,18 @@ bound a generation are conforming. The acceptance record is a new document type 
 
 Formal semantics §16.6–§16.8. Lean, `proofs/TVL/Runtime/Release.lean`:
 
-- `deploy_needs_matching_acceptance`: every head move by a deploy is preceded by exactly one consumed accept record with
-  equal bindings.
-- `stale_acceptance_writes_nothing`: if the head moved after the approver's generation, the deploy writes nothing.
-- `since_head_move_closure`: under `since_head_move`, no window from a generation at or below the opening generation
-  contributes to closure.
-- `generation_change_resets`: under `since_head_move`, a qualifying window of a generation different from the last
-  counted window's restarts the count at one.
+- `deploy_needs_matching_acceptance` (substantive): in every reachable state each deploy move has an accept with equal
+  bindings, usable at the effect time and consumed, and no acceptance wrote twice.
+- `since_head_move_closure` (substantive): under `since_head_move`, the closure count never exceeds the number of
+  qualifying windows (MET, not mixed, generation above the opening one); windows of old generations alone cannot close.
+- By construction, read off the guards of `acceptStep` and `effect`: `consumed_record_writes_nothing`,
+  `stale_acceptance_writes_nothing`, `stale_generation_refused` (a generation mismatch writes nothing),
+  `write_advances_head` (a write moves the head by exactly one generation), `old_generation_resets`,
+  `generation_change_resets` (under `since_head_move` a qualifying window of a generation different from the last
+  counted one restarts the count at one) and `window_redelivery_noop`.
+
+Not proved in Lean: signature verification and approver roles, `closure_max_age_hours`, the static diagnostics, and that
+the Python reference implements these definitions; these are checked by the conformance cases of §5.
 
 Release rollback has no statement in 1.7 (§2.5).
 

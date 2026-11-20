@@ -298,15 +298,27 @@ Formal semantics §16 defines: the merged, totally ordered input stream (§2.2 i
 the firing relation of each trigger; the pending-occurrence queue of §2.7; and (Part B) the three-valued evaluation of
 `when`. Lean, `proofs/TVL/Runtime/Conditions.lean`:
 
-- `schedule_tick_unique`: in any trace, each tick index fires at most once.
-- `external_event_unique`: redeliveries of one (issuer, event_id) produce one occurrence.
-- `one_open_repair`: in any trace, at most one optimize attempt per agent is open at any instant.
-- `admit_extends_only_named_tvar`: the occurrence's search space differs from the declared space only in the admitted
-  tvar, and only by the event's model ref.
-- `when_restricts_instances` (Part B): for a fixed sequence of trigger instances (before cooldown and serialization),
-  adding a conjunct to `when` of a spending rule never adds a started attempt. (The statement over full traces is false:
-  suppressing an attempt removes its cooldown and can enable a later one.)
-- `conservative_extension` extended to 1.7.
+- `schedule_tick_unique` (substantive): over any sequence of clock readings, the fired ticks are duplicate-free and
+  disjoint from the skipped ones; `schedule_coalesces`: after a reading whose latest passed tick is L, every tick up to
+  L is decided exactly once.
+- `external_event_unique` (substantive): over any stream, no occurrence key (rule, issuer, event id) fires twice, given
+  distinct rule ids.
+- `one_open_repair` (substantive): for a 1.7 agent, at most one optimize attempt is open after any sequence of
+  triggers, drops, results, deploy closures, aborts and dispatches.
+- `admit_extends_only_named_tvar` (by construction): the occurrence space differs from the declared space only at the
+  named tvar, by exactly the event's model ref.
+- Also by construction, read off the step functions: `merged_order_total` (order of one instant's events only),
+  `nonadmitted_fires_nothing`, `unauthenticated_not_remembered`, `held_while_open`, `dispatch_starts_minimal`,
+  `abort_releases_lock`, `no_external_rules_no_firing`, `no_trigger_no_attempt`.
+
+Not proved in Lean, and enforced only by the Python reference relation and the conformance cases of §5: the three-valued
+`when` evaluation and `when_restricts_instances` (Part B; for a fixed sequence of trigger instances, adding a conjunct
+to `when` of a spending rule never adds a started attempt; the statement over full traces is false, because
+suppressing an attempt removes its cooldown and can enable a later one); the order among input classes other than
+events within an instant; the gate join and its recomputation; signature verification and approver roles; the static
+diagnostics; RFC 0010 budgets; and that `python/tvl/runtime_conditions.py` implements these definitions.
+`conservative_extension` (`Extension.lean`) concerns the 1.3 embedding and was not extended to 1.7; the 1.7
+embedding claim rests on `no_external_rules_no_firing` and `no_trigger_no_attempt`.
 
 ## 5. Conformance
 
