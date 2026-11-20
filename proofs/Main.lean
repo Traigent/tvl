@@ -13,6 +13,8 @@ import TVL.Runtime.Compose
 import TVL.Runtime.Extension
 import TVL.Runtime.Backend
 import TVL.Runtime.BinomialLaw
+import TVL.Runtime.Conditions
+import TVL.Runtime.Release
 
 def main : IO Unit :=
   IO.println "TVL proof library built; open obligations are listed in PROOF_SUMMARY.md"
