@@ -16,9 +16,11 @@ be negative (before the origin). Window bounds are seconds too, aligned to
 Events of consecutive event-only steps sharing one whole-second instant are buffered and ordered once, so the
 facts do not depend on how those events are split into steps; a step of that instant that carries windows,
 optimizations or acceptances ends the batch. Within one step the order is: windows, schedule clock evaluation,
-attempt facts (approvals, finishes, deploy-gate rechecks), derived scope closures, acceptance records, external
-events in (issued_at, issuer, event_id) order (RFC 0011 §2.2 item 5), then dispatch of
-pending occurrences in (trigger instant, response, rule id) order (§2.7).
+derived scope closures (an attempt whose scope ended while its optimization runs closes, keeping the spending lock
+until its finish record), attempt facts (approvals, starts, finishes, deploy-gate rechecks), derived scope closures again
+(a fact of the step cannot leave an expired scope deploy-eligible), acceptance records, external events in
+(issued_at, issuer, event_id) order (RFC 0011 §2.2 item 5), then one dispatch of pending occurrences in
+(trigger instant, response, rule id) order (§2.7) after the whole instant's event batch.
 
 Recorded, not recomputed (as in ``runtime_trace``): window verdicts, the gate join inputs
 of each candidate, platform authentication of events and acceptances and approver authority.
@@ -87,6 +89,8 @@ class _Attempt:
         self.closed_reason: str | None = None
         # scope ended while the optimization ran: deploy eligibility is gone, the spending lock is not
         self.lock_held = False
+        # an optimization actually began (a granted approval, a `started` fact, or a finish record implies it)
+        self.started = False
 
 
 class _Run:
@@ -290,7 +294,7 @@ class _Run:
                 self.close(a, "scope_expired")
                 # RFC 0011 §2.13 item 6: an optimization already spending is not interrupted by TVL, so the
                 # lock stays until its finish record (a confirmed cancellation is a finish record)
-                a.lock_held = a.approved and not a.finished
+                a.lock_held = a.started and not a.finished
 
     # -- windows and episodes ---------------------------------------------------------------
     def window(self, rec: dict) -> None:
@@ -406,7 +410,7 @@ class _Run:
             # RFC 0011 §2.13 item 6: a result or approval for an attempt whose scope ended is recorded, never acted on
             if fact == "finished" and attempt.lock_held:
                 _shape(rec, "attempt fact completion candidates")
-                _enum(rec["completion"], "normal error cancelled cost_limit")
+                self.finish_record(rec)  # same validation as a normal finish: a malformed record keeps the lock
                 attempt.lock_held = False
                 attempt.finished = True
             return self.emit("attempt_fact", attempt=attempt.name, kind=fact, result="ignored(scope_closed)")
@@ -416,35 +420,22 @@ class _Run:
             _enum(rec["state"], "granted declined expired")
             _require(not attempt.finished, "approval after the optimization finished")
             if rec["state"] == "granted":
-                attempt.approved = True
+                attempt.approved = attempt.started = True
             else:
                 attempt.declined = True
                 self.emit("approval", attempt=attempt.name, state=rec["state"])
                 self.close(attempt, "approval_" + rec["state"])
+        elif fact == "started":
+            # the optimizer actually began spending; a standing approval alone does not hold the lock after scope end
+            _shape(rec, "attempt fact")
+            _require(attempt.approved and not attempt.finished, "start needs an approved, unfinished attempt")
+            attempt.started = True
         elif fact == "finished":
             _shape(rec, "attempt fact completion candidates")
             _require(attempt.approved and not attempt.finished, "optimization not running")
-            _enum(rec["completion"], "normal error cancelled cost_limit")
-            _require(isinstance(rec["candidates"], list), "candidates must be a list")
-            converted, winner = [], None
-            for cand in rec["candidates"]:
-                _shape(cand, "evidence_valid", "fingerprint gate_digest code_version legacy_decision monitor_verdicts holdout_digest")
-                if cand["evidence_valid"] is True:
-                    _require(set(cand) - {"holdout_digest"} == {"evidence_valid", "fingerprint", "gate_digest", "code_version",
-                                                                "legacy_decision", "monitor_verdicts"},
-                             "valid candidate needs fingerprint, gate digest, code version and promotion join inputs")
-                    _require(isinstance(cand["code_version"], str) and cand["code_version"],
-                             "code_version must be a nonempty string")
-                    _require("holdout_digest" not in cand or (isinstance(cand["holdout_digest"], str) and cand["holdout_digest"]),
-                             "holdout_digest must be a nonempty string")
-                    verdicts = self.gate_inputs(cand["monitor_verdicts"])
-                    converted.append({"evidence_valid": True, "legacy_decision": cand["legacy_decision"], "monitor_verdicts": verdicts})
-                    if winner is None and join_promotion_decisions(cand["legacy_decision"], verdicts) == "Promote":
-                        winner = cand
-                else:
-                    converted.append(dict(cand))
+            converted, winner = self.finish_record(rec)
             event, promoted = _optimize_outcome(rec["completion"], converted)
-            attempt.finished = True
+            attempt.finished = attempt.started = True
             rule = self.find_rule(attempt.occ["response"], attempt.occ["rule"])
             self.emit("optimization_finished", attempt=attempt.name, outcome="promoted" if promoted else event)
             if event:
@@ -463,6 +454,33 @@ class _Run:
             attempt.recheck = join_promotion_decisions(rec["legacy_decision"], self.gate_inputs(rec["monitor_verdicts"]))
         else:
             raise TraceError("unknown optimize fact")
+
+    def finish_record(self, rec: dict) -> tuple[list, dict | None]:
+        """Validate a finish record and return its converted candidates and the first promotable one.
+
+        Shared by the normal finish path and by the finish of a superseded (draining) run: a malformed record is
+        rejected (TraceError) in both, so it can never release the spending lock.
+        """
+        _enum(rec["completion"], "normal error cancelled cost_limit")
+        _require(isinstance(rec["candidates"], list), "candidates must be a list")
+        converted, winner = [], None
+        for cand in rec["candidates"]:
+            _shape(cand, "evidence_valid", "fingerprint gate_digest code_version legacy_decision monitor_verdicts holdout_digest")
+            if cand["evidence_valid"] is True:
+                _require(set(cand) - {"holdout_digest"} == {"evidence_valid", "fingerprint", "gate_digest", "code_version",
+                                                            "legacy_decision", "monitor_verdicts"},
+                         "valid candidate needs fingerprint, gate digest, code version and promotion join inputs")
+                _require(isinstance(cand["code_version"], str) and cand["code_version"],
+                         "code_version must be a nonempty string")
+                _require("holdout_digest" not in cand or (isinstance(cand["holdout_digest"], str) and cand["holdout_digest"]),
+                         "holdout_digest must be a nonempty string")
+                verdicts = self.gate_inputs(cand["monitor_verdicts"])
+                converted.append({"evidence_valid": True, "legacy_decision": cand["legacy_decision"], "monitor_verdicts": verdicts})
+                if winner is None and join_promotion_decisions(cand["legacy_decision"], verdicts) == "Promote":
+                    winner = cand
+            else:
+                converted.append(dict(cand))
+        return converted, winner
 
     def gate_inputs(self, verdicts: Any) -> list[str]:
         _require(isinstance(verdicts, dict) and sorted(verdicts) == self.promotion_monitors,
@@ -610,6 +628,7 @@ class _Run:
             self.release_expired_scopes()  # derived closures precede attempt facts and acceptances (RFC 0011 §2.13 item 7)
             for rec in step.get("optimizations", []):
                 self.optimization(rec)
+            self.release_expired_scopes()  # again: a fact of this step may not leave an expired scope deploy-eligible
             for rec in step.get("acceptances", []):
                 self.acceptance(rec)
             instant_events.extend(step.get("events", []))
@@ -620,8 +639,7 @@ class _Run:
                     and not any(nxt.get(c) for c in ("windows", "optimizations", "acceptances")):
                 # a following step of the same instant that only delivers events joins this batch: the instant's
                 # events are ordered across all of them (RFC 0011 §2.2 item 5). A step that carries evaluations
-                # is a later observation of the instant and ends the batch.
-                self.dispatch()
+                # is a later observation of the instant and ends the batch. Dispatch runs once, after the whole batch.
                 continue
             for ev in sorted(instant_events, key=self.event):
                 self.process_event(ev)

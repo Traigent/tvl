@@ -281,3 +281,24 @@ def test_closure_needs_consecutive_windows_of_one_generation():
     progress = [(f["instant"], f["progress"]) for f in _facts(result, "window") if f["closure"] == "counts"]
     assert progress == [(72 * H, 1), (96 * H, 1), (120 * H, 2)]  # generation 1 then 2 restarts the count
     assert [f["instant"] for f in _facts(result, "episode_resolved")] == [120 * H]
+
+
+def test_split_and_unsplit_instant_with_due_schedule_give_identical_facts():
+    unsplit = _case("semantic_traces/external-simultaneous-events-with-due-schedule-unsplit.yml")
+    split = _case("semantic_traces/external-simultaneous-events-with-due-schedule-split.yml")
+    assert unsplit["module"] == split["module"]
+    a = conditions_trace(unsplit["module"], unsplit["input"]["history"])
+    b = conditions_trace(split["module"], split["input"]["history"])
+    assert a["facts"] == b["facts"]
+
+
+def test_malformed_finish_of_a_superseded_run_is_rejected_and_keeps_the_lock():
+    case = _case("semantic_traces/schedule-next-tick-keeps-spending-lock-until-running-optimization-finishes.yml")
+    for bad in ({"candidates": None}, {"candidates": "x"}, {"completion": "bogus"}):
+        history = copy.deepcopy(case["input"]["history"])
+        history["steps"][-1]["optimizations"][0].update(bad)
+        with pytest.raises(TraceError):
+            conditions_trace(case["module"], history)
+    # the well-formed record releases the lock (the case itself)
+    ok = conditions_trace(case["module"], case["input"]["history"])
+    assert [f["attempt"] for f in _facts(ok, "attempt_opened")] == ["A1", "A2"]

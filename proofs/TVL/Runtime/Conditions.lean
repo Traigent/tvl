@@ -383,7 +383,8 @@ inductive Input where
   | optimizeFinished (deploy : Bool)
   /-- the deploy was written, refused, rejected, expired with its scope, or never took place -/
   | deployClosed
-  /-- the scope of an attempt whose approved optimization is running ended: it stops being
+  /-- the scope of an attempt whose approved optimization has actually started (a granted approval or
+      a `started` fact; a standing approval alone is not a start) ended: it stops being
       deploy-eligible but keeps the lock until it finishes (RFC 0011 §2.7, §2.13 item 6) -/
   | scopeEndRunning
   /-- approval declined/expired, failure outcome, or an external or schedule scope that stopped

@@ -250,9 +250,11 @@ optimize that would start while a rollback of the same instant is pending is `he
 1. **Order of event checks.** An arriving event is checked in this order: authentication (an unauthenticated copy is
    recorded `rejected(unauthenticated)` and not remembered, so a later authentic copy with the same id is admitted);
    redelivery of an admitted (issuer, event_id); lateness; then matching.
-2. **Order within an instant.** Window reports, the schedule clock, attempt facts, acceptances, then
-   admitted events in (issued_at, issuer, event_id) order; finally pending occurrences start in
-   (trigger instant, response name, rule id) order.
+2. **Order within an instant.** Window reports, the schedule clock, derived scope closures (§2.13 items 6-7), attempt
+   facts, derived scope closures again (a fact of the instant cannot leave an expired scope deploy-eligible),
+   acceptances, then admitted events in (issued_at, issuer, event_id) order; finally one dispatch, after the whole
+   instant's event batch (§2.2 item 5), starts pending occurrences in (trigger instant, response name, rule id) order.
+   Dispatch never runs while events of the instant are still to be ordered.
 3. **Schedule shape.** `every_days` outside 1–366 and malformed schedule mappings are `runtime_invalid_profile`.
 4. **Gate at effect time.** A candidate whose gate join is not `Promote` when its optimization finishes yields no deploy
    occurrence; if the gate result is recomputed at the time of the effect and is no longer `Promote`, the deploy is
@@ -265,10 +267,16 @@ optimize that would start while a rollback of the same instant is pending is `he
 6. **Scope end releases the lock.** When an external or schedule scope stops requiring intervention while its attempt
    is open — awaiting its optimization approval, optimizing, or awaiting a deploy — no further service effect of the
    occurrence takes place (RFC 0003 §7.4 item 2) and the attempt closes (`scope_expired`); its deploy eligibility
-   expires at once. If nothing was spending (awaiting approval or awaiting a deploy) the one-open-repair lock of §2.7 is
-   released at that instant. An optimization already running is not interrupted by TVL: its result is recorded and
-   yields no deploy, and the lock is held until its finish record or a confirmed cancellation, so the next occurrence
-   stays `held(repair_open)` until then.
+   expires at once. If nothing was spending (awaiting approval, awaiting a deploy, or approved but not started) the
+   one-open-repair lock of §2.7 is released at that instant. An optimization that has *started* is not interrupted by
+   TVL: its result is recorded and yields no deploy, and the lock is held until its finish record or a confirmed
+   cancellation, so the next occurrence stays `held(repair_open)` until then. A finish record for such a run is
+   validated exactly as a normal finish record; a malformed one is rejected and releases nothing.
+   An optimization *starts* when its approval is granted (`approval` fact, `state: granted`), or when the optimizer
+   reports it with the attempt fact `{attempt: <name>, fact: started}`; a finish record implies it. A standing
+   approval (`approval: standing`) approves an attempt at creation but does not start it, so a standing attempt whose
+   optimizer never reported a start does not hold the lock after its scope ends. The `started` fact is valid only for an
+   approved, unfinished, open attempt, and is recorded as ignored for an attempt closed by scope end.
 7. **Timing of derived closures.** A scope end or expiry that falls between evaluations takes effect at the first
    evaluation at or after it, **before** that evaluation's acceptances. A pending deploy whose scope has closed never takes
    place and produces no outcome event (RFC 0004 §2.2); a later acceptance for it is recorded as ignored

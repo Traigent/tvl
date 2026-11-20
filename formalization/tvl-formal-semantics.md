@@ -2469,9 +2469,12 @@ and fires. (Lean: `classify`, `nonadmitted_fires_nothing`, `unauthenticated_not_
 ### 16.2 The merged, totally ordered input stream
 
 **Definition 16.3 (Instant order).** (RFC 0011 §2.2 item 5, §2.13 item 2.) Within one evaluation instant, inputs are
-processed in this order: window reports, the schedule clock, attempt facts, derived scope closures,
-acceptance records, then external events, and finally the start of pending occurrences. External events of one
-instant are ordered by (issued_at, issuer, event id), ties kept in arrival order (a stable sort). A *stream* is the
+processed in this order: window reports, the schedule clock, derived scope closures, attempt facts (approvals,
+starts, finish records, deploy-gate rechecks), derived scope closures again, acceptance records, then external
+events, and finally one start of pending occurrences. External events of one
+instant are ordered by (issued_at, issuer, event id), ties kept in arrival order (a stable sort); the events of
+consecutive event-only steps with the same instant form one batch ordered as a whole, and the start of pending
+occurrences runs once after the batch, never while events of the instant are still unordered. A *stream* is the
 list of instants in nondecreasing order with this inner order, so every trace is a total order. (Lean: `Step`,
 `evLE`, `orderEvents`; `merged_order_total`: the event order is a permutation of the input and pairwise sorted. The
 order among the other input classes is realized by the sequential composition of the step functions in §16.3–§16.9 and
@@ -2500,17 +2503,21 @@ next tick or until the attempt finishes. (Lean: `latestTick`, `SchedState`, `sch
 
 **Definition 16.6 (Attempt and pending queue).** (RFC 0011 §2.7; attempt identity of Definition 13.1, closure of
 Definition 13.2.) An *attempt* is the optimization and its possible deploy. Its status is `running`,
-`awaitingDeploy` or `closed`; it is *open* unless `closed`. A *pending occurrence* is an occurrence of an `optimize`
+`awaitingDeploy`, `draining` or `closed`; it is *open* unless `closed`. A `draining` attempt is one whose scope ended
+while its optimization had started: it is no longer deploy-eligible but it keeps the one-open-repair lock until its
+finish record. A *pending occurrence* is an occurrence of an `optimize`
 rule that fired and has not started; the queue is kept sorted by (trigger instant, response name, rule id), ties by
 admission order. The input alphabet is: a trigger fires (enqueue in order); a pending occurrence's scope ends (drop);
 the optimization finishes (a `running` attempt becomes `awaitingDeploy` if a promoted candidate awaits acceptance,
 else `closed`; other attempts are unchanged); the deploy closes (written, refused, rejected, expired, or never takes
 place: `awaitingDeploy` becomes `closed`); an abort (approval declined or expired, a failure outcome, or an external or
-schedule scope that stopped requiring intervention, RFC 0011 §2.13 item 6: every open attempt becomes `closed`);
-and dispatch. A result arriving for a closed attempt changes nothing (RFC 0011 §2.13 item 7).
+schedule scope that stopped requiring intervention while no optimization had started, RFC 0011 §2.13 item 6: every
+open attempt becomes `closed`); a scope end while an optimization has started (every `running` attempt becomes
+`draining`; the lock is retained); and dispatch. The finish of a `draining` attempt closes it, yields no deploy, and
+releases the lock; its record is validated like any finish record. A result arriving for a closed attempt changes nothing (RFC 0011 §2.13 item 7).
 
 **Definition 16.7 (Dispatch, serialization).** (RFC 0011 §2.7.) For an agent whose registered contract declares
-`tvl_version` 1.7 or later, dispatch starts nothing while any attempt is open (each pending occurrence is
+`tvl_version` 1.7 or later, dispatch starts nothing while any attempt is open (a `draining` attempt is open) (each pending occurrence is
 `held(repair_open)`), and otherwise starts the first pending occurrence, which then opens a `running` attempt. For
 earlier versions dispatch starts every pending occurrence (the RFC 0003 meaning, unchanged). (Lean: `Status`,
 `Attempt`, `Occ`, `occLE`, `Input`, `repairStep`, `dispatch`, `repairRun`; `one_open_repair`, `held_while_open`,
