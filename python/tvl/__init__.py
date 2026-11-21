@@ -5,7 +5,7 @@ from .loader import load  # noqa: F401
 from .measurement import load_measurement, validate_measurement  # noqa: F401
 from .promotion import epsilon_pareto_gate  # noqa: F401
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 __all__ = [
     "__version__",

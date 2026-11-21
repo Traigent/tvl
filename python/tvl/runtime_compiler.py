@@ -41,9 +41,12 @@ def compile_runtime_document(
     token_map_doc: Optional[Mapping[str, Any]],
     packs: Optional[Sequence[Mapping[str, Any]]] = None,
     checker_registry_doc: Optional[Mapping[str, Any]] = None,
-    toolchain_version: str = "1.5.0",
+    toolchain_version: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[Dict[str, Any]]]:
     """Compile declarations to closed exchange artifacts; evaluation requires an external engine."""
+    if toolchain_version is None:
+        # The stamp is the installed package version, so a release cannot forget to bump it.
+        from tvl import __version__ as toolchain_version
     if _uses_17_constructs(doc):
         # DRAFT RFC 0011/0012: projection format /4 is not implemented; refuse rather than drop a construct.
         raise RuntimeClosedError("unsupported_construct", construct="tvl_1_7_draft")

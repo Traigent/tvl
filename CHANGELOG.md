@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-21
+
+### Fixed
+
+- `tvl-compile-runtime` stamped compiled contracts with toolchain version `1.5.0` in the 1.6.0 release. The default stamp is now the installed package version (`tvl.__version__`), so it follows every release.
+
 ## [1.6.0] - 2026-11-21
 
 ### Added
