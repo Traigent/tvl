@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-21
+
 ### Added
 
 - DRAFT TVL 1.7 constructs (RFC 0011 Part A and RFC 0012, not accepted): an `external: model_released` trigger with a sealed `match` catalogue, a `schedule: {every_days, anchor}` trigger, rule fields `admit` and `protects`, and `episode.closure_scope` (`any_generation` | `since_head_move`). Release rollback (`target: release_rollback_target`) is deferred and rejected with `release_rollback_deferred`. Version-gated: a module using them must declare `tvl_version: "1.7"` (`declared_version_below_constructs` otherwise). New lint errors: `trigger_action_unsupported`, `trigger_repeat_unsupported`, `schedule_anchor_out_of_range`, `admit_without_model_event`, `admit_tvar_type`, `admit_needs_match`, `protects_required`, `protects_without_promotion_monitor`, `protects_on_monitor_trigger`, `protects_unknown_requirement`, `release_rollback_deferred`. `tvl-compile-runtime` refuses these constructs with `unsupported_construct` (projection format /4 is not implemented).
